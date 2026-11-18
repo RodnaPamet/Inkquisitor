@@ -6,6 +6,7 @@
  */
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { repoFiles, repoRelative } from '../helpers/repo-files';
 
 const ROOT = path.resolve(__dirname, '../..');
 const manifest = fs.readFileSync(path.join(ROOT, 'docs/carve-manifest.md'), 'utf8');
@@ -51,6 +52,14 @@ describe('docs/carve-manifest.md', () => {
     it('lists each Inkquisitor path once', () => {
         const paths = copied.map((r) => r[0]);
         expect(paths.filter((p, i) => paths.indexOf(p) !== i)).toEqual([]);
+    });
+
+    it('lists every file of the lifted workspace package (packages/ui)', () => {
+        // Phase 0.2 lifted the package whole; a file added under it without a
+        // row would be code whose lineage nobody recorded.
+        const listed = new Set(copied.map((r) => code(r[0])));
+        const unlisted = repoFiles({ under: 'packages/ui' }).map(repoRelative).filter((p) => !listed.has(p));
+        expect(unlisted).toEqual([]);
     });
 
     it('every file whose lineage is recorded as "rule followed" exists', () => {

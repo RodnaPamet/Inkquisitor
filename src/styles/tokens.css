@@ -1,0 +1,315 @@
+/*
+ * Design tokens — Inkquisitor.
+ *
+ * Lifted from inflect-compliance's `src/styles/tokens.css` (see
+ * docs/carve-manifest.md): the same token NAMES, so every lifted component
+ * and the Tailwind config (`bg-bg-default`, `text-content-emphasis`, …) work
+ * unchanged, with Inkquisitor's own palette in place of inflect's. Components
+ * target these semantic properties, never a raw colour.
+ *
+ * THE PALETTE is three things and nothing else:
+ *
+ *   ink black   — the dark theme's surfaces and the light theme's text
+ *   parchment   — the light theme's surfaces and the dark theme's text
+ *   one accent  — violet ink (iron-gall ink ages towards violet), the
+ *                 `--brand-*` family. It is the only hue that is not a
+ *                 neutral or a status colour, and it was chosen because it
+ *                 collides with none of the four status hues (green, amber,
+ *                 red, blue), which stay conventional so their meaning
+ *                 survives the rebrand.
+ *
+ * `--brand-secondary-*` is not a second accent: it is a parchment-toned
+ * neutral, kept because lifted components read the names.
+ *
+ * Both themes are live: dark under `:root` (the SSR baseline), light under
+ * `[data-theme="light"]`, chosen by `ThemeProvider`. Every token defined in
+ * one theme is defined in the other, apart from the theme-independent scales
+ * (radius, duration); `tests/unit/design-tokens.test.ts` holds that parity
+ * and the WCAG contrast of the text pairs in both themes.
+ *
+ * Left behind from inflect: the process-canvas surfaces (`--canvas-*`),
+ * which belong to the canvas (Phase 3), and the chart motion and shadow
+ * tokens, which nothing lifted reads. The six chart series are carried,
+ * rebranded, for the package's charts.
+ */
+
+/* ═══════════════════════════════════════════════════════════════════
+   DARK THEME (default) — ink black, parchment text.
+   ═══════════════════════════════════════════════════════════════════ */
+:root {
+  /* ── Surfaces ──────────────────────────────────────────────────── */
+  --bg-page:      #12110F;                  /* ink black — page background */
+  --bg-default:   #1C1A17;                  /* cards, panels, tables, modals, popovers */
+  --bg-muted:     #26231F;                  /* hover surfaces, pressed/active states */
+  --bg-subtle:    rgba(243, 235, 221, 0.06);/* selection bg, disabled surfaces, faint tints */
+  --bg-elevated:  #2E2A25;                  /* tooltips, dropdowns above default */
+  --bg-inverted:  #F3EBDD;                  /* parchment — inverted surface */
+  --bg-overlay:   rgba(8, 7, 6, 0.72);      /* backdrop behind modals/drawers */
+
+  /* ── Content / Text ────────────────────────────────────────────── */
+  --content-emphasis: #F5EEE1;   /* parchment — headings, selected items */
+  --content-default:  #E6DCCB;   /* body text */
+  --content-muted:    #BFB4A2;   /* secondary text, captions */
+  --content-subtle:   #A0947F;   /* hints, tertiary info */
+  --content-inverted: #12110F;   /* text on inverted (parchment) surfaces */
+  --content-brand:    #C3B1EC;   /* accent-coloured text; a literal, measured in the token test */
+
+  /* ── Borders ───────────────────────────────────────────────────── */
+  --border-default:  #3A352E;
+  --border-subtle:   rgba(243, 235, 221, 0.10);
+  --border-emphasis: #5A5247;
+  --border-strong:   #8A7F6E;
+
+  /* ── Accent (violet ink) ───────────────────────────────────────── */
+  --brand-default:  #B9A3E6;
+  --brand-emphasis: #A28BD9;
+  --brand-muted:    #D2C4F1;
+  --brand-subtle:   rgba(185, 163, 230, 0.18);
+
+  /* ── Secondary: a parchment neutral, not a second hue ─────────── */
+  --brand-secondary-default:  #D9C9A8;
+  --brand-secondary-emphasis: #C7B48D;
+  --brand-secondary-muted:    #E6DAC0;
+  --brand-secondary-subtle:   rgba(217, 201, 168, 0.18);
+
+  /* ── Status (conventional hues) ────────────────────────────────── */
+  --bg-success:          rgba(16, 185, 129, 0.15);
+  --bg-success-emphasis: #059669;
+  --content-success:     #34d399;
+  --border-success:      rgba(16, 185, 129, 0.30);
+
+  --bg-warning:          rgba(245, 158, 11, 0.15);
+  --bg-warning-emphasis: #D97706;
+  --content-warning:     #fbbf24;
+  --border-warning:      rgba(245, 158, 11, 0.30);
+
+  --bg-error:          rgba(239, 68, 68, 0.15);
+  --bg-error-emphasis: #DC2626;
+  --content-error:     #f87171;
+  --border-error:      rgba(239, 68, 68, 0.30);
+
+  --bg-info:          rgba(59, 130, 246, 0.15);
+  --bg-info-emphasis: #2563EB;
+  --content-info:     #60a5fa;
+  --border-info:      rgba(59, 130, 246, 0.30);
+
+  --bg-attention:      rgba(251, 191, 36, 0.15);
+  --content-attention: #fbbf24;
+  --border-attention:  rgba(251, 191, 36, 0.30);
+
+  /* ── Focus & rings ─────────────────────────────────────────────── */
+  --ring-default: rgba(185, 163, 230, 0.60);
+  --focus-ring:   rgba(185, 163, 230, 0.60);
+  --ring:                   rgba(185, 163, 230, 0.60);
+  --ring-offset-background: #12110F;
+  --primary:                #B9A3E6;
+  /* The solid focus indicators read these (the package's token contract). */
+  --accent-default:  var(--brand-default);
+  --accent-emphasis: var(--brand-emphasis);
+
+  /* ── Glass surfaces ────────────────────────────────────────────── */
+  --glass-bg:     rgba(28, 26, 23, 0.86);
+  --glass-border: rgba(243, 235, 221, 0.10);
+  --glass-blur:   12px;
+
+  /* ── Radius (theme-independent) ────────────────────────────────── */
+  --radius-sm:   6px;
+  --radius:      8px;
+  --radius-lg:   12px;
+  --radius-xl:   16px;
+  --radius-full: 9999px;
+
+  /* ── Shadows ───────────────────────────────────────────────────── */
+  --shadow-sm:  0 1px 2px rgba(0, 0, 0, 0.35);
+  --shadow:     0 4px 12px rgba(0, 0, 0, 0.45);
+  --shadow-lg:  0 8px 24px rgba(0, 0, 0, 0.55);
+
+  /* ── Buttons and controls ──────────────────────────────────────── */
+  --btn-gradient-primary: linear-gradient(135deg, var(--brand-default) 0%, var(--brand-default) 50%, var(--brand-emphasis) 100%);
+  --ctrl-edge-rest:  rgba(243, 235, 221, 0.14);
+  --ctrl-edge-hover: rgba(243, 235, 221, 0.28);
+  --ctrl-edge-focus: 0 0 0 3px rgba(185, 163, 230, 0.22), 0 1px 2px rgba(0, 0, 0, 0.24), 0 2px 6px rgba(0, 0, 0, 0.16);
+  --btn-still-top:   rgba(255, 255, 255, 0.22);
+  --btn-still-bot:   rgba(0, 0, 0, 0.30);
+  --btn-still-lift:  0 1px 2px rgba(0, 0, 0, 0.45), 0 2px 8px rgba(0, 0, 0, 0.30);
+  --btn-still-press: inset 0 2px 5px rgba(0, 0, 0, 0.42);
+  --btn-still-danger:      #B91C1C;
+  --btn-still-danger-deep: #991B1B;
+  --btn-still-danger-lift: #DC2626;
+
+  /* ── Motion (theme-independent) ────────────────────────────────── */
+  --duration-fast:    100ms;
+  --duration-default: 150ms;
+  --duration-slow:    300ms;
+
+  /* ── Navigation ────────────────────────────────────────────────── */
+  --nav-band-glow: 0 0 6px rgba(185, 163, 230, 0.35);
+  --nav-band-glow-active: 0 0 6px rgba(185, 163, 230, 0.35);
+  --nav-band-active: var(--bg-page);
+  --nav-gloss-highlight: rgba(255, 255, 255, 0.06);
+  --nav-bevel-shadow: inset 0 -1px 1px 0 rgba(0, 0, 0, 0.25);
+  --nav-row-liquid-tint: rgba(185, 163, 230, 0.14);
+  --nav-row-aura-color: rgba(185, 163, 230, 0.10);
+
+  /* ── Chart series ──────────────────────────────────────────────────
+   * Six series for the lifted chart platform (packages/ui charts), each
+   * a gradient pair (`start` the face, `end` the deepened tail). Series 1
+   * is the accent; 2..6 are low-saturation ink companions (sepia, slate,
+   * moss, rust, ochre), so a chart never introduces a second accent. */
+  --chart-series-1-start: #B9A3E6;
+  --chart-series-1-end:   #9781C9;
+  --chart-series-2-start: #BBA78F;
+  --chart-series-2-end:   #93836E;
+  --chart-series-3-start: #9AA6B0;
+  --chart-series-3-end:   #6F7C87;
+  --chart-series-4-start: #A3AD94;
+  --chart-series-4-end:   #77816A;
+  --chart-series-5-start: #BE9C8E;
+  --chart-series-5-end:   #93736A;
+  --chart-series-6-start: #BEB290;
+  --chart-series-6-end:   #948866;
+  --chart-series-muted:   rgba(191, 180, 162, 0.32);
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   LIGHT THEME — parchment surfaces, ink text.
+   Activated by ThemeProvider setting `data-theme="light"` on <html>.
+   ═══════════════════════════════════════════════════════════════════ */
+[data-theme="light"] {
+  /* ── Surfaces ──────────────────────────────────────────────────── */
+  --bg-page:      #F4ECDC;                  /* parchment — page background */
+  --bg-default:   #FBF7EE;
+  --bg-muted:     #EDE3D0;
+  --bg-subtle:    rgba(26, 22, 18, 0.05);
+  --bg-elevated:  #FFFDF8;
+  --bg-inverted:  #1A1612;                  /* ink — inverted surface */
+  --bg-overlay:   rgba(26, 22, 18, 0.45);
+
+  /* ── Content / Text ────────────────────────────────────────────── */
+  --content-emphasis: #14110D;
+  --content-default:  #2A251F;
+  --content-muted:    #554C40;
+  --content-subtle:   #685E50;
+  --content-inverted: #FBF7EE;
+  --content-brand:    #5B3A8C;
+
+  /* ── Borders ───────────────────────────────────────────────────── */
+  --border-default:  #D8CCB5;
+  --border-subtle:   rgba(26, 22, 18, 0.10);
+  --border-emphasis: #A89A82;
+  --border-strong:   #7E705B;
+
+  /* ── Accent (violet ink) ───────────────────────────────────────── */
+  --brand-default:  #5B3A8C;
+  --brand-emphasis: #4A2E75;
+  --brand-muted:    #7A5BAE;
+  --brand-subtle:   rgba(91, 58, 140, 0.12);
+
+  /* ── Secondary: a parchment neutral ────────────────────────────── */
+  --brand-secondary-default:  #6B5A3E;
+  --brand-secondary-emphasis: #54462F;
+  --brand-secondary-muted:    #8A7756;
+  --brand-secondary-subtle:   rgba(107, 90, 62, 0.10);
+
+  /* ── Status ────────────────────────────────────────────────────── */
+  --bg-success:          rgba(22, 128, 57, 0.07);
+  --bg-success-emphasis: #047857;
+  --content-success:     #0E6332;
+  --border-success:      rgba(22, 128, 57, 0.20);
+
+  --bg-warning:          rgba(180, 83, 9, 0.07);
+  --bg-warning-emphasis: #B45309;
+  --content-warning:     #8A3E09;
+  --border-warning:      rgba(180, 83, 9, 0.20);
+
+  --bg-error:          rgba(185, 28, 28, 0.07);
+  --bg-error-emphasis: #B91C1C;
+  --content-error:     #991616;
+  --border-error:      rgba(185, 28, 28, 0.20);
+
+  --bg-info:          rgba(29, 78, 216, 0.07);
+  --bg-info-emphasis: #1D4ED8;
+  --content-info:     #1A41B8;
+  --border-info:      rgba(29, 78, 216, 0.20);
+
+  --bg-attention:      rgba(180, 83, 9, 0.07);
+  --content-attention: #8A3E09;
+  --border-attention:  rgba(180, 83, 9, 0.20);
+
+  /* ── Focus & rings ─────────────────────────────────────────────── */
+  --ring-default: rgba(91, 58, 140, 0.45);
+  --focus-ring:   rgba(91, 58, 140, 0.45);
+  --ring:                   rgba(91, 58, 140, 0.45);
+  --ring-offset-background: #FBF7EE;
+  --primary:                #5B3A8C;
+  --accent-default:  var(--brand-default);
+  --accent-emphasis: var(--brand-emphasis);
+
+  /* ── Glass surfaces ────────────────────────────────────────────── */
+  --glass-bg:     rgba(251, 247, 238, 0.86);
+  --glass-border: rgba(26, 22, 18, 0.10);
+  --glass-blur:   12px;
+
+  /* ── Shadows ───────────────────────────────────────────────────── */
+  --shadow-sm:  0 1px 2px rgba(60, 44, 30, 0.07);
+  --shadow:     0 4px 12px rgba(60, 44, 30, 0.09);
+  --shadow-lg:  0 8px 24px rgba(60, 44, 30, 0.13);
+
+  /* ── Buttons and controls ──────────────────────────────────────── */
+  --btn-gradient-primary: linear-gradient(135deg, var(--brand-default) 0%, var(--brand-default) 50%, var(--brand-emphasis) 100%);
+  --ctrl-edge-rest:  rgba(60, 44, 30, 0.22);
+  --ctrl-edge-hover: rgba(60, 44, 30, 0.38);
+  --ctrl-edge-focus: 0 0 0 3px rgba(91, 58, 140, 0.20), 0 1px 2px rgba(60, 44, 30, 0.10), 0 2px 6px rgba(60, 44, 30, 0.06);
+  --btn-still-top:   rgba(255, 255, 255, 0.30);
+  --btn-still-bot:   rgba(0, 0, 0, 0.13);
+  --btn-still-lift:  0 1px 2px rgba(60, 44, 30, 0.14), 0 2px 6px rgba(60, 44, 30, 0.09);
+  --btn-still-press: inset 0 2px 4px rgba(0, 0, 0, 0.22);
+  --btn-still-danger:      #991616;
+  --btn-still-danger-deep: #7C1010;
+  --btn-still-danger-lift: #B01B1B;
+
+  /* ── Navigation ────────────────────────────────────────────────── */
+  --nav-band-glow: 0 0 6px rgba(91, 58, 140, 0.30);
+  --nav-band-glow-active: 0 0 6px rgba(91, 58, 140, 0.30);
+  --nav-band-active: var(--bg-page);
+  --nav-gloss-highlight: rgba(255, 255, 255, 0.70);
+  --nav-bevel-shadow: inset 0 -1px 1px 0 rgba(60, 44, 30, 0.08);
+  --nav-row-liquid-tint: rgba(91, 58, 140, 0.12);
+  --nav-row-aura-color: rgba(91, 58, 140, 0.10);
+
+  /* ── Chart series (see the dark block) ─────────────────────────── */
+  --chart-series-1-start: #5B3A8C;
+  --chart-series-1-end:   #432A6A;
+  --chart-series-2-start: #7A6248;
+  --chart-series-2-end:   #5E4A35;
+  --chart-series-3-start: #4E5C68;
+  --chart-series-3-end:   #3A4651;
+  --chart-series-4-start: #5A6448;
+  --chart-series-4-end:   #444C36;
+  --chart-series-5-start: #85594A;
+  --chart-series-5-end:   #65433A;
+  --chart-series-6-start: #7E6F45;
+  --chart-series-6-end:   #5F5334;
+  --chart-series-muted:   rgba(107, 90, 62, 0.28);
+}
+
+/* ─────────────────────────────────────────────────────────────────
+ * Reduced-motion preference (WCAG 2.1 SC 2.3.3). Flattens the
+ * `--duration-*` scale and every animation/transition.
+ * ───────────────────────────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --duration-fast:    1ms;
+    --duration-default: 1ms;
+    --duration-slow:    1ms;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+    scroll-behavior: auto !important;
+  }
+}
