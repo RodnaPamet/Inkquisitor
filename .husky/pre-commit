@@ -1,0 +1,14 @@
+# Secret-detection pre-commit hook (lifted from inflect-compliance).
+#
+# scripts/detect-secrets.sh scans the STAGED files against .secret-patterns
+# (AWS / GitHub / Slack / Anthropic / OpenAI / Stripe tokens, JWTs, PEM
+# private keys, npm tokens, credential-shaped assignments) and refuses any
+# .env file by name. tests/guards/no-secrets.test.ts runs the same patterns
+# over the whole tree on every `npm test`, so --no-verify is not a way round.
+#
+# Bypass (sparingly, and say why in the commit message):
+#   git commit --no-verify
+
+set -e
+
+bash scripts/detect-secrets.sh

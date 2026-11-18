@@ -1,0 +1,1074 @@
+/**
+ * Lifted from inflect-compliance (tests/unit/source-blocks-helpers.test.ts);
+ * the two eslint-disable comments naming its local/no-positional-comment-strip
+ * rule were removed, as that rule is not carried.
+ *
+ * Behavioural tests for `tests/helpers/source-blocks.ts`.
+ *
+ * The helpers are the shared bounding layer under ~24 call sites in
+ * `tests/guards` / `tests/guardrails`, so a hole in them is a hole in every
+ * guard that stands on them — and it is a hole of the *silent* kind: a wrong
+ * extraction makes `expect(block).not.toMatch(…)` pass vacuously and the
+ * guard stays green while checking nothing.
+ *
+ * That is not hypothetical, and it bit TWICE, one step apart:
+ *
+ *   1. The first `callExpressionOf()` skipped comments while scanning
+ *      FORWARD but located its ANCHOR with a plain `src.search(…)` on the raw
+ *      source, so a comment mentioning the call ahead of the real one
+ *      anchored the whole extraction inside the comment.
+ *   2. With the anchor fixed, the RETURN was still `src.slice(…)` — raw text,
+ *      comments included — so a stale comment left inside the extracted
+ *      callback satisfied the positive assertion instead.
+ *
+ * Both were measured: `tests/guards/p-polish-d.test.ts` stayed 20/20 GREEN
+ * with the poll interval inverted to `runFetch(false)`, once per defect. The
+ * two describes below are one per half — the anchor reads code, and so does
+ * the result — plus the deliberate exception (string literals survive,
+ * because a guard asserting `'/api/health'` is still in an array is asserting
+ * about code).
+ */
+
+import {
+    braceBlockAfter,
+    callExpressionOf,
+    codeOf,
+    commentsOf,
+    declarationOf,
+    functionBodyOf,
+    interfaceBodyOf,
+    sqlCodeOf,
+    mdCodeOf,
+    cssCodeOf,
+} from '../helpers/source-blocks';
+
+describe('source-blocks — the anchor reads CODE, not prose', () => {
+    it('callExpressionOf skips a comment that mentions the callee', () => {
+        const src = [
+            '// Historical note: this used to read',
+            '//   setInterval(() => { void runFetch(true); }, pollMs)',
+            '// before the cadence was made configurable.',
+            'timer = setInterval(() => {',
+            '    void runFetch(false);',
+            '}, pollMs);',
+        ].join('\n');
+
+        const call = callExpressionOf(src, 'setInterval');
+        expect(call).toContain('runFetch(false)');
+        expect(call).not.toContain('runFetch(true)');
+    });
+
+    it('callExpressionOf skips a string literal that mentions the callee', () => {
+        const src = [
+            'const doc = "call setInterval(cb, ms) to poll";',
+            'setInterval(() => run(1), 30);',
+        ].join('\n');
+
+        expect(callExpressionOf(src, 'setInterval')).toBe(
+            'setInterval(() => run(1), 30)',
+        );
+    });
+
+    it('callExpressionOf still ignores a bare mention in a type position', () => {
+        const src = [
+            'let timer: ReturnType<typeof setInterval> | null = null;',
+            'timer = setInterval(tick, 30);',
+        ].join('\n');
+
+        expect(callExpressionOf(src, 'setInterval')).toBe('setInterval(tick, 30)');
+    });
+
+    it('declarationOf skips a comment that mentions the declaration', () => {
+        const src = [
+            '// const target = legacyThing();',
+            'const target = realThing();',
+        ].join('\n');
+
+        expect(declarationOf(src, 'target')).toBe('const target = realThing();');
+    });
+
+    it('declarationOf is not truncated by a semicolon inside a comment', () => {
+        const src = [
+            'const target = compute(',
+            '    // a; semicolon in prose',
+            '    input,',
+            ');',
+        ].join('\n');
+
+        const decl = declarationOf(src, 'target');
+        expect(decl).toContain('input,');
+        expect(decl.endsWith(');')).toBe(true);
+    });
+
+    it('functionBodyOf skips a comment that mentions the function', () => {
+        const src = [
+            '/** Superseded: export async function handler() { legacy(); } */',
+            'export async function handler() {',
+            '    real();',
+            '}',
+        ].join('\n');
+
+        const body = functionBodyOf(src, 'handler');
+        expect(body).toContain('real();');
+        expect(body).not.toContain('legacy();');
+    });
+
+    it('interfaceBodyOf skips a comment that mentions the interface', () => {
+        const src = [
+            '// Was: export interface TenantControlOption { status: string | null }',
+            'export interface TenantControlOption {',
+            '    id: string;',
+            '}',
+        ].join('\n');
+
+        const body = interfaceBodyOf(src, 'Tenant\\w+Option');
+        expect(body).toContain('id: string;');
+        expect(body).not.toContain('status: string | null');
+    });
+
+    it('interfaceBodyOf stops at the interface’s own closing brace', () => {
+        // The shape the lazy `[\s\S]*?` span in p-polish-d could not see:
+        // the field is gone from the option type and present on a LATER one.
+        const src = [
+            'export interface TenantControlOption {',
+            '    id: string;',
+            '}',
+            '',
+            'interface TenantControlsState {',
+            '    status: string | null;',
+            '}',
+        ].join('\n');
+
+        const body = interfaceBodyOf(src, 'Tenant\\w+Option');
+        expect(body).toContain('id: string;');
+        expect(body).not.toContain('status: string | null;');
+    });
+
+    it('interfaceBodyOf is not closed early by a brace in a method signature', () => {
+        const src = [
+            'export interface Shape {',
+            '    fn(o: { a: string }): void;',
+            '    tail: number;',
+            '}',
+        ].join('\n');
+
+        expect(interfaceBodyOf(src, 'Shape')).toContain('tail: number;');
+    });
+});
+
+/**
+ * The second half, and the reason the extractors do the masking themselves
+ * instead of documenting `codeOf(...)` as a call-site duty: an extractor that
+ * returns raw text is correct only while every caller remembers, which is the
+ * same shape as the bug. Each case below is the exact mutation a reviewer
+ * used to keep a guard green — a plausible refactor that leaves a stale
+ * comment describing the behaviour it just inverted.
+ */
+describe('source-blocks — the RESULT is code, so prose cannot satisfy an assertion', () => {
+    it('callExpressionOf: a stale comment inside the callback does not stand in for the call', () => {
+        const src = [
+            'const POLL_REVALIDATES = false;',
+            'timer = setInterval(() => {',
+            '    // Poll revalidation — equivalent to runFetch(true): keeps',
+            '    // the last-good options on a transient blip.',
+            '    void runFetch(POLL_REVALIDATES);',
+            '}, pollMs);',
+        ].join('\n');
+
+        const call = callExpressionOf(src, 'setInterval');
+        // The assertion p-polish-d makes. Green against raw text; red here.
+        expect(call).not.toMatch(/runFetch\(true\)/);
+        expect(call).toContain('runFetch(POLL_REVALIDATES)');
+    });
+
+    it('declarationOf: a comment inside the declaration is blanked', () => {
+        const src = [
+            'const query = build({',
+            '    // tenantId: ctx.tenantId,  ← removed, the caller scopes it now',
+            '    id,',
+            '});',
+        ].join('\n');
+
+        const decl = declarationOf(src, 'query');
+        expect(decl).not.toMatch(/tenantId:/);
+        expect(decl).toContain('id,');
+    });
+
+    it('functionBodyOf: a comment naming the gate is not the gate', () => {
+        const src = [
+            'export async function bulkDelete(ctx) {',
+            '    // assertCanAdmin(ctx) is applied by the route wrapper now.',
+            '    return repo.deleteMany(ctx);',
+            '}',
+        ].join('\n');
+
+        const body = functionBodyOf(src, 'bulkDelete');
+        expect(body).not.toMatch(/assertCanAdmin\(/);
+        expect(body).toContain('repo.deleteMany(ctx)');
+    });
+
+    it('interfaceBodyOf: a field promised in a docblock is not a field', () => {
+        const src = [
+            'export interface TenantControlOption {',
+            '    id: string;',
+            '    /** Carries status: string | null through from the API row. */',
+            '    label: string;',
+            '}',
+        ].join('\n');
+
+        const body = interfaceBodyOf(src, 'Tenant\\w+Option');
+        expect(body).not.toMatch(/status:\s*string \| null/);
+        expect(body).toContain('label: string;');
+    });
+
+    it('STRING LITERALS SURVIVE — a guard asserting on literal content still works', () => {
+        // The deliberate limit of the masking, and why `codeOf` blanks
+        // comments only. Blanking literals too would have silently emptied
+        // the exclusion-list assertions in
+        // tests/guardrails/api-read-rate-limit.test.ts and the `code: '…'`
+        // harvest in tests/guardrails/soc2-starter-pack-coverage.test.ts.
+        const src = [
+            'const EXCLUDED_PATHS = [',
+            "    // '/api/docs' — dropped, now throttled",
+            "    '/api/health',",
+            '];',
+        ].join('\n');
+
+        const decl = declarationOf(src, 'EXCLUDED_PATHS');
+        expect(decl).toMatch(/'\/api\/health'/);
+        expect(decl).not.toMatch(/'\/api\/docs'/);
+    });
+
+    it('offsets are preserved, so a block still lines up with codeOf(src)', () => {
+        // The extractors slice out of `codeOf(src)`, not `src`. A caller that
+        // subtracts one block from the whole file (p-polish-d does, to assert
+        // the cold-load flag OUTSIDE the interval) needs that to hold.
+        const src = [
+            'void runFetch(false);',
+            'timer = setInterval(() => {',
+            '    void runFetch(true);',
+            '}, pollMs);',
+        ].join('\n');
+
+        const call = callExpressionOf(src, 'setInterval');
+        const code = codeOf(src);
+        expect(code).toContain(call);
+        expect(code.replace(call, '')).not.toContain('runFetch(true)');
+    });
+});
+
+describe('source-blocks — codeOf', () => {
+    it('blanks comments, KEEPS strings, and preserves length and line count', () => {
+        const src = [
+            'const a = "status: string | null"; // and: status: string | null',
+            'const b = 1;',
+        ].join('\n');
+
+        const masked = codeOf(src);
+        expect(masked).toHaveLength(src.length);
+        expect(masked.split('\n')).toHaveLength(2);
+        // The literal survives …
+        expect(masked).toContain('"status: string | null"');
+        // … the comment does not.
+        expect(masked).not.toContain('and:');
+        expect(masked).toContain('const b = 1;');
+    });
+
+    it('does not treat // inside a string as a comment', () => {
+        const src = 'const url = "https://example.test/x"; const kept = 2;';
+        expect(codeOf(src)).toContain('const kept = 2;');
+        expect(codeOf(src)).toContain('"https://example.test/x"');
+    });
+
+    /**
+     * A REGEX LITERAL IS NOT A STRING, AND THE SCANNER HAS TO KNOW (#4658).
+     *
+     * `scanSpans` had branches for `//`, `/*` and the three quote characters
+     * and none for a regex literal, so it walked `.replace(/"/g, "'")` by
+     * skipping the `/`, reading the `"` INSIDE the regex as a string opening,
+     * scanning to the `"` in `"'"`, and desynchronising. Every comment after
+     * it in the file was then left unmasked.
+     *
+     * Why that is the bad direction to fail in: an unmasked comment makes
+     * prose look like code, so a guard COUNTING occurrences can be moved by a
+     * documentation pass, and one asserting a pattern is PRESENT can be
+     * satisfied by a comment mentioning it. Both are silent.
+     *
+     * Each case below pairs the pathological text with a CONTROL differing
+     * only in the delimiter under test. Without the control these assert that
+     * masking happens at all, not that it happens for the stated reason.
+     */
+    describe('a regex literal does not desynchronise the scanner', () => {
+        const probe = (line: string): string => codeOf([
+            'const a = s',
+            `    ${line}`,
+            '    // SENTINEL in a comment',
+            '    .replace(/x/g, "y");',
+        ].join('\n'));
+
+        it.each([
+            ['a double quote', '.replace(/"/g, "q")'],
+            ['a single quote', ".replace(/'/g, 'q')"],
+            ['a backtick', '.replace(/`/g, "q")'],
+            ['a // sequence', '.replace(/\\/\\//g, "q")'],
+            ['an escaped delimiter', '.replace(/\\//g, "q")'],
+            ['a slash in a character class', '.replace(/[/]/g, "q")'],
+        ])('masks the comment after a regex containing %s', (_what, line) => {
+            expect(probe(line)).not.toContain('SENTINEL');
+        });
+
+        it('the control — a regex with no delimiter trouble — also masks it', () => {
+            // If this failed, the cases above would be measuring the probe
+            // rather than the delimiters.
+            expect(probe('.replace(/plain/g, "q")')).not.toContain('SENTINEL');
+        });
+
+        it('a trailing line comment does not decide whether the NEXT line opens a regex', () => {
+            // #5545. `regexCanStartAt` walked backwards over WHITESPACE only,
+            // so it landed on the last character of the previous line's
+            // COMMENT. Where that is a `)` — `// secret access key (40-char)`
+            // in `src/app-layer/integrations/aws-posture-provider.ts` — it read
+            // the next line's `/` as division, declined the regex, and the `"`
+            // inside the regex's character class then opened a string literal
+            // that ran to the end of the file. 6,925 characters of that file,
+            // its whole provider class among them, were handed to guards as a
+            // string literal, and every extractor threw on anchors inside it.
+            //
+            // Asserted as the exact masked lines rather than a sentinel: it
+            // says in one expression that both comments are gone AND that both
+            // regexes survive, which a negated assertion cannot.
+            const src = [
+                'const PATTERNS = [',
+                '    /\\b[A-Za-z0-9/+=]{40}\\b/g,      // secret access key (40-char)',
+                '    /(TOKEN)["\'\\s:=]+[A-Za-z0-9]{20,}/gi,',
+                '];',
+                '// after the array',
+            ].join('\n');
+            expect(
+                codeOf(src)
+                    .split('\n')
+                    .map((l) => l.trimEnd()),
+            ).toEqual([
+                'const PATTERNS = [',
+                '    /\\b[A-Za-z0-9/+=]{40}\\b/g,',
+                '    /(TOKEN)["\'\\s:=]+[A-Za-z0-9]{20,}/gi,',
+                '];',
+                '',
+            ]);
+        });
+
+        it('the regex BODY survives, because a regex is code and not a comment', () => {
+            // The fix CONSUMES the regex span so the quote inside it never
+            // reaches the string branch. It must not BLANK it: `codeOf` masks
+            // comments only, and a guard asserting on a pattern written as a
+            // regex literal has to still see it.
+            const src = 'const re = /\\bborder-[a-z]+\\b/g; // note';
+            const masked = codeOf(src);
+            expect(masked).toContain('/\\bborder-[a-z]+\\b/g');
+            expect(masked).not.toContain('note');
+        });
+
+        it('a DIVISION is still not read as a regex', () => {
+            // The opposite error. `regexCanStartAt` treats `)`, `]`, `}` and a
+            // non-keyword identifier as division context; if it did not, the
+            // scan would run from the first `/` to the next one and swallow
+            // the comment that follows.
+            const src = [
+                'const ratio = (a) / (b);',
+                'const kept = total / count; // trailing note',
+                'const after = 1;',
+            ].join('\n');
+            const masked = codeOf(src);
+            expect(masked).toContain('const ratio = (a) / (b);');
+            expect(masked).toContain('const kept = total / count;');
+            expect(masked).toContain('const after = 1;');
+            expect(masked).not.toContain('trailing note');
+        });
+
+        it('JSX self-closing and closing tags still reach their comments', () => {
+            // The two exceptions `regexCanStartAt` takes for JSX, whose `/` is
+            // neither operator nor literal. Asserted here because the new
+            // branch consults the same predicate, so breaking it would break
+            // JSX masking too.
+            const src = [
+                'const el = <Foo bar={x} /> ;',
+                'const el2 = <div>text</div>; // tag note',
+                'const z = 3;',
+            ].join('\n');
+            const masked = codeOf(src);
+            expect(masked).not.toContain('tag note');
+            expect(masked).toContain('const z = 3;');
+        });
+    });
+
+    it('is idempotent, so wrapping an already-extracted block is harmless', () => {
+        const src = [
+            'export async function handler() {',
+            '    // legacy();',
+            '    real();',
+            '}',
+        ].join('\n');
+
+        const body = functionBodyOf(src, 'handler');
+        expect(codeOf(body)).toBe(body);
+    });
+});
+
+/**
+ * `sqlCodeOf` — the `.sql` sibling.
+ *
+ * The three cases below are the three mutations that were MEASURED green
+ * against `tests/guards/audit-immutability-guardrails.test.ts` at
+ * `c3e0df141`, reduced to their smallest form. Each is the same defect:
+ * the real DDL deleted, a `--` comment naming it left behind, guard still
+ * green.
+ */
+/**
+ * WHAT #4659 REPLACED, CASE BY CASE.
+ *
+ * 110 test files stripped comments with a positional regex: a block strip
+ * pairing a slash-star with the next star-slash, and a line strip from any
+ * double slash to the end of the line. Each case below is a source text a
+ * guard could plausibly read, with code after the tricky part that must
+ * SURVIVE and a comment that must not. `codeOf` is held to both; the old
+ * strip is shown losing the code where it did, so a regression to it in a
+ * guard is visibly a regression rather than a matter of taste.
+ */
+describe('source-blocks — a literal cannot run away (#5696)', () => {
+    it('consumes a ${…} interpolation, so an inner template does not close the outer one', () => {
+        // The shape is live in tests/guards/card-padding-cascade.test.ts. The
+        // scanner closed the OUTER template on the inner backtick and every
+        // comment after it reached guards as code — #4658's harm, reached by
+        // a third route.
+        const src = [
+            'const msg = `rung(s) ${xs.map((r) => `\\`${r}\\``).join(", ")} emit nothing`;',
+            'expect(ok).toBe(true);',
+            '// prose after the template',
+        ].join('\n');
+        expect(
+            codeOf(src)
+                .split('\n')
+                .map((l) => l.trimEnd()),
+        ).toEqual([
+            'const msg = `rung(s) ${xs.map((r) => `\\`${r}\\``).join(", ")} emit nothing`;',
+            'expect(ok).toBe(true);',
+            '',
+        ]);
+    });
+
+    it('follows braces, strings and comments inside an interpolation', () => {
+        // An interpolated expression is code: each of these carries a `}` or a
+        // quote that does not close anything, and counting braces blindly
+        // would stop at the wrong one.
+        const src = [
+            'const m = `a ${ { k: "}" }.k } b ${ f(/[}]/g) } c ${ /* } */ 1 } d`;',
+            '// prose after the template',
+        ].join('\n');
+        expect(
+            codeOf(src)
+                .split('\n')
+                .map((l) => l.trimEnd()),
+        ).toEqual([
+            'const m = `a ${ { k: "}" }.k } b ${ f(/[}]/g) } c ${ /* } */ 1 } d`;',
+            '',
+        ]);
+    });
+
+    it('ends an unterminated quoted string at the line break, not at the next quote', () => {
+        // JavaScript forbids a raw newline in a '…' or "…" string, so an
+        // unterminated one is a syntax error rather than a long string. Ending
+        // the span at the break bounds any future desync of this class to one
+        // line — #5545 blanked 6,925 characters of one file because nothing
+        // stopped the runaway.
+        const src = [
+            "const broken = 'oops;",
+            '// prose on the next line',
+            "const after = 'fine';",
+        ].join('\n');
+        const lines = codeOf(src)
+            .split('\n')
+            .map((l) => l.trimEnd());
+        expect(lines[1]).toEqual('');
+        expect(lines[2]).toEqual("const after = 'fine';");
+    });
+
+    it('a template still spans newlines, because it legitimately may', () => {
+        // The control for the case above: the newline bound must apply to
+        // ' and " only. Blanket-applying it would cut every multi-line
+        // template in the repo at its first line.
+        const src = ['const t = `line one', 'line two`;', '// prose after'].join('\n');
+        expect(
+            codeOf(src)
+                .split('\n')
+                .map((l) => l.trimEnd()),
+        ).toEqual(['const t = `line one', 'line two`;', '']);
+    });
+});
+
+describe('source-blocks — codeOf against the positional strip it replaced (#4659)', () => {
+    const oldBlock = (src: string) => src.replace(/\/\*[\s\S]*?\*\//g, '');
+    const oldStrip = (src: string) => oldBlock(src).replace(/\/\/[^\n]*/g, '');
+
+    const cases: ReadonlyArray<{ name: string; src: string; keep: string; gone: string; oldLosesCode: boolean }> = [
+        {
+            name: 'a string containing /* (a MIME wildcard)',
+            src: "if (t.endsWith('/*')) keepA();\nrender(); /* real comment */",
+            keep: 'keepA();',
+            gone: 'real comment',
+            oldLosesCode: true,
+        },
+        {
+            name: 'a string containing */ after one containing /*',
+            src: "const open = '/*'; keepB(); const close = '*/'; done(); // tail",
+            keep: 'keepB();',
+            gone: 'tail',
+            oldLosesCode: true,
+        },
+        {
+            name: 'a string containing //',
+            src: "const p = 'a//b'; keepC(); // note",
+            keep: 'keepC();',
+            gone: 'note',
+            oldLosesCode: true,
+        },
+        {
+            name: 'a URL',
+            src: "fetch('https://x.test/y'); keepD(); // why",
+            keep: 'keepD();',
+            gone: 'why',
+            oldLosesCode: true,
+        },
+        {
+            name: 'a regex literal containing a quote',
+            src: "s.replace(/\"/g, \"'\"); keepE(); // trailing note",
+            keep: 'keepE();',
+            gone: 'trailing note',
+            oldLosesCode: false,
+        },
+        {
+            name: 'a JSX comment',
+            src: '<div>{/* hidden text */}<span>keepF</span></div>',
+            keep: '<span>keepF</span>',
+            gone: 'hidden text',
+            oldLosesCode: false,
+        },
+    ];
+
+    it.each(cases)('$name: codeOf keeps the code and blanks the comment', ({ src, keep, gone }) => {
+        const masked = codeOf(src);
+        expect(masked).toContain(keep);
+        expect(masked).not.toContain(gone);
+        // Blanked, not removed: offsets and line count still line up.
+        expect(masked).toHaveLength(src.length);
+        expect(masked.split('\n')).toHaveLength(src.split('\n').length);
+    });
+
+    it.each(cases.filter((c) => c.oldLosesCode))('$name: the old strip deleted the code', ({ src, keep }) => {
+        expect(oldStrip(src)).not.toContain(keep);
+    });
+
+    it('the table has a case the old strip got right, so the contrast is not vacuous', () => {
+        // Without one, "the old strip deleted the code" could pass by an old
+        // strip that deleted everything.
+        const right = cases.filter((c) => !c.oldLosesCode);
+        expect(right.length).toBeGreaterThan(0);
+        for (const c of right) expect(oldStrip(c.src)).toContain(c.keep);
+    });
+});
+
+describe('source-blocks — sqlCodeOf', () => {
+    it('blanks a WHOLE-LINE -- comment, preserving length and line count', () => {
+        const src = [
+            '--   BEFORE UPDATE OR DELETE trigger → raises an exception',
+            'CREATE TRIGGER t BEFORE DELETE ON "AuditLog"',
+        ].join('\n');
+
+        const masked = sqlCodeOf(src);
+        expect(masked).toHaveLength(src.length);
+        expect(masked.split('\n')).toHaveLength(2);
+        expect(masked).not.toContain('BEFORE UPDATE OR DELETE');
+        expect(masked).toContain('CREATE TRIGGER t BEFORE DELETE ON "AuditLog"');
+    });
+
+    it('blanks a TRAILING -- comment, which a line-anchored strip does not', () => {
+        // The exact shape that defeated the guard's own
+        // `raw.replace(/^[^\S\n]*--.*$/gm, '')`: the clause protecting the
+        // audit hash chain deleted, and parked after live code.
+        const src = "    THEN  -- to_jsonb(NEW) - 'userId' = to_jsonb(OLD) - 'userId'";
+
+        expect(src.replace(/^[^\S\n]*--.*$/gm, '')).toContain('to_jsonb(NEW)');
+        expect(sqlCodeOf(src)).not.toContain('to_jsonb(NEW)');
+        expect(sqlCodeOf(src)).toContain('THEN');
+    });
+
+    it('masks -- inside a $$ … $$ body, because plpgsql reads it as a comment', () => {
+        const src = [
+            'CREATE OR REPLACE FUNCTION f() RETURNS TRIGGER AS $$',
+            'BEGIN',
+            "    -- REVOKE UPDATE, DELETE ON \"AuditLog\" FROM app_user;",
+            '    RETURN NEW;',
+            'END;',
+            '$$ LANGUAGE plpgsql;',
+        ].join('\n');
+
+        expect(sqlCodeOf(src)).not.toContain('REVOKE UPDATE');
+        expect(sqlCodeOf(src)).toContain('RETURN NEW;');
+    });
+
+    it('blanks /* … */ and handles the nesting Postgres allows', () => {
+        const src = 'SELECT 1; /* outer /* inner */ still comment */ SELECT 2;';
+        const masked = sqlCodeOf(src);
+        expect(masked).toHaveLength(src.length);
+        expect(masked).toContain('SELECT 1;');
+        expect(masked).toContain('SELECT 2;');
+        expect(masked).not.toContain('inner');
+        expect(masked).not.toContain('still comment');
+    });
+
+    it('KEEPS string literals — a permitted-shape predicate is code', () => {
+        const src = "IF TG_OP = 'UPDATE' AND NEW.\"userId\" IS NULL THEN";
+        expect(sqlCodeOf(src)).toBe(src);
+    });
+
+    it('is fail-closed: a -- inside a quoted string is masked too', () => {
+        // The one known limit, asserted rather than left to be discovered.
+        // Over-masking makes an assertion DECLINE to match (a red the author
+        // reads); under-masking is a guard satisfied by prose.
+        const src = "SELECT 'a -- b' AS s;";
+        expect(sqlCodeOf(src)).not.toContain("'a -- b'");
+        expect(sqlCodeOf(src)).toHaveLength(src.length);
+    });
+
+    it('is NOT what codeOf does — handing codeOf a .sql file leaves -- intact', () => {
+        // Why this is a second function and not a flag: `codeOf` lexes `//`,
+        // so on SQL it returns a view that still carries every comment while
+        // READING, at the call site, as masked.
+        const src = '-- REVOKE UPDATE, DELETE ON "AuditLog" FROM app_user;';
+        expect(codeOf(src)).toContain('REVOKE UPDATE');
+        expect(sqlCodeOf(src)).not.toContain('REVOKE UPDATE');
+    });
+});
+
+describe('source-blocks — a missing or unbalanced target fails loudly', () => {
+    it('every helper throws when its target is absent rather than returning an empty block', () => {
+        expect(() => callExpressionOf('const x = 1;', 'setInterval')).toThrow(
+            /call expression not found/,
+        );
+        expect(() => declarationOf('const x = 1;', 'missing')).toThrow(
+            /declaration not found/,
+        );
+        expect(() => functionBodyOf('const x = 1;', 'missing')).toThrow(
+            /function not found/,
+        );
+        expect(() => interfaceBodyOf('const x = 1;', 'Missing')).toThrow(
+            /interface not found/,
+        );
+    });
+
+    it('an unterminated block throws rather than returning a wrong one', () => {
+        expect(() => callExpressionOf('setInterval(cb, 30', 'setInterval')).toThrow(
+            /unterminated call expression/,
+        );
+        expect(() => interfaceBodyOf('interface Shape {', 'Shape')).toThrow(
+            /unterminated interface body/,
+        );
+    });
+
+    it('a target that exists ONLY in a comment throws, rather than returning the comment', () => {
+        // The first defect, restated as a contract: not "returns something
+        // wrong" but "refuses". A guard whose anchor has been renamed away
+        // must go red, not assert against prose.
+        expect(() =>
+            callExpressionOf('// setInterval(tick, 30);\nconst x = 1;', 'setInterval'),
+        ).toThrow(/call expression not found/);
+        expect(() =>
+            functionBodyOf('/* export function gone() {} */', 'gone'),
+        ).toThrow(/function not found/);
+    });
+});
+
+describe('source-blocks — the anchor is the FIRST match, and that is a limit', () => {
+    /**
+     * Recorded rather than argued, because the measurement is the point.
+     *
+     * All five anchors are `maskNonCode(src).search(...)`, so when a file
+     * holds TWO constructs matching the anchor, the extraction binds to the
+     * EARLIER one and the guard asserts about the wrong construct. That is
+     * loud in the ordinary case: an unrelated second construct in front of
+     * the intended one does not satisfy the guard's positive assertion, so
+     * the guard goes red and a contributor has to look. It is silent only
+     * when the decoy ITSELF carries the token being asserted.
+     *
+     * Measured on the real guard, not inferred from reading it. Against
+     * `src/lib/processes/use-tenant-controls.ts` with the real poll inverted
+     * to `runFetch(false)`:
+     *
+     *   • a NEUTRAL second `setInterval` ahead of the poll →
+     *     `tests/guards/p-polish-d.test.ts` 1 failed / 19 passed, on the
+     *     assertion that names the flag. Loud.
+     *   • a second `setInterval` ahead of the poll whose own callback calls
+     *     `runFetch(true)` → 20/20 GREEN with the poll inverted. Silent.
+     *
+     * The silent case needs a diff that adds a whole extra interval AND
+     * writes the passing token into it, which is why this is recorded as a
+     * bound on the helper rather than fixed by making a second match throw:
+     * `declarationOf()` and `braceBlockAfter()` are shared across ~24 call
+     * sites, and a repo-wide ambiguity error is a far larger change than the
+     * residual justifies. A guard that needs uniqueness should pass a
+     * NARROWER anchor — the assignment target, not the bare callee — rather
+     * than rely on there being only one match. See #2238.
+     */
+    const TWO_INTERVALS = [
+        'timerA = setInterval(() => {',
+        '    void runFetch(true);',
+        '}, fast);',
+        'timerB = setInterval(() => {',
+        '    void runFetch(false);',
+        '}, slow);',
+    ].join('\n');
+
+    it('callExpressionOf binds to the first matching call, not the last', () => {
+        const block = callExpressionOf(TWO_INTERVALS, 'setInterval');
+
+        expect(block).toMatch(/runFetch\(true\)/);
+        // The SECOND interval is outside the extraction entirely — the whole
+        // hazard, in one assertion.
+        expect(block).not.toMatch(/runFetch\(false\)/);
+    });
+
+    it('and there is no supported way to reach the SECOND call of a callee', () => {
+        // The obvious escape hatch does not exist, which is why the bound
+        // above is a bound rather than a style note. `callExpressionOf` takes
+        // a bare callee identifier — there is no pattern parameter to narrow
+        // with — and `braceBlockAfter` cannot stand in for it: its paren guard
+        // deliberately ignores any `{` seen at paren depth > 0, so a callback
+        // brace INSIDE `setInterval(...)` is never read as the block's opening
+        // brace and the scan runs to EOF.
+        //
+        // It throws rather than returning a wrong block, so the failure mode
+        // is loud. A guard that genuinely needs the second call must either
+        // keep one such call per file or grow the helper a narrowing anchor.
+        expect(() => braceBlockAfter(TWO_INTERVALS, 'timerB = setInterval')).toThrow(
+            /unterminated/,
+        );
+    });
+
+    it('a narrower anchor DOES work where the block is not inside parens', () => {
+        // The same escape hatch on a brace-bounded construct, so the limit
+        // above reads as specific to call expressions rather than general.
+        const src = [
+            'function first() {',
+            '    return "a";',
+            '}',
+            'function second() {',
+            '    return "b";',
+            '}',
+        ].join('\n');
+
+        const block = braceBlockAfter(src, 'function second');
+
+        expect(block).toMatch(/"b"/);
+        expect(block).not.toMatch(/"a"/);
+    });
+
+    it('declarationOf shares the first-match rule', () => {
+        const src = ['const target = { a: 1 };', 'const target = { b: 2 };'].join('\n');
+
+        expect(declarationOf(src, 'target')).toMatch(/a: 1/);
+        expect(declarationOf(src, 'target')).not.toMatch(/b: 2/);
+    });
+});
+
+
+describe('source-blocks — mdCodeOf', () => {
+    // The INVERSE of codeOf. codeOf blanks the comments out of code; markdown
+    // is prose containing code, so this blanks the prose and keeps the code.
+    it('blanks running prose and preserves length and line count', () => {
+        const md = 'Some prose here.\nMore prose.\n';
+        const out = mdCodeOf(md);
+        expect(out).not.toMatch(/prose/);
+        expect(out.length).toBe(md.length);
+        expect(out.split('\n').length).toBe(md.split('\n').length);
+    });
+
+    it('KEEPS fenced blocks, including the fence marker', () => {
+        const md = 'prose\n```bash\naws s3api copy-object --x\n```\nmore prose\n';
+        const out = mdCodeOf(md);
+        expect(out).toMatch(/aws s3api copy-object --x/);
+        expect(out).toMatch(/```bash/);
+        expect(out).not.toMatch(/more prose/);
+    });
+
+    it('KEEPS inline code spans, which is how identifier tables survive', () => {
+        const md = 'The | `DATABASE_READ_URL` | row describes a replica.\n';
+        const out = mdCodeOf(md);
+        expect(out).toMatch(/`DATABASE_READ_URL`/);
+        expect(out).not.toMatch(/describes a replica/);
+    });
+
+    it('matches a multi-backtick span by its OPENING run length', () => {
+        // ``a ` b`` is one span; assuming a run of one would end it early and
+        // blank the rest of the line as prose.
+        const md = 'x ``a ` b`` y\n';
+        const out = mdCodeOf(md);
+        expect(out).toMatch(/``a ` b``/);
+    });
+
+    it('leaves an unterminated span alone rather than keeping the rest of the line', () => {
+        const md = 'prose with one ` stray backtick and more prose\n';
+        const out = mdCodeOf(md);
+        expect(out).not.toMatch(/stray backtick/);
+    });
+
+    it('is NOT what codeOf does — handing codeOf markdown keeps the prose', () => {
+        const md = 'This sentence mentions animate-pulse in prose.\n';
+        expect(codeOf(md)).toMatch(/animate-pulse/);
+        expect(mdCodeOf(md)).not.toMatch(/animate-pulse/);
+    });
+});
+
+describe('source-blocks — cssCodeOf', () => {
+    it('blanks a /* … */ comment, preserving length and line count', () => {
+        const css = 'a{color:red}/* note */\nb{}\n';
+        const out = cssCodeOf(css);
+        expect(out).not.toMatch(/note/);
+        expect(out.length).toBe(css.length);
+        expect(out.split('\n').length).toBe(css.split('\n').length);
+    });
+
+    it('does NOT treat // as a comment, because CSS has no line comments', () => {
+        const css = 'a{background:url(https://x/y.png)}\n';
+        expect(cssCodeOf(css)).toMatch(/https:\/\/x\/y\.png/);
+        // codeOf WOULD eat it — which is why CSS needs its own masker and is
+        // not merely "close enough" to TypeScript.
+        expect(codeOf(css)).not.toMatch(/y\.png/);
+    });
+
+    it('keeps a comment opener inside a string', () => {
+        const css = 'a::after{content:"/*"}\n';
+        expect(cssCodeOf(css)).toMatch(/content:"\/\*"/);
+    });
+});
+
+/**
+ * `commentsOf` — the INVERSE of `codeOf`.
+ *
+ * Synthetic on purpose. The seven `tests/guardrails/` files this was written
+ * for exercise it on real source, but a real file cannot be made to carry the
+ * one shape that matters most — a string literal containing `//` — without
+ * inventing it, and "a masker that silently keeps a string" is the failure
+ * that would make every assertion using it READ as bound to the comments
+ * while remaining satisfiable from code.
+ */
+describe('source-blocks — commentsOf', () => {
+    it('keeps comments, blanks code, and preserves length and line count', () => {
+        const src = [
+            '/** Doc for the thing. */',
+            "const a = 'status'; // trailing note",
+            'const b = 1;',
+        ].join('\n');
+
+        const out = commentsOf(src);
+        expect(out).toHaveLength(src.length);
+        expect(out.split('\n')).toHaveLength(3);
+        expect(out).toContain('/** Doc for the thing. */');
+        expect(out).toContain('// trailing note');
+        // Code is gone — including the string literal `codeOf` would KEEP.
+        expect(out).not.toContain('const');
+        expect(out).not.toContain("'status'");
+    });
+
+    it('is the complement of codeOf on the comment bytes', () => {
+        const src = "const a = 1; // note\nconst b = 'x';\n";
+        expect(codeOf(src)).not.toContain('note');
+        expect(commentsOf(src)).toContain('// note');
+        expect(commentsOf(src)).not.toContain('const a');
+    });
+
+    // ── fail-closed: a string must never surface as comment text ──
+
+    it('does NOT surface // from inside a string literal', () => {
+        const src = "const url = 'https://example.test/x';\n";
+        const out = commentsOf(src);
+        expect(out).not.toContain('//');
+        expect(out.trim()).toBe('');
+    });
+
+    it('does NOT surface a block comment written inside a string literal', () => {
+        const src = 'const s = "/* not a comment */";\n';
+        const out = commentsOf(src);
+        expect(out).not.toContain('not a comment');
+        expect(out.trim()).toBe('');
+    });
+
+    it('does NOT surface // from inside a template literal', () => {
+        const src = 'const t = `see https://example.test/y`;\n';
+        expect(commentsOf(src).trim()).toBe('');
+    });
+
+    it('does NOT surface // from a template literal spanning lines', () => {
+        const src = ['const t = `', 'https://example.test/z', '`;'].join('\n');
+        const out = commentsOf(src);
+        expect(out.trim()).toBe('');
+        expect(out.split('\n')).toHaveLength(3);
+    });
+
+    // ── comment-body shapes ──
+
+    it('keeps a // written inside a block comment', () => {
+        const src = '/* see // for the line form */\n';
+        expect(commentsOf(src)).toContain('// for the line form');
+    });
+
+    it('does not nest: a block comment ends at its FIRST close', () => {
+        // JS block comments do not nest, so the inner opener is comment TEXT
+        // and what follows the first close is CODE.
+        const src = '/* outer /* inner */ code(); // tail\n';
+        const out = commentsOf(src);
+        expect(out).toContain('/* outer /* inner */');
+        expect(out).not.toContain('code()');
+        expect(out).toContain('// tail');
+    });
+
+    // ── regex literals ──
+
+    // Each of these asserts the WHOLE output, not an absence. An absence
+    // assertion passes on a half-blanked line — measured: `not.toContain('[//]')`
+    // was satisfied while the mask was emitting `//]y/; // kept` as comment
+    // text, because the `[` had been blanked and the substring no longer
+    // matched. The exact form is what makes the mutation below go red.
+
+    it('does not surface a regex body containing an escaped slash', () => {
+        const src = 'const re = /a\\/b/; // kept\n';
+        expect(commentsOf(src).trim()).toBe('// kept');
+    });
+
+    it('does not surface a regex whose body contains // inside a class', () => {
+        // The shape that makes a regex look like a line-comment opener: an
+        // unescaped `/` is legal inside a character class.
+        const src = 'const re = /x[//]y/; // kept\n';
+        expect(commentsOf(src).trim()).toBe('// kept');
+    });
+
+    it('does not surface a regex whose body contains /* inside a class', () => {
+        // Worse than the line form: an unterminated block comment runs to EOF,
+        // so a regex-blind mask reports the whole rest of the file as comment.
+        const src = 'const re = /x[/*]y/; // kept\n';
+        expect(commentsOf(src).trim()).toBe('// kept');
+    });
+
+    it('does not surface a regex after `return`, where // IS the body', () => {
+        const src = 'function f(s) { return /\\/\\//.test(s); } // kept\n';
+        expect(commentsOf(src).trim()).toBe('// kept');
+    });
+
+    it('keeps a JSX comment after a self-closing tag (the .tsx hazard)', () => {
+        const src = '<Foo bar={x} /> {/* jsx note */}\n';
+        expect(commentsOf(src)).toContain('/* jsx note */');
+    });
+
+    it('keeps a JSX comment after a closing tag', () => {
+        const src = '<div>y</div> {/* closing note */}\n';
+        expect(commentsOf(src)).toContain('/* closing note */');
+    });
+
+    // ── the mutation this exists to catch ──
+
+    it('declines a needle MOVED from the comment into code', () => {
+        const inComment = ['// CC BY 4.0 — Paolo Carner', 'export const X = 1;'].join('\n');
+        const inCode = [
+            'export const LICENCE = "CC BY 4.0";',
+            'export const X = 1;',
+        ].join('\n');
+
+        // Raw text cannot tell the two apart — that is the defect.
+        expect(inComment).toMatch(/CC BY 4\.0/);
+        expect(inCode).toMatch(/CC BY 4\.0/);
+
+        // Through the mask, only the one that IS a comment matches.
+        expect(commentsOf(inComment)).toMatch(/CC BY 4\.0/);
+        expect(commentsOf(inCode)).not.toMatch(/CC BY 4\.0/);
+    });
+});
+
+describe('functionBodyOf reads past a return type it used to misread (#4515)', () => {
+    it('returns the BODY when the return type holds an object literal', () => {
+        const src = [
+            'function withInline(a: string): Promise<{ x: number; y: string }> {',
+            '    return bodyMarker();',
+            '}',
+        ].join('\n');
+
+        // The old behaviour returned the slice ending at the TYPE's closing
+        // brace, so a `.not.toMatch` against it passed vacuously. Both halves
+        // are asserted: the body is reached, and the type is not mistaken for
+        // it — the second is what actually went wrong.
+        const body = functionBodyOf(src, 'withInline');
+        expect(body).toContain('bodyMarker()');
+        expect(body).toContain('x: number');
+    });
+
+    it('reads past a NESTED object type, not just a flat one', () => {
+        const src = [
+            'function nested(): Promise<{ a: { b: string }; c: number }> {',
+            '    return bodyMarker();',
+            '}',
+        ].join('\n');
+
+        expect(functionBodyOf(src, 'nested')).toContain('bodyMarker()');
+    });
+
+    it('the real shape that broke CI: a usecase returning Promise<{ id: string }>', () => {
+        // `recordA2aMessage` in `usecases/a2a-messages.ts`. A test that
+        // enumerates every exported function in that directory calls this on
+        // each, which is why a refusal was the wrong fix and why the measured
+        // "zero live instances" was wrong — the detector only counted calls
+        // naming a function with a quoted literal.
+        const src = [
+            'export async function recordA2aMessage(ctx: RequestContext, rec: Rec): Promise<{ id: string }> {',
+            '    return bodyMarker(ctx);',
+            '}',
+        ].join('\n');
+
+        expect(functionBodyOf(src, 'recordA2aMessage')).toContain('bodyMarker(ctx)');
+    });
+
+    it('still extracts an ordinary body, including one whose return type is generic', () => {
+        // The control. A generic return type with no object literal is fine, and
+        // refusing it would break the 64 functions tests extract this way.
+        const src = [
+            'async function plain(a: string): Promise<Record<string, number>> {',
+            '    return bodyMarker(a);',
+            '}',
+        ].join('\n');
+
+        const body = functionBodyOf(src, 'plain');
+        expect(body).toContain('bodyMarker(a)');
+    });
+
+    it('is not confused by `=>` in a return type', () => {
+        // `=>` contains `>`, which a naive angle-bracket count decrements — the
+        // reason this refuses rather than trying to locate the real body.
+        const src = [
+            'function handlers(): Record<string, () => void> {',
+            '    return bodyMarker();',
+            '}',
+        ].join('\n');
+
+        const body = functionBodyOf(src, 'handlers');
+        expect(body).toContain('bodyMarker()');
+    });
+
+    it('is not confused by an object literal in a PARAMETER`s type', () => {
+        // Only the return position is ambiguous. A parameter's own inline type
+        // sits inside the parens, which the parameter-list scan closes first.
+        const src = [
+            'function paramShape(input: { a: string; b: number }): string {',
+            '    return bodyMarker(input.a);',
+            '}',
+        ].join('\n');
+
+        const body = functionBodyOf(src, 'paramShape');
+        expect(body).toContain('bodyMarker(input.a)');
+    });
+});

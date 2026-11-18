@@ -1,7 +1,8 @@
 /**
  * Jest configuration — two projects.
  *
- *   `unit`        tests/unit and tests/guards. Node environment, no database,
+ *   `unit`        tests/unit, tests/guards and eslint-rules/__tests__. Node
+ *                 environment, no database,
  *                 no network. `npm test` runs this project.
  *   `integration` tests/integration. Node environment against a real
  *                 PostgreSQL named by DATABASE_URL. `npm run test:integration`
@@ -34,7 +35,12 @@ module.exports = {
         {
             ...shared,
             displayName: 'unit',
-            testMatch: ['<rootDir>/tests/unit/**/*.test.ts?(x)', '<rootDir>/tests/guards/**/*.test.ts?(x)'],
+            testMatch: [
+                '<rootDir>/tests/unit/**/*.test.ts?(x)',
+                '<rootDir>/tests/guards/**/*.test.ts?(x)',
+                // RuleTester suites for the local ESLint plugin (Phase 0.4).
+                '<rootDir>/eslint-rules/__tests__/**/*.test.ts',
+            ],
         },
         {
             ...shared,

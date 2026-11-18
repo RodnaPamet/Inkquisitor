@@ -1,14 +1,20 @@
-# Inkquisitor CI — the four required checks of Phase 0.1.
+# Inkquisitor CI.
 #
-#   Lint · Typecheck · Test · Build
+#   Lint · Typecheck · Test · Build      the four checks of Phase 0.1
+#   Security · CodeQL · Docker           added by Phase 0.4
 #
 # Job names are the check names a branch protection rule requires; renaming
 # one silently drops it from the required set (a check that never runs is
-# indistinguishable from one that passed). Phase 0.4 extends this file with
-# CodeQL, npm audit, Trivy and a release workflow.
+# indistinguishable from one that passed). tests/unit/ci-workflow.test.ts
+# pins every name.
 #
 # No job holds a secret. The build runs with SKIP_ENV_VALIDATION=1, the same
 # as the Docker builder: real values are provided at run time.
+#
+# Third-party actions are pinned to a major version (GitHub's own) or an
+# exact release (trivy-action, which publishes no major tag). Permissions are
+# read-only at the top; the one job that writes (CodeQL's SARIF upload) asks
+# for exactly that, on its own.
 
 name: CI
 
@@ -17,10 +23,12 @@ on:
   push:
     branches: [main]
 
-# A newer push to the same branch or pull request supersedes the run in
-# flight; main's runs are grouped by commit so none is cancelled.
+# A newer push to the same pull request supersedes the run in flight. On a
+# push the group is the COMMIT, so each of main's commits has a group of its
+# own: keyed by ref, GitHub keeps one pending run per group and cancels the
+# waiting one when a third push lands, and that commit's checks never finish.
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
@@ -29,6 +37,9 @@ permissions:
 env:
   NODE_VERSION: '24'
   NEXT_TELEMETRY_DISABLED: '1'
+  # Husky installs git hooks on `npm ci` (the `prepare` script); a CI runner
+  # commits nothing, so it is switched off for every job.
+  HUSKY: '0'
 
 jobs:
   lint:
@@ -77,9 +88,21 @@ jobs:
           --health-interval 3s
           --health-timeout 3s
           --health-retries 20
+      # The readiness probe and the job worker's integration tests need a
+      # real Redis (they use logical database 14).
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 3s
+          --health-timeout 3s
+          --health-retries 20
     env:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/inkquisitor_test?schema=public
       DIRECT_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/inkquisitor_test?schema=public
+      REDIS_URL: redis://localhost:6379
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -89,6 +112,10 @@ jobs:
       - run: npm ci
       - name: Unit tests
         run: npm test -- --ci
+      # The integration project runs against the schema the migrations
+      # produce, never one pushed from the Prisma schema.
+      - name: Apply migrations
+        run: npm run migrate:deploy
       - name: Integration tests
         run: npm run test:integration -- --ci
 
@@ -106,3 +133,106 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build
+      # The worker ships as its own bundle; a broken import fails here, not
+      # at the first deploy.
+      - run: npm run build:worker
+
+  security:
+    name: Security
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      # BLOCKING on moderate and above in the production dependency tree:
+      # a finding there is shipped code. Never lower the level to get a PR
+      # through; upgrade the dependency instead.
+      - name: 'Gate: npm audit (production, moderate+)'
+        run: npm audit --omit=dev --audit-level=moderate
+      # The same scanner the pre-commit hook runs, over every tracked file —
+      # the half of the secret detection a `git commit --no-verify` cannot skip.
+      - name: 'Gate: secret scan (every tracked file)'
+        run: bash scripts/detect-secrets.sh --all
+
+  codeql:
+    name: CodeQL
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      actions: read
+      # The SARIF upload to code scanning.
+      security-events: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: github/codeql-action/init@v4
+        with:
+          languages: javascript-typescript
+          queries: security-and-quality
+      - uses: github/codeql-action/analyze@v4
+        with:
+          category: /language:javascript-typescript
+          # The SARIF is always written here: the gate below reads it, and the
+          # artifact keeps it, whether or not code scanning receives it.
+          output: codeql-results
+          # The upload needs code scanning enabled for the repository (free on
+          # a public repository, GitHub Advanced Security on a private one).
+          # Set the repository variable CODE_SCANNING_ENABLED=true once it is;
+          # until then the results reach the artifact and the gate only.
+          upload: ${{ vars.CODE_SCANNING_ENABLED == 'true' && 'always' || 'never' }}
+      - name: Keep the SARIF
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: codeql-sarif
+          path: codeql-results
+          if-no-files-found: error
+          retention-days: 30
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      # BLOCKING on a security result of high or critical severity, or of
+      # level error (scripts/sarif-gate.js). analyze never fails the job on
+      # what it finds, so without this the check is green whatever it found.
+      # A SARIF folder with nothing in it fails too.
+      - name: 'Gate: CodeQL security results (high+, or error)'
+        run: node scripts/sarif-gate.js codeql-results
+
+  docker:
+    name: Docker
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v4
+      - name: Build the image (no push)
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: Dockerfile
+          push: false
+          load: true
+          tags: inkquisitor:ci-${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max,ignore-error=true
+      # BLOCKING on CRITICAL and HIGH, ignoring vulnerabilities with no fixed
+      # version (nothing to upgrade to). Never narrow the severities to get a
+      # PR through; fix the base image or the dependency.
+      - name: 'Gate: Trivy (CRITICAL,HIGH, fixable)'
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: inkquisitor:ci-${{ github.sha }}
+          format: table
+          exit-code: '1'
+          ignore-unfixed: true
+          vuln-type: os,library
+          severity: CRITICAL,HIGH
+          # Trivy's own deadline (5m by default) is not the job's
+          # timeout-minutes: a slow database download aborts with `context
+          # deadline exceeded` and exit 1, a red indistinguishable from a CVE
+          # (inflect-compliance hit it twice on this action and base image).
+          timeout: '15m'

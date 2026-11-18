@@ -43,3 +43,10 @@ docker-compose*.yml
 # Temporary artifacts
 *.log
 tmp/
+
+# The docs site and its install, and the worker bundle (rebuilt in-container)
+site/
+# The release tooling (.github/workflows/release.yml), never part of the app
+release/
+dist/
+.husky/

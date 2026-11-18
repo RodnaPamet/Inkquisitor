@@ -18,3 +18,8 @@ process.env.DATABASE_URL =
 // key; clearing it here means a key in a developer's shell never makes a test
 // call out.
 delete process.env.ANTHROPIC_API_KEY;
+
+// Quiet logs: the structured logger writes JSON to stdout, which buries test
+// output. A suite that asserts on log lines builds its own logger against a
+// capturing destination (tests/unit/observability/logger-redaction.test.ts).
+process.env.LOG_LEVEL = process.env.LOG_LEVEL_IN_TEST || 'silent';
