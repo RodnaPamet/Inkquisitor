@@ -17,10 +17,15 @@ on:
   push:
     branches: [main]
 
-# A newer push to the same branch or pull request supersedes the run in
-# flight; main's runs are grouped by commit so none is cancelled.
+# A pull request's runs share one group per PR number, and a newer push to it
+# cancels the run in flight. A push to main gets a group of its own per COMMIT
+# (github.sha): `cancel-in-progress: false` only spares a RUNNING run, and a
+# group holds just one PENDING run, so a per-ref main group would let a third
+# push evict the commit waiting between the other two, and that commit would
+# never get CI. A cancelled run reads like a passed one, so nothing would say
+# so. Same keying as inflect-compliance's ci.yml.
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.event_name == 'push' && github.sha || github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:

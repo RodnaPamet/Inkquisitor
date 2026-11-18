@@ -49,7 +49,8 @@ src/app/api/            → route handlers: the HTTP boundary only (parse input,
 src/app-layer/usecases/ → business logic orchestration (validate → policy → repository → event)
 src/app-layer/policies/ → authorization checks, always called before data access
 src/app-layer/repositories/ → Prisma queries; every workspace-scoped query filters by workspaceId
-src/lib/                → shared infrastructure (env, db, later auth, observability, storage, AI seam)
+src/lib/                → shared infrastructure (db, later auth, observability, storage, AI seam)
+src/env.ts, src/env-client.ts → the server and client env modules
 src/components/         → React components (ui/ primitives, layout/ shells, command-palette/, theme/)
 packages/ui/            → @inkquisitor/ui, the workspace package of product-neutral primitives
 messages/en.json        → next-intl catalogue (English only)
@@ -58,9 +59,8 @@ prisma/schema/          → multi-file Prisma schema; base.prisma owns the gener
 
 A call goes `app/api → usecases → policies → repositories`, never sideways or
 backwards: a route handler does not import a repository or Prisma, and a
-repository does not authorize. Today only `src/app/api/health` and
-`src/lib/{env,db,product}` exist; the `app-layer` folders arrive with the first
-usecase (Phase 0.3).
+repository does not authorize. No usecase exists yet: the `app-layer`
+folders arrive with the first one (Phase 0.3).
 
 ## Rules every change obeys
 
@@ -94,8 +94,9 @@ only under zero-retention terms (D5).
   for builds and tests; never put a real secret in CI or an image.
 - **Database.** `DATABASE_URL` is the runtime connection (PgBouncer in the
   compose stack); `DIRECT_DATABASE_URL` is for `prisma migrate`, read by
-  `prisma.config.ts`. Prisma 7 needs a driver adapter: construct clients
-  through `src/lib/db.ts`. New models go in a domain file under
+  `prisma.config.ts`, which loads `.env` itself because the Prisma 7 CLI does
+  not. Every port `docker-compose.yml` publishes is bound to 127.0.0.1.
+  Prisma 7 needs a driver adapter: construct clients through `src/lib/db.ts`. New models go in a domain file under
   `prisma/schema/`, never in `base.prisma`.
 - **Logging.** No `console.*` under `src/` (ESLint error). The structured
   logger arrives in Phase 0.4; author text never reaches a log line.
@@ -170,6 +171,8 @@ has the design. Reach for the primitives, never hand-roll a replacement:
   `postgresql://postgres:postgres@localhost:5432/inkquisitor_test`. An
   integration test never skips because the database is missing: it fails.
 - **E2E** (`tests/e2e`): Playwright against a production build.
+  `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` (read only by `playwright.config.ts`)
+  launches another Chromium binary when the expected build is not installed.
 - **No test calls a model provider or any network service.** `jest.setup.js`
   clears `ANTHROPIC_API_KEY`.
 - A guard that scans source takes its file population from git through
