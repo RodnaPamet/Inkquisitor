@@ -1,0 +1,215 @@
+{
+    "commandPalette": {
+        "openShortcut": "Open command palette",
+        "title": "Command palette",
+        "description": "Search for pages and actions. Use arrow keys to navigate and Enter to activate.",
+        "searchPlaceholder": "Search pages and actions…",
+        "noResults": "No results found",
+        "groupNavigation": "Navigation",
+        "groupActions": "Actions",
+        "groupShortcuts": "Keyboard shortcuts",
+        "commands": {
+            "toggleTheme": "Toggle theme",
+            "goToBooks": "Go to Books",
+            "goToSettings": "Go to Settings"
+        }
+    },
+    "common": {
+        "ui": {
+            "breadcrumb": "Breadcrumb",
+            "moreInfoAbout": "More info about {title}",
+            "moreInformation": "More information",
+            "dialog": "Dialog",
+            "confirm": "Confirm",
+            "undoWindow": "{label} window",
+            "secondsRemaining": "{seconds}s remaining",
+            "options": "Options",
+            "sheet": "Sheet",
+            "menu": "Menu",
+            "popoverContentDesc": "Popover content",
+            "hidePassword": "Hide password",
+            "showPassword": "Show password",
+            "backToFilterList": "Back to filter list",
+            "clear": "Clear",
+            "minValue": "Minimum value",
+            "maxValue": "Maximum value",
+            "noMin": "No min",
+            "rangeTo": "to",
+            "noMax": "No max",
+            "switchToLightTheme": "Switch to light theme",
+            "switchToDarkTheme": "Switch to dark theme",
+            "listRailLeft": "Orientation",
+            "listRailRight": "Context",
+            "filter": "Filter",
+            "learnMore": "Learn more",
+            "currentWorkspace": "Current workspace: {name}"
+        },
+        "close": "Close",
+        "cancel": "Cancel",
+        "table": {
+            "resetToDefaults": "Reset to defaults",
+            "paginationAria": "Pagination",
+            "viewing": "Viewing",
+            "of": "of",
+            "items": "items",
+            "previous": "Previous",
+            "previousAria": "Go to previous page",
+            "next": "Next",
+            "nextAria": "Go to next page",
+            "tableContents": "Table contents (scrollable)",
+            "clearSelection": "Clear selection",
+            "batchActions": "Batch actions",
+            "deselectAll": "Deselect all",
+            "selectAllCount": "Select all {count}",
+            "deselectAllRows": "Deselect all rows",
+            "selectAllRows": "Select all rows",
+            "selectedCount": "{count} selected",
+            "clear": "Clear",
+            "editColumns": "Edit columns",
+            "selectAll": "Select all",
+            "select": "Select",
+            "selectRow": "Select row",
+            "expandRow": "Expand row",
+            "collapseRow": "Collapse row",
+            "sortByColumn": "Sort by column",
+            "emptyFallback": "No {items} found.",
+            "noItemsFound": "No items found",
+            "toggleColumns": "Toggle columns",
+            "editKpiCards": "Edit KPI cards",
+            "detailSections": "Detail sections",
+            "context": "Context"
+        },
+        "calendar": {
+            "selectDateRange": "Select date range",
+            "clearRange": "Clear range",
+            "prevYear": "Go to previous year",
+            "prevMonth": "Go to previous month",
+            "nextMonth": "Go to next month",
+            "nextYear": "Go to next year",
+            "selectDate": "Select date",
+            "clear": "Clear",
+            "presets": {
+                "today": "Today",
+                "yesterday": "Yesterday",
+                "last-7-days": "Last 7 days",
+                "last-30-days": "Last 30 days",
+                "last-90-days": "Last 90 days",
+                "month-to-date": "Month to date",
+                "quarter-to-date": "Quarter to date",
+                "year-to-date": "Year to date",
+                "last-month": "Last month",
+                "last-quarter": "Last quarter",
+                "last-year": "Last year"
+            }
+        },
+        "appName": "Inkquisitor",
+        "search": "Search…",
+        "signOut": "Sign Out",
+        "theme": "Theme",
+        "retry": "Retry",
+        "error": {
+            "title": "Something went wrong",
+            "tryAgain": "Try again"
+        },
+        "skeleton": {
+            "dashboard": "Loading dashboard",
+            "details": "Loading details",
+            "settings": "Loading settings"
+        },
+        "chart": {
+            "noDataForRange": "No data for this range",
+            "scaleAria": "{label}: {min} to {max}",
+            "scaleAriaUnlabelled": "Scale: {min} to {max}"
+        }
+    },
+    "approval": {
+        "addSecondVersion": "Add a second version to enable comparison.",
+        "from": "From",
+        "compareFromAria": "Compare from version",
+        "to": "To",
+        "compareToAria": "Compare to version",
+        "pickTwoVersions": "Pick two different versions to see a diff.",
+        "textualDiffEmpty": "No textual changes between v{from} and v{to}."
+    },
+    "richtext": {
+        "placeholder": "Write here…",
+        "editorAria": "Rich text editor",
+        "switchToWysiwyg": "Switch to WYSIWYG",
+        "switchToMarkdown": "Switch to Markdown",
+        "bold": "Bold",
+        "italic": "Italic",
+        "strikethrough": "Strikethrough",
+        "heading1": "Heading 1",
+        "heading2": "Heading 2",
+        "bulletList": "Bullet list",
+        "numberedList": "Numbered list",
+        "quote": "Quote",
+        "inlineCode": "Inline code",
+        "pageBreak": "Page break",
+        "linkUrlPrompt": "Link URL (https://… or mailto:…)",
+        "insertLink": "Insert link"
+    },
+    "ui": {
+        "combobox": {
+            "searchPlaceholder": "Search…",
+            "placeholder": "Select…",
+            "emptyState": "No matches",
+            "createLabel": "Create \"{search}\"",
+            "createLabelEmpty": "Create new option…",
+            "triggerLabel": "Select"
+        },
+        "recordStepper": {
+            "previous": {
+                "item": "Previous item",
+                "book": "Previous book"
+            },
+            "next": {
+                "item": "Next item",
+                "book": "Next book"
+            }
+        }
+    },
+    "nav": {
+        "openNavigationMenu": "Open navigation menu",
+        "noBreadcrumbs": "No breadcrumbs",
+        "signOut": "Sign out",
+        "expandSidebar": "Expand sidebar",
+        "collapseSidebarNamed": "{app} — collapse sidebar",
+        "mainNavigation": "Main navigation",
+        "openCommandPalette": "Open command palette",
+        "account": "Account",
+        "brandHomeNamed": "{initials}: Inkquisitor — go to home",
+        "accountMenuFor": "Account menu for {name}",
+        "accountMenu": "Account menu",
+        "books": "Books",
+        "settings": "Settings",
+        "signedOut": "Not signed in"
+    },
+    "shortcuts": {
+        "showShortcuts": "Show keyboard shortcuts",
+        "title": "Keyboard shortcuts",
+        "description": "Press Ctrl+/ (⌘/ on a Mac) any time to show this list. Shortcuts are ignored while you're typing.",
+        "availableNow": "Available now",
+        "noGlobal": "No global shortcuts are registered yet",
+        "inDialogs": "In dialogs & sheets"
+    },
+    "roles": {
+        "owner": "Owner",
+        "editor": "Editor",
+        "reader": "Reader"
+    },
+    "pages": {
+        "books": {
+            "title": "Books",
+            "description": "Your books will live here.",
+            "signedOut": "Sign in to see your books.",
+            "empty": "No books yet."
+        },
+        "settings": {
+            "title": "Settings",
+            "description": "Workspace and account settings.",
+            "signedOut": "Sign in to change your settings.",
+            "empty": "Nothing to configure yet."
+        }
+    }
+}

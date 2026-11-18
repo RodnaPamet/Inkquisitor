@@ -15,7 +15,8 @@
     "incremental": true,
     "plugins": [{ "name": "next" }],
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@inkquisitor/ui/*": ["./packages/ui/src/*"]
     },
     "baseUrl": "."
   },

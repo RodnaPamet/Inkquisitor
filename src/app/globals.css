@@ -1,8 +1,213 @@
-@import "tailwindcss";
-
 /*
- * Tailwind 4 is configured in CSS. The product palette, the token
- * contract and the light/dark themes arrive with the UI platform in
- * Phase 0.2 (src/styles/tokens.css); until then the page uses Tailwind's
- * default scale.
+ * Global styles.
+ *
+ * Adapted from inflect-compliance's src/app/globals.css (see
+ * docs/carve-manifest.md). Tailwind 4 is configured in CSS: `@config` loads
+ * the lifted tailwind.config.js (the token-mapped colour utilities, spacing
+ * scale, radii, shadows and animations), and `@import` the design tokens.
+ *
+ * Kept: the class recipes the lifted primitives use (`.glass-card`,
+ * `.surface-popup-texture`, `.input`, `.data-table`, `.icon-btn`,
+ * `.animate-fadeIn`, `.no-print`), the list-page document lock, the print
+ * escape and the touch-target floors. Left behind: inflect's legacy colour
+ * aliases, the Google Fonts import (no network fetch at render; the system
+ * font stack is used), the process-canvas rules, the policy-document and SoA
+ * print recipes.
+ *
+ * EVERY class-keyed recipe lives inside a `@layer`. In Tailwind v4 an
+ * unlayered rule beats a layered one at equal specificity regardless of
+ * source order, and every generated utility is emitted inside `@layer
+ * utilities` — so an unlayered `.foo { … }` here would silently swallow each
+ * `className` utility touching the same property. inflect measured that
+ * defect on `.glass-card` (#3119); the exemption below is the one deliberate
+ * floor.
  */
+@import "tailwindcss";
+@config "../../tailwind.config.js";
+
+@import '../styles/tokens.css';
+
+/* The workspace package ships sources the app compiles; name it so a future
+ * consumption from node_modules (which v4's auto-detection skips) keeps its
+ * classes generated. */
+@source "../../packages/ui/src";
+
+body {
+  font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  background: var(--bg-page);
+  color: var(--content-emphasis);
+}
+
+/* List-page-shell document lock. At md+ the document is locked to viewport
+   height; anything that overflows owns its own scroll context. Below md the
+   document scrolls naturally. Print releases the lock. */
+@media (min-width: 768px) {
+  html, body {
+    height: 100%;
+    overflow: hidden;
+  }
+}
+@media print {
+  html, body {
+    height: auto !important;
+    overflow: visible !important;
+  }
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: var(--bg-page); }
+::-webkit-scrollbar-thumb { background: var(--border-default); border-radius: 3px; }
+
+/* Glass card — `cardVariants` maps `elevation="raised"` to it. */
+@layer components {
+  .glass-card {
+    background: var(--glass-bg);
+    backdrop-filter: blur(var(--glass-blur));
+    border: 1px solid var(--glass-border);
+    border-radius: var(--radius-lg);
+    @apply p-4 md:p-5;
+  }
+}
+
+/* Pop-up surface texture (modals, sheets, popovers): a faint accent pool at
+   the leading edge, then the default surface. */
+@layer components {
+  .surface-popup-texture {
+    background:
+      radial-gradient(
+        ellipse 120% 80% at 50% 0%,
+        color-mix(in srgb, var(--bg-default), var(--brand-default) 10%) 0%,
+        color-mix(in srgb, var(--bg-default), var(--brand-default) 4%) 42%,
+        var(--bg-default) 78%,
+        color-mix(in srgb, var(--bg-default), black 9%) 100%
+      );
+    border: 1px solid
+      color-mix(in srgb, var(--border-default), var(--brand-default) 22%);
+    box-shadow:
+      inset 0 1px 0 0 color-mix(in srgb, var(--bg-default), white 20%),
+      var(--shadow-lg);
+  }
+}
+
+@layer components {
+  .input {
+    @apply w-full rounded-lg px-3 py-2 text-sm transition-all duration-200
+      placeholder-content-subtle
+      focus:outline-none focus:ring-2 focus:ring-ring focus:border-border-emphasis;
+    background: var(--bg-default);
+    border: 1px solid var(--border-default);
+    color: var(--content-emphasis);
+  }
+  .input-label {
+    @apply block text-sm font-medium mb-1;
+    color: var(--content-default);
+  }
+  select.input { @apply appearance-none cursor-pointer; }
+  textarea.input { @apply resize-y min-h-[80px]; }
+}
+
+@layer components {
+  .data-table { @apply w-full text-sm text-left; }
+  .data-table th {
+    @apply px-4 py-2.5 text-xs font-semibold uppercase tracking-wider leading-6;
+    color: var(--content-muted);
+    background: var(--bg-muted);
+  }
+  .data-table td {
+    @apply px-4 py-2.5 text-sm leading-6 border-b;
+    border-color: var(--border-subtle);
+  }
+  .data-table tr:hover td { background: var(--bg-muted); }
+}
+
+@keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+@layer utilities {
+  .animate-fadeIn { animation: fadeIn 0.3s ease-out; }
+}
+
+@layer components {
+  .icon-btn {
+    @apply inline-flex items-center justify-center rounded-lg
+      min-w-[36px] min-h-[36px]
+      transition-colors duration-150
+      disabled:opacity-40 disabled:pointer-events-none;
+    color: var(--content-muted);
+  }
+  .icon-btn:hover {
+    color: var(--content-emphasis);
+    background: var(--bg-muted);
+  }
+  .icon-btn:focus-visible {
+    outline: 2px solid var(--accent-default);
+    outline-offset: 2px;
+  }
+  .icon-btn-danger {
+    color: var(--content-error);
+  }
+  .icon-btn-danger:hover {
+    color: var(--content-error);
+    background: var(--bg-error);
+  }
+  .icon-btn-sm {
+    @apply min-w-[28px] min-h-[28px];
+  }
+}
+
+@media print {
+  body { background: white !important; color: black !important; }
+  /* Undo the list-page-shell internal scroll so the printer sees the whole
+     table. The data attribute is emitted by `<ListPageShell>`. */
+  [data-list-page-shell="true"],
+  [data-list-page-shell="true"] * {
+    overflow: visible !important;
+    height: auto !important;
+    max-height: none !important;
+    min-height: 0 !important;
+  }
+}
+@layer components {
+  @media print {
+    .no-print { display: none !important; }
+  }
+}
+
+/* Touch targets (WCAG 2.5.5). */
+@media (pointer: coarse) {
+  /* UNLAYERED ON PURPOSE: a 44px floor is the one declaration on `.input`
+     that must not lose to a drive-by utility. */
+  .input {
+    min-height: 44px;
+  }
+  /* Radix checkbox / radio / switch keep their visual size and gain a 44px
+     transparent hit target. */
+  [role="checkbox"],
+  [role="radio"],
+  [role="switch"] {
+    position: relative;
+  }
+  [role="checkbox"]::before,
+  [role="radio"]::before,
+  [role="switch"]::before {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 44px;
+    height: 44px;
+    transform: translate(-50%, -50%);
+    background: transparent;
+  }
+}
+
+/* The rich-text editor's empty-state placeholder (TipTap's Placeholder
+   extension sets `data-placeholder` on the first empty node). */
+@layer components {
+  .tiptap p.is-editor-empty:first-child::before {
+    content: attr(data-placeholder);
+    float: left;
+    height: 0;
+    pointer-events: none;
+    color: var(--content-subtle);
+  }
+}

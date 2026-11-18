@@ -24,8 +24,8 @@ npm run build:worker      # esbuild → dist/worker.mjs, dist/worker-healthcheck
 npm run secret-scan       # scripts/detect-secrets.sh (staged files; --all for every tracked file)
 npm run docs:build        # the Starlight help site (site/), from docs/user/
 npm run lint              # eslint . (flat config, eslint.config.mjs)
-npm run typecheck         # tsc --noEmit
-npm test                  # Jest, unit project (tests/unit, tests/guards, eslint-rules/__tests__) — no DB, no network
+npm run typecheck         # tsc --noEmit, then packages/ui alone (no `@/` imports there)
+npm test                  # Jest, unit (tests/unit, tests/guards, eslint-rules/__tests__) + rendered projects — no DB, no network
 npm run test:integration  # Jest, integration project (tests/integration) — real PostgreSQL and Redis
 npm run test:e2e          # Playwright against `next start` on :3100 (build first)
 npm run db:generate       # prisma generate (also the postinstall step)
@@ -62,8 +62,11 @@ src/app/api/            → route handlers: the HTTP boundary only (parse input,
 src/app-layer/usecases/ → business logic orchestration (validate → policy → repository → event)
 src/app-layer/policies/ → authorization checks, always called before data access
 src/app-layer/repositories/ → Prisma queries; every workspace-scoped query filters by workspaceId
-src/lib/                → shared infrastructure (env, db, later auth, observability, storage, AI seam)
-src/components/         → React components
+src/lib/                → shared infrastructure (db, later auth, observability, storage, AI seam)
+src/env.ts, src/env-client.ts → the server and client env modules
+src/components/         → React components (ui/ primitives, layout/ shells, command-palette/, theme/)
+packages/ui/            → @inkquisitor/ui, the workspace package of product-neutral primitives
+messages/en.json        → next-intl catalogue (English only)
 prisma/schema/          → multi-file Prisma schema; base.prisma owns the generator and datasource
 ```
 
@@ -118,8 +121,9 @@ only under zero-retention terms (D5).
   for builds and tests; never put a real secret in CI or an image.
 - **Database.** `DATABASE_URL` is the runtime connection (PgBouncer in the
   compose stack); `DIRECT_DATABASE_URL` is for `prisma migrate`, read by
-  `prisma.config.ts`. Prisma 7 needs a driver adapter: construct clients
-  through `src/lib/db.ts`. New models go in a domain file under
+  `prisma.config.ts`, which loads `.env` itself because the Prisma 7 CLI does
+  not. Every port `docker-compose.yml` publishes is bound to 127.0.0.1.
+  Prisma 7 needs a driver adapter: construct clients through `src/lib/db.ts`. New models go in a domain file under
   `prisma/schema/`, never in `base.prisma`.
 - **Logging.** No `console.*` under `src/` (ESLint error; the edge logger is
   the one exception). Log through `logger` from `@/lib/observability/logger`
@@ -161,16 +165,68 @@ only under zero-retention terms (D5).
   made) for every file copied or adapted; `tests/unit/carve-manifest.test.ts`
   checks every listed path exists.
 
+## UI platform (Phase 0.2)
+
+Lifted from inflect-compliance (Epics 51–60); `docs/implementation-notes/2026-11-18-0.2-ui-platform.md`
+has the design. Reach for the primitives, never hand-roll a replacement:
+
+- **Colour comes only from the tokens** in `src/styles/tokens.css` (ink
+  black, parchment, one violet-ink accent; both themes define every token)
+  through the semantic utilities in `tailwind.config.js` (`bg-bg-default`,
+  `text-content-muted`, `border-border-subtle`, `bg-[var(--brand-default)]`).
+  No hex literal, no palette-scale utility (`bg-slate-800`), no hand-rolled
+  `fixed inset-0` overlay or raw `role="dialog"` — use `<Modal>` / `<Sheet>`
+  (`tests/guards/ui-colour-discipline.test.ts`). Text pairs are held to WCAG
+  AA, and `--border-strong` (the checkbox/radio edge) to 3:1, in both themes
+  (`tests/unit/design-tokens.test.ts`).
+- **Primitives**: `<DataTable>` (`@/components/ui/table`), the filter system
+  (`@/components/ui/filter` + `FilterToolbar`), `<Modal>`, `<Sheet>`,
+  `<Combobox>`, `<FormField>`, `<Tooltip>`, `<DatePicker>` /
+  `<DateRangePicker>`, `<Accordion>`, `<RadioGroup>`, `<ToggleGroup>`,
+  `useToastWithUndo()` for destructive actions, `<RichTextEditor>`,
+  `<VersionDiff>`, the hooks barrel `@/components/ui/hooks`, the visx chart
+  platform (`@inkquisitor/ui/components/ui/charts`, colours from the
+  `--chart-series-*` tokens). Shells: `<AppShell>`, `<ListPageShell>`,
+  `<EntityListPage>`, `<EntityDetailLayout>`, `<DashboardLayout>`,
+  `<WorkspaceShell>` (canvas pages), `<PageHeader>`. Shortcuts go
+  through `useKeyboardShortcut`, never a raw `keydown` listener.
+- **Package imports** use the deep path, `@inkquisitor/ui/components/ui/…`;
+  nothing in `packages/ui` imports from `@/`.
+- **`/dev/kitchen-sink`** renders every primitive and is a 404 in production.
+  A new primitive is added to `KITCHEN_SINK_PRIMITIVES` and gets a probe in
+  `tests/rendered/kitchen-sink.test.tsx` (the probe map is exhaustive, so
+  `tsc` asks for it) and a behavioural suite of its own (every primitive the
+  sink shows has one today: ported from inflect where inflect had one,
+  written new where it did not). A probe drives the primitive and asserts
+  what only it produces, never the sink's own trigger button.
+- **`WorkspaceContext`** (`src/lib/workspace/workspace-context.tsx`) is the
+  one context the chrome reads. Its exported interface is a contract with
+  subphase 0.3 — do not change it. Shell components read
+  `useOptionalWorkspace()` and render a signed-out state for `null`;
+  `getCurrentWorkspace()` (`current-workspace.ts`) is the server-side stub 0.3
+  replaces.
+- **UI strings** go through next-intl (`useTranslations`), from
+  `messages/en.json`; the locale is a cookie (`inkquisitor_locale`), no URL
+  routing. Add only keys something reads.
+- **Icons**: lucide-react or the package's own set. The Nucleo set inflect
+  uses is licensed only for inflect and is not carried.
+
 ## Testing
 
 - **Unit** (`tests/unit`, `tests/guards`): Node environment, no database, no
   network. `@/env` and `@/env-client` map to `tests/mocks/env.ts` (the real
   modules depend on an ESM-only package); stylesheets map to an empty module.
+- **Rendered** (`tests/rendered`, plus co-located `__tests__` in
+  `src/` and `packages/ui/src`): jsdom, Testing Library, jest-dom, jest-axe.
+  `__mocks__/next-intl.js` answers from `messages/en.json`; `vaul` maps to a
+  Radix-backed stub (`tests/rendered/vaul-mock.tsx`).
 - **Integration** (`tests/integration`): a real PostgreSQL, never a mocked
   Prisma. `DATABASE_URL` from the shell wins; otherwise `jest.setup.js` uses
   `postgresql://postgres:postgres@localhost:5432/inkquisitor_test`. An
   integration test never skips because the database is missing: it fails.
 - **E2E** (`tests/e2e`): Playwright against a production build.
+  `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` (read only by `playwright.config.ts`)
+  launches another Chromium binary when the expected build is not installed.
 - **No test calls a model provider or any network service.** `jest.setup.js`
   clears `ANTHROPIC_API_KEY` and silences logs (a suite that reads log lines
   builds a logger against its own destination). Integration tests use Redis

@@ -1,3 +1,9 @@
+// The root layout reads the locale and messages through next-intl's server
+// entry (ESM-only) and the theme cookie through next/headers; this suite
+// only reads the layout's static metadata, so both are stubbed.
+jest.mock('next-intl/server', () => ({ getLocale: async () => 'en', getMessages: async () => ({}) }));
+jest.mock('next/headers', () => ({ cookies: async () => ({ get: () => undefined }) }));
+
 import { renderToStaticMarkup } from 'react-dom/server';
 import HomePage from '@/app/page';
 import { metadata } from '@/app/layout';
@@ -18,7 +24,9 @@ describe('home page', () => {
         expect(html).toContain(`>${PRODUCT_DESCRIPTION}</p>`);
     });
 
-    it('styles the heading with Tailwind utilities', () => {
+    // Class names only: whether Tailwind generates CSS for them is
+    // tests/unit/tailwind-pipeline.test.ts.
+    it('puts the Tailwind utility classes on the heading', () => {
         expect(html).toMatch(/<h1 class="[^"]*\btext-5xl\b[^"]*\bfont-bold\b/);
     });
 

@@ -46,6 +46,11 @@ database on a local PostgreSQL 16, or point `DATABASE_URL` at the compose
 stack's Postgres (`localhost:5436`). They also need Redis: `REDIS_URL`, or
 `redis://localhost:6379` (they use logical database 14).
 
+The E2E suite needs the Chromium build its `@playwright/test` version expects
+(`npx playwright install chromium`). Where only a different build is installed
+and cannot be downloaded, point `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` at a
+Chromium (or headless-shell) binary and Playwright launches that instead.
+
 ## Licence
 
 Business Source License 1.1, licensor Inflect Ltd. — see [LICENSE](LICENSE)

@@ -1,3 +1,5 @@
+import createNextIntlPlugin from 'next-intl/plugin';
+
 /**
  * Next.js configuration.
  *
@@ -17,6 +19,10 @@
  * Turbopack, matching inflect-compliance: the strict CSP that Phase 0.H adds
  * needs the bundler runtime to put the nonce on every dynamically loaded
  * chunk, which webpack does and Turbopack does not.
+ *
+ * next-intl (Phase 0.2) is wired through its plugin, which aliases the
+ * request config at src/i18n.ts. The locale lives in a cookie, not the URL,
+ * so there is no i18n routing.
  *
  * @type {import('next').NextConfig}
  */
@@ -44,4 +50,6 @@ const nextConfig = {
     ],
 };
 
-export default nextConfig;
+const withNextIntl = createNextIntlPlugin('./src/i18n.ts');
+
+export default withNextIntl(nextConfig);

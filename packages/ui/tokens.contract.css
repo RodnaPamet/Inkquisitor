@@ -1,0 +1,126 @@
+/* ─────────────────────────────────────────────────────────────────────────
+ * `@inkquisitor/ui` — the token CONTRACT. 47 names.
+ *
+ * THE PACKAGE REQUIRES TOKENS. IT DOES NOT SHIP THEM. IT SHIPS THEIR NAMES.
+ *
+ * The app overrides all 47 with Inkquisitor's palette in
+ * `src/styles/tokens.css` (ink black, parchment, one violet-ink accent, in
+ * both themes). The values below are a deliberately brand-free neutral
+ * fallback, and their job is to make a forgotten override VISIBLE rather than
+ * invisible: an undefined custom property resolves to the property's initial
+ * value, so `background-color: var(--bg-page)` with no `--bg-page` renders
+ * transparent. A fallback layer turns a missing override into the wrong
+ * colour, which somebody sees.
+ *
+ * THE RULE THIS FILE STATES: a theme token is overridable by the host and
+ * belongs in the contract; a component-local variable is an implementation
+ * detail and stays inside its component (declared and consumed through
+ * Tailwind's arbitrary-property syntax, e.g. `[--switch-thumb-x:1rem]`).
+ *
+ * `--accent-default` and `--accent-emphasis` are the focus-indicator colours.
+ * Their fallbacks below are ALIASES of the brand, not neutral literals, so a
+ * host that never overrides them focuses in its accent.
+ *
+ * The chart platform (`src/components/ui/charts`) also reads the
+ * `--chart-series-{1..6}-{start,end}` tokens, which the app defines; they
+ * have no fallback here.
+ *
+ * ─── WCAG ────────────────────────────────────────────────────────────────
+ *
+ * The fallback pairs below were measured with WCAG 2.x relative-luminance
+ * arithmetic when the file was written in inflect-compliance; nothing here
+ * re-measures them. Inkquisitor's own palette is held to 4.5:1 for text and
+ * 3:1 for `--border-strong` by `tests/unit/design-tokens.test.ts`.
+ *
+ *   --content-default    on --bg-page    15.80:1    --content-emphasis  19.47:1
+ *   --content-muted      on --bg-page     6.27:1    on --bg-muted        5.39:1
+ *   --content-subtle     on --bg-page     5.32:1    on --bg-muted        4.57:1
+ *   --content-brand      on --bg-page     6.62:1
+ *   --content-success    on --bg-success  5.82:1    on --bg-page         6.53:1
+ *   --content-warning    on --bg-warning  6.54:1    on --bg-page         7.19:1
+ *   --content-error      on --bg-error    6.38:1    on --bg-page         7.36:1
+ *   --content-info       on --bg-info     6.16:1    on --bg-page         7.03:1
+ *   --content-inverted   on --brand-default           5.31:1
+ *   --content-inverted   on --btn-still-danger        5.44:1
+ *   --border-strong      on --bg-default  4.60:1    --ctrl-edge-rest     4.60:1
+ *   --ctrl-edge-hover    on --bg-default  7.69:1    --ctrl-edge-focus    6.62:1
+ *   --ring               on --bg-page     6.62:1    --brand-default      5.31:1
+ *   --border-{success,warning,error,info} on --bg-default  4.30 / 3.72 / 5.44 / 5.14
+ *
+ * `--border-subtle`, `--border-default` and `--border-emphasis` carry no
+ * contrast claim: they are decorative separators, not control edges.
+ *
+ * ─── What this file does NOT do ──────────────────────────────────────────
+ *
+ * It carries ONE theme, not two: the app's `tokens.css` owns both themes and
+ * `tests/unit/design-tokens.test.ts` holds their parity. And it does not carry
+ * the Tailwind mapping: `tailwind.config.js` stays with the app.
+ * ───────────────────────────────────────────────────────────────────────── */
+
+:root {
+  /* Surfaces — 10 */
+  --bg-page: #ffffff;
+  --bg-default: #ffffff;
+  --bg-elevated: #ffffff;
+  --bg-subtle: #f6f7f8;
+  --bg-muted: #eceef0;
+  --bg-overlay: rgba(0, 0, 0, 0.5);
+  --bg-success: #e8f5ec;
+  --bg-warning: #fdf3e2;
+  --bg-error: #fcebea;
+  --bg-info: #e8f1fb;
+
+  /* Borders — 8. Only --border-strong carries a 3:1 claim; see the header. */
+  --border-subtle: #e3e6e9;
+  --border-default: #c9ced4;
+  --border-emphasis: #9aa2ab;
+  --border-strong: #6e767f;
+  --border-success: #2f8a52;
+  --border-warning: #b07a12;
+  --border-error: #c0392b;
+  --border-info: #2e6fb8;
+
+  /* Brand — 5. A neutral slate, chosen to belong to nobody. A consumer that
+   * leaves these alone should look unbranded, not like someone else. */
+  --brand-default: #3a6ea5;
+  --brand-emphasis: #2c5580;
+  --brand-muted: #6a93c0;
+  --brand-subtle: #e9f0f7;
+  --brand-secondary-default: #5a6169;
+
+  /* Still Surface button material — 7 */
+  --btn-still-top: #ffffff;
+  --btn-still-bot: #e7eaed;
+  --btn-still-lift: #ffffff;
+  --btn-still-press: #d7dbdf;
+  --btn-still-danger: #c0392b;
+  --btn-still-danger-deep: #8e2a20;
+  --btn-still-danger-lift: #d9544a;
+
+  /* Content — 10. Every one of these paints TEXT, so every one owes 4.5:1. */
+  --content-default: #1f2328;
+  --content-emphasis: #0b0d0f;
+  --content-muted: #5a6169;
+  --content-subtle: #656c74;
+  --content-inverted: #ffffff;
+  --content-brand: #2d5ba8;
+  --content-success: #1c6b3a;
+  --content-warning: #7a4e06;
+  --content-error: #a3261e;
+  --content-info: #1b5a9c;
+
+  /* Form-control edges — 3. 1.4.11 asks 3:1 of a control boundary. */
+  --ctrl-edge-rest: #6e767f;
+  --ctrl-edge-hover: #4c545c;
+  --ctrl-edge-focus: #2d5ba8;
+
+  /* The two unprefixed survivors — 2 */
+  --primary: #3a6ea5;
+  --ring: #2d5ba8;
+
+  /* Accent — 2. The SOLID focus indicators. Aliases of the brand on purpose:
+   * see the header. --brand-default on --bg-page is 5.31:1 (table above), and
+   * the accent inherits that number as long as it follows the brand. */
+  --accent-default: var(--brand-default);
+  --accent-emphasis: var(--brand-emphasis);
+}

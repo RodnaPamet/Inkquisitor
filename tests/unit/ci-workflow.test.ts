@@ -81,11 +81,17 @@ describe('.github/workflows/ci.yml', () => {
         expect(ci).toMatch(/^on:\n {2}pull_request:\n {2}push:\n {4}branches: \[main\]\n/m);
     });
 
-    it('cancels a superseded pull-request run, and groups a push by commit so no main run is dropped', () => {
-        expect(ci).toMatch(/^concurrency:\n {2}group: .+\n {2}cancel-in-progress: \$\{\{ github\.event_name == 'pull_request' \}\}$/m);
-        // Keyed by ref, every main commit would share one group, and GitHub
-        // cancels a waiting run when another queues behind it.
-        expect(ci).toMatch(/^ {2}group: ci-\$\{\{ github\.workflow \}\}-\$\{\{ github\.event\.pull_request\.number \|\| github\.sha \}\}$/m);
+    it('cancels a superseded pull-request run', () => {
+        expect(ci).toMatch(/^ {2}cancel-in-progress: \$\{\{ github\.event_name == 'pull_request' \}\}$/m);
+    });
+
+    it('gives every push its own per-commit group, so no queued main run is evicted', () => {
+        const group = /^concurrency:\n {2}group: (.+)$/m.exec(ci)?.[1];
+        // The push arm must come first and key on the commit; a per-ref group
+        // for pushes holds one pending run and evicts the one in the middle.
+        expect(group).toBe(
+            "ci-${{ github.workflow }}-${{ github.event_name == 'push' && github.sha || github.event.pull_request.number || github.ref }}",
+        );
     });
 
     it('installs with npm ci on Node 24, cached, in every Node job', () => {

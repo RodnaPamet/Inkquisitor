@@ -6,7 +6,9 @@
 // real schema's defaults; a mock that answers differently from production
 // would turn its suites green without testing the shipped configuration.
 const DEFAULTS: Record<string, string> = {
-    NODE_ENV: 'test',
+    // src/env.ts defaults NODE_ENV to 'development'. Jest exports
+    // NODE_ENV=test, so process.env answers first in practice.
+    NODE_ENV: 'development',
 };
 
 const handler: ProxyHandler<Record<string, string | undefined>> = {

@@ -74,7 +74,7 @@ Versions to keep in step with: Node 24, Next 16, React 19, Prisma 7, Tailwind 4,
 1. **tldraw is not open source.** Its 3.x licence allows commercial use with the tldraw watermark shown; removing the watermark needs a licence key, and inflect-compliance sets no key in source. Decided (D1): Inkquisitor stays pinned to tldraw 3.x with the watermark on and sets no key; a guard test added in Phase 3.1 fails if tldraw's major version moves.
 2. **inflect-compliance is BUSL-1.1** (Licensor Inflect Ltd). Resolved (D2): Inkquisitor is BUSL-1.1 with the same licensor, Inflect Ltd., which relicenses the lifted code into Inkquisitor under Inkquisitor's own `LICENSE`; recorded in `LICENSING.md` and `NOTICE`, with every lifted file in `docs/carve-manifest.md`.
 3. **Craft-framework brands.** Save the Cat, Story Grid, Dramatica and the Snowflake Method are brand names with authored wording. Structure ideas are free to use; names, beat labels and worksheets are not. Every question in every pack is written by us under neutral labels. Trademark status was not verified; have counsel check before launch.
-4. **Unverified in research:** tldraw pricing and watermark terms (site unreachable from the research session), SillyTavern lorebook details, Plate's suggestion plugins.
+4. **Unverified in research:** tldraw pricing (site unreachable from the research session; the 3.x watermark terms are the owner's reading, D1), SillyTavern lorebook details, Plate's suggestion plugins.
 
 ## 2. Decisions the owner must make before Phase 0
 
@@ -230,7 +230,7 @@ Connect canvas and interviews. Select one or more nodes and choose "Grill this":
 **3.H Hardening**
 
 ```text
-Harden Phase 3. (1) Round-trip property test: random graphs through rows → tldraw → rows are identical. (2) Performance: 500 nodes and 1,500 edges stay interactive; auto-layout runs off the main thread. (3) Two tabs editing one map: the version lock yields a conflict notice and no lost write. (4) Canvas bundle stays out of every non-canvas route; add a bundle-size budget. (5) Keyboard and screen-reader path: every canvas action has a list-view equivalent. (6) Snapshot history is append-only and restorable; test restore after 200 saves. (7) Licence check: production build fails closed without a key, and the key never reaches a log.
+Harden Phase 3. (1) Round-trip property test: random graphs through rows → tldraw → rows are identical. (2) Performance: 500 nodes and 1,500 edges stay interactive; auto-layout runs off the main thread. (3) Two tabs editing one map: the version lock yields a conflict notice and no lost write. (4) Canvas bundle stays out of every non-canvas route; add a bundle-size budget. (5) Keyboard and screen-reader path: every canvas action has a list-view equivalent. (6) Snapshot history is append-only and restorable; test restore after 200 saves. (7) Licence check (D1): the tldraw major-version guard holds, no code hides or restyles the watermark, and no licence key is read or set.
 ```
 
 ### Phase 4 — Canon, continuity and memory

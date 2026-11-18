@@ -1,0 +1,16 @@
+{
+    // ts-jest's compiler options for the `rendered` project (jest.config.js).
+    // `npm run typecheck` type-checks these files through the root config;
+    // this file only tells ts-jest to emit CommonJS and transpile each file on
+    // its own (`isolatedModules`), as inflect-compliance's copy does.
+    "extends": "../../tsconfig.json",
+    "compilerOptions": {
+        "jsx": "react-jsx",
+        "module": "commonjs",
+        "moduleResolution": "node",
+        "target": "ES2020",
+        "noEmit": false,
+        "isolatedModules": true,
+        "incremental": false
+    }
+}
