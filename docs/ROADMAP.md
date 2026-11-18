@@ -71,21 +71,21 @@ Versions to keep in step with: Node 24, Next 16, React 19, Prisma 7, Tailwind 4,
 
 ### 1.3 Hazards found
 
-1. **tldraw is not open source.** Production use needs a licence key; inflect-compliance sets none in source. This is the first owner decision (section 2).
-2. **inflect-compliance is BUSL-1.1** (Licensor Inflect Ltd). The carve-out needs the licensor to grant or relicense the lifted code to the Inkquisitor entity.
+1. **tldraw is not open source.** Its 3.x licence allows commercial use with the tldraw watermark shown; removing the watermark needs a licence key, and inflect-compliance sets no key in source. Decided (D1): Inkquisitor stays pinned to tldraw 3.x with the watermark on and sets no key; a guard test added in Phase 3.1 fails if tldraw's major version moves.
+2. **inflect-compliance is BUSL-1.1** (Licensor Inflect Ltd). Resolved (D2): Inkquisitor is BUSL-1.1 with the same licensor, Inflect Ltd., which relicenses the lifted code into Inkquisitor under Inkquisitor's own `LICENSE`; recorded in `LICENSING.md` and `NOTICE`, with every lifted file in `docs/carve-manifest.md`.
 3. **Craft-framework brands.** Save the Cat, Story Grid, Dramatica and the Snowflake Method are brand names with authored wording. Structure ideas are free to use; names, beat labels and worksheets are not. Every question in every pack is written by us under neutral labels. Trademark status was not verified; have counsel check before launch.
 4. **Unverified in research:** tldraw pricing and watermark terms (site unreachable from the research session), SillyTavern lorebook details, Plate's suggestion plugins.
 
 ## 2. Decisions the owner must make before Phase 0
 
-| # | Decision | Recommended default |
-|---|---|---|
-| D1 | tldraw commercial licence, or build the canvas on React Flow | Buy the licence: the serializer, shapes and history UI are tldraw-based and are the largest single carve |
-| D2 | Licence of Inkquisitor and of the lifted code | Private repository, licensor grant from Inflect Ltd recorded in `LICENSING.md` |
-| D3 | Does the AI ever write manuscript prose? | No. It asks, summarises the author's own answers into bible entries, and critiques. This is the product's position and its answer to authors' AI concerns |
-| D4 | Tenancy | A workspace per author, with invited collaborators later; keep RLS from day one |
-| D5 | May author text be sent to the model provider under zero-retention terms only? | Yes, and say so on the pricing page |
-| D6 | Carve by copy, or share `@inflect/ui` as a package | Copy at a recorded commit; revisit sharing after launch |
+| # | Decision | Recommended default | Status |
+|---|---|---|---|
+| D1 | tldraw commercial licence, or build the canvas on React Flow | Buy the licence: the serializer, shapes and history UI are tldraw-based and are the largest single carve | Decided (2026-11-18): tldraw pinned to 3.x, commercial use with the watermark on, no licence key |
+| D2 | Licence of Inkquisitor and of the lifted code | Private repository, licensor grant from Inflect Ltd recorded in `LICENSING.md` | Decided (2026-11-18): BUSL-1.1, licensor Inflect Ltd., mirrors inflect-compliance's `LICENSE` |
+| D3 | Does the AI ever write manuscript prose? | No. It asks, summarises the author's own answers into bible entries, and critiques. This is the product's position and its answer to authors' AI concerns | Decided (2026-11-18): the recommended default |
+| D4 | Tenancy | A workspace per author, with invited collaborators later; keep RLS from day one | Decided (2026-11-18): the recommended default |
+| D5 | May author text be sent to the model provider under zero-retention terms only? | Yes, and say so on the pricing page | Default assumed |
+| D6 | Carve by copy, or share `@inflect/ui` as a package | Copy at a recorded commit; revisit sharing after launch | Decided (2026-11-18): the recommended default |
 
 ## 3. Rules every phase obeys
 
@@ -212,7 +212,7 @@ Goal: see and shape the book spatially; canvas and bible are one dataset. Requir
 **3.1 Canvas platform carve**
 
 ```text
-Lift the tldraw canvas platform from inflect-compliance/src/components/processes and src/lib/processes: the custom node ShapeUtil, edge ShapeUtil and BindingUtil, serializer.ts with its exact round-trip contract, arrow-to-edge conversion, autosave hook with the version lock and conflict notice, snapshot-per-save, CanvasHistorySidebar, CanvasDiffOverlay, canvas export, and canvas-auto-layout (dagre and elk). Strip the compliance node taxonomy, controls, automation modes, agent-flow and drill scopes. Rows stay the source of truth: StoryMap, MapNode (references a BibleElement), MapEdge (references a BibleRelation), freeformJson for sticky notes and drawing, MapSnapshot per save. Load the canvas with next/dynamic and ssr false behind an error boundary. Read the tldraw licence key from env and refuse to build for production without it. Port the serializer round-trip tests.
+Lift the tldraw canvas platform from inflect-compliance/src/components/processes and src/lib/processes: the custom node ShapeUtil, edge ShapeUtil and BindingUtil, serializer.ts with its exact round-trip contract, arrow-to-edge conversion, autosave hook with the version lock and conflict notice, snapshot-per-save, CanvasHistorySidebar, CanvasDiffOverlay, canvas export, and canvas-auto-layout (dagre and elk). Strip the compliance node taxonomy, controls, automation modes, agent-flow and drill scopes. Rows stay the source of truth: StoryMap, MapNode (references a BibleElement), MapEdge (references a BibleRelation), freeformJson for sticky notes and drawing, MapSnapshot per save. Load the canvas with next/dynamic and ssr false behind an error boundary. Keep tldraw pinned to 3.x with the watermark on (decision D1: its licence allows commercial use that way, so no licence key is read or set), and add a guard test that fails if tldraw's major version in package.json or the lockfile moves off 3. Port the serializer round-trip tests.
 ```
 
 **3.2 The three maps**
