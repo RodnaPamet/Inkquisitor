@@ -1,6 +1,28 @@
 import { createEnv } from '@t3-oss/env-nextjs';
 import { z } from 'zod';
 import { isNextProductionBuild } from '@/lib/build-phase';
+import { DEV_FALLBACK_DATA_ENCRYPTION_KEY, MIN_DATA_ENCRYPTION_KEY_LENGTH } from '@/lib/security/encryption-constants';
+
+/**
+ * A secret production cannot run without. Optional elsewhere (development and
+ * test have fallbacks); in a running production process it must be present,
+ * at least `min` characters, and not `forbidden` (a documented dev value).
+ * `next build` runs as production with no runtime secrets and is exempt; the
+ * server it builds is checked when it starts (src/lib/startup-checks.ts).
+ */
+function productionSecret(name: string, min: number, forbidden?: string) {
+    return z
+        .string()
+        .optional()
+        .superRefine((val, ctx) => {
+            if (process.env.NODE_ENV !== 'production' || isNextProductionBuild(process.env)) return;
+            if (!val || val.length < min) {
+                ctx.addIssue({ code: 'custom', message: `${name} is REQUIRED in production (at least ${min} characters).` });
+            } else if (forbidden !== undefined && val === forbidden) {
+                ctx.addIssue({ code: 'custom', message: `${name} is the documented development fallback; set a real one.` });
+            }
+        });
+}
 
 /**
  * THE SERVER-SIDE ENVIRONMENT.
@@ -45,6 +67,31 @@ export const env = createEnv({
         // outside the process is built from this, never from the request's
         // Host header (ESLint `local/no-request-derived-public-url`).
         APP_URL: z.string().url().optional(),
+
+        // ── Authentication (Phase 0.3) ──
+        // Signs and encrypts the session JWT (next-auth). REQUIRED in production.
+        AUTH_SECRET: productionSecret('AUTH_SECRET', 32),
+        // The canonical origin next-auth builds its callback URLs on. REQUIRED
+        // in production (startup-checks); next-auth also reads it itself.
+        NEXTAUTH_URL: z.string().url().optional(),
+        // Google sign-in. Both or neither: the provider (and its button) exists
+        // only when both are set.
+        GOOGLE_CLIENT_ID: z.string().min(1).optional(),
+        GOOGLE_CLIENT_SECRET: z.string().min(1).optional(),
+        // The breached-password check at sign-up (HIBP range API, k-anonymity,
+        // fail-open). `off` skips the network call: an air-gapped install, and
+        // the end-to-end suite, which calls no outside service.
+        PASSWORD_BREACH_CHECK: z.enum(['on', 'off']).optional(),
+
+        // ── Field encryption (Phase 0.3) ──
+        // The master key-encryption key: wraps every workspace's data key.
+        // REQUIRED in production, at least 32 characters and never the
+        // development fallback (src/lib/security/encryption-constants.ts).
+        DATA_ENCRYPTION_KEY: productionSecret(
+            'DATA_ENCRYPTION_KEY',
+            MIN_DATA_ENCRYPTION_KEY_LENGTH,
+            DEV_FALLBACK_DATA_ENCRYPTION_KEY,
+        ),
 
         // ── Logging ──
         LOG_LEVEL: z.enum(['trace', 'debug', 'info', 'warn', 'error', 'fatal', 'silent']).optional(),
@@ -144,6 +191,12 @@ export const env = createEnv({
         NODE_ENV: process.env.NODE_ENV,
         DATABASE_URL: process.env.DATABASE_URL,
         APP_URL: process.env.APP_URL,
+        AUTH_SECRET: process.env.AUTH_SECRET,
+        NEXTAUTH_URL: process.env.NEXTAUTH_URL,
+        GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID,
+        GOOGLE_CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET,
+        PASSWORD_BREACH_CHECK: process.env.PASSWORD_BREACH_CHECK,
+        DATA_ENCRYPTION_KEY: process.env.DATA_ENCRYPTION_KEY,
         LOG_LEVEL: process.env.LOG_LEVEL,
         OTEL_ENABLED: process.env.OTEL_ENABLED,
         OTEL_SERVICE_NAME: process.env.OTEL_SERVICE_NAME,

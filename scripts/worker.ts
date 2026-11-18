@@ -9,6 +9,8 @@
  *   1. refuse to start a production process whose configuration is missing
  *      something production requires (the web tier asks the same in
  *      src/instrumentation.ts; this process never loads that hook);
+ *   1b. the encryption sentinel: the master key must round-trip a value
+ *      (src/lib/security/encryption-sentinel.ts, Phase 0.3);
  *   2. OpenTelemetry (no-op unless OTEL_ENABLED=true), Sentry, the mailer;
  *   3. register the repeatable schedules (idempotent), so a running worker
  *      always implies its schedules exist;
@@ -21,6 +23,7 @@
 import { Queue, type Worker, type ConnectionOptions } from 'bullmq';
 import type Redis from 'ioredis';
 import { enforceProductionConfig } from '../src/lib/startup-checks';
+import { runEncryptionSentinel } from '../src/lib/security/encryption-sentinel';
 import { createProcessLogger } from '../src/lib/observability/process-logger';
 import { safeErrorMeta } from '../src/lib/observability/safe-error';
 import { initTelemetry, shutdownTelemetry } from '../src/lib/observability/instrumentation';
@@ -33,6 +36,12 @@ import { executorRegistry } from '../src/app-layer/jobs/executor-registry';
 import { QUEUE_NAME } from '../src/app-layer/jobs/types';
 
 enforceProductionConfig(process.env);
+try {
+    runEncryptionSentinel();
+} catch (err) {
+    process.stderr.write(`[startup] FATAL: ${err instanceof Error ? err.message : String(err)}\n`);
+    process.exit(1);
+}
 
 const log = createProcessLogger('worker');
 let connection: Redis | undefined;

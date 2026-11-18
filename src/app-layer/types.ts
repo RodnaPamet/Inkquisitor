@@ -1,17 +1,18 @@
+import type { PermissionSet } from '@/lib/permissions';
+
 /**
  * The authorization context every usecase and repository receives, as its
  * FIRST argument, explicitly (there is no AsyncLocalStorage for it — the
  * observability context in `src/lib/observability/context.ts` is a separate
  * thing and never authorizes anything).
  *
- * Phase 0.4 defines the shape so the platform services (tracing, the job
- * runner, rate-limit keys) can name it; Phase 0.3 builds it from the session
- * and fills the workspace fields. Until then a request carries only its id,
- * and a background job carries none of the identity fields.
- *
- * Optional on purpose, so 0.3 can tighten rather than re-shape: a
- * workspace-scoped usecase will take a `WorkspaceRequestContext`, in which
- * the workspace fields are required.
+ * Phase 0.4 defined the shape so the platform services (tracing, the job
+ * runner, rate-limit keys) can name it. The base type keeps the identity
+ * fields OPTIONAL — a background job carries none of them, a sign-in has a
+ * user and no workspace — and Phase 0.3 TIGHTENS rather than loosens: a
+ * workspace-scoped usecase takes a `WorkspaceRequestContext`, built only by
+ * `getWorkspaceCtx` (`src/app-layer/context.ts`) from the session and a
+ * database membership check, in which every workspace field is required.
  */
 export type WorkspaceRole = 'OWNER' | 'EDITOR' | 'READER';
 
@@ -28,9 +29,16 @@ export interface RequestContext {
     role?: WorkspaceRole;
 }
 
-/** A context whose workspace has been resolved. */
+/**
+ * A context whose workspace has been resolved: the user is signed in, the
+ * workspace exists, and the user holds a membership in it (checked against
+ * the database, not the JWT). `permissions` is the role's set
+ * (`src/lib/permissions.ts`).
+ */
 export type WorkspaceRequestContext = RequestContext & {
     userId: string;
     workspaceId: string;
+    workspaceSlug: string;
     role: WorkspaceRole;
+    permissions: PermissionSet;
 };

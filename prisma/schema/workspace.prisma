@@ -1,0 +1,46 @@
+// ─────────────────────────────────────────────────────────────────
+//  Workspaces and memberships (Phase 0.3, owner decision D4).
+//
+//  EVERY MODEL WITH A `workspaceId` IS WORKSPACE-SCOPED: its table has
+//  FORCE ROW LEVEL SECURITY, a `workspace_isolation` policy (USING and
+//  WITH CHECK on `app.workspace_id`) and the `superuser_bypass` policy,
+//  and it is reached through `runInWorkspaceContext`
+//  (src/lib/db/rls-middleware.ts). `Workspace` itself is scoped on its
+//  own `id`. tests/guards/rls-migration-coverage.test.ts and
+//  tests/integration/rls-coverage.test.ts fail for a scoped model
+//  without the policy. See docs/rls-workspace-isolation.md.
+// ─────────────────────────────────────────────────────────────────
+
+/// One author's workspace. Created with its OWNER membership and its
+/// data key in one transaction (`createWorkspaceWithOwner`).
+model Workspace {
+  id                   String   @id @default(cuid())
+  slug                 String   @unique
+  name                 String
+  /// The workspace's data-encryption key, wrapped under the master KEK
+  /// (DATA_ENCRYPTION_KEY). `src/lib/security/workspace-key-manager.ts`.
+  encryptedDek         String?
+  /// The previous wrapped DEK while a key rotation is in flight; NULL
+  /// otherwise. A CHECK refuses it equal to `encryptedDek`.
+  previousEncryptedDek String?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  memberships WorkspaceMembership[]
+}
+
+/// A person's role in a workspace. One per (workspace, user).
+model WorkspaceMembership {
+  id          String        @id @default(cuid())
+  workspaceId String
+  userId      String
+  role        WorkspaceRole
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, userId])
+  @@index([userId])
+}
