@@ -27,11 +27,15 @@ the repo's own gate (`scripts/sarif-gate.js`) blocked six alerts:
 - `js/redos` in `tests/guards/client-modules-import-no-server-env.test.ts`;
 - `js/bad-tag-filter` in `tests/rendered/rich-text-editor.test.tsx`.
 
-A fix workflow (`wip/tooling/codeql-fixes-workflow.js`) was running when work
-paused. If its fixes were pushed to `claude/inkquisitor-roadmap-moryt6`, re-check
-PR #3's CI. If not, re-run that workflow against a checkout of the PR branch. The
-rule is to fix root causes: never lower the gate, never suppress. The Docker job
-(image build plus Trivy) had not finished when work paused.
+**The fixes were pushed to PR #3 as commit `31d33e1`.** They were made by
+`wip/tooling/codeql-fixes-workflow.js`, and a skeptic reviewed each one.
+- The first middleware fix opened a new bypass: an encoded `..%2F` could pass as
+  a probe. A reviewer caught it, and the rewrite (`src/lib/rate-limit/edge-tier.ts`)
+  was hand-checked against the reviewer's attack paths.
+- Next: read PR #3's CI on `31d33e1`. If every check is green, merge it.
+  If CodeQL still flags something, fix the root cause again. The rule: never lower
+  the gate, never suppress.
+- The Docker job (image build plus Trivy) had not finished on the previous head.
 
 Merge PR #3 only when every check is green, using a **merge commit**, not a
 squash. `wip/0.3` and `wip/2.1-core` descend from the PR #3 head (`d6bec52`) and
@@ -78,7 +82,13 @@ conflicts by keeping both sides, run every check, push to
 3. **0.H.** Phase 0 hardening. Roadmap prompt plus the notes in
    `wip/tooling/early-briefs-0.2-0.H.md`. Two items carried here from review:
    - rate-limit keys use the client-supplied leftmost `X-Forwarded-For` (decide once the deployment proxy is known);
-   - the edge tiers log `requestId: unknown`.
+   - the edge tiers log `requestId: unknown`;
+   - `VersionDiff.htmlToLines` strips tags in a loop that can take quadratic
+     time on crafted nesting (about 5 s for 60 KB). It is harmless while the
+     kitchen sink is its only caller; make it one linear pass before a real page
+     uses it.
+   - `wip/0.3` and `wip/2.1-core` branch from `d6bec52`, the PR head before the
+     CodeQL fixes. Merge `main` into them once PR #3 lands.
 4. **Phase 1** (1.1–1.H). The bible templates in `wip/staging/templates/` are
    the field templates for 1.1. Move them into the repo, e.g.
    `src/lib/bible/templates/`, and validate them with Zod.
