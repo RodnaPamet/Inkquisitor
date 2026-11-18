@@ -35,7 +35,7 @@
  * Asking git removes the denominator entirely. `git ls-files -co
  * --exclude-standard` is exactly "every file git considers part of this
  * repo": tracked files PLUS untracked files that are not ignored. Ignored
- * trees — `node_modules/`, `.next/`, `.claude/`, `dist/`, `prisma/generated/`,
+ * trees — `node_modules/`, `.next/`, `.claude/`, `dist/`,
  * every future addition to `.gitignore` — fall out for free, and a brand-new
  * file a contributor has not `git add`-ed yet is still scanned, so a guard
  * cannot go green locally on work CI would fail.
@@ -62,8 +62,9 @@ let cachedRelPaths: readonly string[] | null = null;
 
 /**
  * Ask git for the file list of ONE work tree. Uncached, and parameterised on
- * `cwd` so the contract test can prove the ignore semantics against a
- * throwaway repo instead of planting files in this one — a transient file
+ * `cwd` so a contract test can prove the ignore semantics against a
+ * throwaway repo instead of planting files in this one (inflect-compliance's
+ * source-scan-population guardrail does; Phase 0.4 lifts it) — a transient file
  * inside the real tree is visible to every other suite running in parallel,
  * and shows up there as an ENOENT between "listed" and "read".
  */

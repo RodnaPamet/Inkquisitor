@@ -14,7 +14,8 @@ import * as fs from 'node:fs';
 import { repoFiles, repoRelative } from '../helpers/repo-files';
 
 const USE_CLIENT = /^\s*(?:\/\/[^\n]*\n|\/\*[\s\S]*?\*\/\s*)*\s*['"]use client['"]/;
-const SERVER_ENV_IMPORT = /(?:from\s+|import\s*\(\s*|require\s*\(\s*)['"](?:@\/env|(?:\.\.?\/)+env)['"]/;
+// `from '…'`, a bare side-effect `import '…'`, `import('…')` and `require('…')`.
+const SERVER_ENV_IMPORT = /(?:from\s+|\bimport\s+|\bimport\s*\(\s*|\brequire\s*\(\s*)['"](?:@\/env|(?:\.\.?\/)+env)['"]/;
 
 function importsServerEnv(source: string): boolean {
     return SERVER_ENV_IMPORT.test(source);
@@ -32,7 +33,12 @@ describe('client modules import no server env', () => {
         expect(importsServerEnv("import { env } from '@/env';")).toBe(true);
         expect(importsServerEnv("const { env } = await import('@/env');")).toBe(true);
         expect(importsServerEnv("import { env } from '../env';")).toBe(true);
+        expect(importsServerEnv("import '@/env';")).toBe(true);
+        expect(importsServerEnv('import "../env";')).toBe(true);
+        expect(importsServerEnv("const e = require('@/env');")).toBe(true);
         expect(importsServerEnv("import { env } from '@/env-client';")).toBe(false);
+        expect(importsServerEnv("import '@/env-client';")).toBe(false);
+        expect(importsServerEnv("import '@/environment';")).toBe(false);
     });
 
     it('no "use client" file under src imports @/env', () => {

@@ -11,6 +11,15 @@ import { defineConfig, devices } from '@playwright/test';
 const port = 3100;
 const isCI = !!process.env.CI;
 
+/**
+ * Optional override for the Chromium binary. CI runs `npx playwright install`
+ * and never sets it. It exists for machines whose pre-installed browsers are a
+ * different build from the one this @playwright/test version expects (the
+ * launch then fails with "Executable doesn't exist"), and where downloading
+ * the expected build is not possible. Unset, Playwright's own browser is used.
+ */
+const chromiumExecutable = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH || undefined;
+
 export default defineConfig({
     testDir: './tests/e2e',
     fullyParallel: true,
@@ -23,7 +32,17 @@ export default defineConfig({
         trace: 'retain-on-failure',
         screenshot: 'only-on-failure',
     },
-    projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
+    projects: [
+        {
+            name: 'chromium',
+            use: {
+                ...devices['Desktop Chrome'],
+                ...(chromiumExecutable
+                    ? { launchOptions: { executablePath: chromiumExecutable } }
+                    : {}),
+            },
+        },
+    ],
     webServer: process.env.URL
         ? undefined
         : {

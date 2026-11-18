@@ -1,3 +1,8 @@
+# Every published port is bound to 127.0.0.1. These are dev services with
+# well-known credentials (a Postgres superuser `postgres`/`postgres`, an
+# unauthenticated Redis and clamd); Docker publishes an unbound port on
+# 0.0.0.0 and its iptables rules bypass host firewalls such as ufw, so an
+# unbound port would hand them to anyone on the developer's network.
 services:
   postgres:
     image: ghcr.io/rodnapamet/postgres-pgvector:16-alpine
@@ -11,7 +16,7 @@ services:
     # Application traffic goes through PgBouncer on port 5433. Ports match
     # inflect-compliance's dev stack, so only one of the two runs at a time.
     ports:
-      - '5436:5432'
+      - '127.0.0.1:5436:5432'
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./prisma/init-roles.sh:/docker-entrypoint-initdb.d/01-init-roles.sh:ro
@@ -44,7 +49,7 @@ services:
       STATS_PERIOD: "60"
       ADMIN_USERS: postgres
     ports:
-      - '5433:5432'
+      - '127.0.0.1:5433:5432'
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -p 5432 -U postgres"]
       interval: 3s
@@ -53,8 +58,8 @@ services:
 
   # ── Redis (rate limits, BullMQ jobs from Phase 0.4) ──
   # Dev Redis is intentionally UNAUTHENTICATED for local ergonomics,
-  # and bound to 127.0.0.1 only — it is loopback-only, never reachable
-  # from the dev machine's network. A production compose file must
+  # and bound to 127.0.0.1 only, like every service in this file — it is
+  # loopback-only, never reachable from the dev machine's network. A production compose file must
   # require a password (Phase 7.4).
   redis:
     image: redis:7-alpine
@@ -76,7 +81,7 @@ services:
   clamav:
     image: clamav/clamav:1.4
     ports:
-      - '3310:3310'
+      - '127.0.0.1:3310:3310'
     volumes:
       - clamav-defs:/var/lib/clamav
     healthcheck:

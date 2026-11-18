@@ -23,8 +23,15 @@ function exampleKeys(): string[] {
     return [...src.matchAll(/^\s*#?\s*([A-Z][A-Z0-9_]*)=/gm)].map((m) => m[1]);
 }
 
-/** Variables read outside the env modules, by tools that are not Next. */
-const READ_BY_TOOLING = ['DIRECT_DATABASE_URL']; // prisma.config.ts
+/**
+ * Variables read outside the env modules, by tools that are not Next:
+ * whatever prisma.config.ts reads as `env.X` / `process.env.X`. Derived from
+ * the file, so removing a read there makes its .env.example entry fail below.
+ */
+function readByTooling(): string[] {
+    const src = fs.readFileSync(path.join(ROOT, 'prisma.config.ts'), 'utf8');
+    return [...new Set([...src.matchAll(/\benv\.([A-Z][A-Z0-9_]*)/g)].map((m) => m[1]))];
+}
 
 describe('.env.example', () => {
     const declared = [...runtimeEnvKeys('src/env.ts'), ...runtimeEnvKeys('src/env-client.ts')];
@@ -38,8 +45,12 @@ describe('.env.example', () => {
         expect(declared.filter((k) => !listed.has(k))).toEqual([]);
     });
 
+    it('prisma.config.ts reads both database URLs', () => {
+        expect(readByTooling().sort()).toEqual(['DATABASE_URL', 'DIRECT_DATABASE_URL']);
+    });
+
     it('lists nothing that no code reads', () => {
-        const read = new Set([...declared, ...READ_BY_TOOLING]);
+        const read = new Set([...declared, ...readByTooling()]);
         expect(exampleKeys().filter((k) => !read.has(k))).toEqual([]);
     });
 });

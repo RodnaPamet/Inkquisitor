@@ -18,7 +18,9 @@ describe('home page', () => {
         expect(html).toContain(`>${PRODUCT_DESCRIPTION}</p>`);
     });
 
-    it('styles the heading with Tailwind utilities', () => {
+    // Class names only: whether Tailwind generates CSS for them is
+    // tests/unit/tailwind-pipeline.test.ts.
+    it('puts the Tailwind utility classes on the heading', () => {
         expect(html).toMatch(/<h1 class="[^"]*\btext-5xl\b[^"]*\bfont-bold\b/);
     });
 
