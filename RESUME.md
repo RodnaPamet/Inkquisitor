@@ -11,39 +11,19 @@ a fresh session can continue without the original container.
 | Roadmap | merged | `docs/ROADMAP.md` on `main` (decisions D1–D6 recorded in section 2) |
 | 0.1 Repository bootstrap | merged, PR #1 | `main` |
 | 0.2 UI platform | merged, PR #2 | `main` |
-| 0.4 Platform services and tooling | **PR #3 open** | branch `claude/inkquisitor-roadmap-moryt6` |
+| 0.4 Platform services and tooling | merged, PR #3 (after CodeQL fixes) | `main` |
 | 0.3 Identity, workspaces, RLS | partial, never reviewed | branch `wip/0.3` |
 | 2.1 core (model seam, guards) | barely started | branch `wip/2.1-core` |
 | Phase 1–2 content | partial | this branch, `wip/staging/` |
 | 0.H, Phase 1, rest of Phase 2 | not started | — |
 
 ### PR #3 (0.4)
-CI was green on Lint, Typecheck, Test, Build and Security. **CodeQL failed**:
-the repo's own gate (`scripts/sarif-gate.js`) blocked six alerts:
-
-- `js/double-escaping` and `js/incomplete-multi-character-sanitization` in `src/components/ui/VersionDiff.tsx` (`htmlToLines`);
-- `js/user-controlled-bypass` in `src/middleware.ts` (rate-limit tier chosen from the path);
-- `js/file-system-race` in `site/scripts/stage-docs.js` (lstat then read);
-- `js/redos` in `tests/guards/client-modules-import-no-server-env.test.ts`;
-- `js/bad-tag-filter` in `tests/rendered/rich-text-editor.test.tsx`.
-
-**The fixes were pushed to PR #3 as commit `31d33e1`.** They were made by
-`wip/tooling/codeql-fixes-workflow.js`, and a skeptic reviewed each one.
-- The first middleware fix opened a new bypass: an encoded `..%2F` could pass as
-  a probe. A reviewer caught it, and the rewrite (`src/lib/rate-limit/edge-tier.ts`)
-  was hand-checked against the reviewer's attack paths.
-- Next: read PR #3's CI on `31d33e1`. If every check is green, merge it.
-  If CodeQL still flags something, fix the root cause again. The rule: never lower
-  the gate, never suppress.
-- The Docker job (image build plus Trivy) had not finished on the previous head.
-
-Merge PR #3 only when every check is green, using a **merge commit**, not a
-squash. `wip/0.3` and `wip/2.1-core` descend from the PR #3 head (`d6bec52`) and
-merge cleanly only if that history is kept.
+Merged as `db86764` once every check was green (Lint, Typecheck, Test, Build,
+Security, CodeQL, Docker, docs build). The first CodeQL run blocked six alerts.
+They were fixed at their root cause in `31d33e1`; the gate was not lowered.
 
 ### Owner actions outstanding
-- Switch the repository's default branch to `main`. It is still the
-  `claude/…` branch because that was the only branch when the repo was created.
+- None. The default branch was switched to `main` on 2026-11-18.
 
 ## How the work was being done
 
@@ -67,7 +47,7 @@ conflicts by keeping both sides, run every check, push to
 
 ## Next steps, in order
 
-1. **Finish PR #3** (above) and merge it.
+1. ~~Finish PR #3~~ done.
 2. **0.3.** Check out `wip/0.3` in a worktree. It was mid-implementation, with
    these steps done:
    - deps;
