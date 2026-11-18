@@ -1,0 +1,234 @@
+{
+  "kind": "OBJECT",
+  "label": "Object",
+  "description": "One significant object: what it is and looks like, who holds it, where it came from, why it matters and how it moves through the story. Places are settings, and the general laws of any magic or technology it uses are world rules.",
+  "fields": [
+    {
+      "key": "physical_description",
+      "label": "Physical description",
+      "help": "What the object looks and feels like in the hand: its size, shape, material, colour, condition and any marks that identify it.",
+      "type": "text",
+      "required": true,
+      "order": 1,
+      "dependsOn": []
+    },
+    {
+      "key": "object_type",
+      "label": "Kind of object",
+      "help": "The broad category the object belongs to, which shapes how characters handle it and what a reader assumes it can do.",
+      "type": "choice",
+      "options": [
+        {
+          "value": "tool_or_weapon",
+          "label": "Tool or weapon"
+        },
+        {
+          "value": "document",
+          "label": "Document, letter or record"
+        },
+        {
+          "value": "garment_or_jewellery",
+          "label": "Garment, jewellery or adornment"
+        },
+        {
+          "value": "container",
+          "label": "Vessel, box or container"
+        },
+        {
+          "value": "artwork_or_relic",
+          "label": "Artwork, heirloom or relic"
+        },
+        {
+          "value": "device",
+          "label": "Device or mechanism"
+        },
+        {
+          "value": "vehicle",
+          "label": "Vehicle or craft"
+        },
+        {
+          "value": "token_or_emblem",
+          "label": "Token, key or emblem"
+        }
+      ],
+      "required": false,
+      "order": 2,
+      "dependsOn": []
+    },
+    {
+      "key": "current_holder",
+      "label": "Holder at the opening",
+      "help": "Who has the object when the story opens, or where it lies if no one holds it, and by what right or means they keep it.",
+      "type": "text",
+      "required": true,
+      "order": 3,
+      "dependsOn": []
+    },
+    {
+      "key": "origin",
+      "label": "Origin",
+      "help": "Where the object came from, who made or found it, and how it reached the hands or place it occupies when the story opens.",
+      "type": "richtext",
+      "required": true,
+      "order": 4,
+      "dependsOn": [
+        "physical_description"
+      ]
+    },
+    {
+      "key": "significance",
+      "label": "Significance",
+      "help": "Why the object matters to the story's events or to someone in it, and what would change if it had never existed.",
+      "type": "richtext",
+      "required": true,
+      "order": 5,
+      "dependsOn": [
+        "physical_description"
+      ]
+    },
+    {
+      "key": "capabilities",
+      "label": "What it can do",
+      "help": "What the object lets its holder do or stops them doing, with the general laws of any magic or technology behind it kept as world rules.",
+      "type": "richtext",
+      "required": false,
+      "order": 6,
+      "dependsOn": [
+        "physical_description"
+      ]
+    },
+    {
+      "key": "vulnerabilities",
+      "label": "How it can be lost or ruined",
+      "help": "The ways the object can be damaged, used up, stolen, mislaid or destroyed, one per item.",
+      "type": "list",
+      "required": false,
+      "order": 7,
+      "dependsOn": [
+        "physical_description"
+      ]
+    },
+    {
+      "key": "worth_to_others",
+      "label": "Worth to the wider world",
+      "help": "How much people with no personal tie to the object would value it in the story's world, apart from what it means to its holder.",
+      "type": "scale",
+      "scaleLabels": {
+        "low": "Worthless to a stranger",
+        "high": "Beyond price"
+      },
+      "required": false,
+      "order": 8,
+      "dependsOn": [
+        "physical_description"
+      ]
+    },
+    {
+      "key": "sought_by",
+      "label": "Who wants it",
+      "help": "Each person or group who wants the object, and what they would do with it once they had it, one per item.",
+      "type": "list",
+      "required": false,
+      "order": 9,
+      "dependsOn": [
+        "significance"
+      ]
+    },
+    {
+      "key": "hidden_truths",
+      "label": "What is hidden about it",
+      "help": "Any truth about the object's nature, origin or whereabouts that some characters do not know, who does know it, and when the reader learns it.",
+      "type": "richtext",
+      "required": false,
+      "order": 10,
+      "dependsOn": [
+        "origin",
+        "significance"
+      ]
+    },
+    {
+      "key": "custody_changes",
+      "label": "Changes of hands",
+      "help": "Each time the object passes from one holder to another during the story, in order, saying from whom to whom and by what means.",
+      "type": "list",
+      "required": false,
+      "order": 11,
+      "dependsOn": [
+        "current_holder"
+      ]
+    },
+    {
+      "key": "first_appearance",
+      "label": "First appearance on the page",
+      "help": "Where in the book the reader first meets the object, and how much of its importance shows at that moment.",
+      "type": "text",
+      "required": false,
+      "order": 12,
+      "dependsOn": [
+        "significance"
+      ]
+    },
+    {
+      "key": "final_state",
+      "label": "Where it ends up",
+      "help": "Where the object is, who holds it and what condition it is in when the book ends, or how it ceased to exist.",
+      "type": "richtext",
+      "required": false,
+      "order": 13,
+      "dependsOn": [
+        "current_holder",
+        "significance"
+      ]
+    }
+  ],
+  "relationTypes": [
+    {
+      "key": "part_of",
+      "label": "part of",
+      "inverseLabel": "has as a part",
+      "targetKinds": [
+        "OBJECT"
+      ]
+    },
+    {
+      "key": "paired_with",
+      "label": "paired with",
+      "inverseLabel": "paired with",
+      "targetKinds": [
+        "OBJECT"
+      ]
+    },
+    {
+      "key": "made_from",
+      "label": "made from",
+      "inverseLabel": "used to make",
+      "targetKinds": [
+        "OBJECT"
+      ]
+    },
+    {
+      "key": "copy_of",
+      "label": "copy of",
+      "inverseLabel": "has copy",
+      "targetKinds": [
+        "OBJECT"
+      ]
+    },
+    {
+      "key": "unlocks",
+      "label": "unlocks or activates",
+      "inverseLabel": "unlocked or activated by",
+      "targetKinds": [
+        "OBJECT"
+      ]
+    },
+    {
+      "key": "draws_on",
+      "label": "draws on",
+      "inverseLabel": "informs",
+      "targetKinds": [
+        "RESEARCH"
+      ]
+    }
+  ]
+}

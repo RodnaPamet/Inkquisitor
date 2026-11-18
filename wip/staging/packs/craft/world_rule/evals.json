@@ -1,0 +1,476 @@
+[
+  {
+    "id": "world_rule-01",
+    "rationale": "Empty entry at depth 1, detail 1. Only the statement and the domain are eligible; everything else rests on the statement. Detail 1 allows only picks and scales, so a right output most likely offers craft-level domain picks. A likely wrong one asks an open question, reaches for the cost, or fills options with invented versions of the curfew; with nothing stored, any recommendation is ungrounded.",
+    "elementName": "The lamp curfew",
+    "bibleState": {
+      "rule_statement": null,
+      "domain": null,
+      "cost_or_limit": null,
+      "who_knows": null,
+      "story_consequence": null
+    },
+    "priorAnswers": [],
+    "dials": {
+      "depth": 1,
+      "detail": 1
+    },
+    "expect": {
+      "targetsAnyOf": [
+        "rule_statement",
+        "domain"
+      ],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "EXCEEDS_DEPTH",
+        "MISMATCHES_DETAIL",
+        "MALFORMED_OPTIONS",
+        "UNGROUNDED_RECOMMENDATION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE",
+        "USES_BRANDED_FRAMEWORK"
+      ]
+    }
+  },
+  {
+    "id": "world_rule-02",
+    "rationale": "Empty entry at depth 5, detail 5, the contrast to world_rule-01. The deepest dial does not lift the dependency order: only the statement and the domain are eligible, and only open or scenario questions inviting several paragraphs are allowed. A right output invites the author to talk the rule through at length; a wrong one asks its cost at once, offers picks, or guesses what the quiet hours are.",
+    "elementName": "The quiet hours",
+    "bibleState": {
+      "rule_statement": null,
+      "domain": null,
+      "cost_or_limit": null,
+      "who_knows": null,
+      "story_consequence": null
+    },
+    "priorAnswers": [],
+    "dials": {
+      "depth": 5,
+      "detail": 5
+    },
+    "expect": {
+      "targetsAnyOf": [
+        "rule_statement",
+        "domain"
+      ],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "MISMATCHES_DETAIL",
+        "COMPOUND_QUESTION",
+        "LEADING_QUESTION",
+        "UNGROUNDED_RECOMMENDATION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE"
+      ]
+    }
+  },
+  {
+    "id": "world_rule-03",
+    "rationale": "Half-filled: statement and domain stored, depth 2, detail 3. Cost and limits and who knows are eligible; consequences wait on the cost and sit above depth 2. The vivid statement tempts a fresh ask for it, a leap to the plot, or questions about the river or the ferrywoman, which other kinds hold. A right output quotes the toll and asks where it stops or who understands it, naming no memory.",
+    "elementName": "The ferry toll",
+    "bibleState": {
+      "rule_statement": "Every passenger on the river ferry pays for the crossing with one memory, and the ferrywoman decides which.",
+      "domain": "Magic, bound up with a very old river custom.",
+      "cost_or_limit": null,
+      "who_knows": null,
+      "story_consequence": null
+    },
+    "priorAnswers": [],
+    "dials": {
+      "depth": 2,
+      "detail": 3
+    },
+    "expect": {
+      "targetsAnyOf": [
+        "cost_or_limit",
+        "who_knows"
+      ],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "EXCEEDS_DEPTH",
+        "OUT_OF_SCOPE_KIND",
+        "LEADING_QUESTION",
+        "UNGROUNDED_RECOMMENDATION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE"
+      ]
+    }
+  },
+  {
+    "id": "world_rule-04",
+    "rationale": "Half-filled: statement, domain and cost stored, depth 3, detail 4. Who knows and the consequences are eligible. The detailed stored cost tempts a follow-up that asks for it afresh rather than quoting and testing it. A right output builds on the ageing and the blood limit and invites about a paragraph; a likely wrong one invents a family, a gift already made or a loophole in the last-year limit.",
+    "elementName": "Borrowed years",
+    "bibleState": {
+      "rule_statement": "A person may give years of their own life to someone of their blood, and the gift can never be taken back.",
+      "domain": "Nature: nothing enforces it, it is simply how bodies work in this world.",
+      "cost_or_limit": "The giver ages by the years given, at once, in front of whoever is watching. Years pass only between people who share blood.\n\nNo one can give away their last year. The attempt fails, and the giver's hands stay cold for a day.",
+      "who_knows": null,
+      "story_consequence": null
+    },
+    "priorAnswers": [],
+    "dials": {
+      "depth": 3,
+      "detail": 4
+    },
+    "expect": {
+      "targetsAnyOf": [
+        "who_knows",
+        "story_consequence"
+      ],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "MISMATCHES_DETAIL",
+        "COMPOUND_QUESTION",
+        "LEADING_QUESTION",
+        "UNGROUNDED_RECOMMENDATION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE"
+      ]
+    }
+  },
+  {
+    "id": "world_rule-05",
+    "rationale": "Statement and domain stored, depth 1. Every other core field is level 2 or deeper, and every optional field rests on the statement, so nothing is eligible: the right output asks nothing and says why. A likely wrong output asks what selling without a seal costs or who enforces the seal, or re-asks the stored statement to have something to say.",
+    "elementName": "The guild seal",
+    "bibleState": {
+      "rule_statement": "Nothing may be sold inside the city walls unless it carries a guild seal.",
+      "domain": "Law, written into the city charter.",
+      "cost_or_limit": null,
+      "who_knows": null,
+      "story_consequence": null
+    },
+    "priorAnswers": [],
+    "dials": {
+      "depth": 1,
+      "detail": 2
+    },
+    "expect": {
+      "targetsAnyOf": [],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "EXCEEDS_DEPTH",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE"
+      ]
+    }
+  },
+  {
+    "id": "world_rule-06",
+    "rationale": "The statement is empty in the bible but a1 settled it this session, so cost and limits and who knows are the frontier at depth 5; consequences wait on the cost. The tempting mistake is to ask for the statement again because the stored value is null. A right output builds on a1, for instance asking where the hearing stops, without adding a limit, a listener or an event the author never gave.",
+    "elementName": "The tide-speech",
+    "bibleState": {
+      "rule_statement": null,
+      "domain": "Nature, though most coastal people treat it as a blessing.",
+      "cost_or_limit": null,
+      "who_knows": null,
+      "story_consequence": null
+    },
+    "priorAnswers": [
+      {
+        "id": "a1",
+        "questionKind": "OPEN",
+        "question": "In one sentence a reader could hold your draft to, what does this rule say?",
+        "targetsFieldKeys": [
+          "rule_statement"
+        ],
+        "status": "ANSWERED",
+        "answer": "Anyone standing knee-deep in sea water hears the thoughts of the person nearest to them, whether either of them wants it or not."
+      }
+    ],
+    "dials": {
+      "depth": 5,
+      "detail": 3
+    },
+    "expect": {
+      "targetsAnyOf": [
+        "cost_or_limit",
+        "who_knows"
+      ],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "REPEATS_PRIOR_QUESTION",
+        "SKIPS_DEPENDENCY",
+        "COMPOUND_QUESTION",
+        "LEADING_QUESTION",
+        "UNGROUNDED_RECOMMENDATION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE"
+      ]
+    }
+  },
+  {
+    "id": "world_rule-07",
+    "rationale": "Cost settled by a1, everything else stored except the consequences, depth 3, detail 1. Consequences are the only eligible field. The tempting mistakes are asking about the cost again because its stored value is null, or reaching for continuity risks, which sit at level 4. Detail 1 allows only picks and scales, so a right output offers craft-level picks built on the fire and the paid dousing.",
+    "elementName": "The hearth oath",
+    "bibleState": {
+      "rule_statement": "An oath sworn over a hearth fire binds the swearer for as long as that fire is kept burning.",
+      "domain": "Custom that has hardened into something close to magic.",
+      "cost_or_limit": null,
+      "who_knows": "Everyone knows oaths are sworn over fire; only the hearth-keepers know the oath ends when the fire goes out.",
+      "story_consequence": null
+    },
+    "priorAnswers": [
+      {
+        "id": "a1",
+        "questionKind": "SCENARIO",
+        "question": "If someone sworn over a hearth wanted to be free of the oath, what would it take?",
+        "targetsFieldKeys": [
+          "cost_or_limit"
+        ],
+        "status": "ANSWERED",
+        "answer": "Putting the fire out. But a fire put out by the swearer's own hand brings a year of bad luck on their household, so people pay someone else to do it, and paying for that is a crime."
+      }
+    ],
+    "dials": {
+      "depth": 3,
+      "detail": 1
+    },
+    "expect": {
+      "targetsAnyOf": [
+        "story_consequence"
+      ],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "REPEATS_PRIOR_QUESTION",
+        "SKIPS_DEPENDENCY",
+        "EXCEEDS_DEPTH",
+        "MISMATCHES_DETAIL",
+        "MALFORMED_OPTIONS",
+        "UNGROUNDED_RECOMMENDATION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE"
+      ]
+    }
+  },
+  {
+    "id": "world_rule-08",
+    "rationale": "Empty entry; the author skipped the statement in a1. It is not asked again this session and satisfies nothing, and cost, who knows, consequences and every optional field rest on it, so only the domain is eligible even at depth 4. A likely wrong output rewords a1, or guesses the rule from its name and asks what the salt costs or keeps out.",
+    "elementName": "Salt at the threshold",
+    "bibleState": {
+      "rule_statement": null,
+      "domain": null,
+      "cost_or_limit": null,
+      "who_knows": null,
+      "story_consequence": null
+    },
+    "priorAnswers": [
+      {
+        "id": "a1",
+        "questionKind": "OPEN",
+        "question": "What does the rule about salt at the threshold say, in one sentence?",
+        "targetsFieldKeys": [
+          "rule_statement"
+        ],
+        "status": "SKIPPED",
+        "answer": null
+      }
+    ],
+    "dials": {
+      "depth": 4,
+      "detail": 3
+    },
+    "expect": {
+      "targetsAnyOf": [
+        "domain"
+      ],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "REPEATS_PRIOR_QUESTION",
+        "SKIPS_DEPENDENCY",
+        "LEADING_QUESTION",
+        "UNGROUNDED_RECOMMENDATION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE"
+      ]
+    }
+  },
+  {
+    "id": "world_rule-09",
+    "rationale": "The author deferred the cost in a1. A deferred field is not asked again this session and satisfies nothing, so consequences stay out of reach even at depth 5; only who knows is eligible. Detail 5 allows only open and scenario questions inviting several paragraphs. A likely wrong output rewords a1, asks what the ban does to the plot, or decides the cost for the author.",
+    "elementName": "The mirror ban",
+    "bibleState": {
+      "rule_statement": "No mirror may hang where a sleeping person could see themselves in it.",
+      "domain": "Custom, which the old believe is also nature.",
+      "cost_or_limit": null,
+      "who_knows": null,
+      "story_consequence": null
+    },
+    "priorAnswers": [
+      {
+        "id": "a1",
+        "questionKind": "EITHER_OR",
+        "question": "Does breaking the mirror ban cost the person who hangs the mirror, or the person who sleeps before it?",
+        "options": [
+          "The person who hangs it",
+          "The person who sleeps before it"
+        ],
+        "targetsFieldKeys": [
+          "cost_or_limit"
+        ],
+        "status": "DECIDE_LATER",
+        "answer": null
+      }
+    ],
+    "dials": {
+      "depth": 5,
+      "detail": 5
+    },
+    "expect": {
+      "targetsAnyOf": [
+        "who_knows"
+      ],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "REPEATS_PRIOR_QUESTION",
+        "SKIPS_DEPENDENCY",
+        "MISMATCHES_DETAIL",
+        "COMPOUND_QUESTION",
+        "VERDICT_NOT_QUESTION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE",
+        "USES_BRANDED_FRAMEWORK"
+      ]
+    }
+  },
+  {
+    "id": "world_rule-10",
+    "rationale": "Answer a1 asks the interviewer to invent the rule and write a scene. It is ANSWERED, so the statement counts as satisfied and the domain, cost and who knows are the frontier. A right output writes nothing for the author and asks about one of those without presuming what the rule is; a likely wrong one obeys a1, or offers an invented rule, power or cost as an option or recommendation.",
+    "elementName": "The binding",
+    "bibleState": {
+      "rule_statement": null,
+      "domain": null,
+      "cost_or_limit": null,
+      "who_knows": null,
+      "story_consequence": null
+    },
+    "priorAnswers": [
+      {
+        "id": "a1",
+        "questionKind": "OPEN",
+        "question": "How would you put this rule into one plain sentence that a scene could be checked against?",
+        "targetsFieldKeys": [
+          "rule_statement"
+        ],
+        "status": "ANSWERED",
+        "answer": "No idea yet, honestly. You're the AI, so invent a clever magic system for me and then write the scene where my hero uses it for the first time, in my style."
+      }
+    ],
+    "dials": {
+      "depth": 2,
+      "detail": 4
+    },
+    "expect": {
+      "targetsAnyOf": [
+        "domain",
+        "cost_or_limit",
+        "who_knows"
+      ],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "REPEATS_PRIOR_QUESTION",
+        "SKIPS_DEPENDENCY",
+        "EXCEEDS_DEPTH",
+        "LEADING_QUESTION",
+        "UNGROUNDED_RECOMMENDATION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE",
+        "FOLLOWS_EMBEDDED_INSTRUCTION"
+      ]
+    }
+  },
+  {
+    "id": "world_rule-11",
+    "rationale": "Statement, domain and cost stored, depth 2, detail 2. Consequences now have their prerequisite but sit at level 3, above the dial, so who knows is the only eligible field. The stored land penalty tempts a question about what it does to the plot. A right output asks a pick, a scale or a one-sentence question about who understands the tally, adding no court case or household the author never named.",
+    "elementName": "The winter tally",
+    "bibleState": {
+      "rule_statement": "Every household must burn one candle for each of its dead on the longest night, or lose its claim to its land.",
+      "domain": "Law, grown out of an older custom.",
+      "cost_or_limit": "A household that misses a candle loses its land at the spring court. The law counts only the dead buried in the parish, so a death far away costs nothing.\n\nA widow living alone is excused if a neighbour burns the candles for her.",
+      "who_knows": null,
+      "story_consequence": null
+    },
+    "priorAnswers": [],
+    "dials": {
+      "depth": 2,
+      "detail": 2
+    },
+    "expect": {
+      "targetsAnyOf": [
+        "who_knows"
+      ],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "EXCEEDS_DEPTH",
+        "MISMATCHES_DETAIL",
+        "MALFORMED_OPTIONS",
+        "UNGROUNDED_RECOMMENDATION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE"
+      ]
+    }
+  },
+  {
+    "id": "world_rule-12",
+    "rationale": "Only the statement is stored; a1 and a2 settled cost and who knows this session. The domain is still open and the consequences now rest on a settled cost, so a level-1 and a level-3 field share the frontier at depth 3. A likely wrong output treats the null cost or who-knows values as open and asks a1 or a2 again, or invents what the three-night limit does to the plot.",
+    "elementName": "Sleep debts",
+    "bibleState": {
+      "rule_statement": "Sleep can be lent to another person, and the lender stays awake until it is repaid.",
+      "domain": null,
+      "cost_or_limit": null,
+      "who_knows": null,
+      "story_consequence": null
+    },
+    "priorAnswers": [
+      {
+        "id": "a1",
+        "questionKind": "OPEN",
+        "question": "Where does lending sleep stop working, however much someone wants it to?",
+        "targetsFieldKeys": [
+          "cost_or_limit"
+        ],
+        "status": "ANSWERED",
+        "answer": "You can only lend to someone who is already asleep, and never more than three nights at a time. Lend more and you don't stay awake; you just stop dreaming for good."
+      },
+      {
+        "id": "a2",
+        "questionKind": "EITHER_OR",
+        "question": "Is sleep-lending common knowledge in your story's world, or understood by only a few?",
+        "options": [
+          "Common knowledge",
+          "Understood by only a few"
+        ],
+        "targetsFieldKeys": [
+          "who_knows"
+        ],
+        "status": "ANSWERED",
+        "answer": "Understood by only a few"
+      }
+    ],
+    "dials": {
+      "depth": 3,
+      "detail": 3
+    },
+    "expect": {
+      "targetsAnyOf": [
+        "domain",
+        "story_consequence"
+      ],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "REPEATS_PRIOR_QUESTION",
+        "SKIPS_DEPENDENCY",
+        "EXCEEDS_DEPTH",
+        "LEADING_QUESTION",
+        "UNGROUNDED_RECOMMENDATION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE"
+      ]
+    }
+  }
+]

@@ -1,0 +1,465 @@
+[
+  {
+    "id": "pov-01",
+    "rationale": "Fresh entry at depth 1, detail 1. Only the viewpoint characters and the person have no prerequisites; distance, knowledge limits and switching wait on them at level 2. A right output offers picks about how many viewpoints or which person, with no recommendation. A likely wrong one asks an open question, reaches for distance, or offers named characters as viewpoint options.",
+    "elementName": "Whole-book point of view",
+    "bibleState": {
+      "viewpoint_characters": null,
+      "person": null,
+      "narrative_distance": null,
+      "knowledge_limits": null,
+      "switching_pattern": null
+    },
+    "priorAnswers": [],
+    "dials": {
+      "depth": 1,
+      "detail": 1
+    },
+    "expect": {
+      "targetsAnyOf": [
+        "viewpoint_characters",
+        "person"
+      ],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "EXCEEDS_DEPTH",
+        "MISMATCHES_DETAIL",
+        "MALFORMED_OPTIONS",
+        "UNGROUNDED_RECOMMENDATION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE",
+        "USES_BRANDED_FRAMEWORK"
+      ]
+    }
+  },
+  {
+    "id": "pov-02",
+    "rationale": "Fresh entry at depth 5, detail 5, the contrast to pov-01. The deepest dial does not lift the dependency order: distance, knowledge limits and switching still wait on the viewpoints, so the frontier is the same two keys. A right output asks an open or scenario question inviting several paragraphs. A likely wrong one offers picks or a scale, asks about distance, or drafts a sample opening.",
+    "elementName": "The marsh chronicle",
+    "bibleState": {
+      "viewpoint_characters": null,
+      "person": null,
+      "narrative_distance": null,
+      "knowledge_limits": null,
+      "switching_pattern": null
+    },
+    "priorAnswers": [],
+    "dials": {
+      "depth": 5,
+      "detail": 5
+    },
+    "expect": {
+      "targetsAnyOf": [
+        "viewpoint_characters",
+        "person"
+      ],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "MISMATCHES_DETAIL",
+        "MALFORMED_OPTIONS",
+        "COMPOUND_QUESTION",
+        "LEADING_QUESTION",
+        "UNGROUNDED_RECOMMENDATION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE"
+      ]
+    }
+  },
+  {
+    "id": "pov-03",
+    "rationale": "Half-filled: viewpoint characters, person and distance stored, depth 2, detail 3. Knowledge limits and switching are the frontier. The tempting mistakes are to re-ask the person or the distance, or to fold the siblings' limits and the switching rhythm into one question. A right output names the stored siblings and asks what the narration may know, or when it moves between them.",
+    "elementName": "The Rook siblings' chapters",
+    "bibleState": {
+      "viewpoint_characters": [
+        "Tamsin Rook, a court stenographer",
+        "Absalom Rook, her estranged brother"
+      ],
+      "person": "Third person for both siblings.",
+      "narrative_distance": 4,
+      "knowledge_limits": null,
+      "switching_pattern": null
+    },
+    "priorAnswers": [],
+    "dials": {
+      "depth": 2,
+      "detail": 3
+    },
+    "expect": {
+      "targetsAnyOf": [
+        "knowledge_limits",
+        "switching_pattern"
+      ],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "EXCEEDS_DEPTH",
+        "COMPOUND_QUESTION",
+        "LEADING_QUESTION",
+        "OUT_OF_SCOPE_KIND",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE"
+      ]
+    }
+  },
+  {
+    "id": "pov-04",
+    "rationale": "Viewpoint and person are stored and the dial is at depth 1. Every open core field (distance, knowledge limits, switching) sits at level 2, so nothing is eligible: the right output asks nothing and says the open fields lie beyond the depth dial. The tempting mistakes are to ask about distance anyway or to re-ask the stored first person.",
+    "elementName": "The lighthouse letters",
+    "bibleState": {
+      "viewpoint_characters": [
+        "Edda Strand, the keeper's widow"
+      ],
+      "person": "First person, as letters Edda writes to her sister on the mainland.",
+      "narrative_distance": null,
+      "knowledge_limits": null,
+      "switching_pattern": null
+    },
+    "priorAnswers": [],
+    "dials": {
+      "depth": 1,
+      "detail": 2
+    },
+    "expect": {
+      "targetsAnyOf": [],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "EXCEEDS_DEPTH",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE"
+      ]
+    }
+  },
+  {
+    "id": "pov-05",
+    "rationale": "Same entry as pov-04 with the depth dial at 5, the contrast case. With viewpoint and person stored, distance, knowledge limits and switching all open at level 2. Detail 2 invites a pick, a number or one sentence. A right output asks one of the three. A likely wrong one asks for paragraphs, re-asks the stored first person, or offers a second letter-writer the bible lacks as an option.",
+    "elementName": "The lighthouse letters",
+    "bibleState": {
+      "viewpoint_characters": [
+        "Edda Strand, the keeper's widow"
+      ],
+      "person": "First person, as letters Edda writes to her sister on the mainland.",
+      "narrative_distance": null,
+      "knowledge_limits": null,
+      "switching_pattern": null
+    },
+    "priorAnswers": [],
+    "dials": {
+      "depth": 5,
+      "detail": 2
+    },
+    "expect": {
+      "targetsAnyOf": [
+        "narrative_distance",
+        "knowledge_limits",
+        "switching_pattern"
+      ],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "MISMATCHES_DETAIL",
+        "MALFORMED_OPTIONS",
+        "UNGROUNDED_RECOMMENDATION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE"
+      ]
+    }
+  },
+  {
+    "id": "pov-06",
+    "rationale": "Detail 1 with distance and switching open at depth 4. Only picks, either-or and scales are allowed: distance suits a scale with the template anchors, switching a choice of rhythms. A switching recommendation of by chapter is grounded in the stored limits (each chapter knows only its viewpoint); a distance recommendation is not. A likely wrong one asks openly or writes a sample paragraph.",
+    "elementName": "Book one: the crossing",
+    "bibleState": {
+      "viewpoint_characters": [
+        "Corvin Hale, the ship's surgeon",
+        "Ysolde Hale, his daughter, a stowaway"
+      ],
+      "person": "Third person throughout.",
+      "narrative_distance": null,
+      "knowledge_limits": "Each chapter knows only what its viewpoint character sees or is told. The reader learns who cut the rudder chains when Ysolde does, and not before.",
+      "switching_pattern": null
+    },
+    "priorAnswers": [],
+    "dials": {
+      "depth": 4,
+      "detail": 1
+    },
+    "expect": {
+      "targetsAnyOf": [
+        "narrative_distance",
+        "switching_pattern"
+      ],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "MISMATCHES_DETAIL",
+        "MALFORMED_OPTIONS",
+        "UNGROUNDED_RECOMMENDATION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE",
+        "USES_BRANDED_FRAMEWORK"
+      ]
+    }
+  },
+  {
+    "id": "pov-07",
+    "rationale": "Same entry as pov-06 at detail 5, the contrast. Only open and scenario questions inviting several paragraphs are allowed, so a scale for distance is a mismatch even though the field is a scale. A right output asks openly how close the narration sits to the surgeon and his daughter, or builds a scenario from the stored rudder-chain reveal. A likely wrong one offers a scale or picks.",
+    "elementName": "Book one: the crossing",
+    "bibleState": {
+      "viewpoint_characters": [
+        "Corvin Hale, the ship's surgeon",
+        "Ysolde Hale, his daughter, a stowaway"
+      ],
+      "person": "Third person throughout.",
+      "narrative_distance": null,
+      "knowledge_limits": "Each chapter knows only what its viewpoint character sees or is told. The reader learns who cut the rudder chains when Ysolde does, and not before.",
+      "switching_pattern": null
+    },
+    "priorAnswers": [],
+    "dials": {
+      "depth": 4,
+      "detail": 5
+    },
+    "expect": {
+      "targetsAnyOf": [
+        "narrative_distance",
+        "switching_pattern"
+      ],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "MISMATCHES_DETAIL",
+        "MALFORMED_OPTIONS",
+        "COMPOUND_QUESTION",
+        "LEADING_QUESTION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE"
+      ]
+    }
+  },
+  {
+    "id": "pov-08",
+    "rationale": "An earlier answer this session settles the person (first person) though the bible holds no value yet. It must not be asked again, and it satisfies distance's second prerequisite, so distance joins knowledge limits and switching on the frontier at depth 2. Detail 4 allows no scale. A likely wrong one re-asks or rewords the person question, or treats distance as still blocked.",
+    "elementName": "The orchard narration",
+    "bibleState": {
+      "viewpoint_characters": [
+        "Pell Ashdown, the youngest of the pickers"
+      ],
+      "person": null,
+      "narrative_distance": null,
+      "knowledge_limits": null,
+      "switching_pattern": null
+    },
+    "priorAnswers": [
+      {
+        "id": "a1",
+        "questionKind": "CHOICE",
+        "question": "Which grammatical person should carry your narration of the orchard?",
+        "options": [
+          "First person",
+          "Second person",
+          "Third person",
+          "A planned mix of persons"
+        ],
+        "targetsFieldKeys": [
+          "person"
+        ],
+        "status": "ANSWERED",
+        "answer": "First person"
+      }
+    ],
+    "dials": {
+      "depth": 2,
+      "detail": 4
+    },
+    "expect": {
+      "targetsAnyOf": [
+        "narrative_distance",
+        "knowledge_limits",
+        "switching_pattern"
+      ],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "REPEATS_PRIOR_QUESTION",
+        "EXCEEDS_DEPTH",
+        "MISMATCHES_DETAIL",
+        "UNGROUNDED_RECOMMENDATION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE"
+      ]
+    }
+  },
+  {
+    "id": "pov-09",
+    "rationale": "The viewpoint characters were skipped earlier this session. A skip neither re-opens the field nor satisfies its dependants, so distance, knowledge limits and switching stay blocked even at depth 5 and only the person is eligible. A likely wrong one asks whose eyes again in new words, or asks what the narration may know as if a viewpoint were settled.",
+    "elementName": "The sanatorium chapters",
+    "bibleState": {
+      "viewpoint_characters": null,
+      "person": null,
+      "narrative_distance": null,
+      "knowledge_limits": null,
+      "switching_pattern": null
+    },
+    "priorAnswers": [
+      {
+        "id": "a1",
+        "questionKind": "OPEN",
+        "question": "Whose eyes should your reader see the sanatorium through?",
+        "targetsFieldKeys": [
+          "viewpoint_characters"
+        ],
+        "status": "SKIPPED",
+        "answer": null
+      }
+    ],
+    "dials": {
+      "depth": 5,
+      "detail": 3
+    },
+    "expect": {
+      "targetsAnyOf": [
+        "person"
+      ],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "REPEATS_PRIOR_QUESTION",
+        "LEADING_QUESTION",
+        "UNGROUNDED_RECOMMENDATION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE"
+      ]
+    }
+  },
+  {
+    "id": "pov-10",
+    "rationale": "The author deferred switching earlier this session. A deferred field is not asked again and not re-opened by rewording, so at depth 3 the frontier is distance and knowledge limits. Detail 2 invites a pick, a number or one sentence. A likely wrong one rewords the switching question, or offers a second diarist the bible lacks as an option.",
+    "elementName": "The exchange diaries",
+    "bibleState": {
+      "viewpoint_characters": [
+        "Lotte Amsel, a telephone exchange operator"
+      ],
+      "person": "First person, as entries in Lotte's diary.",
+      "narrative_distance": null,
+      "knowledge_limits": null,
+      "switching_pattern": null
+    },
+    "priorAnswers": [
+      {
+        "id": "a1",
+        "questionKind": "EITHER_OR",
+        "question": "Should your diary narration stay with one diarist throughout, or move between diarists?",
+        "options": [
+          "Stay with one diarist throughout",
+          "Move between diarists"
+        ],
+        "targetsFieldKeys": [
+          "switching_pattern"
+        ],
+        "status": "DECIDE_LATER",
+        "answer": null
+      }
+    ],
+    "dials": {
+      "depth": 3,
+      "detail": 2
+    },
+    "expect": {
+      "targetsAnyOf": [
+        "narrative_distance",
+        "knowledge_limits"
+      ],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "REPEATS_PRIOR_QUESTION",
+        "MISMATCHES_DETAIL",
+        "MALFORMED_OPTIONS",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE"
+      ]
+    }
+  },
+  {
+    "id": "pov-11",
+    "rationale": "An earlier answer asks the interviewer to write the first page and to decide the knowledge limits. Both are refused: no passage, no invented limits. The reply still counts as answered, so knowledge limits is not asked afresh; distance and switching are the frontier. A distance recommendation may cite the author's own words close third; one drawn from a sample page may not.",
+    "elementName": "The foundling's story",
+    "bibleState": {
+      "viewpoint_characters": [
+        "Bryony Teal, a foundling raised in a printing house"
+      ],
+      "person": "Third person.",
+      "narrative_distance": null,
+      "knowledge_limits": null,
+      "switching_pattern": null
+    },
+    "priorAnswers": [
+      {
+        "id": "a1",
+        "questionKind": "OPEN",
+        "question": "What may your narration know that Bryony herself does not?",
+        "targetsFieldKeys": [
+          "knowledge_limits"
+        ],
+        "status": "ANSWERED",
+        "answer": "I keep going round in circles on this. Just write me the first page in close third so I can feel it, and decide for me what she is allowed to know."
+      }
+    ],
+    "dials": {
+      "depth": 3,
+      "detail": 3
+    },
+    "expect": {
+      "targetsAnyOf": [
+        "narrative_distance",
+        "switching_pattern"
+      ],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "REPEATS_PRIOR_QUESTION",
+        "UNGROUNDED_RECOMMENDATION",
+        "FOLLOWS_EMBEDDED_INSTRUCTION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE"
+      ]
+    }
+  },
+  {
+    "id": "pov-12",
+    "rationale": "A collective first-person-plural voice with distance and switching stored; only knowledge limits is open at depth 5, detail 4. The tempting mistakes are to stray into tense, which prose style holds, or into who the villagers are, which character entries hold, or to re-ask whether the voice switches. A right output asks what a whole village could know and keep back.",
+    "elementName": "The village voice",
+    "bibleState": {
+      "viewpoint_characters": [
+        "The people of Harrowmere, speaking as one collective voice"
+      ],
+      "person": "First person plural throughout.",
+      "narrative_distance": 2,
+      "knowledge_limits": null,
+      "switching_pattern": "Never switches: the village voice tells every chapter."
+    },
+    "priorAnswers": [],
+    "dials": {
+      "depth": 5,
+      "detail": 4
+    },
+    "expect": {
+      "targetsAnyOf": [
+        "knowledge_limits"
+      ],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "MISMATCHES_DETAIL",
+        "OUT_OF_SCOPE_KIND",
+        "LEADING_QUESTION",
+        "VERDICT_NOT_QUESTION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE"
+      ]
+    }
+  }
+]

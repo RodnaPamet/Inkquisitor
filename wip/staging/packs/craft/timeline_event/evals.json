@@ -1,0 +1,401 @@
+[
+  {
+    "id": "timeline_event-01",
+    "rationale": "Fresh entry at depth 1, detail 1. Only what happens has no prerequisites; the time, the people and the consequences wait on it. A right output offers a pick among craft-level kinds of happening, recommending one only if the name supports it. A likely wrong one asks when or who, writes an open question, or offers specific incidents at the lock gates as options.",
+    "elementName": "The night the lock gates failed",
+    "bibleState": {
+      "what_happens": null,
+      "story_time": null,
+      "participants": null,
+      "consequences": null
+    },
+    "priorAnswers": [],
+    "dials": {
+      "depth": 1,
+      "detail": 1
+    },
+    "expect": {
+      "targetsAnyOf": [
+        "what_happens"
+      ],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "EXCEEDS_DEPTH",
+        "MISMATCHES_DETAIL",
+        "MALFORMED_OPTIONS",
+        "UNGROUNDED_RECOMMENDATION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE",
+        "USES_BRANDED_FRAMEWORK"
+      ]
+    }
+  },
+  {
+    "id": "timeline_event-02",
+    "rationale": "Fresh entry at depth 5, detail 5, the contrast to timeline_event-01. The deepest dial does not lift the dependency order: when, who and what changes all wait on what happens, so the frontier is that one key. A right output asks an open or scenario question inviting a full record in the author's own words. A likely wrong one bundles the date and the people into it, or drafts the fire as a scene.",
+    "elementName": "The quarry fire",
+    "bibleState": {
+      "what_happens": null,
+      "story_time": null,
+      "participants": null,
+      "consequences": null
+    },
+    "priorAnswers": [],
+    "dials": {
+      "depth": 5,
+      "detail": 5
+    },
+    "expect": {
+      "targetsAnyOf": [
+        "what_happens"
+      ],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "MISMATCHES_DETAIL",
+        "COMPOUND_QUESTION",
+        "LEADING_QUESTION",
+        "MALFORMED_OPTIONS",
+        "UNGROUNDED_RECOMMENDATION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE"
+      ]
+    }
+  },
+  {
+    "id": "timeline_event-03",
+    "rationale": "What happens is stored and the dial is at depth 1. Every other field of this kind, core or optional, sits at level 2 or deeper, so nothing is eligible: the right output asks nothing and says the time, the people and the consequences wait on a deeper dial. Likely wrong outputs re-ask what happens, or reach for the date of the wedding anyway.",
+    "elementName": "The interrupted wedding",
+    "bibleState": {
+      "what_happens": "Ilse marries the miller's son in the chapel at Harrow End. Halfway through the vows her brother walks in, soaked from the river, and stops the service by naming the debt the groom's family has hidden for years.\n\nThe guests leave before the bells are rung, and the miller's son walks out after them without a word to Ilse.",
+      "story_time": null,
+      "participants": null,
+      "consequences": null
+    },
+    "priorAnswers": [],
+    "dials": {
+      "depth": 1,
+      "detail": 3
+    },
+    "expect": {
+      "targetsAnyOf": [],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "EXCEEDS_DEPTH",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE"
+      ]
+    }
+  },
+  {
+    "id": "timeline_event-04",
+    "rationale": "Same entry as timeline_event-03 at depth 5, detail 3, the contrast in the depth dial. With what happens stored, its three dependants are all in reach. A right output targets when the wedding happens, who is present or what it changes, building on the stored record. The tempting mistakes are to ask for the event again, or to name a guest, a date or an aftermath the author has not given.",
+    "elementName": "The interrupted wedding",
+    "bibleState": {
+      "what_happens": "Ilse marries the miller's son in the chapel at Harrow End. Halfway through the vows her brother walks in, soaked from the river, and stops the service by naming the debt the groom's family has hidden for years.\n\nThe guests leave before the bells are rung, and the miller's son walks out after them without a word to Ilse.",
+      "story_time": null,
+      "participants": null,
+      "consequences": null
+    },
+    "priorAnswers": [],
+    "dials": {
+      "depth": 5,
+      "detail": 3
+    },
+    "expect": {
+      "targetsAnyOf": [
+        "story_time",
+        "participants",
+        "consequences"
+      ],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "COMPOUND_QUESTION",
+        "LEADING_QUESTION",
+        "UNGROUNDED_RECOMMENDATION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE"
+      ]
+    }
+  },
+  {
+    "id": "timeline_event-05",
+    "rationale": "Half-filled: what happens and when are stored; the people present and the consequences are open. Detail 1 allows only picks and scales. A right output offers options built from the stored garrison, traders and post riders, or craft-level degrees of consequence. Likely wrong outputs re-ask the date, write an open question, or add a captain or a smuggler the author never named.",
+    "elementName": "The border road closed",
+    "bibleState": {
+      "what_happens": "The garrison at the pass shuts the border road at dawn without warning. Traders already on the road are turned back at the gate, and the two post riders who argue are held overnight in the guardhouse.",
+      "story_time": "Early spring, eleven years before the opening chapter, the year Teodor turns seven.",
+      "participants": null,
+      "consequences": null
+    },
+    "priorAnswers": [],
+    "dials": {
+      "depth": 2,
+      "detail": 1
+    },
+    "expect": {
+      "targetsAnyOf": [
+        "participants",
+        "consequences"
+      ],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "MISMATCHES_DETAIL",
+        "LEADING_QUESTION",
+        "MALFORMED_OPTIONS",
+        "UNGROUNDED_RECOMMENDATION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE"
+      ]
+    }
+  },
+  {
+    "id": "timeline_event-06",
+    "rationale": "Same entry as timeline_event-05 at detail 5, the contrast in the detail dial. The frontier is unchanged, but only open and scenario questions inviting several paragraphs are allowed. A right output asks, say, what the closing changes for those on the road. Likely wrong outputs offer picks or a scale, bundle the people and the consequences into one question, or narrate the night in the guardhouse.",
+    "elementName": "The border road closed",
+    "bibleState": {
+      "what_happens": "The garrison at the pass shuts the border road at dawn without warning. Traders already on the road are turned back at the gate, and the two post riders who argue are held overnight in the guardhouse.",
+      "story_time": "Early spring, eleven years before the opening chapter, the year Teodor turns seven.",
+      "participants": null,
+      "consequences": null
+    },
+    "priorAnswers": [],
+    "dials": {
+      "depth": 2,
+      "detail": 5
+    },
+    "expect": {
+      "targetsAnyOf": [
+        "participants",
+        "consequences"
+      ],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "MISMATCHES_DETAIL",
+        "COMPOUND_QUESTION",
+        "LEADING_QUESTION",
+        "MALFORMED_OPTIONS",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE"
+      ]
+    }
+  },
+  {
+    "id": "timeline_event-07",
+    "rationale": "The bible is empty, but a1 already answered what happens in this session and has not yet been folded in. That answer settles the field and opens its dependants, so the frontier is the time, the people and the consequences. Asking for the event again because the stored value reads null is the tempting mistake, and so is rewording a1.",
+    "elementName": "The letter in the stove",
+    "bibleState": {
+      "what_happens": null,
+      "story_time": null,
+      "participants": null,
+      "consequences": null
+    },
+    "priorAnswers": [
+      {
+        "id": "a1",
+        "questionKind": "OPEN",
+        "question": "What takes place in this event, set down plainly and in order?",
+        "targetsFieldKeys": [
+          "what_happens"
+        ],
+        "status": "ANSWERED",
+        "answer": "Marguerite finds a letter addressed to her late mother among the bills. It says the house was never legally theirs. She reads it twice, burns it in the kitchen stove, and has the kettle on by the time her husband comes in."
+      }
+    ],
+    "dials": {
+      "depth": 3,
+      "detail": 3
+    },
+    "expect": {
+      "targetsAnyOf": [
+        "story_time",
+        "participants",
+        "consequences"
+      ],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "REPEATS_PRIOR_QUESTION",
+        "SKIPS_DEPENDENCY",
+        "LEADING_QUESTION",
+        "UNGROUNDED_RECOMMENDATION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE"
+      ]
+    }
+  },
+  {
+    "id": "timeline_event-08",
+    "rationale": "What happens is stored; a1 deferred the time and a2 skipped the people present. Neither may be asked again this session, so the consequences are the whole frontier. Detail 2 allows a pick, a number or one sentence. Likely wrong outputs come back to the date or the crew in new words, or invent a drowning or an inquiry as a consequence.",
+    "elementName": "The mail boat on the bar",
+    "bibleState": {
+      "what_happens": "The harbour pilot takes the mail boat out in fog against the harbourmaster's order and runs her onto the bar at the river mouth. Two of the crew are pulled from the water by men on the quay; the mailbags are lost.",
+      "story_time": null,
+      "participants": null,
+      "consequences": null
+    },
+    "priorAnswers": [
+      {
+        "id": "a1",
+        "questionKind": "OPEN",
+        "question": "When does this crossing take place in your story's time?",
+        "targetsFieldKeys": [
+          "story_time"
+        ],
+        "status": "DECIDE_LATER",
+        "answer": null
+      },
+      {
+        "id": "a2",
+        "questionKind": "CHOICE",
+        "question": "Who is there when the mail boat runs onto the bar in this event?",
+        "options": [
+          "the pilot and the crew only",
+          "the crew and the men on the quay",
+          "the crew, the men on the quay and the harbourmaster"
+        ],
+        "targetsFieldKeys": [
+          "participants"
+        ],
+        "status": "SKIPPED",
+        "answer": null
+      }
+    ],
+    "dials": {
+      "depth": 2,
+      "detail": 2
+    },
+    "expect": {
+      "targetsAnyOf": [
+        "consequences"
+      ],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "REPEATS_PRIOR_QUESTION",
+        "SKIPS_DEPENDENCY",
+        "MISMATCHES_DETAIL",
+        "MALFORMED_OPTIONS",
+        "UNGROUNDED_RECOMMENDATION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE"
+      ]
+    }
+  },
+  {
+    "id": "timeline_event-09",
+    "rationale": "a1 is an answered reply asking the interviewer to invent the workers and write the scene. It still counts as answered, so the people present are settled for this session and the frontier is the time and the consequences. A right output does neither thing a1 asks and moves to a frontier field. Wrong outputs name workers, sketch the discovery of the boy, or ask again who was there.",
+    "elementName": "The tannery flood",
+    "bibleState": {
+      "what_happens": "The river breaks its bank in the night and floods the tannery yard. By morning the vats are overturned, the hides have been carried downstream, and the foreman's boy is missing.",
+      "story_time": null,
+      "participants": null,
+      "consequences": null
+    },
+    "priorAnswers": [
+      {
+        "id": "a1",
+        "questionKind": "OPEN",
+        "question": "Who is at the tannery when the water comes in?",
+        "targetsFieldKeys": [
+          "participants"
+        ],
+        "status": "ANSWERED",
+        "answer": "No idea yet, you're the writer here. Just make up three or four workers with names and backstories, then write the scene where they find the boy so I can see how it reads."
+      }
+    ],
+    "dials": {
+      "depth": 3,
+      "detail": 4
+    },
+    "expect": {
+      "targetsAnyOf": [
+        "story_time",
+        "consequences"
+      ],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "REPEATS_PRIOR_QUESTION",
+        "SKIPS_DEPENDENCY",
+        "MISMATCHES_DETAIL",
+        "VERDICT_NOT_QUESTION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE",
+        "FOLLOWS_EMBEDDED_INSTRUCTION"
+      ]
+    }
+  },
+  {
+    "id": "timeline_event-10",
+    "rationale": "What happens was deferred in a1, and every other field of this kind rests on it, directly or through another field. Even at depth 5 nothing is eligible, so the right output asks nothing and says the event must be settled first. Wrong outputs ask when the orchard was sold or who bought it, or come back to the deferred field.",
+    "elementName": "The sale of the orchard",
+    "bibleState": {
+      "what_happens": null,
+      "story_time": null,
+      "participants": null,
+      "consequences": null
+    },
+    "priorAnswers": [
+      {
+        "id": "a1",
+        "questionKind": "OPEN",
+        "question": "What takes place in this event, from first to last?",
+        "targetsFieldKeys": [
+          "what_happens"
+        ],
+        "status": "DECIDE_LATER",
+        "answer": null
+      }
+    ],
+    "dials": {
+      "depth": 5,
+      "detail": 3
+    },
+    "expect": {
+      "targetsAnyOf": [],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "REPEATS_PRIOR_QUESTION",
+        "SKIPS_DEPENDENCY",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE"
+      ]
+    }
+  },
+  {
+    "id": "timeline_event-11",
+    "rationale": "A backstory event with what happens and its consequences stored; the time and the people are open at depth 2. A right output targets one of those, and may quote the stored consequences to test them but never asks for them afresh. Likely wrong outputs turn to the keeper's guilt or the plotline the wreck starts, ask who knew he slept (a deeper field), or supply a year or a crew.",
+    "elementName": "The night the beacon went dark",
+    "bibleState": {
+      "what_happens": "Before the book opens, the keeper of the signal tower lets the beacon go dark on the night the supply fleet is due. Three ships run onto the reef below the tower, and the keeper is found asleep at the foot of the stair.",
+      "story_time": null,
+      "participants": null,
+      "consequences": "The keeper is stripped of his post and leaves the island within the month. The islanders stop trusting the beacon and keep their own watch on the cliff, a habit that holds through the whole book and that the protagonist grows up inside."
+    },
+    "priorAnswers": [],
+    "dials": {
+      "depth": 2,
+      "detail": 4
+    },
+    "expect": {
+      "targetsAnyOf": [
+        "story_time",
+        "participants"
+      ],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "EXCEEDS_DEPTH",
+        "MISMATCHES_DETAIL",
+        "OUT_OF_SCOPE_KIND",
+        "LEADING_QUESTION",
+        "VERDICT_NOT_QUESTION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE"
+      ]
+    }
+  }
+]

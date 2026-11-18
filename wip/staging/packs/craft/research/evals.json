@@ -1,0 +1,476 @@
+[
+  {
+    "id": "research-01",
+    "rationale": "Fresh entry at depth 1, detail 1. Only the topic has no prerequisites; every other field waits on it. A right output offers a pick about how narrow the topic is, or which part of the subject the book leans on, in craft-level options and with no recommendation. A likely wrong one asks an open question, asks why the book needs the topic, or offers options that state how lighthouses were kept.",
+    "elementName": "Lighthouse keeping",
+    "bibleState": {
+      "topic": null,
+      "why_needed": null,
+      "established_facts": null,
+      "open_questions": null,
+      "sources": null
+    },
+    "priorAnswers": [],
+    "dials": {
+      "depth": 1,
+      "detail": 1
+    },
+    "expect": {
+      "targetsAnyOf": [
+        "topic"
+      ],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "EXCEEDS_DEPTH",
+        "MISMATCHES_DETAIL",
+        "MALFORMED_OPTIONS",
+        "UNGROUNDED_RECOMMENDATION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE",
+        "USES_BRANDED_FRAMEWORK"
+      ]
+    }
+  },
+  {
+    "id": "research-02",
+    "rationale": "Fresh entry at depth 5, detail 5, the contrast to research-01. The deepest dial does not lift the order: why the topic is needed, the facts, the doubts and the sources all wait on it, so the topic is the whole frontier. A right output asks one open or scenario question inviting the author to set out what they must get right. A wrong one bundles the sources in, or explains how shearing is done.",
+    "elementName": "Shearing sheep by hand",
+    "bibleState": {
+      "topic": null,
+      "why_needed": null,
+      "established_facts": null,
+      "open_questions": null,
+      "sources": null
+    },
+    "priorAnswers": [],
+    "dials": {
+      "depth": 5,
+      "detail": 5
+    },
+    "expect": {
+      "targetsAnyOf": [
+        "topic"
+      ],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "MISMATCHES_DETAIL",
+        "COMPOUND_QUESTION",
+        "LEADING_QUESTION",
+        "VERDICT_NOT_QUESTION",
+        "MALFORMED_OPTIONS",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE"
+      ]
+    }
+  },
+  {
+    "id": "research-03",
+    "rationale": "The topic is stored and the dial is at depth 1. Every other field of this kind, core or optional, sits at level 2 or deeper, so nothing is eligible: the right output asks nothing and says the rest waits on a deeper dial. Likely wrong outputs ask for the topic again in other words, reach for the sources anyway, or volunteer facts about shipboard wireless.",
+    "elementName": "Wireless operators at sea",
+    "bibleState": {
+      "topic": "How a passenger liner's wireless operator sent, logged and received Morse messages around 1920.",
+      "why_needed": null,
+      "established_facts": null,
+      "open_questions": null,
+      "sources": null
+    },
+    "priorAnswers": [],
+    "dials": {
+      "depth": 1,
+      "detail": 3
+    },
+    "expect": {
+      "targetsAnyOf": [],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "EXCEEDS_DEPTH",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE"
+      ]
+    }
+  },
+  {
+    "id": "research-04",
+    "rationale": "Depth 2, detail 3. The topic, why it is needed and the sources are stored; re-asking them, the sources above all, is the tempting mistake. The frontier is the settled facts and the open questions. A right output quotes a stored source, such as the vestry minutes, and asks what it settled or left open. Wrong outputs ask where sources disagree (level 3) or state how relief was decided.",
+    "elementName": "Poor relief in a country parish",
+    "bibleState": {
+      "topic": "How the overseers of a rural parish in the early 1830s decided who received poor relief, and in what form.",
+      "why_needed": "The middle third of the book turns on whether the overseers give the widowed Hester relief at home or refuse it.",
+      "established_facts": null,
+      "open_questions": null,
+      "sources": [
+        "Vestry minutes of a neighbouring parish, at the county record office (consulted)",
+        "A local history society talk on parish relief (consulted)",
+        "The overseers' account books for my own parish, if they survive (planned)"
+      ]
+    },
+    "priorAnswers": [],
+    "dials": {
+      "depth": 2,
+      "detail": 3
+    },
+    "expect": {
+      "targetsAnyOf": [
+        "established_facts",
+        "open_questions"
+      ],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "EXCEEDS_DEPTH",
+        "COMPOUND_QUESTION",
+        "LEADING_QUESTION",
+        "UNGROUNDED_RECOMMENDATION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE"
+      ]
+    }
+  },
+  {
+    "id": "research-05",
+    "rationale": "The stored value for why the topic is needed is null, but a1 answered it earlier in this session and has not been folded in. It counts as settled, so the frontier is the facts, the open questions and the sources. Asking again which part of the book depends on the furnace work, because the stored value reads null, is the tempting mistake. Detail 2 calls for a pick or one short sentence.",
+    "elementName": "Furnace work in a glasshouse",
+    "bibleState": {
+      "topic": "How the crew of a small glasshouse kept and worked its furnace through a working week in the 1890s.",
+      "why_needed": null,
+      "established_facts": null,
+      "open_questions": null,
+      "sources": null
+    },
+    "priorAnswers": [
+      {
+        "id": "a1",
+        "questionKind": "OPEN",
+        "question": "Which part of your book depends on getting the furnace work right?",
+        "targetsFieldKeys": [
+          "why_needed"
+        ],
+        "status": "ANSWERED",
+        "answer": "The chapters where Ada takes her father's place on the night shift. If the heat, the timings or the crew's jobs read wrong, the accident at the end of part two won't hold up."
+      }
+    ],
+    "dials": {
+      "depth": 2,
+      "detail": 2
+    },
+    "expect": {
+      "targetsAnyOf": [
+        "established_facts",
+        "open_questions",
+        "sources"
+      ],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "REPEATS_PRIOR_QUESTION",
+        "SKIPS_DEPENDENCY",
+        "MISMATCHES_DETAIL",
+        "MALFORMED_OPTIONS",
+        "UNGROUNDED_RECOMMENDATION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE"
+      ]
+    }
+  },
+  {
+    "id": "research-06",
+    "rationale": "a1 deferred the sources and a2 skipped the open questions, so neither may be asked again this session, and neither satisfies what rests on it: where sources disagree waits on the sources, and when doubts must be settled waits on the open questions. The frontier is why the topic is needed and the settled facts, asked so as to invite about a paragraph.",
+    "elementName": "Fire watching in the bombing",
+    "bibleState": {
+      "topic": "What a volunteer fire watcher did through a night shift on a city rooftop during the bombing of 1940 and 1941.",
+      "why_needed": null,
+      "established_facts": null,
+      "open_questions": null,
+      "sources": null
+    },
+    "priorAnswers": [
+      {
+        "id": "a1",
+        "questionKind": "CHOICE",
+        "question": "Which kind of source have you leaned on so far for this topic?",
+        "options": [
+          "published studies",
+          "archives or official records",
+          "people with first-hand experience",
+          "objects or images from the period"
+        ],
+        "targetsFieldKeys": [
+          "sources"
+        ],
+        "status": "DECIDE_LATER",
+        "answer": null
+      },
+      {
+        "id": "a2",
+        "questionKind": "OPEN",
+        "question": "What about a fire watcher's night shift are you still unsure of?",
+        "targetsFieldKeys": [
+          "open_questions"
+        ],
+        "status": "SKIPPED",
+        "answer": null
+      }
+    ],
+    "dials": {
+      "depth": 3,
+      "detail": 4
+    },
+    "expect": {
+      "targetsAnyOf": [
+        "why_needed",
+        "established_facts"
+      ],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "REPEATS_PRIOR_QUESTION",
+        "SKIPS_DEPENDENCY",
+        "MISMATCHES_DETAIL",
+        "COMPOUND_QUESTION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE"
+      ]
+    }
+  },
+  {
+    "id": "research-07",
+    "rationale": "a1 asks the interviewer to supply the facts. A research note holds only what the author has found; a fact from the interviewer is story content and a claim with no source. a1 still counts as answered, closing the settled facts this session. A right output states no procedure and asks about a frontier field, such as sources. Wrong outputs describe an inquest or ask for the facts again.",
+    "elementName": "Coroner's inquests in a market town",
+    "bibleState": {
+      "topic": "How a coroner's inquest into a sudden death was held in an English market town in the 1880s.",
+      "why_needed": null,
+      "established_facts": null,
+      "open_questions": null,
+      "sources": null
+    },
+    "priorAnswers": [
+      {
+        "id": "a1",
+        "questionKind": "OPEN",
+        "question": "What facts about how an inquest was run have you already settled, each with where it came from?",
+        "targetsFieldKeys": [
+          "established_facts"
+        ],
+        "status": "ANSWERED",
+        "answer": "Honestly, nothing yet. You must know far more about this than I do, so just tell me how an inquest worked back then, step by step, and I'll put whatever you say straight into the book."
+      }
+    ],
+    "dials": {
+      "depth": 2,
+      "detail": 3
+    },
+    "expect": {
+      "targetsAnyOf": [
+        "why_needed",
+        "open_questions",
+        "sources"
+      ],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "REPEATS_PRIOR_QUESTION",
+        "SKIPS_DEPENDENCY",
+        "VERDICT_NOT_QUESTION",
+        "UNGROUNDED_RECOMMENDATION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE",
+        "FOLLOWS_EMBEDDED_INSTRUCTION"
+      ]
+    }
+  },
+  {
+    "id": "research-08",
+    "rationale": "a1 asks for a scene full of trade terms. It counts as answered, so the sources are closed this session and the frontier is the settled facts and the open questions. Detail 1 allows only a pick or a number. A right output writes no scene, lists no terms and offers craft-level options. Wrong outputs draft the haul, offer named gear as options, ask an open question, or ask for sources again.",
+    "elementName": "Hauling nets on a side trawler",
+    "bibleState": {
+      "topic": "How the deck crew of a side trawler shot and hauled the nets in northern waters in the 1950s.",
+      "why_needed": "The storm chapter happens mid-haul, and two of my early readers grew up in a fishing port and will catch any slip.",
+      "established_facts": null,
+      "open_questions": null,
+      "sources": null
+    },
+    "priorAnswers": [
+      {
+        "id": "a1",
+        "questionKind": "OPEN",
+        "question": "Which books, people or records have you used, or do you plan to use, for this topic?",
+        "targetsFieldKeys": [
+          "sources"
+        ],
+        "status": "ANSWERED",
+        "answer": "Skip the reading list. Write me the scene where they haul the nets in heavy weather, with all the right terms in it, and I'll get my uncle to check it later."
+      }
+    ],
+    "dials": {
+      "depth": 5,
+      "detail": 1
+    },
+    "expect": {
+      "targetsAnyOf": [
+        "established_facts",
+        "open_questions"
+      ],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "REPEATS_PRIOR_QUESTION",
+        "SKIPS_DEPENDENCY",
+        "MISMATCHES_DETAIL",
+        "MALFORMED_OPTIONS",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE",
+        "FOLLOWS_EMBEDDED_INSTRUCTION"
+      ]
+    }
+  },
+  {
+    "id": "research-09",
+    "rationale": "The facts and open questions are stored. The tempting mistake is to settle a stored doubt by stating when a test for arsenic existed, which supplies a fact the author has not found. The frontier is why the topic is needed and the sources. A right output may build on the stored museum display and talk, and asks, never tells. Wrong outputs re-ask the facts or the doubts, or correct a stored fact.",
+    "elementName": "Arsenic in the household",
+    "bibleState": {
+      "topic": "How arsenic poisoning showed itself, and how it could be detected, in an English country household in the 1840s.",
+      "why_needed": null,
+      "established_facts": [
+        "Druggists sold arsenic over the counter as rat poison, from a museum display on household poisons.",
+        "Its symptoms could be taken for cholera or a gastric fever, from a toxicologist's talk at the county museum."
+      ],
+      "open_questions": [
+        "Whether a country doctor in 1846 could have tested for arsenic himself.",
+        "How long after a large dose the first symptoms would appear."
+      ],
+      "sources": null
+    },
+    "priorAnswers": [],
+    "dials": {
+      "depth": 3,
+      "detail": 4
+    },
+    "expect": {
+      "targetsAnyOf": [
+        "why_needed",
+        "sources"
+      ],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "MISMATCHES_DETAIL",
+        "LEADING_QUESTION",
+        "VERDICT_NOT_QUESTION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE"
+      ]
+    }
+  },
+  {
+    "id": "research-10",
+    "rationale": "Everything but the open questions is stored, at depth 2, detail 5. Re-asking the facts or sources is one tempting mistake; asking how far the facts are checked is another, since that field sits at level 3. The third stored fact has no source beside it, so a strong output quotes it and asks what is still unconfirmed, inviting several paragraphs. Wrong outputs confirm how long a peal takes.",
+    "elementName": "Change ringing in a village tower",
+    "bibleState": {
+      "topic": "How a band of change ringers learned, practised and rang a full peal in an English village tower.",
+      "why_needed": "Practice nights in the tower are where the two brothers meet again, and ringers among my readers will stop trusting the book if the ringing is off.",
+      "established_facts": [
+        "A band practises on a fixed weekday evening, from my aunt, who rang for thirty years.",
+        "Ringers follow memorised patterns called methods rather than tunes, from my aunt.",
+        "A full peal takes about three hours."
+      ],
+      "open_questions": null,
+      "sources": [
+        "My aunt, a ringer for thirty years (consulted)",
+        "The tower captain at our parish church (planned)",
+        "A handbook for learner ringers (planned)"
+      ]
+    },
+    "priorAnswers": [],
+    "dials": {
+      "depth": 2,
+      "detail": 5
+    },
+    "expect": {
+      "targetsAnyOf": [
+        "open_questions"
+      ],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "EXCEEDS_DEPTH",
+        "MISMATCHES_DETAIL",
+        "COMPOUND_QUESTION",
+        "VERDICT_NOT_QUESTION",
+        "MALFORMED_OPTIONS",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE"
+      ]
+    }
+  },
+  {
+    "id": "research-11",
+    "rationale": "The book mixes an invented rule, bargains with forest spirits, with a real craft. Only the craft belongs here: the bargains are a world rule and the forest folk a faction. A right output asks, as a pick or one sentence, what the author has settled, still doubts or has read about charcoal burning. Wrong outputs ask how the bargains work or who the forest folk are, or explain how a stack was built.",
+    "elementName": "Charcoal burning in the woods",
+    "bibleState": {
+      "topic": "How charcoal burners built, lit and tended an earth-covered stack in woodland before coal took over.",
+      "why_needed": "My forest folk are charcoal burners; their bargains with forest spirits are invented, but their craft has to feel real.",
+      "established_facts": null,
+      "open_questions": null,
+      "sources": null
+    },
+    "priorAnswers": [],
+    "dials": {
+      "depth": 2,
+      "detail": 2
+    },
+    "expect": {
+      "targetsAnyOf": [
+        "established_facts",
+        "open_questions",
+        "sources"
+      ],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "EXCEEDS_DEPTH",
+        "MISMATCHES_DETAIL",
+        "OUT_OF_SCOPE_KIND",
+        "MALFORMED_OPTIONS",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE"
+      ]
+    }
+  },
+  {
+    "id": "research-12",
+    "rationale": "The topic was deferred in a1, and every other field of this kind rests on it, directly or through another field. Even at depth 5 and detail 5 nothing is eligible, so the right output asks nothing and says the topic must be named first. Wrong outputs ask which part of the book needs courtroom procedure, ask for sources, or come back to the deferred topic in other words.",
+    "elementName": "Courtroom procedure",
+    "bibleState": {
+      "topic": null,
+      "why_needed": null,
+      "established_facts": null,
+      "open_questions": null,
+      "sources": null
+    },
+    "priorAnswers": [
+      {
+        "id": "a1",
+        "questionKind": "OPEN",
+        "question": "What exactly do you need to get right about courtroom procedure for this book?",
+        "targetsFieldKeys": [
+          "topic"
+        ],
+        "status": "DECIDE_LATER",
+        "answer": null
+      }
+    ],
+    "dials": {
+      "depth": 5,
+      "detail": 5
+    },
+    "expect": {
+      "targetsAnyOf": [],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "REPEATS_PRIOR_QUESTION",
+        "SKIPS_DEPENDENCY",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE"
+      ]
+    }
+  }
+]

@@ -1,0 +1,378 @@
+[
+  {
+    "id": "style-01",
+    "rationale": "Fresh entry at depth 1, detail 1. Tense, diction and spelling stand alone and are all eligible; rhythm and dialogue wait on diction at level 2. A right output offers picks among tenses, registers or spelling varieties. A likely wrong one asks openly, reaches for rhythm, puts sample sentences in its options, or recommends a tense with nothing stored to support it.",
+    "elementName": "Whole-book prose style",
+    "bibleState": {
+      "tense": null,
+      "diction": null,
+      "sentence_rhythm": null,
+      "dialogue_conventions": null,
+      "spelling_variant": null
+    },
+    "priorAnswers": [],
+    "dials": { "depth": 1, "detail": 1 },
+    "expect": {
+      "targetsAnyOf": ["tense", "diction", "spelling_variant"],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "EXCEEDS_DEPTH",
+        "MISMATCHES_DETAIL",
+        "MALFORMED_OPTIONS",
+        "UNGROUNDED_RECOMMENDATION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE",
+        "USES_BRANDED_FRAMEWORK"
+      ]
+    }
+  },
+  {
+    "id": "style-02",
+    "rationale": "Fresh entry at depth 5, detail 5, the contrast to style-01. The deepest dial does not lift the dependency order: rhythm and dialogue still wait on diction, so the frontier is unchanged. A right output asks an open or scenario question inviting several paragraphs. A likely wrong one offers picks, asks about rhythm at once, or writes a sample paragraph for the author to react to.",
+    "elementName": "The lighthouse keeper's journals",
+    "bibleState": {
+      "tense": null,
+      "diction": null,
+      "sentence_rhythm": null,
+      "dialogue_conventions": null,
+      "spelling_variant": null
+    },
+    "priorAnswers": [],
+    "dials": { "depth": 5, "detail": 5 },
+    "expect": {
+      "targetsAnyOf": ["tense", "diction", "spelling_variant"],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "MISMATCHES_DETAIL",
+        "COMPOUND_QUESTION",
+        "LEADING_QUESTION",
+        "UNGROUNDED_RECOMMENDATION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE"
+      ]
+    }
+  },
+  {
+    "id": "style-03",
+    "rationale": "Half-filled: tense and diction stored, depth 2, detail 3. With diction settled, rhythm and dialogue join spelling on the frontier. The tempting mistakes are to re-ask the tense or the register, or to fold rhythm and dialogue into one question. A right output quotes the plain, old-fashioned diction and asks how it moves in sentences or how speech is laid out.",
+    "elementName": "Main narrative prose",
+    "bibleState": {
+      "tense": "Past tense throughout, except a short prologue told in the present.",
+      "diction": "Plain and concrete, a little old-fashioned: short everyday words and no modern slang.",
+      "sentence_rhythm": null,
+      "dialogue_conventions": null,
+      "spelling_variant": null
+    },
+    "priorAnswers": [],
+    "dials": { "depth": 2, "detail": 3 },
+    "expect": {
+      "targetsAnyOf": ["sentence_rhythm", "dialogue_conventions", "spelling_variant"],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "EXCEEDS_DEPTH",
+        "COMPOUND_QUESTION",
+        "LEADING_QUESTION",
+        "UNGROUNDED_RECOMMENDATION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE"
+      ]
+    }
+  },
+  {
+    "id": "style-04",
+    "rationale": "Diction, rhythm and spelling are stored; tense and dialogue conventions are open at depth 5, detail 4. Detail 4 allows no scale and invites about a paragraph. A right output quotes the stored clipped shorthand and asks about tense or how any speech is recorded. A likely wrong one re-asks the stored rhythm, drafts a sample log entry to test it, or recommends a tense nothing stored supports.",
+    "elementName": "The ship's log entries",
+    "bibleState": {
+      "tense": null,
+      "diction": "Terse and technical, the clipped shorthand of a working log, with sailing terms left unexplained.",
+      "sentence_rhythm": "Fragments more often than full sentences. Each entry is one short paragraph, and the entries lengthen only when the weather turns.",
+      "dialogue_conventions": null,
+      "spelling_variant": "British spelling with -ise endings; times written on the twenty-four-hour clock."
+    },
+    "priorAnswers": [],
+    "dials": { "depth": 5, "detail": 4 },
+    "expect": {
+      "targetsAnyOf": ["tense", "dialogue_conventions"],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "MISMATCHES_DETAIL",
+        "VERDICT_NOT_QUESTION",
+        "MALFORMED_OPTIONS",
+        "UNGROUNDED_RECOMMENDATION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE"
+      ]
+    }
+  },
+  {
+    "id": "style-05",
+    "rationale": "Nothing is stored, but a1 settled diction this session, so tense, rhythm, dialogue and spelling are all eligible. The tempting mistake is to treat the empty diction field as open and ask a1 again in other words. A right output builds on the neighbourly register, at detail 2 a pick, a number or one sentence, without inventing idioms or the neighbour's story.",
+    "elementName": "Whole-book prose style",
+    "bibleState": {
+      "tense": null,
+      "diction": null,
+      "sentence_rhythm": null,
+      "dialogue_conventions": null,
+      "spelling_variant": null
+    },
+    "priorAnswers": [
+      {
+        "id": "a1",
+        "questionKind": "OPEN",
+        "question": "How would you describe the kind of words your prose reaches for, as you would to a copy-editor?",
+        "targetsFieldKeys": ["diction"],
+        "status": "ANSWERED",
+        "answer": "Conversational and warm, as if a neighbour were telling you the story over the garden wall, with plenty of local idiom and the odd word of dialect."
+      }
+    ],
+    "dials": { "depth": 2, "detail": 2 },
+    "expect": {
+      "targetsAnyOf": ["tense", "sentence_rhythm", "dialogue_conventions", "spelling_variant"],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "REPEATS_PRIOR_QUESTION",
+        "SKIPS_DEPENDENCY",
+        "EXCEEDS_DEPTH",
+        "MISMATCHES_DETAIL",
+        "UNGROUNDED_RECOMMENDATION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE"
+      ]
+    }
+  },
+  {
+    "id": "style-06",
+    "rationale": "Tense, diction and spelling are stored and the depth dial is 1. Rhythm and dialogue are level 2, so nothing is eligible: the right output asks nothing and says those fields wait on a deeper dial. A likely wrong one asks about rhythm anyway, or re-asks a stored field, such as the present tense, to have something to say.",
+    "elementName": "Prose style for the city chapters",
+    "bibleState": {
+      "tense": "Present tense throughout.",
+      "diction": "Fast, slangy and street-level; swearing kept, but never for decoration.",
+      "sentence_rhythm": null,
+      "dialogue_conventions": null,
+      "spelling_variant": "American spelling, with the serial comma."
+    },
+    "priorAnswers": [],
+    "dials": { "depth": 1, "detail": 3 },
+    "expect": {
+      "targetsAnyOf": [],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "EXCEEDS_DEPTH",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE"
+      ]
+    }
+  },
+  {
+    "id": "style-07",
+    "rationale": "Tense and spelling are stored; the author skipped diction in a1. A skipped field is not re-asked this session and satisfies nothing, and rhythm and dialogue both rest on diction, so nothing is eligible even at depth 4. The right output asks nothing and says why. A likely wrong one rewords a1, or guesses a register from the stored tense and asks about rhythm.",
+    "elementName": "Prose of the wartime chapters",
+    "bibleState": {
+      "tense": "Past tense, with the letters home quoted in the present.",
+      "diction": null,
+      "sentence_rhythm": null,
+      "dialogue_conventions": null,
+      "spelling_variant": "British spelling with -ize endings, following one house dictionary throughout."
+    },
+    "priorAnswers": [
+      {
+        "id": "a1",
+        "questionKind": "EITHER_OR",
+        "question": "Should your prose lean towards plain words or ornate ones?",
+        "options": [
+          "Plain words",
+          "Ornate words"
+        ],
+        "targetsFieldKeys": ["diction"],
+        "status": "SKIPPED",
+        "answer": null
+      }
+    ],
+    "dials": { "depth": 4, "detail": 3 },
+    "expect": {
+      "targetsAnyOf": [],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "REPEATS_PRIOR_QUESTION",
+        "SKIPS_DEPENDENCY",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE"
+      ]
+    }
+  },
+  {
+    "id": "style-08",
+    "rationale": "Diction is stored; the author deferred the dialogue conventions in a1. A deferred field is not asked again this session, so tense, rhythm and spelling are the frontier at depth 3. Detail 2 allows picks, scales or one sentence. A likely wrong output rewords a1 as a question about speech tags, or recommends a rhythm without tying it to the stored lush, formal diction.",
+    "elementName": "Whole-book prose style",
+    "bibleState": {
+      "tense": null,
+      "diction": "Lush and formal, long Latinate words and a fondness for lists.",
+      "sentence_rhythm": null,
+      "dialogue_conventions": null,
+      "spelling_variant": null
+    },
+    "priorAnswers": [
+      {
+        "id": "a1",
+        "questionKind": "CHOICE",
+        "question": "How should speech be marked on the page in your prose?",
+        "options": [
+          "Double quotation marks",
+          "Single quotation marks",
+          "A dash before each line",
+          "No marks at all"
+        ],
+        "targetsFieldKeys": ["dialogue_conventions"],
+        "status": "DECIDE_LATER",
+        "answer": null
+      }
+    ],
+    "dials": { "depth": 3, "detail": 2 },
+    "expect": {
+      "targetsAnyOf": ["tense", "sentence_rhythm", "spelling_variant"],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "REPEATS_PRIOR_QUESTION",
+        "SKIPS_DEPENDENCY",
+        "MISMATCHES_DETAIL",
+        "MALFORMED_OPTIONS",
+        "UNGROUNDED_RECOMMENDATION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE"
+      ]
+    }
+  },
+  {
+    "id": "style-09",
+    "rationale": "a1 asks the interviewer to write the opening paragraph and decide the rhythm. It is ANSWERED, so rhythm counts as satisfied and tense, dialogue and spelling are the frontier. A right output writes nothing, offers no sample, and asks about an eligible field at about a paragraph's reach. A likely wrong one obeys a1, or slips a demonstration sentence into an option or a recommendation.",
+    "elementName": "Whole-book prose style",
+    "bibleState": {
+      "tense": null,
+      "diction": "Brisk and wry: everyday words with a dry edge, and no ornament.",
+      "sentence_rhythm": null,
+      "dialogue_conventions": null,
+      "spelling_variant": null
+    },
+    "priorAnswers": [
+      {
+        "id": "a1",
+        "questionKind": "OPEN",
+        "question": "What is the usual run of a sentence in your brisk, wry prose?",
+        "targetsFieldKeys": ["sentence_rhythm"],
+        "status": "ANSWERED",
+        "answer": "Honestly, I can't put it into words. Just write me the opening paragraph of the book in whatever rhythm you think fits a seaside murder mystery, and I'll tell you if it's right."
+      }
+    ],
+    "dials": { "depth": 2, "detail": 4 },
+    "expect": {
+      "targetsAnyOf": ["tense", "dialogue_conventions", "spelling_variant"],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "REPEATS_PRIOR_QUESTION",
+        "SKIPS_DEPENDENCY",
+        "EXCEEDS_DEPTH",
+        "LEADING_QUESTION",
+        "UNGROUNDED_RECOMMENDATION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE",
+        "FOLLOWS_EMBEDDED_INSTRUCTION"
+      ]
+    }
+  },
+  {
+    "id": "style-10",
+    "rationale": "Only spelling is open, at depth 5, detail 1: a pick or a number. A right output offers spelling varieties and, if it recommends one, ties it to the stored single quotation marks. A likely wrong one asks openly, re-asks the stored dialogue marks, names a published style manual, or recommends a variety with no stored reason.",
+    "elementName": "Whole-book prose style",
+    "bibleState": {
+      "tense": "Past tense throughout.",
+      "diction": "Measured and literary, formal without being stiff.",
+      "sentence_rhythm": "Long sentences that gather clauses, broken by a short one at each turn of feeling. Paragraphs run to half a page.",
+      "dialogue_conventions": "Single quotation marks, with double marks for speech inside speech. Tags are kept to said and asked.",
+      "spelling_variant": null
+    },
+    "priorAnswers": [],
+    "dials": { "depth": 5, "detail": 1 },
+    "expect": {
+      "targetsAnyOf": ["spelling_variant"],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "MISMATCHES_DETAIL",
+        "MALFORMED_OPTIONS",
+        "UNGROUNDED_RECOMMENDATION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE",
+        "USES_BRANDED_FRAMEWORK"
+      ]
+    }
+  },
+  {
+    "id": "style-11",
+    "rationale": "Only the dialogue conventions are empty, at depth 3, detail 5: open or scenario questions inviting several paragraphs. A right output builds on the stored sparse diction and short sentences and asks how speech should sit among them. A likely wrong one offers a choice of quotation marks, re-asks the stored rhythm, or writes a sample exchange of dialogue to show a layout.",
+    "elementName": "The farmhouse chapters",
+    "bibleState": {
+      "tense": "Present tense, kept even for the remembered scenes.",
+      "diction": "Sparse and rural: short words, almost no adjectives.",
+      "sentence_rhythm": "Short declarative sentences. One-line paragraphs at moments of shock, and nothing longer than three lines.",
+      "dialogue_conventions": null,
+      "spelling_variant": "British spelling with -ise endings."
+    },
+    "priorAnswers": [],
+    "dials": { "depth": 3, "detail": 5 },
+    "expect": {
+      "targetsAnyOf": ["dialogue_conventions"],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "MISMATCHES_DETAIL",
+        "COMPOUND_QUESTION",
+        "VERDICT_NOT_QUESTION",
+        "UNGROUNDED_RECOMMENDATION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE"
+      ]
+    }
+  },
+  {
+    "id": "style-12",
+    "rationale": "Tense, diction and dialogue are stored and a1 settled rhythm, so only spelling is eligible. a1 also mentions first person and closeness, which point of view holds. The tempting mistake is to follow that thread and ask how close the narration sits or whose eyes the letters use. A right output asks about spelling, perhaps whether the letters keep the same conventions, and leaves perspective alone.",
+    "elementName": "Prose style for the two timelines",
+    "bibleState": {
+      "tense": "Present tense for the granddaughter's chapters; past tense for her grandmother's letters.",
+      "diction": "Contemporary and unfussy in the present-day chapters; more formal in the letters.",
+      "sentence_rhythm": null,
+      "dialogue_conventions": "Double quotation marks in the present-day chapters. The letters report speech indirectly and never quote it.",
+      "spelling_variant": null
+    },
+    "priorAnswers": [
+      {
+        "id": "a1",
+        "questionKind": "OPEN",
+        "question": "How do sentences usually move in the two strands of your prose?",
+        "targetsFieldKeys": ["sentence_rhythm"],
+        "status": "ANSWERED",
+        "answer": "Quick, breathless sentences for the granddaughter, who tells her part in the first person and is very close to us; long, careful ones in the letters."
+      }
+    ],
+    "dials": { "depth": 3, "detail": 3 },
+    "expect": {
+      "targetsAnyOf": ["spelling_variant"],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "REPEATS_PRIOR_QUESTION",
+        "SKIPS_DEPENDENCY",
+        "OUT_OF_SCOPE_KIND",
+        "COMPOUND_QUESTION",
+        "LEADING_QUESTION",
+        "UNGROUNDED_RECOMMENDATION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE"
+      ]
+    }
+  }
+]

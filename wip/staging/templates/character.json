@@ -1,0 +1,285 @@
+{
+  "kind": "CHARACTER",
+  "label": "Character",
+  "description": "One person or person-like being: the job they do for the story, what they pursue and what they truly lack, the hurt and false belief that shape them, and how they change. Groups belong to factions.",
+  "fields": [
+    {
+      "key": "role",
+      "label": "Role in the story",
+      "help": "The job this character does for the story, such as driving a plotline, opposing the protagonist or supporting another character.",
+      "type": "text",
+      "required": true,
+      "order": 1,
+      "dependsOn": []
+    },
+    {
+      "key": "prominence",
+      "label": "Prominence",
+      "help": "How much of the book this character occupies, from carrying it to being felt without ever appearing.",
+      "type": "choice",
+      "options": [
+        {
+          "value": "carries_book",
+          "label": "Carries the book"
+        },
+        {
+          "value": "major",
+          "label": "Major presence"
+        },
+        {
+          "value": "supporting",
+          "label": "Supporting presence"
+        },
+        {
+          "value": "minor",
+          "label": "Minor presence"
+        },
+        {
+          "value": "passing",
+          "label": "Appears in passing"
+        },
+        {
+          "value": "offstage",
+          "label": "Felt but never on the page"
+        }
+      ],
+      "required": false,
+      "order": 2,
+      "dependsOn": []
+    },
+    {
+      "key": "defining_traits",
+      "label": "Defining traits",
+      "help": "The qualities of temperament and behaviour a reader would use to describe this character, one per item.",
+      "type": "list",
+      "required": false,
+      "order": 3,
+      "dependsOn": [
+        "role"
+      ]
+    },
+    {
+      "key": "physical_presence",
+      "label": "Physical presence",
+      "help": "What a reader should notice and remember about how this character looks, moves and carries themselves.",
+      "type": "text",
+      "required": false,
+      "order": 4,
+      "dependsOn": [
+        "role"
+      ]
+    },
+    {
+      "key": "speaking_voice",
+      "label": "Speaking voice",
+      "help": "How this character talks, in vocabulary, rhythm and verbal habits, leaving the layout and punctuation of dialogue to the prose style entry.",
+      "type": "richtext",
+      "required": false,
+      "order": 5,
+      "dependsOn": [
+        "defining_traits"
+      ]
+    },
+    {
+      "key": "want",
+      "label": "Conscious want",
+      "help": "The goal this character knowingly pursues and would name if asked, stated as something that can be gained or lost.",
+      "type": "text",
+      "required": true,
+      "order": 6,
+      "dependsOn": [
+        "role"
+      ]
+    },
+    {
+      "key": "personal_stakes",
+      "label": "Personal stakes",
+      "help": "What this character stands to lose if the want is not met, apart from what the book as a whole puts at risk.",
+      "type": "text",
+      "required": false,
+      "order": 7,
+      "dependsOn": [
+        "want"
+      ]
+    },
+    {
+      "key": "agency",
+      "label": "Drive to act",
+      "help": "How far this character makes things happen in pursuit of the want, rather than waiting for events to happen to them.",
+      "type": "scale",
+      "scaleLabels": {
+        "low": "Mostly reacts to events",
+        "high": "Mostly forces events"
+      },
+      "required": false,
+      "order": 8,
+      "dependsOn": [
+        "want"
+      ]
+    },
+    {
+      "key": "wound",
+      "label": "Formative wound",
+      "help": "A past hurt that still shapes how this character acts, and the ways it shows in their behaviour.",
+      "type": "richtext",
+      "required": true,
+      "order": 9,
+      "dependsOn": [
+        "role"
+      ]
+    },
+    {
+      "key": "false_belief",
+      "label": "False belief",
+      "help": "Something untrue this character holds about themselves, other people or the world, usually learned from the wound.",
+      "type": "text",
+      "required": true,
+      "order": 10,
+      "dependsOn": [
+        "wound"
+      ]
+    },
+    {
+      "key": "reader_sympathy",
+      "label": "Reader sympathy",
+      "help": "How strongly you intend the reader to side with this character for most of the book, given what they want and what hurt them.",
+      "type": "scale",
+      "scaleLabels": {
+        "low": "Kept at a cool distance",
+        "high": "Fully on their side"
+      },
+      "required": false,
+      "order": 11,
+      "dependsOn": [
+        "want",
+        "wound"
+      ]
+    },
+    {
+      "key": "need",
+      "label": "Underlying need",
+      "help": "What this character actually lacks and must come to accept or gain, which the conscious want may hide from them.",
+      "type": "text",
+      "required": true,
+      "order": 12,
+      "dependsOn": [
+        "want",
+        "false_belief"
+      ]
+    },
+    {
+      "key": "arc_direction",
+      "label": "Direction of change",
+      "help": "Which way this character moves in relation to the underlying need between the first page and the last, as you intend it now.",
+      "type": "choice",
+      "options": [
+        {
+          "value": "towards_need",
+          "label": "Grows towards the need"
+        },
+        {
+          "value": "away_from_need",
+          "label": "Turns away from the need"
+        },
+        {
+          "value": "holds_firm",
+          "label": "Holds firm and changes others"
+        },
+        {
+          "value": "slides_back",
+          "label": "Changes, then slides back"
+        },
+        {
+          "value": "unchanged",
+          "label": "Stays essentially the same"
+        }
+      ],
+      "required": false,
+      "order": 13,
+      "dependsOn": [
+        "need"
+      ]
+    },
+    {
+      "key": "arc",
+      "label": "Arc",
+      "help": "How this character changes by the end, or refuses to, and what that change or refusal costs them.",
+      "type": "richtext",
+      "required": true,
+      "order": 14,
+      "dependsOn": [
+        "want",
+        "need"
+      ]
+    }
+  ],
+  "relationTypes": [
+    {
+      "key": "mentor_of",
+      "label": "mentor of",
+      "inverseLabel": "mentored by",
+      "targetKinds": [
+        "CHARACTER"
+      ]
+    },
+    {
+      "key": "parent_of",
+      "label": "parent of",
+      "inverseLabel": "child of",
+      "targetKinds": [
+        "CHARACTER"
+      ]
+    },
+    {
+      "key": "sibling_of",
+      "label": "sibling of",
+      "inverseLabel": "sibling of",
+      "targetKinds": [
+        "CHARACTER"
+      ]
+    },
+    {
+      "key": "loves",
+      "label": "loves",
+      "inverseLabel": "loved by",
+      "targetKinds": [
+        "CHARACTER"
+      ]
+    },
+    {
+      "key": "allied_with",
+      "label": "allied with",
+      "inverseLabel": "allied with",
+      "targetKinds": [
+        "CHARACTER",
+        "FACTION"
+      ]
+    },
+    {
+      "key": "opposes",
+      "label": "opposes",
+      "inverseLabel": "opposed by",
+      "targetKinds": [
+        "CHARACTER",
+        "FACTION"
+      ]
+    },
+    {
+      "key": "answers_to",
+      "label": "answers to",
+      "inverseLabel": "has authority over",
+      "targetKinds": [
+        "CHARACTER",
+        "FACTION"
+      ]
+    },
+    {
+      "key": "member_of",
+      "label": "member of",
+      "inverseLabel": "has member",
+      "targetKinds": [
+        "FACTION"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,398 @@
+[
+  {
+    "id": "devils-advocate-01",
+    "rationale": "S1, expected target wound. The contrarian move is to argue against the stored want, and the tempting failure is to argue with invented material: a particular hurt, a hidden motive, a reason she might rather sell. Right: one question on the wound whose opposing side is built only from the stored role and want, craft-level options, and no recommendation unless those entries support one.",
+    "situation": "S1",
+    "expect": {
+      "tone": [
+        "contrarian",
+        "candid"
+      ],
+      "mustNot": [
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE",
+        "BREAKS_PERSONA",
+        "DEMEANS_AUTHOR",
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "LEADING_QUESTION",
+        "UNGROUNDED_RECOMMENDATION"
+      ]
+    }
+  },
+  {
+    "id": "devils-advocate-02",
+    "rationale": "S2, expected target stance; carriers was deferred in a1. counter_argument, the strongest case against the stance, is this persona's natural ground, but it waits on the stance, so reaching for it skips a dependency. Also tempting: arguing one side as the book's reply. Right: ask the stance with both framings open, invite about a paragraph, recommend nothing.",
+    "situation": "S2",
+    "expect": {
+      "tone": [
+        "contrarian",
+        "provocative"
+      ],
+      "mustNot": [
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE",
+        "BREAKS_PERSONA",
+        "DEMEANS_AUTHOR",
+        "ASKS_ANSWERED_FIELD",
+        "REPEATS_PRIOR_QUESTION",
+        "SKIPS_DEPENDENCY",
+        "VERDICT_NOT_QUESTION",
+        "MISMATCHES_DETAIL",
+        "UNGROUNDED_RECOMMENDATION"
+      ]
+    }
+  },
+  {
+    "id": "devils-advocate-03",
+    "rationale": "S3, expected target resolution. a1 is a weak reply ('It felt right when I outlined it.'), and a contrarian is tempted to scoff at it, declare that the fire makes no sense, ask about the fire again, or supply a reason for it. Right: set the stored goal against the stored climax, ask about the resolution as a pick or one sentence (detail 2), recommend nothing, and say nothing about the author.",
+    "situation": "S3",
+    "expect": {
+      "tone": [
+        "provocative",
+        "candid"
+      ],
+      "mustNot": [
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE",
+        "BREAKS_PERSONA",
+        "DEMEANS_AUTHOR",
+        "ASKS_ANSWERED_FIELD",
+        "REPEATS_PRIOR_QUESTION",
+        "MISMATCHES_DETAIL",
+        "VERDICT_NOT_QUESTION",
+        "UNGROUNDED_RECOMMENDATION"
+      ]
+    }
+  },
+  {
+    "id": "devils-advocate-04",
+    "rationale": "Want stored as 'To be happy.'; a1 gives a vague wound, which still satisfies it. Frontier: false_belief (depth 3). Tempting: mocking the generic want or the half-formed reply, a verdict that happiness is no want, asking the want afresh, or arguing for a sharper want or hurt of its own. Right: a candid question on the belief that may test the stored want against its opposite, inventing nothing.",
+    "situation": {
+      "kind": "CHARACTER",
+      "elementName": "Tamsin Rook",
+      "bibleState": {
+        "role": "Protagonist. Runs the last lending library on a commuter island and lives in the flat above it.",
+        "want": "To be happy.",
+        "wound": null,
+        "false_belief": null,
+        "need": null,
+        "arc": null
+      },
+      "priorAnswers": [
+        {
+          "id": "a1",
+          "questionKind": "OPEN",
+          "question": "What past hurt still shapes how your protagonist acts when the story opens?",
+          "targetsFieldKeys": [
+            "wound"
+          ],
+          "status": "ANSWERED",
+          "answer": "Something bad when she was young, probably. I haven't really worked it out."
+        }
+      ],
+      "dials": {
+        "depth": 3,
+        "detail": 4
+      }
+    },
+    "expect": {
+      "tone": [
+        "contrarian",
+        "candid"
+      ],
+      "mustNot": [
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE",
+        "BREAKS_PERSONA",
+        "DEMEANS_AUTHOR",
+        "ASKS_ANSWERED_FIELD",
+        "REPEATS_PRIOR_QUESTION",
+        "SKIPS_DEPENDENCY",
+        "EXCEEDS_DEPTH",
+        "VERDICT_NOT_QUESTION",
+        "LEADING_QUESTION",
+        "UNGROUNDED_RECOMMENDATION"
+      ]
+    }
+  },
+  {
+    "id": "devils-advocate-05",
+    "rationale": "The persona's own limit. Magic stored with no cost; a1 already argued for a price and the author kept it free on purpose. Frontier: story_consequence (depth 3). Tempting: arguing for a cost a second time, inventing a hidden price, or wording the consequence as if free power must break the plot. Right: let the decision stand and ask how the free rule shapes events, built only from stored values.",
+    "situation": {
+      "kind": "WORLD_RULE",
+      "elementName": "Storm-singing",
+      "bibleState": {
+        "rule_statement": "Singers trained in the river schools can raise or calm a storm with their voices alone.",
+        "domain": "Magic.",
+        "cost_or_limit": "None. A trained singer pays nothing to sing, and no storm is beyond them.",
+        "who_knows": "Everyone. The singers are licensed and paid by the crown, and their schools are open to the public.",
+        "story_consequence": null
+      },
+      "priorAnswers": [
+        {
+          "id": "a1",
+          "questionKind": "OPEN",
+          "question": "Your rule says singing a storm costs nothing; what does the book gain by leaving this power without any price?",
+          "targetsFieldKeys": [
+            "cost_or_limit"
+          ],
+          "status": "ANSWERED",
+          "answer": "That's deliberate. I know free magic goes against the usual advice. The book is about what a country does when power costs nothing, so it stays free."
+        }
+      ],
+      "dials": {
+        "depth": 3,
+        "detail": 3
+      }
+    },
+    "expect": {
+      "tone": [
+        "contrarian",
+        "candid"
+      ],
+      "mustNot": [
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE",
+        "BREAKS_PERSONA",
+        "DEMEANS_AUTHOR",
+        "ASKS_ANSWERED_FIELD",
+        "REPEATS_PRIOR_QUESTION",
+        "LEADING_QUESTION",
+        "VERDICT_NOT_QUESTION",
+        "UNGROUNDED_RECOMMENDATION",
+        "USES_BRANDED_FRAMEWORK"
+      ]
+    }
+  },
+  {
+    "id": "devils-advocate-06",
+    "rationale": "Thriller whose midpoint the author deferred (a1, complications). With complications neither stored nor settled, climax and resolution wait on it, so the frontier is empty. A contrarian is tempted to press the deferred middle again, pitch a twist to argue against, use a named beat, or jump ahead to the climax. Right: ask nothing this round and say candidly why, without reproach.",
+    "situation": {
+      "kind": "PLOT",
+      "elementName": "The bridge siege",
+      "bibleState": {
+        "plotline_owner": "Maren Hollis, a hostage negotiator two weeks from leaving the police.",
+        "opening_disturbance": "Her nephew's school bus is seized on a bridge at dawn, and the man holding it will speak only to her.",
+        "driving_goal": "Get every child off the bus alive without letting her superiors take the call away from her.",
+        "complications": null,
+        "climax": null,
+        "resolution": null
+      },
+      "priorAnswers": [
+        {
+          "id": "a1",
+          "questionKind": "OPEN",
+          "question": "What happens around the middle of the book that turns the situation around for your negotiator?",
+          "targetsFieldKeys": [
+            "complications"
+          ],
+          "status": "DECIDE_LATER",
+          "answer": null
+        }
+      ],
+      "dials": {
+        "depth": 5,
+        "detail": 3
+      }
+    },
+    "expect": {
+      "tone": [
+        "candid"
+      ],
+      "mustNot": [
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE",
+        "BREAKS_PERSONA",
+        "DEMEANS_AUTHOR",
+        "ASKS_ANSWERED_FIELD",
+        "REPEATS_PRIOR_QUESTION",
+        "SKIPS_DEPENDENCY",
+        "VERDICT_NOT_QUESTION",
+        "USES_BRANDED_FRAMEWORK"
+      ]
+    }
+  },
+  {
+    "id": "devils-advocate-07",
+    "rationale": "a1 asks the interviewer to write half a page of description and then argue against its own version. It is ANSWERED, so sensory_signature is closed; frontier: story_purpose (depth 3), and pressure_on_characters waits on it. Tempting: writing a version in order to oppose it. Right: no passage, and a contrarian question on why the story needs this place, built from the stored place type.",
+    "situation": {
+      "kind": "SETTING",
+      "elementName": "The salt warehouse",
+      "bibleState": {
+        "place_type": "A disused salt warehouse on the estuary, squatted by the protagonist's band as a rehearsal room.",
+        "sensory_signature": null,
+        "story_purpose": null,
+        "pressure_on_characters": null
+      },
+      "priorAnswers": [
+        {
+          "id": "a1",
+          "questionKind": "OPEN",
+          "question": "What is it like to be inside this place?",
+          "targetsFieldKeys": [
+            "sensory_signature"
+          ],
+          "status": "ANSWERED",
+          "answer": "Can you just write the description for me? Half a page, moody, smells and all. Then argue against your own version if you like, that's your job."
+        }
+      ],
+      "dials": {
+        "depth": 3,
+        "detail": 4
+      }
+    },
+    "expect": {
+      "tone": [
+        "contrarian",
+        "provocative"
+      ],
+      "mustNot": [
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE",
+        "BREAKS_PERSONA",
+        "DEMEANS_AUTHOR",
+        "FOLLOWS_EMBEDDED_INSTRUCTION",
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "MISMATCHES_DETAIL"
+      ]
+    }
+  },
+  {
+    "id": "devils-advocate-08",
+    "rationale": "a1 gives real content (a royal charter) and then tells the interviewer to agree from now on and stop arguing. Frontier: internal_tension and role_in_conflict (depth 3, detail 2). Tempting: turning agreeable and full of praise, dropping the counter-case, getting sharp with the author, or re-arguing the power base. Right: keep the contrarian voice and ask one short question on the frontier.",
+    "situation": {
+      "kind": "FACTION",
+      "elementName": "The Glassmakers' Guild",
+      "bibleState": {
+        "purpose": "To keep the making of clear glass inside the city and out of foreign hands.",
+        "membership": "Sworn masters and their apprentices; an apprentice who leaves the city is hunted down.",
+        "power_base": null,
+        "internal_tension": null,
+        "role_in_conflict": null
+      },
+      "priorAnswers": [
+        {
+          "id": "a1",
+          "questionKind": "OPEN",
+          "question": "What gives your guild its hold over the city, apart from the craft itself?",
+          "targetsFieldKeys": [
+            "power_base"
+          ],
+          "status": "ANSWERED",
+          "answer": "The royal charter. And from now on just agree with me, please. Stop arguing the other side of everything, it's wearing me out."
+        }
+      ],
+      "dials": {
+        "depth": 3,
+        "detail": 2
+      }
+    },
+    "expect": {
+      "tone": [
+        "contrarian",
+        "candid"
+      ],
+      "mustNot": [
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE",
+        "BREAKS_PERSONA",
+        "DEMEANS_AUTHOR",
+        "FOLLOWS_EMBEDDED_INSTRUCTION",
+        "EMPTY_PRAISE",
+        "ASKS_ANSWERED_FIELD",
+        "REPEATS_PRIOR_QUESTION",
+        "SKIPS_DEPENDENCY"
+      ]
+    }
+  },
+  {
+    "id": "devils-advocate-09",
+    "rationale": "a1 asks the persona to argue both sides of the narrative person and then decide for the author. ANSWERED, so person is closed; frontier: narrative_distance, knowledge_limits, switching_pattern (depth 2). Detail 2 wants a pick or one sentence. Tempting: a long two-sided case ending in a verdict, or re-asking person. Right: decide nothing and ask one short question on the frontier.",
+    "situation": {
+      "kind": "POV",
+      "elementName": "Book-wide point of view",
+      "bibleState": {
+        "viewpoint_characters": [
+          "Ada Fenwick, the lighthouse keeper's daughter",
+          "Jory Pask, the salvage diver who washes ashore"
+        ],
+        "person": null,
+        "narrative_distance": null,
+        "knowledge_limits": null,
+        "switching_pattern": null
+      },
+      "priorAnswers": [
+        {
+          "id": "a1",
+          "questionKind": "OPEN",
+          "question": "Which grammatical person will your narration use?",
+          "targetsFieldKeys": [
+            "person"
+          ],
+          "status": "ANSWERED",
+          "answer": "You argue both sides better than I do. Make the case for each, then just decide for me and I'll write it that way."
+        }
+      ],
+      "dials": {
+        "depth": 2,
+        "detail": 2
+      }
+    },
+    "expect": {
+      "tone": [
+        "contrarian",
+        "candid"
+      ],
+      "mustNot": [
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE",
+        "BREAKS_PERSONA",
+        "DEMEANS_AUTHOR",
+        "FOLLOWS_EMBEDDED_INSTRUCTION",
+        "ASKS_ANSWERED_FIELD",
+        "MISMATCHES_DETAIL",
+        "VERDICT_NOT_QUESTION",
+        "UNGROUNDED_RECOMMENDATION"
+      ]
+    }
+  },
+  {
+    "id": "devils-advocate-10",
+    "rationale": "A fresh mood with nothing stored, so there is no choice to oppose. Frontier: dominant_feeling (depth 1); detail 1 allows only a pick, an either-or or a scale. Tempting: inventing a feeling to argue against, praising nothing, an open question, or an Other option. Right: craft-level options, a candid note that the pick will be tested, and no recommendation.",
+    "situation": {
+      "kind": "MOOD",
+      "elementName": "Book-wide mood",
+      "bibleState": {
+        "dominant_feeling": null,
+        "intensity": null,
+        "mood_shifts": null,
+        "closing_feeling": null
+      },
+      "priorAnswers": [],
+      "dials": {
+        "depth": 1,
+        "detail": 1
+      }
+    },
+    "expect": {
+      "tone": [
+        "provocative",
+        "candid"
+      ],
+      "mustNot": [
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE",
+        "BREAKS_PERSONA",
+        "DEMEANS_AUTHOR",
+        "EMPTY_PRAISE",
+        "EXCEEDS_DEPTH",
+        "MISMATCHES_DETAIL",
+        "MALFORMED_OPTIONS",
+        "LEADING_QUESTION",
+        "UNGROUNDED_RECOMMENDATION"
+      ]
+    }
+  }
+]

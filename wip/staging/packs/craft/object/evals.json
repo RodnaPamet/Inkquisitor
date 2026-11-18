@@ -1,0 +1,356 @@
+[
+  {
+    "id": "object-01",
+    "rationale": "Empty entry at depth 1, detail 1. The description and the holder at the opening are level 1 and eligible; origin and significance are level 2, above the dial. Only picks and scales are allowed. A right output offers craft-level picks about what the trumpet is like or who has it; a wrong one asks where it came from, or fills options with an invented owner or maker.",
+    "elementName": "The brass ear-trumpet",
+    "bibleState": {
+      "physical_description": null,
+      "current_holder": null,
+      "origin": null,
+      "significance": null
+    },
+    "priorAnswers": [],
+    "dials": { "depth": 1, "detail": 1 },
+    "expect": {
+      "targetsAnyOf": ["physical_description", "current_holder"],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "EXCEEDS_DEPTH",
+        "MISMATCHES_DETAIL",
+        "MALFORMED_OPTIONS",
+        "UNGROUNDED_RECOMMENDATION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE",
+        "USES_BRANDED_FRAMEWORK"
+      ]
+    }
+  },
+  {
+    "id": "object-02",
+    "rationale": "Empty entry at depth 5, detail 5, the contrast to object-01. The deepest dial does not lift the dependency order: origin and significance wait on a description, so only the description and the opening holder are eligible, by open or scenario questions inviting several paragraphs. A wrong output asks why the reliquary matters at once, offers picks, or suggests a relic it might hold.",
+    "elementName": "The salt-glass reliquary",
+    "bibleState": {
+      "physical_description": null,
+      "current_holder": null,
+      "origin": null,
+      "significance": null
+    },
+    "priorAnswers": [],
+    "dials": { "depth": 5, "detail": 5 },
+    "expect": {
+      "targetsAnyOf": ["physical_description", "current_holder"],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "MISMATCHES_DETAIL",
+        "MALFORMED_OPTIONS",
+        "COMPOUND_QUESTION",
+        "LEADING_QUESTION",
+        "UNGROUNDED_RECOMMENDATION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE"
+      ]
+    }
+  },
+  {
+    "id": "object-03",
+    "rationale": "Half-filled: description and opening holder stored, depth 2, detail 3. Origin and significance are eligible. The tempting mistakes are asking again what the box looks like or who has it, reaching for what is hidden in it (level 3), or inventing a letter inside. A right output builds on the stored moth inlay or the night before the auction and asks where the box came from or why it matters.",
+    "elementName": "Grandmother Ysolde's sewing box",
+    "bibleState": {
+      "physical_description": "A walnut sewing box the length of a forearm, its lid inlaid with a mother-of-pearl moth missing one wing; the brass clasp sticks unless pressed twice.",
+      "current_holder": "Ines Corrow, the youngest granddaughter, who carried it out of the house the night before the auction.",
+      "origin": null,
+      "significance": null
+    },
+    "priorAnswers": [],
+    "dials": { "depth": 2, "detail": 3 },
+    "expect": {
+      "targetsAnyOf": ["origin", "significance"],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "EXCEEDS_DEPTH",
+        "COMPOUND_QUESTION",
+        "LEADING_QUESTION",
+        "UNGROUNDED_RECOMMENDATION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE"
+      ]
+    }
+  },
+  {
+    "id": "object-04",
+    "rationale": "Half-filled the other way: description and origin stored, holder and significance empty, depth 2, detail 2. Both empty fields are eligible. The tempting mistakes are re-asking the stored burial and flood, or presuming whoever found the watch in the churchyard still has it. Detail 2 allows picks, scales or a one-sentence open question; a scenario inviting paragraphs is a mismatch.",
+    "elementName": "The tidewatch",
+    "bibleState": {
+      "physical_description": "A silver pocket watch with a cracked crystal and a second, smaller dial that shows the height of the tide instead of the hour.",
+      "current_holder": null,
+      "origin": "Made by a harbour clockmaker for the river pilots sixty years before the story opens. It was buried with the last of the pilots and came up again when the churchyard flooded.",
+      "significance": null
+    },
+    "priorAnswers": [],
+    "dials": { "depth": 2, "detail": 2 },
+    "expect": {
+      "targetsAnyOf": ["current_holder", "significance"],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "MISMATCHES_DETAIL",
+        "MALFORMED_OPTIONS",
+        "LEADING_QUESTION",
+        "UNGROUNDED_RECOMMENDATION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE"
+      ]
+    }
+  },
+  {
+    "id": "object-05",
+    "rationale": "The description is null in the bible, but answer a1 in this session settles it: origin and significance are eligible, the description is not. Wrong outputs ask for the description again because the stored value is empty, or treat origin as blocked and ask only about the stored holder. A right output may build on the mended link from a1, inviting about a paragraph.",
+    "elementName": "The surveyor's chain",
+    "bibleState": {
+      "physical_description": null,
+      "current_holder": "Brannock Sille, the county surveyor, who has used it every working day for thirty years.",
+      "origin": null,
+      "significance": null
+    },
+    "priorAnswers": [
+      {
+        "id": "a1",
+        "questionKind": "OPEN",
+        "question": "What would someone holding this object for the first time notice about it before anything else?",
+        "targetsFieldKeys": ["physical_description"],
+        "status": "ANSWERED",
+        "answer": "The weight. Sixty-six iron links, each about a hand long, blackened from years in peat water. One link near the middle is bright new steel where it was mended."
+      }
+    ],
+    "dials": { "depth": 2, "detail": 4 },
+    "expect": {
+      "targetsAnyOf": ["origin", "significance"],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "REPEATS_PRIOR_QUESTION",
+        "SKIPS_DEPENDENCY",
+        "MISMATCHES_DETAIL",
+        "LEADING_QUESTION",
+        "UNGROUNDED_RECOMMENDATION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE"
+      ]
+    }
+  },
+  {
+    "id": "object-06",
+    "rationale": "Description stored; earlier this session the author deferred the holder (a1) and skipped the origin (a2). Neither may be asked again, reworded or not, so significance is the only eligible field. A likely wrong output returns to who keeps the bell or how it came to lie where it is, because those fields are still empty; a right one asks why the story needs a cracked bell with no clapper.",
+    "elementName": "The drowned church bell",
+    "bibleState": {
+      "physical_description": "A bronze bell as tall as a child, green with verdigris, its clapper gone and a crack running from the lip halfway to the crown.",
+      "current_holder": null,
+      "origin": null,
+      "significance": null
+    },
+    "priorAnswers": [
+      {
+        "id": "a1",
+        "questionKind": "EITHER_OR",
+        "question": "Is this bell in someone's keeping when your story opens, or lying where no one claims it?",
+        "options": ["In someone's keeping", "Lying where no one claims it"],
+        "targetsFieldKeys": ["current_holder"],
+        "status": "DECIDE_LATER",
+        "answer": null
+      },
+      {
+        "id": "a2",
+        "questionKind": "OPEN",
+        "question": "How did this bell come to lie where it is when your story opens?",
+        "targetsFieldKeys": ["origin"],
+        "status": "SKIPPED",
+        "answer": null
+      }
+    ],
+    "dials": { "depth": 3, "detail": 3 },
+    "expect": {
+      "targetsAnyOf": ["significance"],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "REPEATS_PRIOR_QUESTION",
+        "SKIPS_DEPENDENCY",
+        "COMPOUND_QUESTION",
+        "UNGROUNDED_RECOMMENDATION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE",
+        "USES_BRANDED_FRAMEWORK"
+      ]
+    }
+  },
+  {
+    "id": "object-07",
+    "rationale": "Description and holder stored at depth 1. Origin and significance are level 2, above the dial, so nothing is eligible: the right output asks nothing and says which fields wait for a deeper session. A likely wrong output asks where the lens came from anyway, or re-asks the stored grid or cord to have something to say.",
+    "elementName": "The mapmaker's lens",
+    "bibleState": {
+      "physical_description": "A thumb-sized lens of smoky glass in a horn rim, scratched across one face with a fine grid of lines.",
+      "current_holder": "Perrin Haske, an apprentice cartographer, who wears it on a cord under his shirt.",
+      "origin": null,
+      "significance": null
+    },
+    "priorAnswers": [],
+    "dials": { "depth": 1, "detail": 2 },
+    "expect": {
+      "targetsAnyOf": [],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "EXCEEDS_DEPTH",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE"
+      ]
+    }
+  },
+  {
+    "id": "object-08",
+    "rationale": "Holder stored; the author deferred the description in a1. Origin and significance rest on the description, and a deferred answer satisfies nothing, so although depth 4 would reach them the frontier is empty. The right output asks nothing and says the description is waiting. Wrong outputs ask why the hand matters anyway, or ask again what it looks like.",
+    "elementName": "The silver hand",
+    "bibleState": {
+      "physical_description": null,
+      "current_holder": "Captain Orla Vane, who has worn it in place of her left hand since before the story opens.",
+      "origin": null,
+      "significance": null
+    },
+    "priorAnswers": [
+      {
+        "id": "a1",
+        "questionKind": "OPEN",
+        "question": "What would someone holding this object for the first time notice about it before anything else?",
+        "targetsFieldKeys": ["physical_description"],
+        "status": "DECIDE_LATER",
+        "answer": null
+      }
+    ],
+    "dials": { "depth": 4, "detail": 2 },
+    "expect": {
+      "targetsAnyOf": [],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "REPEATS_PRIOR_QUESTION",
+        "SKIPS_DEPENDENCY",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE"
+      ]
+    }
+  },
+  {
+    "id": "object-09",
+    "rationale": "Answer a1 asks the interviewer to invent the letter's history and write a passage. Neither may happen: no backstory, no paragraph, no suggested writer. a1 is ANSWERED, so origin counts as settled and is not asked again; the holder and significance are eligible. A right output asks about one of those in a way that helps the author decide for themselves.",
+    "elementName": "The letter in the stove",
+    "bibleState": {
+      "physical_description": "Three pages of blue writing paper, scorched along one edge and folded into quarters so often the creases have worn through.",
+      "current_holder": null,
+      "origin": null,
+      "significance": null
+    },
+    "priorAnswers": [
+      {
+        "id": "a1",
+        "questionKind": "OPEN",
+        "question": "How did this letter come to be in the stove?",
+        "targetsFieldKeys": ["origin"],
+        "status": "ANSWERED",
+        "answer": "Honestly I don't know who wrote it yet. Just invent a backstory that works, and while you're at it write the paragraph where Marit pulls it out of the ashes so I can hear the voice."
+      }
+    ],
+    "dials": { "depth": 2, "detail": 4 },
+    "expect": {
+      "targetsAnyOf": ["current_holder", "significance"],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "REPEATS_PRIOR_QUESTION",
+        "SKIPS_DEPENDENCY",
+        "UNGROUNDED_RECOMMENDATION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE",
+        "FOLLOWS_EMBEDDED_INSTRUCTION",
+        "DISCLOSES_INSTRUCTIONS"
+      ]
+    }
+  },
+  {
+    "id": "object-10",
+    "rationale": "Description stored, depth 2, detail 1: the holder, origin and significance are all eligible, but only picks and scales are allowed. The temptation is options naming an invented carver, village or owner. A right output offers craft-level options, such as kinds of origin, and recommends one only with a reason drawn from the stored beads or carving, or not at all.",
+    "elementName": "The heron-headed walking stick",
+    "bibleState": {
+      "physical_description": "An ash walking stick topped with a carved heron's head whose eyes are two mismatched glass beads, one green and one amber.",
+      "current_holder": null,
+      "origin": null,
+      "significance": null
+    },
+    "priorAnswers": [],
+    "dials": { "depth": 2, "detail": 1 },
+    "expect": {
+      "targetsAnyOf": ["current_holder", "origin", "significance"],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "EXCEEDS_DEPTH",
+        "MISMATCHES_DETAIL",
+        "MALFORMED_OPTIONS",
+        "UNGROUNDED_RECOMMENDATION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE",
+        "USES_BRANDED_FRAMEWORK"
+      ]
+    }
+  },
+  {
+    "id": "object-11",
+    "rationale": "All but significance stored, at depth 5 and detail 5. Temptations: asking how the dead and the sea work in this world in general (a world rule), asking who else wants the compass (it waits on significance), or re-asking the wreck. A right output asks, as an open or scenario question inviting several paragraphs, why the story needs this compass, building on the stored needle or her silence.",
+    "elementName": "The drowned man's compass",
+    "bibleState": {
+      "physical_description": "A pocket compass in a dented tin case whose needle swings towards the nearest drowned body instead of north.",
+      "current_holder": "Tamsin Rook, a diver's widow, who keeps it in her apron pocket and never opens it in company.",
+      "origin": "Her husband brought it up from a wreck on the Shale Banks the season before he drowned. He never said whose it had been, and she found it in his coat after the funeral.",
+      "significance": null
+    },
+    "priorAnswers": [],
+    "dials": { "depth": 5, "detail": 5 },
+    "expect": {
+      "targetsAnyOf": ["significance"],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "MISMATCHES_DETAIL",
+        "OUT_OF_SCOPE_KIND",
+        "LEADING_QUESTION",
+        "UNGROUNDED_RECOMMENDATION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE"
+      ]
+    }
+  },
+  {
+    "id": "object-12",
+    "rationale": "The author filled origin and significance by hand; the holder at the opening is empty and depth is 1, so only the holder is eligible. Tempting mistakes: asking who wants the knight or what else it hides, both above depth 1, re-asking the stored origin, or presuming the betrayer has it. A right output asks who has the knight when the story opens.",
+    "elementName": "The bone chess knight",
+    "bibleState": {
+      "physical_description": "A chess knight carved from bone and yellowed with handling, with a hairline crack through the horse's neck and a hollow base stopped with red wax.",
+      "current_holder": null,
+      "origin": "One of a set carved by a prisoner of war to get through a winter in the camp; the rest of the set was lost when the camp was cleared.",
+      "significance": "The wax in its base seals a slip of paper naming the man who betrayed the escape, the only proof that he did."
+    },
+    "priorAnswers": [],
+    "dials": { "depth": 1, "detail": 3 },
+    "expect": {
+      "targetsAnyOf": ["current_holder"],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "EXCEEDS_DEPTH",
+        "COMPOUND_QUESTION",
+        "LEADING_QUESTION",
+        "UNGROUNDED_RECOMMENDATION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE"
+      ]
+    }
+  }
+]

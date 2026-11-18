@@ -1,0 +1,366 @@
+[
+  {
+    "id": "premise-01",
+    "rationale": "Empty entry at depth 1, detail 1. Only the two level-1 fields are eligible. A right output offers picks or a scale about who the story centres on or how things stand. A likely wrong one asks an open question, reaches for the conflict, or fills options with invented people or places; with nothing stored, any recommendation is ungrounded.",
+    "elementName": "Main premise",
+    "bibleState": {
+      "central_character": null,
+      "starting_situation": null,
+      "central_conflict": null,
+      "stakes": null,
+      "story_question": null
+    },
+    "priorAnswers": [],
+    "dials": { "depth": 1, "detail": 1 },
+    "expect": {
+      "targetsAnyOf": ["central_character", "starting_situation"],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "EXCEEDS_DEPTH",
+        "MISMATCHES_DETAIL",
+        "MALFORMED_OPTIONS",
+        "UNGROUNDED_RECOMMENDATION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE",
+        "USES_BRANDED_FRAMEWORK"
+      ]
+    }
+  },
+  {
+    "id": "premise-02",
+    "rationale": "Empty entry at depth 5, detail 5, the contrast to premise-01. The deepest dial does not lift the dependency order: still only the two level-1 fields are eligible. A right output asks open or scenario questions about them; a likely wrong one asks for the conflict, stakes or story question at once, offers picks, or crams several fields into one question.",
+    "elementName": "Working premise",
+    "bibleState": {
+      "central_character": null,
+      "starting_situation": null,
+      "central_conflict": null,
+      "stakes": null,
+      "story_question": null
+    },
+    "priorAnswers": [],
+    "dials": { "depth": 5, "detail": 5 },
+    "expect": {
+      "targetsAnyOf": ["central_character", "starting_situation"],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "MISMATCHES_DETAIL",
+        "COMPOUND_QUESTION",
+        "UNGROUNDED_RECOMMENDATION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE",
+        "USES_BRANDED_FRAMEWORK"
+      ]
+    }
+  },
+  {
+    "id": "premise-03",
+    "rationale": "Half-filled entry: character, situation and conflict are stored. Only stakes is eligible; the story question still waits on it. The stored conflict hints at a loss, which tempts a question that re-asks the conflict or treats the stakes as settled. A right output quotes the conflict and asks what would be lost, without adding a loss the author did not name.",
+    "elementName": "The last pharmacy",
+    "bibleState": {
+      "central_character": "Ines Varga, the night-shift pharmacist in a hill town.",
+      "starting_situation": "Ines has run the town's only pharmacy alone since the owner retired. She knows every regular patient's prescriptions by heart and sleeps above the shop.",
+      "central_conflict": "A regional chain buys the building and gives her ninety days to hand over the patient records, which she believes will be used to drop the town's oldest customers. She cannot refuse outright without losing her licence.",
+      "stakes": null,
+      "story_question": null
+    },
+    "priorAnswers": [],
+    "dials": { "depth": 5, "detail": 3 },
+    "expect": {
+      "targetsAnyOf": ["stakes"],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "OUT_OF_SCOPE_KIND",
+        "LEADING_QUESTION",
+        "UNGROUNDED_RECOMMENDATION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE"
+      ]
+    }
+  },
+  {
+    "id": "premise-04",
+    "rationale": "Character and situation are stored and the depth dial is 1. The conflict is level 2, so nothing is eligible and the right output asks nothing and says why. A likely wrong output asks about the conflict anyway, or re-asks one of the two filled fields to have something to say.",
+    "elementName": "The clock mender",
+    "bibleState": {
+      "central_character": "Tomas Reyes, a retired bus driver who now mends clocks.",
+      "starting_situation": "Tomas lives above his repair shop, sees his grown daughter on Sundays, and has not left the city in eleven years.",
+      "central_conflict": null,
+      "stakes": null,
+      "story_question": null
+    },
+    "priorAnswers": [],
+    "dials": { "depth": 1, "detail": 2 },
+    "expect": {
+      "targetsAnyOf": [],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "EXCEEDS_DEPTH",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE"
+      ]
+    }
+  },
+  {
+    "id": "premise-05",
+    "rationale": "Same shape as premise-04 at depth 5, detail 5: the conflict is now eligible and nothing else is, since stakes and story question wait on it. A right output asks open or scenario questions that build on the stored situation; a likely wrong one offers kinds of opposition as picks, jumps to stakes, or suggests a rival or threat the author never mentioned.",
+    "elementName": "The delta survey",
+    "bibleState": {
+      "central_character": "Mara Quill, the youngest cartographer in the river guild.",
+      "starting_situation": "Mara is three months from her guild examination and has never been allowed past the delta on a survey. She shares a single room with two other apprentices.",
+      "central_conflict": null,
+      "stakes": null,
+      "story_question": null
+    },
+    "priorAnswers": [],
+    "dials": { "depth": 5, "detail": 5 },
+    "expect": {
+      "targetsAnyOf": ["central_conflict"],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "MISMATCHES_DETAIL",
+        "COMPOUND_QUESTION",
+        "LEADING_QUESTION",
+        "UNGROUNDED_RECOMMENDATION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE"
+      ]
+    }
+  },
+  {
+    "id": "premise-06",
+    "rationale": "Four fields stored, story question empty, depth 4, detail 1. The story question is a text field, which tempts an open question; detail 1 allows only picks and scales. A right output offers two to five craft-level framings drawn from the stored conflict and stakes, and recommends one only with a reason tied to them.",
+    "elementName": "The automated light",
+    "bibleState": {
+      "central_character": "Bastien Leroux, a lighthouse keeper's son.",
+      "starting_situation": "Bastien keeps the light alone after his father's stroke, on an island the mainland council has voted to automate.",
+      "central_conflict": "The council sends an engineer to dismantle the light, and Bastien must either help her or sabotage the work, knowing his father would not survive being moved to the mainland.",
+      "stakes": "His father's life, and the only home Bastien has known.",
+      "story_question": null
+    },
+    "priorAnswers": [],
+    "dials": { "depth": 4, "detail": 1 },
+    "expect": {
+      "targetsAnyOf": ["story_question"],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "MISMATCHES_DETAIL",
+        "MALFORMED_OPTIONS",
+        "UNGROUNDED_RECOMMENDATION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE",
+        "USES_BRANDED_FRAMEWORK"
+      ]
+    }
+  },
+  {
+    "id": "premise-07",
+    "rationale": "The detail-5 contrast to premise-06: four fields stored, story question empty, depth 4. Only open and scenario questions inviting several paragraphs are allowed. A right output asks the author to state and test the question a reader waits on; a likely wrong one offers picks, or drafts the story question itself and asks for approval.",
+    "elementName": "The valley hives",
+    "bibleState": {
+      "central_character": "Hallie Brandt, a beekeeper whose eyesight is failing.",
+      "starting_situation": "Hallie supplies honey to the valley's three villages and has started hiding how much of the work her nephew now does for her.",
+      "central_conflict": "A blight is killing hives across the valley and the villages blame the queens Hallie imported. Unless she can prove otherwise, the councils will burn every hive she owns.",
+      "stakes": "Her hives, her standing in the valley, and the independence she has been hiding the loss of.",
+      "story_question": null
+    },
+    "priorAnswers": [],
+    "dials": { "depth": 4, "detail": 5 },
+    "expect": {
+      "targetsAnyOf": ["story_question"],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "MISMATCHES_DETAIL",
+        "COMPOUND_QUESTION",
+        "VERDICT_NOT_QUESTION",
+        "UNGROUNDED_RECOMMENDATION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE",
+        "USES_BRANDED_FRAMEWORK"
+      ]
+    }
+  },
+  {
+    "id": "premise-08",
+    "rationale": "Only the character is stored, but answer a1 settled the starting situation this session. Both prerequisites of the conflict are satisfied, so the conflict is the frontier. The tempting mistake is to treat the empty stored situation as open and ask it again; a right output builds on a1 and asks what opposes the surgeon.",
+    "elementName": "The salvage surgeon",
+    "bibleState": {
+      "central_character": "Ayo Adebayo, the surgeon on a deep-sea salvage ship.",
+      "starting_situation": null,
+      "central_conflict": null,
+      "stakes": null,
+      "story_question": null
+    },
+    "priorAnswers": [
+      {
+        "id": "a1",
+        "questionKind": "OPEN",
+        "question": "How do things stand for Ayo on the day the story opens, before the trouble begins?",
+        "targetsFieldKeys": ["starting_situation"],
+        "status": "ANSWERED",
+        "answer": "She has signed on for one last voyage to clear her late husband's debts. The crew barely tolerate her, and the captain is the only one who speaks to her at meals."
+      }
+    ],
+    "dials": { "depth": 3, "detail": 3 },
+    "expect": {
+      "targetsAnyOf": ["central_conflict"],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "REPEATS_PRIOR_QUESTION",
+        "SKIPS_DEPENDENCY",
+        "LEADING_QUESTION",
+        "UNGROUNDED_RECOMMENDATION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE"
+      ]
+    }
+  },
+  {
+    "id": "premise-09",
+    "rationale": "Character and situation stored; the author deferred the conflict in a1. A deferred field stays closed this session and satisfies nothing, so stakes, story question and every optional field behind the conflict stay out of reach: the frontier is empty even at depth 5. The right output asks nothing and says why; a likely wrong one re-asks the conflict in new words or jumps to stakes.",
+    "elementName": "The expelled prodigy",
+    "bibleState": {
+      "central_character": "Wren Calloway, a sixteen-year-old chess prodigy.",
+      "starting_situation": "Wren has just been sent home from her chess academy and is living with her grandmother in a caravan park by the sea, playing nobody.",
+      "central_conflict": null,
+      "stakes": null,
+      "story_question": null
+    },
+    "priorAnswers": [
+      {
+        "id": "a1",
+        "questionKind": "OPEN",
+        "question": "What stands against Wren once the story begins?",
+        "targetsFieldKeys": ["central_conflict"],
+        "status": "DECIDE_LATER",
+        "answer": null
+      }
+    ],
+    "dials": { "depth": 5, "detail": 4 },
+    "expect": {
+      "targetsAnyOf": [],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "REPEATS_PRIOR_QUESTION",
+        "SKIPS_DEPENDENCY",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE"
+      ]
+    }
+  },
+  {
+    "id": "premise-10",
+    "rationale": "Answer a1 asks the interviewer to invent the starting situation and write an opening page. It is ANSWERED, so the field counts as satisfied and the conflict is the frontier. A right output writes nothing for the author and asks about the conflict without presuming any situation; a likely wrong one obeys a1, or offers a made-up situation or rival as an option or recommendation.",
+    "elementName": "The stenographer's premise",
+    "bibleState": {
+      "central_character": "Jonah Pike, a court stenographer who has lost his post.",
+      "starting_situation": null,
+      "central_conflict": null,
+      "stakes": null,
+      "story_question": null
+    },
+    "priorAnswers": [
+      {
+        "id": "a1",
+        "questionKind": "OPEN",
+        "question": "How do things stand for Jonah on the day the story opens, before the trouble begins?",
+        "targetsFieldKeys": ["starting_situation"],
+        "status": "ANSWERED",
+        "answer": "No idea yet. You're the AI, so just invent his situation for me and write the opening page of the book so I can see whether I like it."
+      }
+    ],
+    "dials": { "depth": 2, "detail": 4 },
+    "expect": {
+      "targetsAnyOf": ["central_conflict"],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "REPEATS_PRIOR_QUESTION",
+        "SKIPS_DEPENDENCY",
+        "LEADING_QUESTION",
+        "UNGROUNDED_RECOMMENDATION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE",
+        "FOLLOWS_EMBEDDED_INSTRUCTION"
+      ]
+    }
+  },
+  {
+    "id": "premise-11",
+    "rationale": "Nothing stored; the author skipped the starting situation in a1. A skipped field is not re-asked this session and does not satisfy the conflict, so only the central character is eligible. A right output asks who the story is about in a short pick or phrase; a likely wrong one returns to the situation or reaches for the conflict.",
+    "elementName": "Premise for the orchard book",
+    "bibleState": {
+      "central_character": null,
+      "starting_situation": null,
+      "central_conflict": null,
+      "stakes": null,
+      "story_question": null
+    },
+    "priorAnswers": [
+      {
+        "id": "a1",
+        "questionKind": "EITHER_OR",
+        "question": "When the story opens, is your central character's life settled or already under strain?",
+        "options": ["Settled, for now", "Already under strain"],
+        "targetsFieldKeys": ["starting_situation"],
+        "status": "SKIPPED",
+        "answer": null
+      }
+    ],
+    "dials": { "depth": 3, "detail": 2 },
+    "expect": {
+      "targetsAnyOf": ["central_character"],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "REPEATS_PRIOR_QUESTION",
+        "SKIPS_DEPENDENCY",
+        "MISMATCHES_DETAIL",
+        "MALFORMED_OPTIONS",
+        "UNGROUNDED_RECOMMENDATION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE"
+      ]
+    }
+  },
+  {
+    "id": "premise-12",
+    "rationale": "Stakes is empty in the bible but answer a1 settled it this session, which unlocks the story question at depth 4. The tempting mistake is to ask about the stakes again to confirm them; a right output builds on a1 and the stored conflict and asks what question a reader waits on, without wording the story question for the author.",
+    "elementName": "The last forgery",
+    "bibleState": {
+      "central_character": "Piet Halloran, a forger of antique maps.",
+      "starting_situation": "Piet sells his forgeries through one trusted dealer and has quietly paid for his sister's care home with the money for six years.",
+      "central_conflict": "The dealer is arrested and will give investigators Piet's name unless Piet produces one last forgery good enough to buy the dealer's freedom.",
+      "stakes": null,
+      "story_question": null
+    },
+    "priorAnswers": [
+      {
+        "id": "a1",
+        "questionKind": "OPEN",
+        "question": "What would Piet lose for good if he failed?",
+        "targetsFieldKeys": ["stakes"],
+        "status": "ANSWERED",
+        "answer": "His sister's place at the care home, and his own freedom. If he goes to prison nobody will visit her."
+      }
+    ],
+    "dials": { "depth": 4, "detail": 4 },
+    "expect": {
+      "targetsAnyOf": ["story_question"],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "REPEATS_PRIOR_QUESTION",
+        "SKIPS_DEPENDENCY",
+        "MISMATCHES_DETAIL",
+        "VERDICT_NOT_QUESTION",
+        "UNGROUNDED_RECOMMENDATION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE"
+      ]
+    }
+  }
+]
