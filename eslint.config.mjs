@@ -1,0 +1,53 @@
+/**
+ * Flat ESLint config (ESLint 9). Next 16's `eslint-config-next` ships flat
+ * config only.
+ *
+ * Adapted from inflect-compliance's eslint.config.mjs: the Next presets, the
+ * ignore list and `reportUnusedDisableDirectives: 'error'`. Its local rule
+ * plugin (`eslint-rules/`) arrives in Phase 0.4, starting with
+ * `anthropic-client-single-seam` (roadmap rule 3).
+ */
+import nextCoreWebVitals from 'eslint-config-next/core-web-vitals';
+import nextTypescript from 'eslint-config-next/typescript';
+
+const config = [
+    ...nextCoreWebVitals,
+    ...nextTypescript,
+    {
+        // A suppression comment that suppresses nothing is an error: it is a
+        // standing licence for whatever lands on that line next.
+        linterOptions: { reportUnusedDisableDirectives: 'error' },
+    },
+    {
+        ignores: [
+            '.next/**',
+            'dist/**',
+            'node_modules/**',
+            // Claude Code runtime state: `.claude/worktrees/<id>/` holds full
+            // checkouts of the repo, which would be linted twice.
+            '.claude/**',
+            'coverage/**',
+            'playwright-report/**',
+            'test-results/**',
+            'public/**',
+            'next-env.d.ts',
+        ],
+    },
+    {
+        rules: {
+            // `any` is an error from day one — there is no debt to ratchet.
+            '@typescript-eslint/no-explicit-any': 'error',
+        },
+    },
+    {
+        // Server and shared code logs through the structured logger that
+        // Phase 0.4 lifts, never the console (author text must never reach a
+        // log line by accident — roadmap rule 4).
+        files: ['src/**/*.{ts,tsx}'],
+        rules: {
+            'no-console': 'error',
+        },
+    },
+];
+
+export default config;

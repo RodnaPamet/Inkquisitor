@@ -1,0 +1,113 @@
+# Inkquisitor CI — the four required checks of Phase 0.1.
+#
+#   Lint · Typecheck · Test · Build
+#
+# Job names are the check names a branch protection rule requires; renaming
+# one silently drops it from the required set (a check that never runs is
+# indistinguishable from one that passed). Phase 0.4 extends this file with
+# CodeQL, npm audit, Trivy and a release workflow.
+#
+# No job holds a secret. The build runs with SKIP_ENV_VALIDATION=1, the same
+# as the Docker builder: real values are provided at run time.
+
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# A pull request's runs share one group per PR number, and a newer push to it
+# cancels the run in flight. A push to main gets a group of its own per COMMIT
+# (github.sha): `cancel-in-progress: false` only spares a RUNNING run, and a
+# group holds just one PENDING run, so a per-ref main group would let a third
+# push evict the commit waiting between the other two, and that commit would
+# never get CI. A cancelled run reads like a passed one, so nothing would say
+# so. Same keying as inflect-compliance's ci.yml.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event_name == 'push' && github.sha || github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: '24'
+  NEXT_TELEMETRY_DISABLED: '1'
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+
+  typecheck:
+    name: Typecheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      # `npm ci` runs the postinstall `prisma generate`, so the Prisma client
+      # types exist before tsc reads them.
+      - run: npm ci
+      - run: npm run typecheck
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: inkquisitor_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d inkquisitor_test"
+          --health-interval 3s
+          --health-timeout 3s
+          --health-retries 20
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/inkquisitor_test?schema=public
+      DIRECT_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/inkquisitor_test?schema=public
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - name: Unit tests
+        run: npm test -- --ci
+      - name: Integration tests
+        run: npm run test:integration -- --ci
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      SKIP_ENV_VALIDATION: '1'
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - run: npm run build

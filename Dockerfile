@@ -1,0 +1,86 @@
+# Three-stage image (deps → builder → runner), the pattern of
+# inflect-compliance's Dockerfile at the carve commit, cut down to what the
+# skeleton has: no worker bundle, no seed scripts, no workspace package yet.
+
+# ─── Stage 1: Dependencies ─────────────────────────────────
+FROM node:24-alpine AS deps
+WORKDIR /app
+
+# `npm ci` — strict, deterministic install: installs exactly the
+# package-lock.json tree and fails if it is out of sync with package.json.
+# Never `npm install` in an image build.
+#
+# The `postinstall` hook is `prisma generate`, so the schema folder and
+# prisma.config.ts must be in place BEFORE `npm ci`, or the install fails.
+COPY package.json package-lock.json prisma.config.ts ./
+COPY prisma ./prisma
+RUN npm ci
+
+# ─── Stage 2: Builder ──────────────────────────────────────
+FROM node:24-alpine AS builder
+WORKDIR /app
+
+COPY --from=deps /app/node_modules ./node_modules
+COPY . .
+
+RUN npx prisma generate
+
+# Build Next.js. Env validation is skipped: the real values are provided at
+# run time, and no secret is ever baked into the image.
+# --webpack: see next.config.mjs for why the build does not use Turbopack.
+# `.next/trace` is build-time telemetry nothing reads at run time; deleting it
+# here keeps the bytes out of the COPY layer below.
+ENV SKIP_ENV_VALIDATION=1
+ENV NEXT_TELEMETRY_DISABLED=1
+RUN npx next build --webpack && rm -rf .next/trace
+
+# Prune dev dependencies before the runner stage copies node_modules, so the
+# runtime image carries no test or lint tooling (and none of its CVEs).
+RUN npm prune --omit=dev
+
+# ─── Stage 3: Runner ──────────────────────────────────────
+FROM node:24-alpine AS runner
+WORKDIR /app
+
+ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
+
+# OpenSSL for the Prisma schema engine. The version floor busts this layer
+# when it is raised, so a cached layer cannot keep shipping an old library.
+RUN apk add --no-cache "openssl>=3.5.8-r0"
+
+# Remove the npm CLI from the runtime image: nothing at run time needs it
+# (the entrypoint calls the local prisma and next binaries), and a package
+# that is absent needs no CVE triage.
+RUN rm -rf /usr/local/lib/node_modules/npm \
+           /usr/local/lib/node_modules/corepack \
+           /usr/local/bin/npm \
+           /usr/local/bin/npx \
+           /usr/local/bin/corepack \
+           /root/.npm \
+    && ! command -v npm \
+    && ! command -v npx
+
+# Non-root user
+RUN addgroup --system --gid 1001 nodejs && \
+    adduser --system --uid 1001 nextjs
+
+COPY --from=builder /app/public ./public
+COPY --from=builder /app/.next ./.next
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/package.json ./package.json
+COPY --from=builder /app/next.config.mjs ./next.config.mjs
+COPY --from=builder /app/prisma ./prisma
+# Prisma 7 reads connection URLs from prisma.config.ts, not the schema.
+COPY --from=builder /app/prisma.config.ts ./prisma.config.ts
+COPY --from=builder /app/scripts/entrypoint.sh ./scripts/entrypoint.sh
+
+RUN chmod +x ./scripts/entrypoint.sh && chown -R nextjs:nodejs /app
+
+USER nextjs
+
+EXPOSE 3000
+ENV PORT=3000
+ENV HOSTNAME="0.0.0.0"
+
+ENTRYPOINT ["./scripts/entrypoint.sh"]

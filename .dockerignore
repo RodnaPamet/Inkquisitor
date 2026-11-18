@@ -1,0 +1,45 @@
+# ─── Docker build context exclusions ─────────────────────────
+# Keep the build context small and fast.
+
+# Version control
+.git
+.gitignore
+
+# CI/CD
+.github
+
+# Dependencies (installed in-container)
+node_modules
+
+# Build output (rebuilt in-container)
+.next
+out
+
+# Tests
+tests/
+test-results/
+playwright-report/
+coverage/
+jest.config.*
+jest.setup.*
+playwright.config.*
+
+# Dev tooling
+.vscode/
+.idea/
+.claude/
+
+# Documentation
+docs/
+README.md
+
+# Environment files (secrets — never bake into image)
+.env*
+!.env.example
+
+# Docker-compose (not needed inside image)
+docker-compose*.yml
+
+# Temporary artifacts
+*.log
+tmp/

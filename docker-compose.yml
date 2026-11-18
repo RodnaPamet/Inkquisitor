@@ -1,0 +1,97 @@
+# Every published port is bound to 127.0.0.1. These are dev services with
+# well-known credentials (a Postgres superuser `postgres`/`postgres`, an
+# unauthenticated Redis and clamd); Docker publishes an unbound port on
+# 0.0.0.0 and its iptables rules bypass host firewalls such as ufw, so an
+# unbound port would hand them to anyone on the developer's network.
+services:
+  postgres:
+    image: ghcr.io/rodnapamet/postgres-pgvector:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: inkquisitor
+    # Postgres with the pgvector extension (needed from Phase 4.1), built
+    # and published by inflect-compliance; same organisation, same image.
+    # Postgres is only directly accessible on port 5436 (for migrations).
+    # Application traffic goes through PgBouncer on port 5433. Ports match
+    # inflect-compliance's dev stack, so only one of the two runs at a time.
+    ports:
+      - '127.0.0.1:5436:5432'
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./prisma/init-roles.sh:/docker-entrypoint-initdb.d/01-init-roles.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d inkquisitor"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+
+  pgbouncer:
+    image: edoburu/pgbouncer:latest
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      # ── Connection to upstream Postgres ──
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      DB_NAME: inkquisitor
+      # ── Pool configuration ──
+      POOL_MODE: transaction
+      DEFAULT_POOL_SIZE: "25"
+      MAX_CLIENT_CONN: "200"
+      MAX_DB_CONNECTIONS: "50"
+      # ── Auth ──
+      AUTH_TYPE: scram-sha-256
+      # ── Monitoring ──
+      STATS_PERIOD: "60"
+      ADMIN_USERS: postgres
+    ports:
+      - '127.0.0.1:5433:5432'
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -p 5432 -U postgres"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+
+  # ── Redis (rate limits, BullMQ jobs from Phase 0.4) ──
+  # Dev Redis is intentionally UNAUTHENTICATED for local ergonomics,
+  # and bound to 127.0.0.1 only, like every service in this file — it is
+  # loopback-only, never reachable from the dev machine's network. A production compose file must
+  # require a password (Phase 7.4).
+  redis:
+    image: redis:7-alpine
+    # maxmemory-policy MUST be `noeviction` — Redis carries BullMQ job
+    # state; an eviction policy (allkeys-lru/volatile-*) would silently
+    # drop queued jobs under memory pressure.
+    command: redis-server --appendonly yes --maxmemory 128mb --maxmemory-policy noeviction
+    ports:
+      - '127.0.0.1:6379:6379'
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+
+  # ── ClamAV (antivirus scanning of uploads and imports, Phase 1.3) ──
+  clamav:
+    image: clamav/clamav:1.4
+    ports:
+      - '127.0.0.1:3310:3310'
+    volumes:
+      - clamav-defs:/var/lib/clamav
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/clamdcheck.sh"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s   # ClamAV needs ~2 min to download defs on first boot
+
+volumes:
+  pgdata:
+  redisdata:
+  clamav-defs:

@@ -1,0 +1,29 @@
+Inkquisitor
+Copyright © 2026 Inflect Ltd.
+
+Licensed under the Business Source License 1.1; see LICENSE and LICENSING.md.
+
+This product includes material as noted below.
+
+------------------------------------------------------------------------
+Derived from inflect-compliance (Business Source License 1.1)
+------------------------------------------------------------------------
+Parts of Inkquisitor are copied or adapted from inflect-compliance
+(github.com/RodnaPamet/inflect-compliance) at commit
+5528464fc54a8681956f3b9ce23ca9c075f0420e. Both works are licensed by the
+same licensor, Inflect Ltd., which relicenses the derived code into
+Inkquisitor under this repository's LICENSE. Each derived file is listed in
+docs/carve-manifest.md with its source path, the source commit and the
+edits made.
+
+------------------------------------------------------------------------
+Third-party attributions
+------------------------------------------------------------------------
+Designs and code ported from permissively licensed projects are credited
+here, under the project's name and licence, in the change that ports them.
+
+MIT License
+  (none yet)
+
+Apache License, Version 2.0
+  (none yet)

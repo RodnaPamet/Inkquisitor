@@ -1,0 +1,8 @@
+@import "tailwindcss";
+
+/*
+ * Tailwind 4 is configured in CSS. The product palette, the token
+ * contract and the light/dark themes arrive with the UI platform in
+ * Phase 0.2 (src/styles/tokens.css); until then the page uses Tailwind's
+ * default scale.
+ */
