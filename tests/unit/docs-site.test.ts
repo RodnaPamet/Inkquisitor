@@ -8,6 +8,7 @@
  * without GitHub Pages does not fail.
  */
 import * as fs from 'node:fs';
+import * as os from 'node:os';
 import * as path from 'node:path';
 
 // CommonJS, no dependencies, so it is required as-is.
@@ -86,6 +87,67 @@ describe('the policy refuses', () => {
             expect(stage.readRepoFile('docs/user/index.md')).toMatch(/^# /m);
         } finally {
             fs.rmSync(path.join(ROOT, 'docs/user/build'), { recursive: true, force: true });
+        }
+    });
+
+    it('a symbolic link is refused even when it points at a published doc', () => {
+        // The refusal is about the LINK (open with O_NOFOLLOW fails, ELOOP),
+        // not about where it points: here the target is docs/user/index.md.
+        const linkDir = path.join(ROOT, 'docs/user/build', `inner-link-${process.pid}`);
+        fs.mkdirSync(linkDir, { recursive: true });
+        const link = path.join(linkDir, 'page.md');
+        const regular = path.join(linkDir, 'regular.md');
+        fs.symlinkSync(path.join(ROOT, 'docs/user/index.md'), link);
+        fs.writeFileSync(regular, '# Regular\n\nbody\n');
+        try {
+            const rel = (abs: string) => path.relative(ROOT, abs).split(path.sep).join('/');
+            expect(stage.readRepoFile(rel(link))).toBeNull();
+            expect(stage.readRepoFile(rel(regular))).toBe('# Regular\n\nbody\n');
+            // A directory is not a file.
+            expect(stage.readRepoFile(rel(linkDir))).toBeNull();
+        } finally {
+            fs.rmSync(path.join(ROOT, 'docs/user/build'), { recursive: true, force: true });
+        }
+    });
+
+    it('a file swapped for a symbolic link after it is checked is not followed', () => {
+        // js/file-system-race: whatever the reader checks first, the planted
+        // swap replaces the file with a link to a file OUTSIDE docs/user/ the
+        // moment that check returns. A reader that checks by path and then
+        // reads by path follows the link; one that opens once (O_NOFOLLOW)
+        // and checks and reads the descriptor cannot.
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        const nodeFs: typeof fs = require('node:fs');
+        const dir = path.join(ROOT, 'docs/user/build', `race-${process.pid}`);
+        fs.mkdirSync(dir, { recursive: true });
+        const file = path.join(dir, 'page.md');
+        const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'stage-docs-race-'));
+        const secret = path.join(outside, 'secret.md');
+        fs.writeFileSync(file, '# Page\n\npublished\n');
+        fs.writeFileSync(secret, '# Secret\n\nnot for the site\n');
+        let swapped = false;
+        const swapAfter = <K extends 'lstatSync' | 'statSync' | 'openSync'>(name: K) => {
+            const real = nodeFs[name] as (...a: unknown[]) => unknown;
+            return jest.spyOn(nodeFs, name).mockImplementation(((...args: unknown[]) => {
+                const result = real.apply(nodeFs, args);
+                if (!swapped && args[0] === file) {
+                    swapped = true;
+                    fs.rmSync(file);
+                    fs.symlinkSync(secret, file);
+                }
+                return result;
+            }) as never);
+        };
+        const spies = [swapAfter('lstatSync'), swapAfter('statSync'), swapAfter('openSync')];
+        try {
+            const text = stage.readRepoFile(path.relative(ROOT, file).split(path.sep).join('/'));
+            expect(swapped).toBe(true);
+            expect(text).not.toMatch(/not for the site/);
+            expect(text).toBe('# Page\n\npublished\n');
+        } finally {
+            spies.forEach((s) => s.mockRestore());
+            fs.rmSync(path.join(ROOT, 'docs/user/build'), { recursive: true, force: true });
+            fs.rmSync(outside, { recursive: true, force: true });
         }
     });
 
