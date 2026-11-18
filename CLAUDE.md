@@ -19,10 +19,14 @@ BUSL-1.1). Code is copied at a recorded commit, never shared as a package
 npm run dev               # Next.js dev server on :3000
 npm run build             # next build --webpack
 npm start                 # next start (after build)
+npm run worker            # BullMQ worker from source (tsx; loads .env then .env.local, as next dev does)
+npm run build:worker      # esbuild → dist/worker.mjs, dist/worker-healthcheck.mjs
+npm run secret-scan       # scripts/detect-secrets.sh (staged files; --all for every tracked file)
+npm run docs:build        # the Starlight help site (site/), from docs/user/
 npm run lint              # eslint . (flat config, eslint.config.mjs)
 npm run typecheck         # tsc --noEmit, then packages/ui alone (no `@/` imports there)
-npm test                  # Jest, unit + rendered projects — no DB, no network
-npm run test:integration  # Jest, integration project (tests/integration) — real PostgreSQL
+npm test                  # Jest, unit (tests/unit, tests/guards, eslint-rules/__tests__) + rendered projects — no DB, no network
+npm run test:integration  # Jest, integration project (tests/integration) — real PostgreSQL and Redis
 npm run test:e2e          # Playwright against `next start` on :3100 (build first)
 npm run db:generate       # prisma generate (also the postinstall step)
 npm run db:migrate        # prisma migrate dev
@@ -31,8 +35,17 @@ docker compose up -d      # Postgres + pgvector, PgBouncer, Redis, ClamAV
 
 Every one of `lint`, `typecheck`, `test`, `test:integration` and `build` must
 pass before a change is finished. CI (`.github/workflows/ci.yml`) runs them as
-the required checks **Lint**, **Typecheck**, **Test** and **Build**; the job
-names are the check names, so never rename one.
+the checks **Lint**, **Typecheck**, **Test** (unit, migrations, integration
+against postgres:16 and Redis) and **Build** (app and worker bundle), plus
+**Security** (`npm audit --omit=dev --audit-level=moderate` and the secret
+scan), **CodeQL** (javascript-typescript; the SARIF is kept as an artifact and
+`scripts/sarif-gate.js` fails the check on a high-severity security result)
+and **Docker** (image build, Trivy
+CRITICAL,HIGH, ignore-unfixed). The job names are the check names, so never
+rename one, and never lower a gate to get a change through
+(`tests/unit/ci-workflow.test.ts`). `release.yml` tags and publishes a GitHub
+Release from conventional commits with GITHUB_TOKEN alone; `docs-site.yml`
+builds the help site and deploys it only on main when Pages is enabled.
 
 ## Stack
 
@@ -59,8 +72,22 @@ prisma/schema/          → multi-file Prisma schema; base.prisma owns the gener
 
 A call goes `app/api → usecases → policies → repositories`, never sideways or
 backwards: a route handler does not import a repository or Prisma, and a
-repository does not authorize. No usecase exists yet: the `app-layer`
-folders arrive with the first one (Phase 0.3).
+repository does not authorize. The usecase, policy and repository folders
+arrive with the first usecase (Phase 0.3). Phase 0.4 added:
+
+```
+src/app-layer/types.ts       → RequestContext (workspace fields optional until 0.3)
+src/app-layer/jobs/          → BullMQ: types, queue (enqueue), executor-registry, schedules, scheduler, worker
+src/lib/observability/       → pino logger + redaction, request context, OTel, Sentry, shutdown, job runner
+src/lib/errors/              → typed errors and withApiErrorHandling (every product route handler is wrapped in it; the probes are not)
+src/lib/security/, rate-limit/ → the three rate-limit tiers
+src/lib/storage/             → local / S3 providers, workspace object keys, ClamAV scan
+src/lib/{mailer,redis,startup-checks}.ts, src/lib/http/, src/lib/health/
+src/middleware.ts            → auth + read rate-limit tiers, x-request-id
+scripts/worker.ts            → the worker process (bundled by scripts/build-worker.mjs)
+eslint-rules/                → the local ESLint plugin (`local/…`)
+site/                        → the Starlight help site, publishing docs/user/ only
+```
 
 ## Rules every change obeys
 
@@ -98,8 +125,35 @@ only under zero-retention terms (D5).
   not. Every port `docker-compose.yml` publishes is bound to 127.0.0.1.
   Prisma 7 needs a driver adapter: construct clients through `src/lib/db.ts`. New models go in a domain file under
   `prisma/schema/`, never in `base.prisma`.
-- **Logging.** No `console.*` under `src/` (ESLint error). The structured
-  logger arrives in Phase 0.4; author text never reaches a log line.
+- **Logging.** No `console.*` under `src/` (ESLint error; the edge logger is
+  the one exception). Log through `logger` from `@/lib/observability/logger`
+  (`edgeLogger` in middleware). Author text never reaches a log line, an error
+  report or a job payload: `local/no-raw-prompt-logging` refuses a
+  content-named field (`answer`, `text`, `content`, `body`, `prompt`, …) at a
+  log or `captureError` call, and `src/lib/observability/redaction.ts` redacts
+  those names and every credential name as the second line. Log ids, counts
+  and lengths. `withApiErrorHandling` never logs a request body.
+- **Platform services.** Every new environment variable is optional with a
+  safe development default; what production cannot run without goes in
+  `src/lib/startup-checks.ts`, which the web tier (`src/instrumentation-node.ts`)
+  and the worker both enforce. Mutations are rate-limited by
+  `withApiErrorHandling` (`API_MUTATION_LIMIT`), GETs under `/api/` and
+  `/api/auth/**` at the edge; storage is in-memory unless both Upstash
+  variables are set. No module-scope `setInterval` (`tests/guards/no-module-scope-timers.test.ts`):
+  sweep lazily on a caller's turn. A job payload names rows by id; a new job
+  extends `JobPayloadMap`, `JOB_DEFAULTS` and the executor registry. Object
+  keys are `workspaces/<workspaceId>/…` (`buildWorkspaceObjectKey`) and are
+  checked with `assertWorkspaceKey` before use. A URL handed outside the
+  process comes from `publicBaseUrl()` (APP_URL), never the request host.
+- **Probes.** `/api/health` and `/api/livez` (process up) and `/api/readyz`
+  (PostgreSQL and Redis within a 2 s timeout, 503 naming the failure) are
+  unauthenticated and excluded from rate limiting.
+- **Secrets.** `.husky/pre-commit` runs `scripts/detect-secrets.sh` on staged
+  files; `tests/guards/no-secrets.test.ts` runs the same `.secret-patterns`
+  over the whole tree. A test fixture that must look like a secret goes under
+  `tests/fixtures/secrets/` or carries `# pragma: allowlist secret`.
+- **Docs site.** `site/manifest.json` is an allowlist and only `docs/user/` is
+  published; the roadmap and internal docs never are.
 - **`any`** is an ESLint error. There is no debt to ratchet.
 - **Licence.** Inkquisitor is BUSL-1.1 (`LICENSE`, explained in
   `LICENSING.md`). The header and Terms of `LICENSE` are pinned byte-for-byte by
@@ -174,7 +228,12 @@ has the design. Reach for the primitives, never hand-roll a replacement:
   `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` (read only by `playwright.config.ts`)
   launches another Chromium binary when the expected build is not installed.
 - **No test calls a model provider or any network service.** `jest.setup.js`
-  clears `ANTHROPIC_API_KEY`.
+  clears `ANTHROPIC_API_KEY` and silences logs (a suite that reads log lines
+  builds a logger against its own destination). Integration tests use Redis
+  logical database 14 (`tests/helpers/test-redis.ts`) and a queue name of
+  their own.
+- ESLint rules live in `eslint-rules/` with a `RuleTester` suite each
+  (`valid` and `invalid` cases); see `eslint-rules/README.md`.
 - A guard that scans source takes its file population from git through
   `tests/helpers/repo-files.ts`, never a hand-written skip list.
 - Write tests that fail when the behaviour regresses, not tests that pin the

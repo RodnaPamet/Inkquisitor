@@ -1,6 +1,11 @@
 # Three-stage image (deps → builder → runner), the pattern of
-# inflect-compliance's Dockerfile at the carve commit, cut down to what the
-# skeleton has: no worker bundle, no seed scripts, no workspace package yet.
+# inflect-compliance's Dockerfile at the carve commit, cut down to what this
+# repository has: the app and the BullMQ worker bundle (Phase 0.4); no seed
+# scripts and no workspace package yet.
+#
+# One image, two processes: the default entrypoint starts the web server;
+# the worker runs from the same image with `node dist/worker.mjs`, and its
+# healthcheck is `node dist/worker-healthcheck.mjs`.
 
 # ─── Stage 1: Dependencies ─────────────────────────────────
 FROM node:24-alpine AS deps
@@ -14,6 +19,9 @@ WORKDIR /app
 # prisma.config.ts must be in place BEFORE `npm ci`, or the install fails.
 COPY package.json package-lock.json prisma.config.ts ./
 COPY prisma ./prisma
+# Husky's `prepare` installs git hooks; an image build has no .git and
+# commits nothing.
+ENV HUSKY=0
 RUN npm ci
 
 # ─── Stage 2: Builder ──────────────────────────────────────
@@ -33,6 +41,10 @@ RUN npx prisma generate
 ENV SKIP_ENV_VALIDATION=1
 ENV NEXT_TELEMETRY_DISABLED=1
 RUN npx next build --webpack && rm -rf .next/trace
+
+# The worker: scripts/worker.ts bundled by esbuild into dist/ (first-party
+# code inlined, node_modules external — so it needs only production deps).
+RUN node scripts/build-worker.mjs
 
 # Prune dev dependencies before the runner stage copies node_modules, so the
 # runtime image carries no test or lint tooling (and none of its CVEs).
@@ -74,6 +86,7 @@ COPY --from=builder /app/prisma ./prisma
 # Prisma 7 reads connection URLs from prisma.config.ts, not the schema.
 COPY --from=builder /app/prisma.config.ts ./prisma.config.ts
 COPY --from=builder /app/scripts/entrypoint.sh ./scripts/entrypoint.sh
+COPY --from=builder /app/dist ./dist
 
 RUN chmod +x ./scripts/entrypoint.sh && chown -R nextjs:nodejs /app
 

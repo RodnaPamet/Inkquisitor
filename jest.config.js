@@ -1,8 +1,8 @@
 /**
  * Jest configuration — three projects.
  *
- *   `unit`        tests/unit and tests/guards. Node environment, no database,
- *                 no network.
+ *   `unit`        tests/unit, tests/guards and eslint-rules/__tests__. Node
+ *                 environment, no database, no network.
  *   `rendered`    tests/rendered and co-located `__tests__` under
  *                 packages/ui/src. jsdom: real React renders of the UI
  *                 platform with Testing Library, jest-dom and jest-axe.
@@ -70,7 +70,12 @@ module.exports = {
         {
             ...shared,
             displayName: 'unit',
-            testMatch: ['<rootDir>/tests/unit/**/*.test.ts?(x)', '<rootDir>/tests/guards/**/*.test.ts?(x)'],
+            testMatch: [
+                '<rootDir>/tests/unit/**/*.test.ts?(x)',
+                '<rootDir>/tests/guards/**/*.test.ts?(x)',
+                // RuleTester suites for the local ESLint plugin (Phase 0.4).
+                '<rootDir>/eslint-rules/__tests__/**/*.test.ts',
+            ],
         },
         {
             ...shared,

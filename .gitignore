@@ -30,3 +30,9 @@ blob-report/
 .DS_Store
 .vscode/
 .idea/
+
+# Docs site (generated)
+site/node_modules/
+site/dist/
+site/.astro/
+site/src/content/docs/

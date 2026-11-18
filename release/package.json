@@ -1,0 +1,12 @@
+{
+    "name": "inkquisitor-release",
+    "private": true,
+    "description": "The release tooling only: semantic-release and the plugins .releaserc.json names, installed by .github/workflows/release.yml from this folder's lockfile with npm ci. The application never imports it.",
+    "license": "BUSL-1.1",
+    "engines": {
+        "node": ">=24.0.0 <25.0.0"
+    },
+    "dependencies": {
+        "semantic-release": "25.0.9"
+    }
+}

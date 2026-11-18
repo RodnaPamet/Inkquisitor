@@ -141,19 +141,43 @@ describe('<RichTextEditor>', () => {
         expect(last?.[0]).toContain('alpha');
     });
 
-    it('escapes raw HTML in markdown text when seeding the WYSIWYG editor', () => {
-        // A markdown payload with `<script>` tags must NOT mount as
-        // executable HTML inside Tiptap. The editor's seed step
-        // escapes via its internal escapeHtml helper.
-        const onChange = jest.fn();
-        render(
-            <Harness initial="<script>alert('x')</script>" onChange={onChange} />,
-        );
-        fireEvent.click(screen.getByTestId('rich-text-editor-toggle'));
-        const seeded = onChange.mock.calls.at(-1)?.[0] as string;
-        expect(seeded).not.toMatch(/<script>/);
-        expect(seeded).toMatch(/&lt;script&gt;/);
-    });
+    it.each([
+        ["<script>alert('x')</script>", '&lt;script&gt;'],
+        ["<SCRIPT >alert('x')</SCRIPT >", '&lt;SCRIPT &gt;'],
+        ['<img src=x onerror="alert(1)">', '&lt;img src=x onerror='],
+    ])(
+        'escapes raw HTML in markdown text when seeding the WYSIWYG editor (%s)',
+        (payload, escaped) => {
+            // Markdown text containing markup must NOT mount as executable
+            // HTML inside Tiptap. The editor's seed step escapes it via its
+            // internal escapeHtml helper.
+            const onChange = jest.fn();
+            render(<Harness initial={payload} onChange={onChange} />);
+            fireEvent.click(screen.getByTestId('rich-text-editor-toggle'));
+            const seeded = onChange.mock.calls.at(-1)?.[0] as string;
+
+            // Judge the output by what a parser makes of it, not by a
+            // pattern over the string: a regex for a tag misses case,
+            // whitespace and attribute variants. A <template> parses
+            // inertly (no script runs, no resource loads).
+            const template = document.createElement('template');
+            template.innerHTML = seeded;
+            const elements = Array.from(template.content.querySelectorAll('*'));
+            expect(template.content.querySelector('script')).toBeNull();
+            const handlerAttributes = elements.flatMap((el) =>
+                el.getAttributeNames().filter((name) => name.toLowerCase().startsWith('on')),
+            );
+            expect(handlerAttributes).toEqual([]);
+            // Every element the seed produced is a paragraph wrapper.
+            expect(elements.map((el) => el.tagName)).toEqual(
+                elements.map(() => 'P'),
+            );
+
+            // And the text was escaped, not dropped: it survives verbatim.
+            expect(seeded).toContain(escaped);
+            expect(template.content.textContent).toBe(payload);
+        },
+    );
 
     it('starts in HTML mode when contentType="HTML" is passed', () => {
         render(<Harness initialType="HTML" initial="<p>seed</p>" />);

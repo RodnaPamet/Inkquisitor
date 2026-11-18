@@ -63,27 +63,91 @@ export interface VersionDiffProps {
 
 // ─── Helpers ────────────────────────────────────────────────────────
 
+/** A `<` starts a tag only when one of these follows it (as in HTML). */
+const TAG_START = /^[A-Za-z/!?]$/;
+
+/** Closing tags that end a line: every block, so a renamed heading never
+ *  diffs glued to the paragraph after it (#5309). */
+const LINE_ENDING_CLOSE_TAGS = new Set(['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'li', 'blockquote', 'pre']);
+
+/** What a tag becomes in the text: a line break for `<br>`, `<hr>` and a
+ *  block's closing tag, nothing for every other tag. `inner` is the text
+ *  between `<` and `>`. */
+function tagReplacement(inner: string): string {
+    const m = /^(\/?)([A-Za-z][A-Za-z0-9]*)/.exec(inner);
+    if (!m) return '';
+    const closing = m[1] === '/';
+    const name = (m[2] ?? '').toLowerCase();
+    if (!closing && (name === 'br' || name === 'hr')) return '\n';
+    if (closing && LINE_ENDING_CLOSE_TAGS.has(name)) return '\n';
+    return '';
+}
+
+/** One left-to-right pass: every tag (from a tag-starting `<` to the next
+ *  `>`, or to the end of the input when it is unterminated) is replaced by
+ *  `tagReplacement`; every other character is kept. */
+function stripTagsOnce(html: string): string {
+    let out = '';
+    let i = 0;
+    while (i < html.length) {
+        const lt = html.indexOf('<', i);
+        if (lt === -1) {
+            out += html.slice(i);
+            break;
+        }
+        out += html.slice(i, lt);
+        if (!TAG_START.test(html.charAt(lt + 1))) {
+            out += '<';
+            i = lt + 1;
+            continue;
+        }
+        const gt = html.indexOf('>', lt + 1);
+        const end = gt === -1 ? html.length : gt;
+        out += tagReplacement(html.slice(lt + 1, end));
+        i = end + 1;
+    }
+    return out;
+}
+
+/** Strip until nothing changes. Removing one tag can join a stray `<` to
+ *  the text after it (`<<b>script>` → `<script>`), so a single pass is not
+ *  enough; at the fixed point no `<` that starts a tag remains. Every pass
+ *  that changes the string shortens it, so the loop ends. */
+function stripTags(html: string): string {
+    let previous: string;
+    let current = html;
+    do {
+        previous = current;
+        current = stripTagsOnce(previous);
+    } while (current !== previous);
+    return current;
+}
+
+const ENTITIES: ReadonlyMap<string, string> = new Map([
+    ['nbsp', ' '],
+    ['amp', '&'],
+    ['lt', '<'],
+    ['gt', '>'],
+    ['quot', '"'],
+    ['#39', "'"],
+]);
+
+/** Decode the entities the editor emits in ONE pass, so `&amp;lt;` (the
+ *  author's literal "&lt;") becomes "&lt;", never "<". An entity not in
+ *  the map is left as written. */
+function decodeEntities(text: string): string {
+    return text.replace(/&(nbsp|amp|lt|gt|quot|#39);/g, (whole, name: string) => ENTITIES.get(name) ?? whole);
+}
+
 /**
- * Strip basic HTML tags + collapse `<br>` to newline so the diff
- * runs on plain text. We don't do a full HTML→text reflow because
- * that loses paragraph boundaries; emit one paragraph per line.
+ * Turn stored HTML into plain text, one block per line, so the diff runs
+ * on text. We don't do a full HTML→text reflow because that loses
+ * paragraph boundaries. Tags are removed BEFORE entities are decoded, so a
+ * "<" the author wrote (stored as `&lt;`) is text, never a tag. The result
+ * is rendered by React as text.
  */
 export function htmlToLines(html: string): string {
-    return html
-        .replace(/<\s*br\s*\/?>/gi, '\n')
-        // Every block ends a line — a heading, a list item and a quote as
-        // well as a paragraph — or a renamed heading diffs glued to the
-        // paragraph after it (#5309). `<hr>` is a line of its own.
-        .replace(/<\/(p|h[1-6]|li|blockquote|pre)\s*>/gi, '\n')
-        .replace(/<\s*hr\s*\/?>/gi, '\n')
-        .replace(/<[^>]+>/g, '')
-        .replace(/&nbsp;/g, ' ')
-        .replace(/&amp;/g, '&')
-        .replace(/&lt;/g, '<')
-        .replace(/&gt;/g, '>')
-        .replace(/&quot;/g, '"')
-        .replace(/&#39;/g, "'")
-        .trim();
+    return decodeEntities(stripTags(html)).trim();
 }
 
 function asPlainText(v: VersionDiffOption | undefined): string {

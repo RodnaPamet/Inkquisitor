@@ -1,0 +1,72 @@
+/**
+ * Job types — the typed payload contract of every background job.
+ *
+ * Rules (from inflect-compliance's `src/app-layer/jobs/types.ts`):
+ *   1. Job names are string literals, keys of `JobPayloadMap`.
+ *   2. Payloads are JSON-serialisable: no Date, no class, no function.
+ *   3. A workspace-scoped job's payload carries `workspaceId`, and its
+ *      executor passes it to every query (decision D4).
+ *   4. A payload never carries author text. A payload is stored in Redis in
+ *      plain text and its fields reach the worker's log line; it names the
+ *      rows to work on (ids), never their content (roadmap rule 4).
+ *
+ * Adding a job: extend `JobPayloadMap`, add its `JOB_DEFAULTS` entry (tsc
+ * keeps that record exhaustive), register an executor in
+ * `executor-registry.ts`, and, if it runs on a cadence, a schedule in
+ * `schedules.ts`.
+ *
+ * Phase 0.4 ships ONE job, `heartbeat`, which does nothing. Its only purpose
+ * is to give the worker something to complete on a quiet queue, which proves
+ * the queue → worker → executor wiring end to end and keeps the worker's
+ * heartbeat key fresh (`heartbeat.ts`).
+ */
+
+/** The result every executor returns. */
+export interface JobRunResult {
+    jobName: string;
+    jobRunId: string;
+    success: boolean;
+    startedAt: string;
+    completedAt: string;
+    durationMs: number;
+    itemsScanned: number;
+    itemsActioned: number;
+    itemsSkipped: number;
+    errorMessage?: string;
+    /** Set when the failure must not be retried by the queue (UnrecoverableError). */
+    noRetry?: boolean;
+    details?: Record<string, unknown>;
+}
+
+export interface HeartbeatPayload {
+    /** ISO timestamp the schedule (or a test) enqueued it at. Optional: a schedule sends `{}`. */
+    enqueuedAt?: string;
+}
+
+export interface JobPayloadMap {
+    heartbeat: HeartbeatPayload;
+}
+
+export type JobName = keyof JobPayloadMap;
+export type JobPayload<T extends JobName> = JobPayloadMap[T];
+
+export interface JobDefaults {
+    attempts: number;
+    backoff: { type: 'exponential' | 'fixed'; delay: number };
+    removeOnComplete: number | boolean;
+    removeOnFail: number | boolean;
+}
+
+export const JOB_DEFAULTS: Record<JobName, JobDefaults> = {
+    heartbeat: {
+        // One attempt: the next tick is the retry, and a heartbeat that
+        // retried would refresh the key for a worker that failed to run it.
+        attempts: 1,
+        backoff: { type: 'fixed', delay: 0 },
+        removeOnComplete: 50,
+        removeOnFail: 100,
+    },
+};
+
+/** The one queue every job travels on. */
+export const QUEUE_NAME = 'inkquisitor-jobs';

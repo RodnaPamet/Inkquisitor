@@ -1,0 +1,94 @@
+/**
+ * What production refuses to start without.
+ *
+ * Every platform-service variable is optional with a safe DEVELOPMENT
+ * default. A default that points at local infrastructure (the compose Redis,
+ * a temp-directory file store, no virus scanner) is exactly wrong in
+ * production, so this is the list a production process must have instead.
+ *
+ * It is a pure function of the environment so it is unit-tested directly,
+ * and it is asked in two places, because they are two processes:
+ *   - the web tier, `src/instrumentation.ts`;
+ *   - the worker, `scripts/worker.ts`, which never loads the Next hook.
+ * Both exit 1 with `[startup] FATAL: …` on any problem. The env schema
+ * (`src/env.ts`) repeats the REDIS_URL rule for a process with validation
+ * on; this list is what holds when `SKIP_ENV_VALIDATION=1` leaks into a
+ * runtime container, which is the one variable an image is most likely to
+ * carry, because the build sets it on purpose.
+ *
+ * A new required variable is added here, in `.env.example` (with the note
+ * that production requires it) and in a case of
+ * `tests/unit/platform/startup-checks.test.ts`.
+ */
+
+import { isNextProductionBuild } from './build-phase';
+
+/** The environment as a plain record (`process.env`, or a test's object). */
+export type EnvRecord = Readonly<Record<string, string | undefined>>;
+
+const present = (v: string | undefined): v is string => typeof v === 'string' && v.trim() !== '';
+
+/** Every reason this environment is not fit to run production. Empty when it is. */
+export function productionConfigProblems(e: EnvRecord): string[] {
+    if (e.NODE_ENV !== 'production') return [];
+    // `next build` is not a running production process: it holds none of the
+    // runtime configuration, and the server it builds is checked when it starts.
+    if (isNextProductionBuild(e)) return [];
+    const problems: string[] = [];
+
+    if (!present(e.DATABASE_URL)) problems.push('DATABASE_URL is required.');
+
+    if (!present(e.REDIS_URL)) {
+        problems.push('REDIS_URL is required: rate limits and the job queue depend on it.');
+    } else {
+        try {
+            if (!new URL(e.REDIS_URL).password) {
+                problems.push('REDIS_URL must carry a password (redis://:PASSWORD@HOST:6379).');
+            }
+        } catch {
+            problems.push('REDIS_URL is not a valid URL.');
+        }
+    }
+
+    if (e.STORAGE_PROVIDER === 's3') {
+        if (!present(e.S3_BUCKET)) problems.push('S3_BUCKET is required when STORAGE_PROVIDER=s3.');
+    } else if (!present(e.FILE_STORAGE_ROOT)) {
+        // Local storage's development default is a folder under the OS temp
+        // directory, which a container loses on restart.
+        problems.push(
+            'FILE_STORAGE_ROOT is required for local storage (STORAGE_PROVIDER unset or local): point it at a ' +
+                'persistent volume, or set STORAGE_PROVIDER=s3.',
+        );
+    }
+
+    if (e.AV_SCAN_MODE !== 'disabled' && !present(e.CLAMAV_HOST)) {
+        problems.push(
+            'CLAMAV_HOST is required unless AV_SCAN_MODE=disabled: without a scanner every upload stays unscanned ' +
+                'and, in strict mode, undownloadable.',
+        );
+    }
+
+    if (present(e.UPSTASH_REDIS_REST_URL) !== present(e.UPSTASH_REDIS_REST_TOKEN)) {
+        problems.push(
+            'UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN are set together or not at all: with one of them ' +
+                'the rate limiter silently falls back to a per-process memory budget.',
+        );
+    }
+
+    return problems;
+}
+
+/**
+ * Refuse to start: report each problem on stderr and exit 1. `report` and
+ * `exit` are seams for the test; the defaults are the real process.
+ */
+export function enforceProductionConfig(
+    e: EnvRecord,
+    report: (line: string) => void = (line) => process.stderr.write(line + '\n'),
+    exit: (code: number) => void = (code) => process.exit(code),
+): void {
+    const problems = productionConfigProblems(e);
+    if (problems.length === 0) return;
+    for (const p of problems) report(`[startup] FATAL: ${p}`);
+    exit(1);
+}
