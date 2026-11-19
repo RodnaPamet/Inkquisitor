@@ -1,0 +1,189 @@
+{
+  "kind": "SETTING",
+  "label": "Setting",
+  "description": "One place in the story, from a single room to a whole world: what kind of place it is, what being there is like, why the story needs it and how it bears on the people in it. How the world works, and the sensory grain of the whole book, belong to other kinds.",
+  "fields": [
+    {
+      "key": "place_type",
+      "label": "Kind of place",
+      "help": "What sort of place this is and where it sits in the story's world, in a phrase or two.",
+      "type": "text",
+      "required": true,
+      "order": 1,
+      "dependsOn": []
+    },
+    {
+      "key": "reality_basis",
+      "label": "Real or invented",
+      "help": "Whether this place exists outside the book and how far the story departs from it; facts you must check belong in a research note.",
+      "type": "choice",
+      "options": [
+        { "value": "real_as_is", "label": "A real place as it is" },
+        { "value": "real_altered", "label": "A real place, altered" },
+        { "value": "invented_in_real_world", "label": "Invented, within the real world" },
+        { "value": "invented_world", "label": "Invented, in an invented world" }
+      ],
+      "required": false,
+      "order": 2,
+      "dependsOn": []
+    },
+    {
+      "key": "extent",
+      "label": "Size and extent",
+      "help": "How much ground this place covers, from a single room to a whole world, which decides what other places can sit inside it.",
+      "type": "choice",
+      "options": [
+        { "value": "room", "label": "A single room or vehicle" },
+        { "value": "building", "label": "A building or compound" },
+        { "value": "neighbourhood", "label": "A street or neighbourhood" },
+        { "value": "settlement", "label": "A village, town or city" },
+        { "value": "region", "label": "A region or landscape" },
+        { "value": "realm", "label": "A country, a world or beyond" }
+      ],
+      "required": false,
+      "order": 3,
+      "dependsOn": ["place_type"]
+    },
+    {
+      "key": "sensory_signature",
+      "label": "Sensory signature",
+      "help": "What it is like to stand here: the sights, sounds, smells, temperatures and textures that mark this place out from any other.",
+      "type": "richtext",
+      "required": true,
+      "order": 4,
+      "dependsOn": ["place_type"]
+    },
+    {
+      "key": "layout_landmarks",
+      "label": "Layout and landmarks",
+      "help": "The rooms, routes, landmarks and distances a reader needs in order to follow characters moving through this place, one per item.",
+      "type": "list",
+      "required": false,
+      "order": 5,
+      "dependsOn": ["place_type"]
+    },
+    {
+      "key": "access",
+      "label": "Ways in and out",
+      "help": "How people enter and leave this place, what stands in their way, and who decides who may pass.",
+      "type": "text",
+      "required": false,
+      "order": 6,
+      "dependsOn": ["layout_landmarks"]
+    },
+    {
+      "key": "story_purpose",
+      "label": "Purpose in the story",
+      "help": "Why the story needs this particular place rather than another, and what would be lost if its scenes happened elsewhere.",
+      "type": "text",
+      "required": true,
+      "order": 7,
+      "dependsOn": ["place_type"]
+    },
+    {
+      "key": "prominence",
+      "label": "Share of the book",
+      "help": "How much of the book happens here compared with the story's other places.",
+      "type": "scale",
+      "scaleLabels": { "low": "Glimpsed once or in passing", "high": "Home ground for most of the book" },
+      "required": false,
+      "order": 8,
+      "dependsOn": ["story_purpose"]
+    },
+    {
+      "key": "usual_occupants",
+      "label": "Usual occupants",
+      "help": "The kinds of people found here on an ordinary day, and who would stand out as not belonging, one group per item.",
+      "type": "list",
+      "required": false,
+      "order": 9,
+      "dependsOn": ["place_type"]
+    },
+    {
+      "key": "pressure_on_characters",
+      "label": "Pressure on characters",
+      "help": "How the place helps, hinders, tests or changes the people in it, and which of them it presses on hardest.",
+      "type": "richtext",
+      "required": true,
+      "order": 10,
+      "dependsOn": ["story_purpose"]
+    },
+    {
+      "key": "traces_of_past",
+      "label": "Traces of the past",
+      "help": "Marks the past has left here that a character could see, touch or hear about; each past event itself belongs in a timeline entry.",
+      "type": "richtext",
+      "required": false,
+      "order": 11,
+      "dependsOn": ["place_type"]
+    },
+    {
+      "key": "concealed_aspects",
+      "label": "What it conceals",
+      "help": "What this place keeps from a newcomer: spaces, routes or truths that only long acquaintance or a deliberate search will uncover.",
+      "type": "richtext",
+      "required": false,
+      "order": 12,
+      "dependsOn": ["sensory_signature"]
+    },
+    {
+      "key": "change_across_book",
+      "label": "Change across the book",
+      "help": "How this place is different by the end of the book from how it was at the start, and what brought the change about.",
+      "type": "richtext",
+      "required": false,
+      "order": 13,
+      "dependsOn": ["story_purpose"]
+    }
+  ],
+  "relationTypes": [
+    {
+      "key": "part_of",
+      "label": "part of",
+      "inverseLabel": "contains",
+      "targetKinds": ["SETTING"]
+    },
+    {
+      "key": "adjoins",
+      "label": "adjoins",
+      "inverseLabel": "adjoins",
+      "targetKinds": ["SETTING"]
+    },
+    {
+      "key": "contrasts_with",
+      "label": "contrasts with",
+      "inverseLabel": "contrasts with",
+      "targetKinds": ["SETTING"]
+    },
+    {
+      "key": "embodies",
+      "label": "embodies",
+      "inverseLabel": "embodied by",
+      "targetKinds": ["THEME", "MOOD"]
+    },
+    {
+      "key": "governed_by",
+      "label": "governed by",
+      "inverseLabel": "governs",
+      "targetKinds": ["WORLD_RULE"]
+    },
+    {
+      "key": "site_of",
+      "label": "site of",
+      "inverseLabel": "happens at",
+      "targetKinds": ["TIMELINE_EVENT"]
+    },
+    {
+      "key": "controlled_by",
+      "label": "controlled by",
+      "inverseLabel": "controls",
+      "targetKinds": ["FACTION"]
+    },
+    {
+      "key": "draws_on",
+      "label": "draws on",
+      "inverseLabel": "informs",
+      "targetKinds": ["RESEARCH"]
+    }
+  ]
+}

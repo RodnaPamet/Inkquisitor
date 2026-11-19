@@ -1,0 +1,247 @@
+{
+  "kind": "PLOT",
+  "label": "Plot",
+  "description": "One plotline, main plot or subplot, from the disturbance that sets it moving, through its complications and climax, to its resolution. It follows the owner's goal, not single dated events or any character's inner life.",
+  "fields": [
+    {
+      "key": "plotline_owner",
+      "label": "Plotline owner",
+      "help": "The character whose decisions drive this plotline forward and whose goal it follows.",
+      "type": "text",
+      "required": true,
+      "order": 1,
+      "dependsOn": []
+    },
+    {
+      "key": "plotline_weight",
+      "label": "Weight in the book",
+      "help": "How much of the book this plotline carries compared with the other plotlines.",
+      "type": "choice",
+      "options": [
+        {
+          "value": "main_plot",
+          "label": "Main plot"
+        },
+        {
+          "value": "major_subplot",
+          "label": "Major subplot"
+        },
+        {
+          "value": "minor_subplot",
+          "label": "Minor subplot"
+        },
+        {
+          "value": "frame_story",
+          "label": "Frame around the main story"
+        }
+      ],
+      "required": false,
+      "order": 2,
+      "dependsOn": []
+    },
+    {
+      "key": "opening_disturbance",
+      "label": "Opening disturbance",
+      "help": "The event that breaks the owner's starting situation and forces this plotline into motion.",
+      "type": "richtext",
+      "required": true,
+      "order": 3,
+      "dependsOn": []
+    },
+    {
+      "key": "driving_goal",
+      "label": "Driving goal",
+      "help": "What the owner sets out to achieve in response to the disturbance, stated as something that can be won or lost.",
+      "type": "text",
+      "required": true,
+      "order": 4,
+      "dependsOn": [
+        "plotline_owner",
+        "opening_disturbance"
+      ]
+    },
+    {
+      "key": "opposing_force",
+      "label": "Opposing force",
+      "help": "Who or what works against the owner's goal within this plotline, whether a person, a group, a place or a circumstance.",
+      "type": "text",
+      "required": false,
+      "order": 5,
+      "dependsOn": [
+        "driving_goal"
+      ]
+    },
+    {
+      "key": "complications",
+      "label": "Complications",
+      "help": "The obstacles and reversals the owner meets, one per item in story order, each making the goal harder to reach.",
+      "type": "list",
+      "required": true,
+      "order": 6,
+      "dependsOn": [
+        "driving_goal"
+      ]
+    },
+    {
+      "key": "escalation_pace",
+      "label": "Pace of escalation",
+      "help": "How steeply the pressure on the owner rises from one complication to the next.",
+      "type": "scale",
+      "scaleLabels": {
+        "low": "Slow, gradual build",
+        "high": "Steep, relentless climb"
+      },
+      "required": false,
+      "order": 7,
+      "dependsOn": [
+        "complications"
+      ]
+    },
+    {
+      "key": "climax",
+      "label": "Climax",
+      "help": "The decisive confrontation in which the owner's goal is finally won or lost, and what the owner does there.",
+      "type": "richtext",
+      "required": true,
+      "order": 8,
+      "dependsOn": [
+        "complications"
+      ]
+    },
+    {
+      "key": "goal_outcome",
+      "label": "Outcome of the goal",
+      "help": "Where the climax leaves the driving goal, judged against what the owner set out to achieve.",
+      "type": "choice",
+      "options": [
+        {
+          "value": "achieved",
+          "label": "Achieved"
+        },
+        {
+          "value": "achieved_at_cost",
+          "label": "Achieved at a heavy cost"
+        },
+        {
+          "value": "lost",
+          "label": "Lost"
+        },
+        {
+          "value": "given_up",
+          "label": "Given up for something else"
+        },
+        {
+          "value": "left_open",
+          "label": "Left open"
+        }
+      ],
+      "required": false,
+      "order": 9,
+      "dependsOn": [
+        "climax"
+      ]
+    },
+    {
+      "key": "resolution",
+      "label": "Resolution",
+      "help": "What is settled after the climax, how the owner's situation has changed because of it, and anything left deliberately open.",
+      "type": "richtext",
+      "required": true,
+      "order": 10,
+      "dependsOn": [
+        "climax"
+      ]
+    },
+    {
+      "key": "setups_and_payoffs",
+      "label": "Setups and payoffs",
+      "help": "Details this plotline plants early that must pay off later, each item naming the setup and where it pays off.",
+      "type": "list",
+      "required": false,
+      "order": 11,
+      "dependsOn": [
+        "complications"
+      ]
+    },
+    {
+      "key": "book_span",
+      "label": "Span in the book",
+      "help": "Where in the manuscript this plotline begins and ends, by part, act or chapter, and whether it runs throughout.",
+      "type": "text",
+      "required": false,
+      "order": 12,
+      "dependsOn": [
+        "plotline_weight"
+      ]
+    }
+  ],
+  "relationTypes": [
+    {
+      "key": "subplot_of",
+      "label": "subplot of",
+      "inverseLabel": "has subplot",
+      "targetKinds": [
+        "PLOT"
+      ]
+    },
+    {
+      "key": "complicates",
+      "label": "complicates",
+      "inverseLabel": "complicated by",
+      "targetKinds": [
+        "PLOT"
+      ]
+    },
+    {
+      "key": "driven_by",
+      "label": "driven by",
+      "inverseLabel": "drives",
+      "targetKinds": [
+        "CHARACTER",
+        "FACTION"
+      ]
+    },
+    {
+      "key": "opposed_by",
+      "label": "opposed by",
+      "inverseLabel": "opposes",
+      "targetKinds": [
+        "CHARACTER",
+        "FACTION"
+      ]
+    },
+    {
+      "key": "plays_out_in",
+      "label": "plays out in",
+      "inverseLabel": "hosts",
+      "targetKinds": [
+        "SETTING"
+      ]
+    },
+    {
+      "key": "carries_theme",
+      "label": "carries",
+      "inverseLabel": "carried by",
+      "targetKinds": [
+        "THEME"
+      ]
+    },
+    {
+      "key": "includes_event",
+      "label": "includes",
+      "inverseLabel": "part of",
+      "targetKinds": [
+        "TIMELINE_EVENT"
+      ]
+    },
+    {
+      "key": "hinges_on",
+      "label": "hinges on",
+      "inverseLabel": "pivotal to",
+      "targetKinds": [
+        "WORLD_RULE",
+        "OBJECT"
+      ]
+    }
+  ]
+}

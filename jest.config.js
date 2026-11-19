@@ -25,6 +25,18 @@
  * #3046 step 2b). The `rendered` project is adapted from inflect's `jsdom`
  * project (see docs/carve-manifest.md).
  */
+/**
+ * ESM-only packages the unit and integration projects load, transformed for
+ * Jest's CommonJS runtime. The `sanitize-html` cluster (Phase 1.1, the
+ * write-path sanitiser `src/lib/security/sanitize.ts`): htmlparser2 12,
+ * domhandler, domutils, dom-serializer, domelementtype and entities are
+ * `"type": "module"` with import-first entries. `sanitize-html` itself is
+ * CommonJS and listed only so a copy nested under it is not ignored by the
+ * outer path segment matching (`transformIgnorePatterns` is an unanchored
+ * regex; inflect-compliance's jest.config.js tells the story).
+ */
+const NODE_ESM_ALLOW_LIST = ['sanitize-html', 'htmlparser2', 'domhandler', 'domutils', 'dom-serializer', 'domelementtype', 'entities'].join('|');
+
 const shared = {
     preset: 'ts-jest',
     testEnvironment: 'node',
@@ -38,7 +50,10 @@ const shared = {
     },
     transform: {
         '^.+\\.(ts|tsx)$': ['ts-jest', { tsconfig: { jsx: 'react-jsx' } }],
+        // The ESM-only packages below, transpiled to CommonJS for Jest's runtime.
+        '^.+\\.m?js$': ['ts-jest', { tsconfig: { allowJs: true } }],
     },
+    transformIgnorePatterns: [`node_modules/(?!(${NODE_ESM_ALLOW_LIST})/)`],
     testPathIgnorePatterns: ['/node_modules/', '/.next/', '/.claude/'],
     // `.claude/worktrees/<id>/` holds full checkouts; without this the haste
     // map finds a second copy of every manual mock.

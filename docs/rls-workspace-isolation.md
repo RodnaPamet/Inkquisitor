@@ -25,6 +25,16 @@ hash or a session version is never readable from a workspace transaction. `Audit
 role (a trigger refuses `UPDATE`, `DELETE` and `TRUNCATE`; `app_user` has no
 `UPDATE`/`DELETE` grant either).
 
+The bible's tables (Phase 1.1: `Book`, `BibleElement`, `BibleField`,
+`BibleRelation`, `BibleEntryVersion`) are workspace-scoped like the rest, and
+carry the workspace in every foreign key: a child references its parent by
+`(workspaceId, id)`, and a relation's two ends by `(bookId, id)`, so the
+database refuses an element under another workspace's book and a relation
+between two books, whoever writes. `BibleEntryVersion` is append-only like the
+audit trail (`app_user` has no `UPDATE`, `DELETE` or `TRUNCATE`; a trigger
+refuses them for every role), except the deletion its book's cascade makes and
+the clearing of `authorId` when that person is deleted.
+
 With no workspace bound, `app_user` sees nothing: the policy compares with
 `NULL` and fails closed.
 

@@ -1,0 +1,313 @@
+{
+  "kind": "FACTION",
+  "label": "Faction",
+  "description": "One group with a shared purpose: what it exists for, who belongs, where its power comes from, where its members pull apart and where it stands in the story's conflict. Its individual members are characters.",
+  "fields": [
+    {
+      "key": "purpose",
+      "label": "Purpose",
+      "help": "What the group exists to do, gain or protect, stated as an aim its own members would recognise.",
+      "type": "text",
+      "required": true,
+      "order": 1,
+      "dependsOn": []
+    },
+    {
+      "key": "group_type",
+      "label": "Kind of group",
+      "help": "The broad kind of group this is, which shapes what a reader expects of its ranks, customs and loyalties.",
+      "type": "choice",
+      "options": [
+        {
+          "value": "ruling_body",
+          "label": "Ruling or governing body"
+        },
+        {
+          "value": "religious_order",
+          "label": "Religious or spiritual order"
+        },
+        {
+          "value": "armed_force",
+          "label": "Military or armed force"
+        },
+        {
+          "value": "trade_body",
+          "label": "Trade body, guild or business"
+        },
+        {
+          "value": "criminal_network",
+          "label": "Criminal network"
+        },
+        {
+          "value": "kin_group",
+          "label": "Family, clan or household"
+        },
+        {
+          "value": "movement",
+          "label": "Movement, cause or party"
+        },
+        {
+          "value": "society",
+          "label": "Society, school or circle"
+        }
+      ],
+      "required": false,
+      "order": 2,
+      "dependsOn": []
+    },
+    {
+      "key": "visibility",
+      "label": "How openly it exists",
+      "help": "How openly the group exists in the story's world, and how far outsiders' picture of it matches what it really does.",
+      "type": "choice",
+      "options": [
+        {
+          "value": "open",
+          "label": "Openly known for what it is"
+        },
+        {
+          "value": "misread",
+          "label": "Known, but widely misread"
+        },
+        {
+          "value": "behind_front",
+          "label": "Known only by a respectable front"
+        },
+        {
+          "value": "rumoured",
+          "label": "Rumoured rather than known"
+        },
+        {
+          "value": "hidden",
+          "label": "Unknown to outsiders"
+        }
+      ],
+      "required": false,
+      "order": 3,
+      "dependsOn": [
+        "purpose"
+      ]
+    },
+    {
+      "key": "origin",
+      "label": "Origins",
+      "help": "How and why the group came into being and which parts of its past its members still invoke, with single dated events kept as timeline events.",
+      "type": "richtext",
+      "required": false,
+      "order": 4,
+      "dependsOn": [
+        "purpose"
+      ]
+    },
+    {
+      "key": "shared_code",
+      "label": "Shared beliefs and code",
+      "help": "The beliefs members hold in common and the conduct the group demands of them, one per item, leaving how the wider world works to world rules.",
+      "type": "list",
+      "required": false,
+      "order": 5,
+      "dependsOn": [
+        "purpose"
+      ]
+    },
+    {
+      "key": "membership",
+      "label": "Membership",
+      "help": "Who belongs to the group, how someone comes to join it, and how a member leaves or is put out.",
+      "type": "text",
+      "required": true,
+      "order": 6,
+      "dependsOn": [
+        "purpose"
+      ]
+    },
+    {
+      "key": "leadership",
+      "label": "How it is led",
+      "help": "How authority inside the group is held and handed on, apart from which characters hold it now.",
+      "type": "choice",
+      "options": [
+        {
+          "value": "single_head",
+          "label": "One person at the head"
+        },
+        {
+          "value": "inner_circle",
+          "label": "A council or inner circle"
+        },
+        {
+          "value": "chosen_by_members",
+          "label": "Chosen by the members"
+        },
+        {
+          "value": "by_birth",
+          "label": "Held by right of birth"
+        },
+        {
+          "value": "no_leaders",
+          "label": "No formal leaders"
+        },
+        {
+          "value": "contested",
+          "label": "Leadership in dispute"
+        }
+      ],
+      "required": false,
+      "order": 7,
+      "dependsOn": [
+        "membership"
+      ]
+    },
+    {
+      "key": "power_base",
+      "label": "Source of power",
+      "help": "What gives the group its leverage over others, such as numbers, wealth, force, knowledge, law or belief.",
+      "type": "text",
+      "required": true,
+      "order": 8,
+      "dependsOn": [
+        "purpose"
+      ]
+    },
+    {
+      "key": "reach",
+      "label": "Reach",
+      "help": "How far beyond its own members the group's power is felt in the story's world when the story opens.",
+      "type": "scale",
+      "scaleLabels": {
+        "low": "Felt only by its own members",
+        "high": "Felt throughout the story's world"
+      },
+      "required": false,
+      "order": 9,
+      "dependsOn": [
+        "power_base"
+      ]
+    },
+    {
+      "key": "methods",
+      "label": "Methods and limits",
+      "help": "How the group uses its leverage in pursuit of its purpose, and any line it will not cross to get there.",
+      "type": "richtext",
+      "required": false,
+      "order": 10,
+      "dependsOn": [
+        "purpose",
+        "power_base"
+      ]
+    },
+    {
+      "key": "internal_tension",
+      "label": "Internal tension",
+      "help": "Where members disagree or compete with one another, and what each side of that disagreement wants for the group.",
+      "type": "richtext",
+      "required": true,
+      "order": 11,
+      "dependsOn": [
+        "membership"
+      ]
+    },
+    {
+      "key": "role_in_conflict",
+      "label": "Place in the central conflict",
+      "help": "Where the group stands in the book's central conflict, whom it helps or hinders, and what it wants from the outcome.",
+      "type": "richtext",
+      "required": true,
+      "order": 12,
+      "dependsOn": [
+        "purpose",
+        "power_base"
+      ]
+    },
+    {
+      "key": "weak_points",
+      "label": "Weak points",
+      "help": "What could break the group's hold or split it apart, one per item, whether or not anyone in the story has seen it yet.",
+      "type": "list",
+      "required": false,
+      "order": 13,
+      "dependsOn": [
+        "power_base",
+        "internal_tension"
+      ]
+    },
+    {
+      "key": "change_across_book",
+      "label": "Change across the book",
+      "help": "How the group's strength, aims or unity shift between the first page and the last, and what in the story brings that about.",
+      "type": "richtext",
+      "required": false,
+      "order": 14,
+      "dependsOn": [
+        "internal_tension",
+        "role_in_conflict"
+      ]
+    }
+  ],
+  "relationTypes": [
+    {
+      "key": "allied_with",
+      "label": "allied with",
+      "inverseLabel": "allied with",
+      "targetKinds": [
+        "FACTION"
+      ]
+    },
+    {
+      "key": "opposes",
+      "label": "opposes",
+      "inverseLabel": "opposed by",
+      "targetKinds": [
+        "FACTION"
+      ]
+    },
+    {
+      "key": "answers_to",
+      "label": "answers to",
+      "inverseLabel": "has authority over",
+      "targetKinds": [
+        "FACTION"
+      ]
+    },
+    {
+      "key": "offshoot_of",
+      "label": "offshoot of",
+      "inverseLabel": "has offshoot",
+      "targetKinds": [
+        "FACTION"
+      ]
+    },
+    {
+      "key": "front_for",
+      "label": "front for",
+      "inverseLabel": "fronted by",
+      "targetKinds": [
+        "FACTION"
+      ]
+    },
+    {
+      "key": "guards",
+      "label": "guards",
+      "inverseLabel": "guarded by",
+      "targetKinds": [
+        "OBJECT"
+      ]
+    },
+    {
+      "key": "seeks",
+      "label": "seeks",
+      "inverseLabel": "sought by",
+      "targetKinds": [
+        "OBJECT"
+      ]
+    },
+    {
+      "key": "draws_on",
+      "label": "draws on",
+      "inverseLabel": "informs",
+      "targetKinds": [
+        "RESEARCH"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,247 @@
+{
+  "kind": "STYLE",
+  "label": "Prose style",
+  "description": "The prose surface of the book, or of one part of it: tense, diction, sentence rhythm, how dialogue is set out, and the spelling and punctuation it follows. Whose eyes the narration uses, and in which person, belong to point of view.",
+  "fields": [
+    {
+      "key": "style_scope",
+      "label": "Span covered",
+      "help": "How much of the book these conventions govern, which matters when some parts are written to a different surface from the rest.",
+      "type": "choice",
+      "options": [
+        {
+          "value": "whole_book",
+          "label": "The whole book"
+        },
+        {
+          "value": "one_part",
+          "label": "One part or section"
+        },
+        {
+          "value": "one_viewpoint",
+          "label": "The chapters of one viewpoint"
+        },
+        {
+          "value": "one_time_frame",
+          "label": "One time frame or narrative frame"
+        },
+        {
+          "value": "embedded_documents",
+          "label": "Documents quoted within the story"
+        }
+      ],
+      "required": false,
+      "order": 1,
+      "dependsOn": []
+    },
+    {
+      "key": "tense",
+      "label": "Narrative tense",
+      "help": "The tense the narration is told in, and any stretch you plan to tell in another tense, with the reason for it.",
+      "type": "text",
+      "required": true,
+      "order": 2,
+      "dependsOn": []
+    },
+    {
+      "key": "diction",
+      "label": "Diction",
+      "help": "The register and kind of words the prose favours, from plain to ornate and from formal to colloquial, as you would describe it to a copy-editor.",
+      "type": "text",
+      "required": true,
+      "order": 3,
+      "dependsOn": []
+    },
+    {
+      "key": "figurative_density",
+      "label": "Figurative language",
+      "help": "How far the prose leans on metaphor, simile and other figures of speech rather than on literal statement.",
+      "type": "scale",
+      "scaleLabels": {
+        "low": "Plain and literal",
+        "high": "Richly figurative"
+      },
+      "required": false,
+      "order": 4,
+      "dependsOn": [
+        "diction"
+      ]
+    },
+    {
+      "key": "favoured_words",
+      "label": "Favoured words and constructions",
+      "help": "Words, phrasings or sentence shapes the prose deliberately reaches for as part of its voice, one per item.",
+      "type": "list",
+      "required": false,
+      "order": 5,
+      "dependsOn": [
+        "diction"
+      ]
+    },
+    {
+      "key": "avoided_words",
+      "label": "Words and constructions to avoid",
+      "help": "Words, phrasings or sentence habits the prose rules out, so that drafts can later be checked against them, one per item.",
+      "type": "list",
+      "required": false,
+      "order": 6,
+      "dependsOn": [
+        "diction"
+      ]
+    },
+    {
+      "key": "sentence_rhythm",
+      "label": "Sentence and paragraph rhythm",
+      "help": "How long sentences and paragraphs usually run, how much they vary, and where the prose deliberately quickens or slows.",
+      "type": "richtext",
+      "required": true,
+      "order": 7,
+      "dependsOn": [
+        "diction"
+      ]
+    },
+    {
+      "key": "reading_demand",
+      "label": "Demand on the reader",
+      "help": "How much effort the prose asks of the reader it is written for, judged against the book's intended audience.",
+      "type": "scale",
+      "scaleLabels": {
+        "low": "Effortless to read",
+        "high": "Dense and demanding"
+      },
+      "required": false,
+      "order": 8,
+      "dependsOn": [
+        "diction",
+        "sentence_rhythm"
+      ]
+    },
+    {
+      "key": "dialogue_conventions",
+      "label": "Dialogue conventions",
+      "help": "How speech is set out on the page: the quotation marks used or none, how speakers are tagged, and how interruptions and trailing speech are punctuated.",
+      "type": "richtext",
+      "required": true,
+      "order": 9,
+      "dependsOn": [
+        "diction"
+      ]
+    },
+    {
+      "key": "thought_presentation",
+      "label": "Presentation of thought",
+      "help": "How a character's unspoken thoughts appear on the page when the narration gives them as thought rather than reporting them.",
+      "type": "choice",
+      "options": [
+        {
+          "value": "italic_direct",
+          "label": "Direct thought in italics"
+        },
+        {
+          "value": "roman_tagged",
+          "label": "Direct thought in roman, tagged"
+        },
+        {
+          "value": "blended",
+          "label": "Blended into the narration"
+        },
+        {
+          "value": "varies_by_moment",
+          "label": "Varies with the moment"
+        },
+        {
+          "value": "never_direct",
+          "label": "Never given as direct thought"
+        }
+      ],
+      "required": false,
+      "order": 10,
+      "dependsOn": [
+        "dialogue_conventions"
+      ]
+    },
+    {
+      "key": "other_languages",
+      "label": "Other languages and dialect",
+      "help": "How other languages, dialect and non-standard speech are shown on the page: italicised or not, glossed or left to context, spelt out or only suggested.",
+      "type": "richtext",
+      "required": false,
+      "order": 11,
+      "dependsOn": [
+        "dialogue_conventions"
+      ]
+    },
+    {
+      "key": "spelling_variant",
+      "label": "Spelling and punctuation conventions",
+      "help": "Which variety of spelling and which punctuation conventions the book follows, including any reference dictionary or house style you have adopted.",
+      "type": "text",
+      "required": true,
+      "order": 12,
+      "dependsOn": []
+    },
+    {
+      "key": "fixed_forms",
+      "label": "Fixed spellings and forms",
+      "help": "Particular words whose spelling, capitalisation, hyphenation or italics you have settled for this book, one per item with the form to use.",
+      "type": "list",
+      "required": false,
+      "order": 13,
+      "dependsOn": [
+        "spelling_variant"
+      ]
+    }
+  ],
+  "relationTypes": [
+    {
+      "key": "refines",
+      "label": "refines",
+      "inverseLabel": "refined by",
+      "targetKinds": [
+        "STYLE"
+      ]
+    },
+    {
+      "key": "contrasts_with",
+      "label": "contrasts with",
+      "inverseLabel": "contrasts with",
+      "targetKinds": [
+        "STYLE"
+      ]
+    },
+    {
+      "key": "applies_to",
+      "label": "applies to",
+      "inverseLabel": "written in",
+      "targetKinds": [
+        "POV",
+        "OBJECT"
+      ]
+    },
+    {
+      "key": "shifts_at",
+      "label": "shifts at",
+      "inverseLabel": "marks a shift in",
+      "targetKinds": [
+        "TIMELINE_EVENT"
+      ]
+    },
+    {
+      "key": "shaped_by",
+      "label": "shaped by",
+      "inverseLabel": "shapes the prose of",
+      "targetKinds": [
+        "WORLD_RULE",
+        "FACTION"
+      ]
+    },
+    {
+      "key": "informed_by",
+      "label": "informed by",
+      "inverseLabel": "informs",
+      "targetKinds": [
+        "RESEARCH"
+      ]
+    }
+  ]
+}

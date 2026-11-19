@@ -1,6 +1,6 @@
 /**
  * The encryption extension's traversal, against a TEST manifest and a TEST
- * model graph (the shipped manifest is empty until Phase 1): which fields of
+ * model graph (independent of the shipped one): which fields of
  * a write payload are sealed, which of a result are opened, and what happens
  * on a read that cannot be.
  *
@@ -169,11 +169,21 @@ describe('reads', () => {
 });
 
 describe('wiring', () => {
-    it('the shipped manifest is empty, and an empty manifest adds no extension at all', () => {
-        expect(ENCRYPTED_FIELDS).toEqual({});
+    it('the shipped manifest lists the bible\'s author text (Phase 1.1)', () => {
+        expect(ENCRYPTED_FIELDS).toEqual({
+            Book: ['logline'],
+            BibleElement: ['summary'],
+            BibleField: ['value'],
+            BibleRelation: ['note'],
+            BibleEntryVersion: ['snapshot', 'changeSummary'],
+        });
+        expect(compileManifest(ENCRYPTED_FIELDS).isEmpty).toBe(false);
+    });
+
+    it('an empty manifest adds no extension at all; a listed field adds one', () => {
         const client = { $extends: jest.fn() };
         const keys = {} as WorkspaceKeyManager;
-        expect(withEncryptionExtension(client, { keys })).toBe(client);
+        expect(withEncryptionExtension(client, { keys, manifest: {} })).toBe(client);
         expect(client.$extends).not.toHaveBeenCalled();
         withEncryptionExtension(client, { keys, manifest: { BibleEntry: ['value'] }, graph });
         expect(client.$extends).toHaveBeenCalledTimes(1);

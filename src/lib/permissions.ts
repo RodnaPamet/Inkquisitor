@@ -11,8 +11,9 @@
  *   workspace.manage   rename, settings                      OWNER
  *   members.view       see who belongs                       all
  *   members.manage     invite, change a role, remove         OWNER
- *   content.view       read books and the bible (Phase 1)    all
- *   content.edit       write books and the bible (Phase 1)   OWNER, EDITOR
+ *   bible.view         read books and their bibles           all
+ *   bible.edit         write books, bible elements, fields,  OWNER, EDITOR
+ *                      relations; restore a version
  *   audit.view         read the audit trail                  OWNER
  *
  * Adapted from inflect-compliance's `src/lib/permissions.ts` (see
@@ -24,7 +25,7 @@ import type { WorkspaceRole } from '@/app-layer/types';
 export interface PermissionSet {
     workspace: { view: boolean; manage: boolean };
     members: { view: boolean; manage: boolean };
-    content: { view: boolean; edit: boolean };
+    bible: { view: boolean; edit: boolean };
     audit: { view: boolean };
 }
 
@@ -37,19 +38,19 @@ const ROLE_PERMISSIONS: Readonly<Record<WorkspaceRole, PermissionSet>> = {
     OWNER: {
         workspace: { view: true, manage: true },
         members: { view: true, manage: true },
-        content: { view: true, edit: true },
+        bible: { view: true, edit: true },
         audit: { view: true },
     },
     EDITOR: {
         workspace: { view: true, manage: false },
         members: { view: true, manage: false },
-        content: { view: true, edit: true },
+        bible: { view: true, edit: true },
         audit: { view: false },
     },
     READER: {
         workspace: { view: true, manage: false },
         members: { view: true, manage: false },
-        content: { view: true, edit: false },
+        bible: { view: true, edit: false },
         audit: { view: false },
     },
 };

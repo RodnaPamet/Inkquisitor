@@ -1,0 +1,183 @@
+{
+  "kind": "RESEARCH",
+  "label": "Research note",
+  "description": "One real-world topic the book must get right: why the book needs it, the facts the author has settled and where each came from, what is still open, and how it will be checked. Invented rules of the story's world belong to World rule.",
+  "fields": [
+    {
+      "key": "topic",
+      "label": "Topic",
+      "help": "The real-world subject you need to get right, named narrowly enough that you could tell when the research on it is finished.",
+      "type": "text",
+      "required": true,
+      "order": 1,
+      "dependsOn": []
+    },
+    {
+      "key": "subject_area",
+      "label": "Kind of subject",
+      "help": "The broad area of real-world knowledge the topic belongs to, which shapes what kinds of source and check it needs.",
+      "type": "choice",
+      "options": [
+        { "value": "history_period", "label": "A period of history" },
+        { "value": "real_place", "label": "A real place or landscape" },
+        { "value": "trade_or_institution", "label": "A trade, profession or institution" },
+        { "value": "science_or_medicine", "label": "Science, medicine or the natural world" },
+        { "value": "law_or_procedure", "label": "Law, policing or official procedure" },
+        { "value": "culture_or_language", "label": "A culture, faith or language" },
+        { "value": "technology_or_craft", "label": "A technology or practical craft" }
+      ],
+      "required": false,
+      "order": 2,
+      "dependsOn": ["topic"]
+    },
+    {
+      "key": "why_needed",
+      "label": "Why the book needs it",
+      "help": "Which part of the book depends on this topic, and what would fail in that part if the facts were wrong.",
+      "type": "text",
+      "required": true,
+      "order": 3,
+      "dependsOn": ["topic"]
+    },
+    {
+      "key": "period_and_place",
+      "label": "Period and place it covers",
+      "help": "The period and region your facts must hold for, since practice, law and language differ from one time and place to another.",
+      "type": "text",
+      "required": false,
+      "order": 4,
+      "dependsOn": ["topic"]
+    },
+    {
+      "key": "accuracy_bar",
+      "label": "How exact it must be",
+      "help": "How closely the book must match the real record, given who will read it and how much of the dependent part rests on it.",
+      "type": "scale",
+      "scaleLabels": { "low": "Broadly plausible", "high": "Exact enough for an expert" },
+      "required": false,
+      "order": 5,
+      "dependsOn": ["why_needed"]
+    },
+    {
+      "key": "on_page_presence",
+      "label": "How much reaches the page",
+      "help": "How much of this research the reader sees directly, as against knowledge that shapes the draft without ever being explained.",
+      "type": "scale",
+      "scaleLabels": { "low": "Background only", "high": "Shown in close detail" },
+      "required": false,
+      "order": 6,
+      "dependsOn": ["why_needed"]
+    },
+    {
+      "key": "established_facts",
+      "label": "Settled facts",
+      "help": "Each fact you have settled for the book, one per item, with where it came from so that you can trace it later.",
+      "type": "list",
+      "required": true,
+      "order": 7,
+      "dependsOn": ["topic"]
+    },
+    {
+      "key": "open_questions",
+      "label": "Open questions",
+      "help": "Each thing about the topic that is still unknown, unconfirmed or unchecked, one per item, put so that you would know when it is settled.",
+      "type": "list",
+      "required": true,
+      "order": 8,
+      "dependsOn": ["topic"]
+    },
+    {
+      "key": "sources",
+      "label": "Sources",
+      "help": "Each book, record, archive, place or person you have consulted or plan to consult, one per item, marked as consulted or planned.",
+      "type": "list",
+      "required": true,
+      "order": 9,
+      "dependsOn": ["topic"]
+    },
+    {
+      "key": "conflicting_accounts",
+      "label": "Where sources disagree",
+      "help": "Each point on which your sources contradict one another, one per item, with the version the book follows if you have chosen one.",
+      "type": "list",
+      "required": false,
+      "order": 10,
+      "dependsOn": ["sources"]
+    },
+    {
+      "key": "verification_status",
+      "label": "How far it is checked",
+      "help": "How thoroughly your settled facts have been checked, which tells you how much weight they can bear before the draft relies on them.",
+      "type": "choice",
+      "options": [
+        { "value": "not_checked", "label": "Not yet checked" },
+        { "value": "one_source", "label": "Checked against one source" },
+        { "value": "independent_sources", "label": "Checked against independent sources" },
+        { "value": "expert_reviewed", "label": "Reviewed by someone with expertise" },
+        { "value": "first_hand", "label": "Confirmed at first hand" }
+      ],
+      "required": false,
+      "order": 11,
+      "dependsOn": ["established_facts", "sources"]
+    },
+    {
+      "key": "deliberate_departures",
+      "label": "Deliberate departures",
+      "help": "Where the book knowingly departs from the facts you have settled, why it does so, and whether readers will be told about it.",
+      "type": "richtext",
+      "required": false,
+      "order": 12,
+      "dependsOn": ["established_facts"]
+    },
+    {
+      "key": "portrayal_care",
+      "label": "Care needed in portrayal",
+      "help": "Communities or lived experiences the topic touches where a careless error could cause harm, and how you mean to check the portrayal.",
+      "type": "richtext",
+      "required": false,
+      "order": 13,
+      "dependsOn": ["why_needed"]
+    },
+    {
+      "key": "settle_by",
+      "label": "When it must be settled",
+      "help": "The latest stage of your writing by which the open questions must be resolved, so that they hold up no earlier work than they need to.",
+      "type": "choice",
+      "options": [
+        { "value": "before_drafting", "label": "Before drafting starts" },
+        { "value": "before_dependent_scenes", "label": "Before the scenes that rely on it" },
+        { "value": "during_revision", "label": "During revision" },
+        { "value": "before_submission", "label": "Before submission or publication" }
+      ],
+      "required": false,
+      "order": 14,
+      "dependsOn": ["why_needed", "open_questions"]
+    }
+  ],
+  "relationTypes": [
+    {
+      "key": "builds_on",
+      "label": "builds on",
+      "inverseLabel": "supports",
+      "targetKinds": ["RESEARCH"]
+    },
+    {
+      "key": "part_of",
+      "label": "part of",
+      "inverseLabel": "includes",
+      "targetKinds": ["RESEARCH"]
+    },
+    {
+      "key": "conflicts_with",
+      "label": "conflicts with",
+      "inverseLabel": "conflicts with",
+      "targetKinds": ["RESEARCH"]
+    },
+    {
+      "key": "informs",
+      "label": "informs",
+      "inverseLabel": "draws on",
+      "targetKinds": ["CUSTOM"]
+    }
+  ]
+}

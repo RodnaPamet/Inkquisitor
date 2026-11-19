@@ -27,6 +27,7 @@ model Workspace {
   updatedAt            DateTime @updatedAt
 
   memberships WorkspaceMembership[]
+  books       Book[]
 }
 
 /// A person's role in a workspace. One per (workspace, user).

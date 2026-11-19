@@ -1,0 +1,173 @@
+{
+  "kind": "THEME",
+  "label": "Theme",
+  "description": "One theme: the subject the book keeps returning to, the question it asks about that subject, the reply its outcome gives and the strongest case against that reply. The feeling the book leaves belongs to mood.",
+  "fields": [
+    {
+      "key": "subject",
+      "label": "Subject",
+      "help": "The topic the book keeps returning to beneath its events, named in a few words rather than stated as a message.",
+      "type": "text",
+      "required": true,
+      "order": 1,
+      "dependsOn": []
+    },
+    {
+      "key": "prominence",
+      "label": "Weight in the book",
+      "help": "How much of the book this theme governs, from shaping every part of it to running quietly beneath a single strand.",
+      "type": "choice",
+      "options": [
+        { "value": "central", "label": "Central to the whole book" },
+        { "value": "major", "label": "One of several major themes" },
+        { "value": "single_strand", "label": "Carried by one plotline" },
+        { "value": "undercurrent", "label": "A quiet undercurrent" }
+      ],
+      "required": false,
+      "order": 2,
+      "dependsOn": ["subject"]
+    },
+    {
+      "key": "thematic_question",
+      "label": "Thematic question",
+      "help": "The question about the subject that the book explores, phrased so that a thoughtful reader could argue either side of it.",
+      "type": "text",
+      "required": true,
+      "order": 3,
+      "dependsOn": ["subject"]
+    },
+    {
+      "key": "explicitness",
+      "label": "Explicitness",
+      "help": "How openly the book puts its thematic question into words, rather than leaving it to emerge from what characters do.",
+      "type": "scale",
+      "scaleLabels": { "low": "Left wholly to events", "high": "Argued openly on the page" },
+      "required": false,
+      "order": 4,
+      "dependsOn": ["thematic_question"]
+    },
+    {
+      "key": "stance",
+      "label": "The book's reply",
+      "help": "What the outcome of the story suggests in reply to the thematic question, as you see it, with any conditions the reply depends on.",
+      "type": "richtext",
+      "required": true,
+      "order": 5,
+      "dependsOn": ["thematic_question"]
+    },
+    {
+      "key": "reply_shape",
+      "label": "Shape of the reply",
+      "help": "How firmly the ending settles the thematic question, summing up the fuller reply in a single category.",
+      "type": "choice",
+      "options": [
+        { "value": "endorsed", "label": "A firm reply the ending endorses" },
+        { "value": "conditional", "label": "A reply that holds only in some cases" },
+        { "value": "too_late", "label": "A reply reached too late to help" },
+        { "value": "undercut", "label": "A reply the ending quietly undercuts" },
+        { "value": "open_tension", "label": "An open tension left with the reader" }
+      ],
+      "required": false,
+      "order": 6,
+      "dependsOn": ["stance"]
+    },
+    {
+      "key": "cost_of_reply",
+      "label": "Price of the reply",
+      "help": "What holding to the book's reply costs the characters who live by it, so that the reply is earned on the page rather than declared.",
+      "type": "richtext",
+      "required": false,
+      "order": 7,
+      "dependsOn": ["stance"]
+    },
+    {
+      "key": "counter_argument",
+      "label": "Strongest counter-argument",
+      "help": "The best case against the book's reply, as the story itself gives it voice, strong enough that a reader could take its side.",
+      "type": "richtext",
+      "required": true,
+      "order": 8,
+      "dependsOn": ["stance"]
+    },
+    {
+      "key": "positions_explored",
+      "label": "Other positions explored",
+      "help": "Further replies to the thematic question that other characters or plotlines live out, besides the book's reply and its chief opponent, one per item.",
+      "type": "list",
+      "required": false,
+      "order": 9,
+      "dependsOn": ["counter_argument"]
+    },
+    {
+      "key": "carriers",
+      "label": "Carriers of the theme",
+      "help": "The characters, events and images through which the theme reaches the reader, one per item.",
+      "type": "list",
+      "required": true,
+      "order": 10,
+      "dependsOn": ["thematic_question"]
+    },
+    {
+      "key": "lingering_thought",
+      "label": "Lingering thought",
+      "help": "The thought you hope a reader goes on turning over after the last page, as distinct from the feeling left, which belongs to mood.",
+      "type": "text",
+      "required": false,
+      "order": 11,
+      "dependsOn": ["stance"]
+    },
+    {
+      "key": "known_risks",
+      "label": "Known risks",
+      "help": "Doubts you already hold about how the theme lands, such as preaching, a feeble opposing case or the theme vanishing under plot, to test later.",
+      "type": "list",
+      "required": false,
+      "order": 12,
+      "dependsOn": ["stance", "carriers"]
+    }
+  ],
+  "relationTypes": [
+    {
+      "key": "in_tension_with",
+      "label": "is in tension with",
+      "inverseLabel": "is in tension with",
+      "targetKinds": ["THEME"]
+    },
+    {
+      "key": "strand_of",
+      "label": "is a strand of",
+      "inverseLabel": "has as a strand",
+      "targetKinds": ["THEME"]
+    },
+    {
+      "key": "felt_through",
+      "label": "is felt through",
+      "inverseLabel": "makes felt",
+      "targetKinds": ["MOOD"]
+    },
+    {
+      "key": "echoed_in",
+      "label": "is echoed in",
+      "inverseLabel": "echoes",
+      "targetKinds": ["TEXTURE", "OBJECT"]
+    },
+    {
+      "key": "tested_by",
+      "label": "is tested by",
+      "inverseLabel": "tests",
+      "targetKinds": ["WORLD_RULE", "TIMELINE_EVENT"]
+    },
+    {
+      "key": "embodied_by",
+      "label": "is embodied by",
+      "inverseLabel": "embodies",
+      "targetKinds": ["FACTION"]
+    },
+    {
+      "key": "draws_on",
+      "label": "draws on",
+      "inverseLabel": "informs",
+      "targetKinds": ["RESEARCH"]
+    }
+  ]
+}

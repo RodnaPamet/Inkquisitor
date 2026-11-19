@@ -1,0 +1,216 @@
+/**
+ * What the bible usecases share (Phase 1.1): finding a book or element in the
+ * caller's workspace, sanitising plain author text, writing a batch of field
+ * values, and recording a version.
+ *
+ * Not a public usecase module: every function here runs inside a transaction
+ * a usecase opened with `runInWorkspaceContext` after asking its permission.
+ *
+ * THE VERSIONED SAVE. Every save of an element or its fields runs, in ONE
+ * transaction:
+ *
+ *   1. `BibleElementRepository.lock(elementId)` — a transaction-scoped
+ *      advisory lock, so two saves of one element queue rather than
+ *      interleave;
+ *   2. the change itself;
+ *   3. `recordVersion` — read the element and every field back (inside the
+ *      same transaction, so the snapshot is exactly what was committed),
+ *      serialise the snapshot, and append version `latest + 1`.
+ *
+ * Because the number is read under the lock, concurrent saves take distinct,
+ * consecutive numbers; the (elementId, versionNumber) unique index is the
+ * backstop. A save that would change nothing writes nothing and records no
+ * version.
+ */
+import type { BibleElementKind } from '@prisma/client';
+import type { WorkspaceRequestContext } from '@/app-layer/types';
+import { BookRepository } from '@/app-layer/repositories/book.repository';
+import { BibleElementRepository, BibleFieldRepository, BibleVersionRepository } from '@/app-layer/repositories/bible.repository';
+import type { PrismaTx } from '@/lib/db/rls-middleware';
+import { ConflictError, NotFoundError, ValidationError } from '@/lib/errors/types';
+import { decodeFieldValue, encodeFieldValue, normaliseFieldValue, sameFieldValue, type FieldValue, type FieldValueRefusal } from '@/lib/bible/field-values';
+import type { BibleVersionSource } from '@/lib/bible/kinds';
+import { buildSnapshot, serialiseSnapshot } from '@/lib/bible/snapshot';
+import { getFieldDef, getTemplate } from '@/lib/bible/templates';
+import { plainBlock, plainLine } from '@/lib/bible/text';
+import { CHANGE_SUMMARY_MAX } from '@/app-layer/schemas/bible';
+
+// ─── Lookups ────────────────────────────────────────────────────────
+
+export async function requireBook(db: PrismaTx, ctx: WorkspaceRequestContext, bookId: string) {
+    const book = await BookRepository.find(db, ctx.workspaceId, bookId);
+    if (!book) throw new NotFoundError('Book not found.');
+    return book;
+}
+
+export async function requireElement(db: PrismaTx, ctx: WorkspaceRequestContext, bookId: string, elementId: string) {
+    const element = await BibleElementRepository.find(db, ctx.workspaceId, bookId, elementId);
+    if (!element) throw new NotFoundError('Element not found.');
+    return element;
+}
+
+/** A Prisma unique-constraint violation (P2002), told apart without importing the runtime. */
+export function isUniqueViolation(err: unknown): boolean {
+    return typeof err === 'object' && err !== null && (err as { code?: unknown }).code === 'P2002';
+}
+
+export const SLUG_TAKEN = { reason: 'SLUG_TAKEN' } as const;
+
+export function slugConflict(): ConflictError {
+    return new ConflictError('Another element of this book already uses that slug.', SLUG_TAKEN);
+}
+
+// ─── Plain text ─────────────────────────────────────────────────────
+
+/** A required one-line value: sanitised, then non-empty and within `max`. */
+export function requiredLine(input: string, max: number, what: string): string {
+    const value = plainLine(input);
+    if (value.length === 0) throw new ValidationError(`${what} is empty.`, { reason: 'EMPTY', field: what });
+    if (value.length > max) throw new ValidationError(`${what} is too long.`, { reason: 'TOO_LONG', field: what });
+    return value;
+}
+
+/** An optional one-line value: `undefined` leaves it, `null` or blank clears it. */
+export function optionalLine(input: string | null | undefined, max: number, what: string): string | null | undefined {
+    if (input === undefined) return undefined;
+    if (input === null) return null;
+    const value = plainLine(input);
+    if (value.length > max) throw new ValidationError(`${what} is too long.`, { reason: 'TOO_LONG', field: what });
+    return value.length === 0 ? null : value;
+}
+
+/** An optional multi-line value (paragraphs kept): `undefined` leaves it, `null` or blank clears it. */
+export function optionalBlock(input: string | null | undefined, max: number, what: string): string | null | undefined {
+    if (input === undefined) return undefined;
+    if (input === null) return null;
+    const value = plainBlock(input);
+    if (value.length > max) throw new ValidationError(`${what} is too long.`, { reason: 'TOO_LONG', field: what });
+    return value.length === 0 ? null : value;
+}
+
+// ─── Fields ─────────────────────────────────────────────────────────
+
+export interface FieldEntry {
+    key: string;
+    value: unknown;
+}
+
+export interface FieldRefusal {
+    key: string;
+    reason: FieldValueRefusal | 'UNKNOWN_FIELD' | 'DUPLICATE_FIELD';
+}
+
+/**
+ * Check a batch of field values against the kind's template WITHOUT writing:
+ * every refusal at once, so the author sees them all. Returns the normalised
+ * (sanitised) values by key.
+ */
+export function normaliseFieldEntries(kind: BibleElementKind, entries: readonly FieldEntry[]): Map<string, FieldValue | null> {
+    const refusals: FieldRefusal[] = [];
+    const out = new Map<string, FieldValue | null>();
+    for (const entry of entries) {
+        const def = getFieldDef(kind, entry.key);
+        if (!def) {
+            refusals.push({ key: entry.key, reason: 'UNKNOWN_FIELD' });
+            continue;
+        }
+        if (out.has(entry.key)) {
+            refusals.push({ key: entry.key, reason: 'DUPLICATE_FIELD' });
+            continue;
+        }
+        const result = normaliseFieldValue(def, entry.value);
+        if (!result.ok) refusals.push({ key: entry.key, reason: result.reason });
+        else out.set(entry.key, result.value);
+    }
+    if (refusals.length > 0) throw new ValidationError('Some field values were refused.', { reason: 'FIELD_VALUES_REFUSED', fields: refusals });
+    return out;
+}
+
+/** The element's stored fields, decoded, by key. */
+export async function readFieldValues(db: PrismaTx, ctx: WorkspaceRequestContext, elementId: string): Promise<Map<string, FieldValue>> {
+    const rows = await BibleFieldRepository.listForElement(db, ctx.workspaceId, elementId);
+    return new Map(rows.map((r) => [r.key, decodeFieldValue(r.value)]));
+}
+
+/**
+ * Write a batch of field values (sanitised by `normaliseFieldEntries`): set
+ * each changed one, delete each cleared one, leave the rest. Returns the keys
+ * that changed.
+ */
+export async function writeFieldValues(
+    db: PrismaTx,
+    ctx: WorkspaceRequestContext,
+    element: { id: string; kind: BibleElementKind },
+    entries: readonly FieldEntry[],
+): Promise<string[]> {
+    const next = normaliseFieldEntries(element.kind, entries);
+    const current = await readFieldValues(db, ctx, element.id);
+    const changed: string[] = [];
+    const cleared: string[] = [];
+    for (const [key, value] of next) {
+        const before = current.get(key) ?? null;
+        if (sameFieldValue(before, value)) continue;
+        changed.push(key);
+        if (value === null) {
+            cleared.push(key);
+        } else {
+            const order = getFieldDef(element.kind, key)?.order ?? 1;
+            await BibleFieldRepository.upsert(db, ctx.workspaceId, element.id, { key, value: encodeFieldValue(value), order });
+        }
+    }
+    await BibleFieldRepository.removeKeys(db, ctx.workspaceId, element.id, cleared);
+    return changed;
+}
+
+/** Every template field of the kind, in template order, with its value (null when empty). */
+export function fieldViews(kind: BibleElementKind, values: ReadonlyMap<string, FieldValue>) {
+    return getTemplate(kind).fields.map((f) => ({
+        key: f.key,
+        label: f.label,
+        type: f.type,
+        required: f.required,
+        order: f.order,
+        value: values.get(f.key) ?? null,
+    }));
+}
+
+// ─── Versions ───────────────────────────────────────────────────────
+
+export interface VersionMeta {
+    source: BibleVersionSource;
+    /** The author's words, sanitised here; or the product's own (a restore). */
+    changeSummary?: string | null;
+    restoredFromVersion?: number | null;
+}
+
+/**
+ * Append the element's next version: a snapshot of the element and every
+ * field as they now stand in this transaction. The caller holds the
+ * element's lock (`BibleElementRepository.lock`).
+ */
+export async function recordVersion(db: PrismaTx, ctx: WorkspaceRequestContext, bookId: string, elementId: string, meta: VersionMeta) {
+    const element = await requireElement(db, ctx, bookId, elementId);
+    const values = await readFieldValues(db, ctx, elementId);
+    const snapshot = buildSnapshot({
+        element: {
+            kind: element.kind,
+            name: element.name,
+            slug: element.slug,
+            status: element.status,
+            summary: element.summary,
+            customLabel: element.customLabel,
+        },
+        fields: [...values].map(([key, value]) => ({ key, value, order: getFieldDef(element.kind, key)?.order ?? 0 })),
+    });
+    const versionNumber = (await BibleVersionRepository.latestNumber(db, ctx.workspaceId, elementId)) + 1;
+    return BibleVersionRepository.create(db, ctx.workspaceId, {
+        bookId,
+        elementId,
+        versionNumber,
+        snapshot: serialiseSnapshot(snapshot),
+        changeSummary: optionalBlock(meta.changeSummary, CHANGE_SUMMARY_MAX, 'Change summary') ?? null,
+        source: meta.source,
+        restoredFromVersion: meta.restoredFromVersion ?? null,
+        authorId: ctx.userId,
+    });
+}

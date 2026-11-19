@@ -1,6 +1,6 @@
 /**
- * Field encryption against a real database. The shipped manifest is empty
- * until Phase 1, so this builds a client with a TEST manifest
+ * Field encryption against a real database. This builds a client with a TEST
+ * manifest
  * (`{ Workspace: ['name'] }`) — the extension takes the manifest as a
  * parameter for exactly this — and proves: a listed field is ciphertext at
  * rest, it reads back as plaintext in the workspace that wrote it, it is
@@ -46,8 +46,9 @@ function writeName(acc: typeof a, name: string) {
     return runInWorkspaceContext(ctxOf(acc), (tx) => tx.workspace.update({ where: { id: acc.workspaceId }, data: { name } }), { client: db.client });
 }
 
-it('the shipped manifest is empty until Phase 1', () => {
-    expect(ENCRYPTED_FIELDS).toEqual({});
+it('the shipped manifest does not list the field this suite plays with (so the two clients disagree only where intended)', () => {
+    expect(ENCRYPTED_FIELDS.Workspace).toBeUndefined();
+    expect(ENCRYPTED_FIELDS.User).toBeUndefined();
 });
 
 it('a write inside a workspace is a v2 envelope at rest and reads back as plaintext there', async () => {

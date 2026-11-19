@@ -1,0 +1,174 @@
+{
+  "kind": "CUSTOM",
+  "label": "Custom element",
+  "description": "One element the author defines under a label of their own, for anything the other kinds do not hold: what it is, why the book needs it, which details must stay consistent and what is still undecided.",
+  "fields": [
+    {
+      "key": "purpose",
+      "label": "What it is and why it matters",
+      "help": "What this element is, in a line, and why the book needs it rather than doing without it.",
+      "type": "text",
+      "required": true,
+      "order": 1,
+      "dependsOn": []
+    },
+    {
+      "key": "layer",
+      "label": "Where it lives",
+      "help": "Whether the element exists inside the story's world, in how the story is told, in the matter around the story, or only in the author's planning.",
+      "type": "choice",
+      "options": [
+        {
+          "value": "in_story_world",
+          "label": "Inside the story's world"
+        },
+        {
+          "value": "in_the_telling",
+          "label": "In how the story is told"
+        },
+        {
+          "value": "around_the_story",
+          "label": "In the matter around the story"
+        },
+        {
+          "value": "behind_the_page",
+          "label": "Behind the page, for planning only"
+        }
+      ],
+      "required": false,
+      "order": 2,
+      "dependsOn": [
+        "purpose"
+      ]
+    },
+    {
+      "key": "key_details",
+      "label": "Details to keep consistent",
+      "help": "The facts about this element that must read the same wherever it appears, one per item.",
+      "type": "list",
+      "required": true,
+      "order": 3,
+      "dependsOn": [
+        "purpose"
+      ]
+    },
+    {
+      "key": "connections",
+      "label": "Parts of the book it touches",
+      "help": "The plotlines, characters, places, chapters or other elements this one touches, and what it does in each.",
+      "type": "richtext",
+      "required": true,
+      "order": 4,
+      "dependsOn": [
+        "purpose"
+      ]
+    },
+    {
+      "key": "prominence",
+      "label": "Presence on the page",
+      "help": "How much of the book this element is visible in, from a rare mention to a constant presence.",
+      "type": "scale",
+      "scaleLabels": {
+        "low": "Rarely seen on the page",
+        "high": "Present throughout"
+      },
+      "required": false,
+      "order": 5,
+      "dependsOn": [
+        "connections"
+      ]
+    },
+    {
+      "key": "first_appearance",
+      "label": "First appearance",
+      "help": "Where in the book the reader first meets this element, and how much of it shows at that moment.",
+      "type": "text",
+      "required": false,
+      "order": 6,
+      "dependsOn": [
+        "connections"
+      ]
+    },
+    {
+      "key": "planned_changes",
+      "label": "Planned changes",
+      "help": "Any deliberate change to this element between the opening and the end, so it is not later mistaken for a slip in its details.",
+      "type": "richtext",
+      "required": false,
+      "order": 7,
+      "dependsOn": [
+        "key_details"
+      ]
+    },
+    {
+      "key": "open_questions",
+      "label": "Open questions",
+      "help": "What is still to be decided about this element, one question per item.",
+      "type": "list",
+      "required": true,
+      "order": 8,
+      "dependsOn": [
+        "purpose"
+      ]
+    },
+    {
+      "key": "notes",
+      "label": "Notes",
+      "help": "Anything else worth keeping about this element that no other field holds, in the author's own words.",
+      "type": "richtext",
+      "required": false,
+      "order": 9,
+      "dependsOn": []
+    }
+  ],
+  "relationTypes": [
+    {
+      "key": "part_of",
+      "label": "part of",
+      "inverseLabel": "has as a part",
+      "targetKinds": [
+        "CUSTOM"
+      ]
+    },
+    {
+      "key": "variant_of",
+      "label": "variant of",
+      "inverseLabel": "has variant",
+      "targetKinds": [
+        "CUSTOM"
+      ]
+    },
+    {
+      "key": "relies_on",
+      "label": "relies on",
+      "inverseLabel": "relied on by",
+      "targetKinds": [
+        "CUSTOM"
+      ]
+    },
+    {
+      "key": "gives_rise_to",
+      "label": "gives rise to",
+      "inverseLabel": "arises from",
+      "targetKinds": [
+        "CUSTOM"
+      ]
+    },
+    {
+      "key": "parallels",
+      "label": "parallels",
+      "inverseLabel": "parallels",
+      "targetKinds": [
+        "CUSTOM"
+      ]
+    },
+    {
+      "key": "contrasts_with",
+      "label": "contrasts with",
+      "inverseLabel": "contrasts with",
+      "targetKinds": [
+        "CUSTOM"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,162 @@
+// ─────────────────────────────────────────────────────────────────
+//  The book bible (Phase 1.1).
+//
+//  A Book holds BibleElements (one per character, place, theme, …); an
+//  element's facts are BibleFields keyed by its kind's template
+//  (`src/lib/bible/templates/<kind>.json`); BibleRelations link two elements
+//  of one book; every save of an element or its fields appends one
+//  BibleEntryVersion holding a snapshot of the element and all its fields.
+//
+//  EVERY MODEL HERE IS WORKSPACE-SCOPED: each has a `workspaceId`, FORCE
+//  ROW LEVEL SECURITY and the `workspace_isolation` / `superuser_bypass`
+//  policies in its migration, and is reached through `runInWorkspaceContext`.
+//
+//  THE WORKSPACE TRAVELS IN EVERY FOREIGN KEY. A child points at its parent
+//  by (workspaceId, parentId), and a relation's two ends by (bookId,
+//  elementId), so the database itself refuses an element filed under
+//  another workspace's book, a field under another workspace's element, and
+//  a relation between two books.
+//
+//  AUTHOR TEXT IS ENCRYPTED AT REST: Book.logline, BibleElement.summary,
+//  BibleField.value, BibleRelation.note, BibleEntryVersion.snapshot and
+//  .changeSummary are listed in `src/lib/security/encrypted-fields.ts`.
+//  Titles, element names, slugs and custom labels stay readable: they are
+//  what lists sort and unique keys compare.
+//
+//  BibleEntryVersion is APPEND-ONLY: a trigger refuses UPDATE and DELETE for
+//  every role, except the delete its book's (or workspace's) cascade makes
+//  and the clearing of `authorId` when that person is deleted.
+// ─────────────────────────────────────────────────────────────────
+
+/// One book in a workspace.
+model Book {
+  id           String    @id @default(cuid())
+  workspaceId  String
+  title        String
+  /// The working logline (encrypted).
+  logline      String?
+  /// Free text, at most 80 characters, trimmed (CHECK).
+  genre        String?
+  /// Free text, at most 80 characters, trimmed (CHECK).
+  audience     String?
+  /// The intended length in words.
+  targetLength Int?
+  stage        BookStage @default(CONCEPT)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  workspace Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  elements  BibleElement[]
+  relations BibleRelation[]
+  versions  BibleEntryVersion[]
+
+  @@unique([workspaceId, id])
+  @@index([workspaceId, updatedAt])
+}
+
+/// One entry of a book's bible: a character, a place, a theme, …
+model BibleElement {
+  id          String             @id @default(cuid())
+  workspaceId String
+  bookId      String
+  /// Fixed at creation: the template, and so every stored field key, depend on it.
+  kind        BibleElementKind
+  name        String
+  /// Unique per book: `^[a-z0-9]+(-[a-z0-9]+)*$`, at most 80 characters.
+  slug        String
+  status      BibleElementStatus @default(DRAFT)
+  /// A short description (encrypted).
+  summary     String?
+  /// The author's own label for a CUSTOM element; NULL for every other kind (a CHECK holds both).
+  customLabel String?
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+
+  book          Book            @relation(fields: [workspaceId, bookId], references: [workspaceId, id], onDelete: Cascade)
+  fields        BibleField[]
+  relationsFrom BibleRelation[] @relation("BibleRelationFrom")
+  relationsTo   BibleRelation[] @relation("BibleRelationTo")
+
+  @@unique([bookId, slug])
+  @@unique([bookId, id])
+  @@unique([workspaceId, id])
+  @@index([workspaceId, bookId, kind])
+}
+
+/// One field of an element, keyed by its kind's template.
+model BibleField {
+  id          String   @id @default(cuid())
+  workspaceId String
+  elementId   String
+  /// A key of the element kind's template.
+  key         String
+  /// The value, JSON-encoded by the field's type (encrypted). An empty field has no row.
+  value       String
+  /// The template's order for the key, so a list reads in template order.
+  order       Int
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  element BibleElement @relation(fields: [workspaceId, elementId], references: [workspaceId, id], onDelete: Cascade)
+
+  @@unique([elementId, key])
+  @@index([workspaceId, elementId])
+}
+
+/// A typed link between two elements of one book, stored once and read from
+/// both ends (the template's `label` from `from`, its `inverseLabel` from `to`).
+model BibleRelation {
+  id            String   @id @default(cuid())
+  workspaceId   String
+  bookId        String
+  fromElementId String
+  toElementId   String
+  /// A relation key declared on the `from` element's kind's template, or the built-in `related_to`.
+  type          String
+  /// The type reads the same both ways (label = inverse label), so A→B and
+  /// B→A are one relation: a partial unique index over the unordered pair
+  /// (the migration's `BibleRelation_symmetric_pair_key`, which Prisma cannot
+  /// spell) holds it to one row. Set from the template at creation.
+  symmetric     Boolean  @default(false)
+  /// The author's note on the link (encrypted).
+  note          String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  book Book         @relation(fields: [workspaceId, bookId], references: [workspaceId, id], onDelete: Cascade)
+  from BibleElement @relation("BibleRelationFrom", fields: [bookId, fromElementId], references: [bookId, id], onDelete: Cascade)
+  to   BibleElement @relation("BibleRelationTo", fields: [bookId, toElementId], references: [bookId, id], onDelete: Cascade)
+
+  @@unique([fromElementId, toElementId, type])
+  @@index([workspaceId, bookId])
+  @@index([bookId, toElementId])
+}
+
+/// One saved state of an element: the element and all its fields at that
+/// moment. Append-only (trigger). Keyed to its BOOK, not its element: an
+/// element's history outlives the element and goes only with its book.
+model BibleEntryVersion {
+  id                  String             @id @default(cuid())
+  workspaceId         String
+  bookId              String
+  elementId           String
+  /// 1, 2, 3, … per element, assigned under the element's advisory lock.
+  versionNumber       Int
+  /// The element and its fields as JSON (encrypted).
+  snapshot            String
+  /// What changed, in the author's words or the product's (encrypted).
+  changeSummary       String?
+  source              BibleVersionSource
+  /// The version this one restored, when it is a restore.
+  restoredFromVersion Int?
+  /// Who saved it; NULL once that person is deleted.
+  authorId            String?
+  createdAt           DateTime           @default(now())
+
+  book   Book  @relation(fields: [workspaceId, bookId], references: [workspaceId, id], onDelete: Cascade)
+  author User? @relation(fields: [authorId], references: [id], onDelete: SetNull)
+
+  @@unique([elementId, versionNumber])
+  @@index([workspaceId, bookId])
+  @@index([authorId])
+}
