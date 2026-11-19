@@ -33,7 +33,9 @@
  * IDEMPOTENT PER SLUG. An element file names its element by slug: a slug the
  * book does not hold is created; one it holds (of the same kind — another
  * kind is `KIND_CONFLICT`) is brought to exactly the file's state, the file
- * being the element's whole state (a field the file leaves out is cleared).
+ * being the element's whole state over the template keys its writer knew
+ * (the manifest's `templateFields`): a field the file leaves out is cleared,
+ * unless the template gained it after the bundle was written.
  * Each element save goes through the versioned save (`bible-common.ts`: lock,
  * change, `recordVersion`) with source `IMPORT`, and a save that changes
  * nothing writes no version — so importing one bundle twice writes nothing
@@ -44,7 +46,11 @@
  * RELATIONS are resolved by slug after every element exists, against the
  * bundle and the book, from the element whose file lists them (which must be
  * the kind that declares the type). An existing relation is kept, its note
- * brought to the file's; none is removed.
+ * brought to the file's; none is removed. A relation the bundle states twice
+ * is refused (`DUPLICATE_RELATION`).
+ *
+ * A bundle a desktop zipped as a folder (`<folder>/manifest.json`, …) is
+ * read from inside that folder (`unwrapBundleFolder`).
  *
  * BOOK DETAILS (`book.md`) are applied only when asked (`bookDetails=apply`),
  * so importing into a book with its own title never renames it by surprise.
@@ -86,6 +92,7 @@ import {
     FrontmatterError,
     frontmatterOf,
     INDEX_FILE,
+    kindDirectory,
     kindOfDirectory,
     MANIFEST_FILE,
     parseYamlFrontmatter,
@@ -176,6 +183,25 @@ function isDesktopLitter(path: string): boolean {
     return path.startsWith('__MACOSX/') || base === '.DS_Store' || base === 'Thumbs.db' || base === 'desktop.ini';
 }
 
+/**
+ * A desktop zips a folder as `<folder>/…` (Finder's Compress, Windows's
+ * "Compressed folder"), so an exported bundle unzipped, edited and zipped
+ * again arrives one folder down. When the archive's root holds no manifest
+ * but every entry (desktop litter aside) sits in one folder that does, that
+ * folder is read as the bundle. Anything else is left as it came, and
+ * refused or read as it stands.
+ */
+export function unwrapBundleFolder(entries: ReadonlyMap<string, Uint8Array>): ReadonlyMap<string, Uint8Array> {
+    if (entries.has(MANIFEST_FILE)) return entries;
+    const names = [...entries.keys()].filter((name) => !isDesktopLitter(name));
+    if (names.length === 0) return entries;
+    const prefix = `${names[0].split('/')[0]}/`;
+    if (!names.every((name) => name.startsWith(prefix)) || !entries.has(`${prefix}${MANIFEST_FILE}`)) return entries;
+    const out = new Map<string, Uint8Array>();
+    for (const [name, bytes] of entries) if (name.startsWith(prefix)) out.set(name.slice(prefix.length), bytes);
+    return out;
+}
+
 interface PreparedElement {
     path: string;
     kind: BibleKind;
@@ -184,7 +210,11 @@ interface PreparedElement {
     status: 'DRAFT' | 'IN_PROGRESS' | 'SETTLED';
     customLabel: string | null;
     summary: string | null;
-    /** Every template field (null where the file has none: the file is the element's whole state), then any unknown key (refused). */
+    /**
+     * Every template field the file gives, and every one its writer knew and
+     * it leaves out (null: the file is the element's whole state over the
+     * keys it knew), then any unknown key (refused).
+     */
     fields: FieldEntry[];
     relations: Array<{ type: string; to: string; note: string | null }>;
 }
@@ -213,8 +243,13 @@ function schemaProblems(path: string, reason: string, issues: ReadonlyArray<{ pa
     }
 }
 
-/** Sanitise and check one element file's frontmatter, as a manual save would. */
-function prepareElement(path: string, fm: BundleElementFrontmatter, problems: Problems): PreparedElement | null {
+/**
+ * Sanitise and check one element file's frontmatter, as a manual save would.
+ * `knownKeys` are the template keys the bundle's writer knew for this kind
+ * (the manifest's `templateFields`), or null for every current key: a known
+ * key the file leaves out is cleared, any other is left alone.
+ */
+function prepareElement(path: string, fm: BundleElementFrontmatter, knownKeys: ReadonlySet<string> | null, problems: Problems): PreparedElement | null {
     let ok = true;
     const attempt = <T>(key: string, fn: () => T): T | undefined => {
         try {
@@ -234,7 +269,9 @@ function prepareElement(path: string, fm: BundleElementFrontmatter, problems: Pr
     const given = fm.fields ?? {};
     const templateKeys = getTemplate(fm.kind).fields.map((f) => f.key);
     const fields: FieldEntry[] = [
-        ...templateKeys.map((key) => ({ key, value: Object.hasOwn(given, key) ? given[key] : null })),
+        ...templateKeys
+            .filter((key) => Object.hasOwn(given, key) || knownKeys === null || knownKeys.has(key))
+            .map((key) => ({ key, value: Object.hasOwn(given, key) ? given[key] : null })),
         ...Object.keys(given)
             .filter((k) => !templateKeys.includes(k))
             .map((key) => ({ key, value: given[key] })),
@@ -270,6 +307,7 @@ interface ParsedBundle {
 /** Every entry of the archive classified, parsed and checked; every problem collected. */
 function parseBundle(entries: ReadonlyMap<string, Uint8Array>, wantBook: boolean, problems: Problems): ParsedBundle {
     let book: BundleBookFrontmatter | null = null;
+    let templateFields: BundleManifest['templateFields'];
     const manifest = entries.get(MANIFEST_FILE);
     if (!manifest) {
         problems.add({ path: MANIFEST_FILE, reason: 'MANIFEST_MISSING' });
@@ -283,7 +321,9 @@ function parseBundle(entries: ReadonlyMap<string, Uint8Array>, wantBook: boolean
         const parsed = BundleManifest.safeParse(value);
         if (!parsed.success) problems.add({ path: MANIFEST_FILE, reason: 'MANIFEST_INVALID' });
         else if (parsed.data.version !== BUNDLE_VERSION) problems.add({ path: MANIFEST_FILE, reason: 'FORMAT_VERSION_UNSUPPORTED' });
+        else templateFields = parsed.data.templateFields;
     }
+    const knownKeysOf = (kind: BibleKind): ReadonlySet<string> | null => (templateFields ? new Set(templateFields[kindDirectory(kind)] ?? []) : null);
 
     const elements: PreparedElement[] = [];
     const slugPaths = new Map<string, string>();
@@ -337,7 +377,7 @@ function parseBundle(entries: ReadonlyMap<string, Uint8Array>, wantBook: boolean
             continue;
         }
         slugPaths.set(fm.slug, path);
-        const prepared = prepareElement(path, fm, problems);
+        const prepared = prepareElement(path, fm, knownKeysOf(fm.kind), problems);
         if (prepared) elements.push(prepared);
     }
     if (elementFiles === 0 && !problems.any) problems.add({ path: '', reason: 'BUNDLE_EMPTY' });
@@ -446,9 +486,9 @@ export async function importBibleBundle(
     await assertUploadClean(ctx, bytes, deps, 'bundle');
 
     const problems = new Problems();
-    let entries: Map<string, Uint8Array>;
+    let entries: ReadonlyMap<string, Uint8Array>;
     try {
-        entries = readZip(bytes, BUNDLE_ZIP_LIMITS);
+        entries = unwrapBundleFolder(readZip(bytes, BUNDLE_ZIP_LIMITS));
     } catch (err) {
         if (!(err instanceof ZipRefusal)) throw err;
         problems.add({ path: err.entry ?? '', reason: err.reason });
@@ -476,11 +516,22 @@ export async function importBibleBundle(
                     if (held && held.kind !== e.kind) problems.add({ path: e.path, reason: 'KIND_CONFLICT', key: 'kind' });
                     kindOf.set(e.slug, e.kind);
                 }
+                // A relation the bundle states twice (the same type to the same
+                // target, or a symmetric one from both of its ends) is refused:
+                // applied twice, its note would be rewritten on every import,
+                // and the one that won would depend on file order.
+                const stated = new Set<string>();
                 for (const e of bundle.elements) {
                     e.relations.forEach((r, i) => {
                         const targetKind = kindOf.get(r.to);
                         if (!targetKind) problems.add({ path: e.path, reason: 'RELATION_TARGET_UNKNOWN', key: `relations.${i}` });
                         else if (!relationAllowed(e.kind, r.type, targetKind)) problems.add({ path: e.path, reason: 'RELATION_TYPE_NOT_ALLOWED', key: `relations.${i}` });
+                        else {
+                            const ends = isSymmetric(getRelationType(e.kind, r.type)!) ? [e.slug, r.to].sort() : [e.slug, r.to];
+                            const fact = JSON.stringify([r.type, ...ends]);
+                            if (stated.has(fact)) problems.add({ path: e.path, reason: 'DUPLICATE_RELATION', key: `relations.${i}` });
+                            stated.add(fact);
+                        }
                     });
                 }
                 if (problems.any) throw problems.refusal();
@@ -609,8 +660,20 @@ export async function importConceptNote(ctx: WorkspaceRequestContext, bookId: st
     const name = parsed.name ? requiredLine(parsed.name, ELEMENT_NAME_MAX, 'Name') : requiredLine(conceptNoteName(text), ELEMENT_NAME_MAX, 'Name');
     const slug = parsed.slug ?? (slugify(name) || 'concept-note');
     const fields: FieldEntry[] = [{ key: CONCEPT_NOTE_FIELD, value: conceptNoteHtml(text) }];
-    // Refuse a value the field will not take (too long once marked up) before anything is written.
-    normaliseFieldEntries('RESEARCH', fields);
+    // Refuse a value the field will not take before anything is written. The
+    // only way a sanitised note within CONCEPT_NOTE_MAX can fail is its
+    // markup (a `<br />` per line, an entity per `&` or `<`) taking the
+    // paragraphs past the rich-text bound: to the author that is a note too
+    // long, so it is answered as the note's own TOO_LONG, which the modal
+    // words, not as a field-value refusal of a field they never named.
+    try {
+        normaliseFieldEntries('RESEARCH', fields);
+    } catch (err) {
+        if (err instanceof ValidationError && reasonOf(err) === 'FIELD_VALUES_REFUSED') {
+            throw new ValidationError('The concept note is too long.', { reason: 'TOO_LONG', field: 'Text' });
+        }
+        throw err;
+    }
 
     try {
         return await runInWorkspaceContext(ctx, async (db) => {

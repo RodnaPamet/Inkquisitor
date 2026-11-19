@@ -38,8 +38,46 @@ function room(doc: PDFKit.PDFDocument, needed: number): void {
     if (doc.y + needed > SAFE_BOTTOM_Y) doc.addPage();
 }
 
+/**
+ * `value` with a line break inserted wherever a run of characters with no
+ * space in it would not fit `width` at the document's current font and size.
+ *
+ * PDFKit splits a word wider than the line itself, but measures what is left
+ * of the word again after every line it fills, so one unbroken run costs time
+ * in the square of its length: a 100,000-character run (a rich-text value an
+ * editor may store) took six seconds to lay out, and every viewer may ask for
+ * the PDF. Breaking the run here, measuring each character once, makes it
+ * linear; the lines are the ones PDFKit would have made, give or take where
+ * the first one starts.
+ */
+export function breakLongRuns(doc: PDFKit.PDFDocument, value: string, width: number): string {
+    const widths = new Map<string, number>();
+    const widthOf = (ch: string) => {
+        let w = widths.get(ch);
+        if (w === undefined) widths.set(ch, (w = doc.widthOfString(ch)));
+        return w;
+    };
+    return value.replace(/[^ \t\n]{2,}/g, (run) => {
+        if (doc.widthOfString(run) <= width) return run;
+        let out = '';
+        let line = '';
+        let used = 0;
+        for (const ch of run) {
+            const w = widthOf(ch);
+            if (line !== '' && used + w > width) {
+                out += `${line}\n`;
+                line = '';
+                used = 0;
+            }
+            line += ch;
+            used += w;
+        }
+        return out + line;
+    });
+}
+
 function text(doc: PDFKit.PDFDocument, value: string, options: PDFKit.Mixins.TextOptions = {}): void {
-    doc.text(toWinAnsi(value), MARGINS.left, doc.y, { width: CONTENT_WIDTH, ...options });
+    doc.text(breakLongRuns(doc, toWinAnsi(value), CONTENT_WIDTH), MARGINS.left, doc.y, { width: CONTENT_WIDTH, ...options });
 }
 
 export function renderBiblePdf(bundle: BibleBundle, meta: BiblePdfMeta): Promise<Buffer> {

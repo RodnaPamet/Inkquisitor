@@ -58,12 +58,24 @@ export const BUNDLE_MAX_PROBLEMS = 100;
 
 // ─── The bundle's files ─────────────────────────────────────────────
 
+/** The most field keys `templateFields` may list for one kind (a template has a few dozen at most). */
+const TEMPLATE_FIELDS_PER_KIND_MAX = 200;
+
 export const BundleManifest = z
     .object({
         format: z.literal(BUNDLE_FORMAT),
         version: z.number().int(),
+        /**
+         * Per kind directory, the template field keys the bundle's writer
+         * knew: an element file clears only these when it leaves one out.
+         * Absent (a hand-written manifest): every current template key.
+         */
+        templateFields: z
+            .partialRecord(z.enum(BIBLE_KINDS.map((k) => k.toLowerCase()) as [string, ...string[]]), z.array(identifier).max(TEMPLATE_FIELDS_PER_KIND_MAX))
+            .optional(),
     })
     .strict();
+export type BundleManifest = z.infer<typeof BundleManifest>;
 
 export const BundleBookFrontmatter = z
     .object({

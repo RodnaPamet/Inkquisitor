@@ -529,6 +529,7 @@
                 "RELATION_TARGET_UNKNOWN": "A relation points at an address neither the bundle nor the book holds.",
                 "RELATION_TYPE_NOT_ALLOWED": "A relation's type does not fit these two kinds of entry.",
                 "SELF_RELATION": "An entry cannot be related to itself.",
+                "DUPLICATE_RELATION": "This relation is stated more than once in the bundle; keep one.",
                 "EMPTY": "A required value is empty.",
                 "TOO_LONG": "A value is too long.",
                 "CUSTOM_LABEL_REQUIRED": "A custom entry needs its own label.",

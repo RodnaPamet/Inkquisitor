@@ -16,7 +16,9 @@
  * elements or `BUNDLE_MAX_RELATIONS` relations is refused
  * (`EXPORT_TOO_LARGE`): each read asks for one more than the bound, so a cut
  * is a fact the usecase holds, and an export never silently leaves anything
- * out.
+ * out. So is a bundle whose bytes the import would refuse (past the upload
+ * bound, or a file or the whole past the zip reader's inflated bounds): an
+ * export is only ever an archive the import takes back.
  *
  * Nothing is stored: the files are built in memory and handed to the
  * response. The bundle's bytes are a function of the bible alone (no time,
@@ -27,8 +29,8 @@ import { logEvent } from '@/app-layer/events/audit';
 import { assertPermission } from '@/app-layer/policies/permission.policy';
 import { BibleElementRepository, BibleFieldRepository, BibleRelationRepository } from '@/app-layer/repositories/bible.repository';
 import { WorkspaceRepository } from '@/app-layer/repositories/workspace.repository';
-import { BUNDLE_MAX_ELEMENTS, BUNDLE_MAX_RELATIONS } from '@/app-layer/schemas/bible-transfer';
-import { writeZip } from '@/lib/archive/zip';
+import { BUNDLE_MAX_ELEMENTS, BUNDLE_MAX_RELATIONS, BUNDLE_UPLOAD_MAX_BYTES, BUNDLE_ZIP_LIMITS } from '@/app-layer/schemas/bible-transfer';
+import { readZip, writeZip, ZipRefusal } from '@/lib/archive/zip';
 import { renderBiblePdf } from '@/lib/bible/bible-pdf';
 import { bundleFiles, type BibleBundle, type BundleElement, type BundleRelation } from '@/lib/bible/bundle-format';
 import { decodeFieldValue, type FieldValue } from '@/lib/bible/field-values';
@@ -44,7 +46,7 @@ const FIELDS_PER_ELEMENT = 200;
 /** Elements whose fields are read in one query. */
 const FIELD_READ_BATCH = 200;
 
-function tooLarge(what: 'elements' | 'relations', max: number): ValidationError {
+function tooLarge(what: 'elements' | 'relations' | 'bytes', max: number): ValidationError {
     return new ValidationError('This bible is too large to export in one file.', { reason: 'EXPORT_TOO_LARGE', what, max });
 }
 
@@ -121,7 +123,26 @@ export async function exportBibleBundle(ctx: WorkspaceRequestContext, bookId: st
         );
         return data;
     });
-    return { fileName: fileNameFor(bundle.book.title, 'zip'), contentType: 'application/zip', bytes: writeZip(bundleFiles(bundle)) };
+    return { fileName: fileNameFor(bundle.book.title, 'zip'), contentType: 'application/zip', bytes: importableZip(bundleFiles(bundle)) };
+}
+
+/**
+ * The bundle's files zipped, refused (`EXPORT_TOO_LARGE`, `what: 'bytes'`)
+ * unless the import would take the archive: within the upload bound, and
+ * read by `readZip` under the import's own limits (each file's and the total
+ * inflated size; an entry that would deflate past the ratio is stored by the
+ * writer instead). The reader is the oracle, so the two cannot drift apart.
+ */
+function importableZip(files: ReadonlyMap<string, string>): Uint8Array {
+    const bytes = writeZip(files, { maxRatio: BUNDLE_ZIP_LIMITS.maxRatio });
+    if (bytes.byteLength > BUNDLE_UPLOAD_MAX_BYTES) throw tooLarge('bytes', BUNDLE_UPLOAD_MAX_BYTES);
+    try {
+        readZip(bytes, BUNDLE_ZIP_LIMITS);
+    } catch (err) {
+        if (err instanceof ZipRefusal) throw tooLarge('bytes', BUNDLE_ZIP_LIMITS.maxTotalBytes);
+        throw err;
+    }
+    return bytes;
 }
 
 export async function exportBiblePdf(ctx: WorkspaceRequestContext, bookId: string, now: Date = new Date()): Promise<BibleExport> {

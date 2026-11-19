@@ -52,6 +52,7 @@ export const IMPORT_REASONS = [
     'RELATION_TARGET_UNKNOWN',
     'RELATION_TYPE_NOT_ALLOWED',
     'SELF_RELATION',
+    'DUPLICATE_RELATION',
     // A value
     'EMPTY',
     'TOO_LONG',

@@ -14,6 +14,8 @@ import {
     richTextLines,
     type BibleBundle,
 } from '@/lib/bible/bundle-format';
+import { BIBLE_KINDS } from '@/lib/bible/kinds';
+import { getTemplate } from '@/lib/bible/templates';
 import { sampleBundle } from '../../helpers/bible-bundle-fixture';
 
 const read = (text: string) => parseYamlFrontmatter(frontmatterOf(decodeUtf8(new TextEncoder().encode(text))));
@@ -42,7 +44,12 @@ describe('bundleFiles', () => {
             'faction/salt-guild.md',
             'manifest.json',
         ]);
-        expect(JSON.parse(files.get('manifest.json')!)).toEqual({ format: 'inkquisitor-bible', version: 1 });
+        const manifest = JSON.parse(files.get('manifest.json')!) as { format: string; version: number; templateFields: Record<string, string[]> };
+        expect(manifest).toMatchObject({ format: 'inkquisitor-bible', version: 1 });
+        // Every kind's template keys as the writer knew them, in template order:
+        // an import clears only these when a file leaves one out.
+        expect(Object.keys(manifest.templateFields)).toEqual(BIBLE_KINDS.map((k) => k.toLowerCase()));
+        for (const kind of BIBLE_KINDS) expect(manifest.templateFields[kind.toLowerCase()]).toEqual(getTemplate(kind).fields.map((f) => f.key));
         expect(files.get('character/_index.md')).toContain('- [Mara Vell](mara-vell.md): Draft');
     });
 

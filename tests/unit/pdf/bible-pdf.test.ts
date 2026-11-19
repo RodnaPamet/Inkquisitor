@@ -7,11 +7,11 @@
  */
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { renderBiblePdf } from '@/lib/bible/bible-pdf';
-import { PALETTE, PALETTE_TOKENS } from '@/lib/pdf/pdfKitFactory';
+import { breakLongRuns, renderBiblePdf } from '@/lib/bible/bible-pdf';
+import { createPdfDocument, PALETTE, PALETTE_TOKENS } from '@/lib/pdf/pdfKitFactory';
 import { toWinAnsi } from '@/lib/pdf/win-ansi';
 import { sampleBundle } from '../../helpers/bible-bundle-fixture';
-import { pdfText } from '../../helpers/pdf-text';
+import { pdfText, pdfTextRuns } from '../../helpers/pdf-text';
 import { REPO_ROOT } from '../../helpers/repo-files';
 
 const META = { workspaceName: 'Mara’s desk', generatedAt: '2026-11-19T10:00:00.000Z' };
@@ -54,6 +54,41 @@ describe('renderBiblePdf', () => {
         const bundle = sampleBundle();
         const pdf = await renderBiblePdf({ ...bundle, elements: [{ ...bundle.elements[2], name: 'Ωmega Ålder' }] }, META);
         expect(pdfText(pdf)).toContain('?mega Ålder');
+    });
+});
+
+describe('a long unbroken run', () => {
+    it('is laid out in linear time, every character kept, no line wider than the page', async () => {
+        // A rich-text value may hold 100,000 characters with no space. PDFKit
+        // splits such a word itself, but re-measures the rest of it after
+        // every line, which took about six seconds for this one run.
+        const run = 'abcdefghij'.repeat(10_000);
+        const bundle = sampleBundle();
+        const started = Date.now();
+        const pdf = await renderBiblePdf({ ...bundle, elements: [{ ...bundle.elements[2], summary: run }] }, META);
+        expect(Date.now() - started).toBeLessThan(2_000);
+        // Its lines, in drawing order (the page stamps between pages are other runs).
+        const lines = pdfTextRuns(pdf).filter((r) => /^[a-j]+$/.test(r));
+        expect(lines.length).toBeGreaterThan(100);
+        expect(lines.join('')).toBe(run);
+    });
+
+    it('breakLongRuns breaks only what does not fit, at the width, and loses nothing', () => {
+        const doc = createPdfDocument({ workspaceName: 'w', reportTitle: 't', generatedAt: META.generatedAt });
+        doc.font('Helvetica').fontSize(10);
+        const width = 200;
+        const long = 'W'.repeat(300);
+        const broken = breakLongRuns(doc, `short words stay ${long} as they are`, width);
+        expect(broken.startsWith('short words stay ')).toBe(true);
+        expect(broken.endsWith(' as they are')).toBe(true);
+        const pieces = broken.slice('short words stay '.length, -' as they are'.length).split('\n');
+        expect(pieces.join('')).toBe(long);
+        expect(pieces.length).toBeGreaterThan(1);
+        for (const piece of pieces) expect(doc.widthOfString(piece)).toBeLessThanOrEqual(width);
+        // A full line is full: one more character would not have fitted.
+        expect(doc.widthOfString(`${pieces[0]}W`)).toBeGreaterThan(width);
+        expect(breakLongRuns(doc, 'nothing here is long', width)).toBe('nothing here is long');
+        doc.end();
     });
 });
 

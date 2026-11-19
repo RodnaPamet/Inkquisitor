@@ -6,7 +6,7 @@
  * an unsafe or duplicate name, encryption, an unknown method, ZIP64, and
  * corruption.
  */
-import { deflateRawSync } from 'node:zlib';
+import { constants as zlibConstants, crc32, deflateRawSync } from 'node:zlib';
 import { fixedZipTime, isSafeEntryName, readZip, writeZip, ZipRefusal, type ZipLimits } from '@/lib/archive/zip';
 import { craftZip, type CraftedEntry } from '../../helpers/zip-craft';
 
@@ -51,6 +51,19 @@ describe('writeZip', () => {
         expect(buf.readUInt16LE(10)).toBe(0); // DOS time of the first local header
         expect(buf.readUInt16LE(12)).toBe(((2000 - 1980) << 9) | (1 << 5) | 1); // DOS date
         expect(fixedZipTime().getFullYear()).toBe(2000);
+    });
+
+    it('stores an entry that would deflate past maxRatio, so readZip under the same ratio takes it back', () => {
+        const repetitive = new Map<string, string>([['big.md', 'a'.repeat(512 * 1024)], ['small.md', 'b'.repeat(1024)]]);
+        // Deflated, the big entry is a bomb by its own declaration.
+        expect(refusal(writeZip(repetitive))).toEqual({ reason: 'ENTRY_RATIO', entry: 'big.md' });
+        const zip = writeZip(repetitive, { maxRatio: LIMITS.maxRatio });
+        const back = readZip(zip, LIMITS);
+        expect(new TextDecoder().decode(back.get('big.md')!)).toBe(repetitive.get('big.md'));
+        // Still deterministic, and only the entry past the ratio is stored.
+        expect(Buffer.from(writeZip(repetitive, { maxRatio: LIMITS.maxRatio })).equals(Buffer.from(zip))).toBe(true);
+        expect(zip.byteLength).toBeGreaterThan(512 * 1024);
+        expect(zip.byteLength).toBeLessThan(512 * 1024 + 1024);
     });
 
     it('writes entries in name order, and readZip reads every one back exactly', () => {
@@ -102,13 +115,59 @@ describe('readZip refuses', () => {
     });
 
     it('an entry that lies about its size: inflation stops at the claim, and the entry is refused', () => {
-        // 64 MiB of zeros, declared as 100 bytes. Inflating it in full would
-        // pass every declared bound; the reader stops at 100 bytes.
-        const bomb = deflateRawSync(Buffer.alloc(64 * 1024 * 1024));
+        // 2 GiB of zeros in 2 MiB of DEFLATE (one fully flushed block of a
+        // MiB of zeros, repeated: each block stands alone, so the stream is
+        // valid), declared as 100 bytes. Inflating it in full takes seconds
+        // and 2 GiB of memory before the size check could refuse it; the
+        // reader stops at the 100 bytes the entry claimed.
+        const block = deflateRawSync(Buffer.alloc(1024 * 1024), { finishFlush: zlibConstants.Z_FULL_FLUSH });
+        const bomb = Buffer.concat([...Array<Buffer>(2048).fill(block), Buffer.from([0x03, 0x00])]);
         const archive = craftZip([{ name: 'liar.md', body: bomb, size: 100, crc: 0 }]);
         const started = Date.now();
         expect(refusal(archive)).toEqual({ reason: 'ENTRY_CORRUPT', entry: 'liar.md' });
-        expect(Date.now() - started).toBeLessThan(2_000);
+        expect(Date.now() - started).toBeLessThan(1_000);
+    });
+
+    it('reads what desktop tools write: a data descriptor (flag bit 3) and an archive comment', () => {
+        // Info-ZIP / Finder streaming: the local header's CRC and sizes are
+        // zero and the real ones follow the data; the directory carries them.
+        const data = 'hello '.repeat(50);
+        const body = deflateRawSync(Buffer.from(data));
+        const crc = crc32(Buffer.from(data));
+        const name = Buffer.from('a.md');
+        const local = Buffer.alloc(30);
+        local.writeUInt32LE(0x04034b50, 0);
+        local.writeUInt16LE(20, 4);
+        local.writeUInt16LE(0x0008, 6);
+        local.writeUInt16LE(8, 8);
+        local.writeUInt16LE(name.length, 26);
+        const descriptor = Buffer.alloc(16);
+        descriptor.writeUInt32LE(0x08074b50, 0);
+        descriptor.writeUInt32LE(crc, 4);
+        descriptor.writeUInt32LE(body.length, 8);
+        descriptor.writeUInt32LE(data.length, 12);
+        const central = Buffer.alloc(46);
+        central.writeUInt32LE(0x02014b50, 0);
+        central.writeUInt16LE(20, 4);
+        central.writeUInt16LE(20, 6);
+        central.writeUInt16LE(0x0008, 8);
+        central.writeUInt16LE(8, 10);
+        central.writeUInt32LE(crc, 16);
+        central.writeUInt32LE(body.length, 20);
+        central.writeUInt32LE(data.length, 24);
+        central.writeUInt16LE(name.length, 28);
+        const entries = Buffer.concat([local, name, body, descriptor]);
+        const directory = Buffer.concat([central, name]);
+        const comment = Buffer.from('made by a desktop');
+        const eocd = Buffer.alloc(22);
+        eocd.writeUInt32LE(0x06054b50, 0);
+        eocd.writeUInt16LE(1, 8);
+        eocd.writeUInt16LE(1, 10);
+        eocd.writeUInt32LE(directory.length, 12);
+        eocd.writeUInt32LE(entries.length, 16);
+        eocd.writeUInt16LE(comment.length, 20);
+        const back = readZip(new Uint8Array(Buffer.concat([entries, directory, eocd, comment])), LIMITS);
+        expect(new TextDecoder().decode(back.get('a.md')!)).toBe(data);
     });
 
     it('a CRC mismatch, a stored entry whose sizes disagree, and a local header naming another file', () => {

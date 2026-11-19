@@ -2,7 +2,7 @@
  * The bible's Markdown bundle (Phase 1.3): what a book's bible looks like as
  * files, and how a file's frontmatter is read back safely.
  *
- *   manifest.json            {"format":"inkquisitor-bible","version":1}
+ *   manifest.json            {"format":"inkquisitor-bible","version":1,"templateFields":{…}}
  *   book.md                  the book's details as frontmatter; a contents list
  *   <kind>/_index.md         one per kind that has entries: the entries, linked
  *   <kind>/<slug>.md         one per element
@@ -10,6 +10,14 @@
  * `<kind>` is the kind in lower case (`character`, `timeline_event`, `custom`),
  * the name of its template file. An index is `_index.md` because no slug can
  * start with `_`, so it never collides with an element's file.
+ *
+ * THE MANIFEST'S `templateFields` names, per kind directory, every field key
+ * the kind's template had when the bundle was written, in template order. An
+ * element file is its element's whole state over THOSE keys: a key the
+ * template had and the file leaves out is cleared on import, while a key a
+ * template has gained since the bundle was written is left alone (the file
+ * never knew about it, so it says nothing about it). A manifest without
+ * `templateFields` (written by hand) claims every current key.
  *
  * AN ELEMENT FILE is YAML frontmatter and a Markdown body:
  *
@@ -121,6 +129,13 @@ export interface BibleBundle {
 }
 
 // ─── Writing ────────────────────────────────────────────────────────
+
+/** The manifest: the format, its version, and every kind's template field keys as of now. */
+export function bundleManifest(): { format: string; version: number; templateFields: Record<string, string[]> } {
+    const templateFields: Record<string, string[]> = {};
+    for (const kind of BIBLE_KINDS) templateFields[kindDirectory(kind)] = getTemplate(kind).fields.map((f) => f.key);
+    return { format: BUNDLE_FORMAT, version: BUNDLE_VERSION, templateFields };
+}
 
 export const STATUS_WORDS: Readonly<Record<BibleElementStatus, string>> = { DRAFT: 'Draft', IN_PROGRESS: 'In progress', SETTLED: 'Settled' };
 
@@ -264,7 +279,7 @@ export function bundleFiles(bundle: BibleBundle): Map<string, string> {
     const elements = sortElements(bundle.elements);
     const files = new Map<string, string>();
 
-    files.set(MANIFEST_FILE, `${JSON.stringify({ format: BUNDLE_FORMAT, version: BUNDLE_VERSION }, null, 2)}\n`);
+    files.set(MANIFEST_FILE, `${JSON.stringify(bundleManifest(), null, 2)}\n`);
 
     const lines = relationLinesBySlug(elements);
 

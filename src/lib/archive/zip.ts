@@ -4,7 +4,8 @@
  *
  * WRITING (`writeZip`) goes through fflate (MIT). The output is a function of
  * the files alone: entries in byte order of their names, DEFLATE at a fixed
- * level, no directory entries, no extra fields, no comment, and one fixed
+ * level (or stored, for an entry that would deflate past `maxRatio`, so the
+ * reader's bomb check never refuses what this module wrote), no directory entries, no extra fields, no comment, and one fixed
  * modification time. fflate writes the DOS date from the LOCAL time getters,
  * so the fixed time is built from local components (`new Date(2000, 0, 1)`):
  * its DOS fields are 2000-01-01 00:00 in every timezone, where a UTC instant
@@ -46,7 +47,7 @@
  * rather than trusted downstream.
  */
 import { crc32, inflateRawSync } from 'node:zlib';
-import { zipSync, type Zippable } from 'fflate';
+import { deflateSync, zipSync, type Zippable } from 'fflate';
 
 // ─── Writing ────────────────────────────────────────────────────────
 
@@ -63,14 +64,28 @@ function byName(a: string, b: string): number {
     return a < b ? -1 : a > b ? 1 : 0;
 }
 
+export interface WriteZipOptions {
+    /**
+     * Store (rather than deflate) an entry past `RATIO_EXEMPT_BYTES` that
+     * would deflate by more than this ratio, so a reader holding the same
+     * `maxRatio` (`readZip`) does not refuse it as a bomb. The choice is a
+     * function of the content, so the archive stays deterministic.
+     */
+    maxRatio?: number;
+}
+
 /** The files as a zip archive: byte-identical for identical input. */
-export function writeZip(files: ReadonlyMap<string, string | Uint8Array>): Uint8Array {
+export function writeZip(files: ReadonlyMap<string, string | Uint8Array>, options: WriteZipOptions = {}): Uint8Array {
     const encoder = new TextEncoder();
     const mtime = fixedZipTime();
     const tree: Zippable = {};
     for (const name of [...files.keys()].sort(byName)) {
         const content = files.get(name)!;
-        tree[name] = [typeof content === 'string' ? encoder.encode(content) : content, { level: LEVEL, mtime }];
+        const data = typeof content === 'string' ? encoder.encode(content) : content;
+        // fflate's zipSync deflates each entry with deflateSync at the same
+        // level, so this is the compressed size the archive would declare.
+        const store = options.maxRatio !== undefined && data.byteLength > RATIO_EXEMPT_BYTES && data.byteLength / deflateSync(data, { level: LEVEL }).byteLength > options.maxRatio;
+        tree[name] = [data, { level: store ? 0 : LEVEL, mtime }];
     }
     return zipSync(tree);
 }

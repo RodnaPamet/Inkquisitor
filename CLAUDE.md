@@ -422,12 +422,15 @@ only under zero-retention terms (D5).
   is ONE transaction: every problem is answered at once (`BUNDLE_REFUSED`,
   `problems: [{ path, reason, key? }]`) and nothing is written. Elements are
   matched by slug and saved through the versioned save with source `IMPORT`,
-  so a repeat import writes nothing; the file is the element's whole state;
-  nothing is deleted. A concept note is a RESEARCH element's `notes`. Uploads
-  are never stored as files. A new refusal code goes in `IMPORT_REASONS` and
+  so a repeat import writes nothing; the file is the element's whole state
+  over the template keys its writer knew (the manifest's `templateFields`);
+  nothing is deleted. Export refuses (`EXPORT_TOO_LARGE`) a bundle `readZip`
+  would refuse under the import's limits, so every export imports back. A
+  concept note is a RESEARCH element's `notes`. Uploads are never stored as
+  files. A new refusal code goes in `IMPORT_REASONS` and
   `bible.transfer.reasons` (`tests/unit/bible/import-reasons.test.ts`).
   `pdfkit` is a server external package (its font metrics load from
-  node_modules); PDF text goes through `toWinAnsi`.
+  node_modules); PDF text goes through `toWinAnsi` and `breakLongRuns`.
 - **Sanitising author text.** Every author-text write sanitises at the
   usecase layer before it is stored: plain text through `plainLine` /
   `plainBlock` (`src/lib/bible/text.ts`, over `sanitizePlainText`), rich text

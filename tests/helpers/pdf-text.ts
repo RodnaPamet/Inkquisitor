@@ -26,7 +26,11 @@ function decodeHex(hex: string): string {
 export function pdfTextRuns(pdf: Uint8Array): string[] {
     const source = Buffer.from(pdf).toString('latin1');
     const runs: string[] = [];
-    const streams = /stream\r?\n([\s\S]*?)\r?\nendstream/g;
+    // PDFKit writes `stream\n<data>\nendstream`. The data is binary, so it
+    // may itself end in a CR byte: the terminator is matched as exactly
+    // `\nendstream`, or such a stream would lose its last byte, fail to
+    // inflate, and drop every line on its page.
+    const streams = /stream\n([\s\S]*?)\nendstream/g;
     for (let m = streams.exec(source); m; m = streams.exec(source)) {
         let content: string;
         try {

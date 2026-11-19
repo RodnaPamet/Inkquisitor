@@ -125,6 +125,16 @@ describe('the round trip', () => {
         expect((await getBook(ctx, empty.id)).title).toBe('The Salt Roads');
     });
 
+    it('round-trips a value that deflates past the import’s bomb ratio: the export stores that file', async () => {
+        const book = await createBook(ctx, { title: 'Repetitive' });
+        // 90,000 characters of one letter: deflated, a ratio far past 100.
+        await createElement(ctx, book.id, { kind: 'THEME', name: 'Refrain', slug: 'refrain', fields: [{ key: 'stance', value: `<p>${'a'.repeat(90_000)}</p>` }] });
+        const first = await exportBibleBundle(ctx, book.id);
+        const empty = await createBook(ctx, { title: 'Repetitive copy' });
+        expect((await importBibleBundle(ctx, empty.id, first.bytes, { bookDetails: 'apply' }, clean)).elements.created).toBe(1);
+        expect(Buffer.from((await exportBibleBundle(ctx, empty.id)).bytes).equals(Buffer.from(first.bytes))).toBe(true);
+    });
+
     it('exporting an unchanged bible twice gives the same bytes', async () => {
         const { book } = await seedRichBook('Twice told');
         const a = await exportBibleBundle(ctx, book.id);
@@ -178,6 +188,54 @@ describe('idempotent per slug', () => {
         expect(field('role')).toBe('Lead hand');
         expect(field('want')).toBeNull();
         expect(now.relations.find((r) => r.type === 'member_of')?.note).toBe('Gladly');
+    });
+
+    it('a bundle written before a template gained a field leaves that field alone; a field its writer knew and it leaves out is cleared', async () => {
+        const { book, mara } = await seedRichBook('Older template');
+        const bundle = await exportBibleBundle(ctx, book.id);
+        const files = readZip(bundle.bytes, BUNDLE_ZIP_LIMITS);
+        // As a bundle written before CHARACTER had `want` and `role` would be:
+        // the manifest's list lacks them and the file carries neither.
+        const manifest = JSON.parse(new TextDecoder().decode(files.get('manifest.json')!)) as { templateFields: Record<string, string[]> };
+        manifest.templateFields.character = manifest.templateFields.character.filter((k) => k !== 'want' && k !== 'role');
+        files.set('manifest.json', new TextEncoder().encode(JSON.stringify(manifest)));
+        const path = 'character/mara-vell.md';
+        const original = new TextDecoder().decode(files.get(path)!);
+        // The writer knew `agency` and left it out: that one is cleared.
+        const older = original.replace('  want: "123"\n', '').replace('  role: Lead\n', '').replace('  agency: 4\n', '');
+        expect(older).not.toContain('want:');
+        expect(older).not.toContain('agency:');
+        files.set(path, new TextEncoder().encode(older));
+
+        const report = await importBibleBundle(ctx, book.id, writeZip(files), {}, clean);
+        expect(report.elements).toEqual({ created: 0, updated: 1, unchanged: 4 });
+        const now = await getElement(ctx, book.id, mara.id);
+        const field = (k: string) => now.fields.find((f) => f.key === k)?.value;
+        expect([field('want'), field('role'), field('agency')]).toEqual(['123', 'Lead', null]);
+
+        // A manifest without the list (written by hand) claims every current key.
+        files.set('manifest.json', new TextEncoder().encode(JSON.stringify({ format: 'inkquisitor-bible', version: 1 })));
+        await importBibleBundle(ctx, book.id, writeZip(files), {}, clean);
+        const after = await getElement(ctx, book.id, mara.id);
+        expect(after.fields.find((f) => f.key === 'want')?.value).toBeNull();
+    });
+
+    it('takes back a bundle a desktop zipped as a folder (Finder, Windows), its litter skipped', async () => {
+        const { book } = await seedRichBook('Rezipped');
+        const exported = readZip((await exportBibleBundle(ctx, book.id)).bytes, BUNDLE_ZIP_LIMITS);
+        const rezipped = new Map<string, Uint8Array>();
+        for (const [name, bytes] of exported) {
+            rezipped.set(`the-salt-roads-bible/${name}`, bytes);
+            rezipped.set(`__MACOSX/the-salt-roads-bible/._${name.split('/').pop()}`, new Uint8Array([0, 5, 22, 7]));
+        }
+        rezipped.set('the-salt-roads-bible/.DS_Store', new Uint8Array([0, 0, 0, 1]));
+        const target = await createBook(ctx, { title: 'Rezipped target' });
+        const report = await importBibleBundle(ctx, target.id, writeZip(rezipped), {}, clean);
+        expect(report.elements).toEqual({ created: 5, updated: 0, unchanged: 0 });
+
+        // Two folders, or a folder beside a root file, are not one bundle folder.
+        rezipped.set('other/manifest.json', exported.get('manifest.json')!);
+        expect((await refusalOf(importBibleBundle(ctx, target.id, writeZip(rezipped), {}, clean))).problems).toContainEqual({ path: 'manifest.json', reason: 'MANIFEST_MISSING' });
     });
 
     it('merges: elements the bundle does not name are left alone', async () => {
@@ -263,6 +321,49 @@ describe('a bundle with a problem is refused whole, and writes nothing', () => {
         });
     });
 
+    it('refuses a relation the bundle states twice: one type to one target twice, or a symmetric one from both ends', async () => {
+        const before = await prisma.bibleRelation.count({ where: { bookId } });
+        const twice = await refusalOf(
+            importBibleBundle(
+                ctx,
+                bookId,
+                bundleOf({
+                    'character/a.md': '---\nkind: CHARACTER\nname: A\nslug: a\nstatus: DRAFT\nrelations:\n  - type: sibling_of\n    to: b\n    note: one\n  - type: sibling_of\n    to: b\n    note: two\n---\n',
+                    'character/b.md': '---\nkind: CHARACTER\nname: B\nslug: b\nstatus: DRAFT\n---\n',
+                }),
+                {},
+                clean,
+            ),
+        );
+        expect(twice.problems).toEqual([{ path: 'character/a.md', reason: 'DUPLICATE_RELATION', key: 'relations.1' }]);
+        const bothEnds = await refusalOf(
+            importBibleBundle(
+                ctx,
+                bookId,
+                bundleOf({
+                    'character/a.md': '---\nkind: CHARACTER\nname: A\nslug: a\nstatus: DRAFT\nrelations:\n  - type: sibling_of\n    to: b\n    note: from a\n---\n',
+                    'character/b.md': '---\nkind: CHARACTER\nname: B\nslug: b\nstatus: DRAFT\nrelations:\n  - type: sibling_of\n    to: a\n    note: from b\n---\n',
+                }),
+                {},
+                clean,
+            ),
+        );
+        expect(bothEnds.problems).toEqual([{ path: 'character/b.md', reason: 'DUPLICATE_RELATION', key: 'relations.0' }]);
+        expect(await prisma.bibleRelation.count({ where: { bookId } })).toBe(before);
+        // A directed type from both ends is two facts, not one: accepted.
+        const directed = await importBibleBundle(
+            ctx,
+            bookId,
+            bundleOf({
+                'character/m.md': '---\nkind: CHARACTER\nname: M\nslug: m\nstatus: DRAFT\nrelations:\n  - type: mentor_of\n    to: n\n---\n',
+                'character/n.md': '---\nkind: CHARACTER\nname: N\nslug: n\nstatus: DRAFT\nrelations:\n  - type: mentor_of\n    to: m\n---\n',
+            }),
+            {},
+            clean,
+        );
+        expect(directed.relations.created).toBe(2);
+    });
+
     it('refuses a zip bomb before inflating it', async () => {
         const bomb = writeZip(new Map<string, string | Uint8Array>([['manifest.json', '{"format":"inkquisitor-bible","version":1}\n'], ['theme/bomb.md', new Uint8Array(9 * 1024 * 1024)]]));
         const refused = await refusalOf(importBibleBundle(ctx, bookId, bomb, {}, clean));
@@ -298,6 +399,22 @@ describe('the virus scan', () => {
         process.env.CLAMAV_HOST = scanEnv.host;
         if (scanEnv.mode === undefined) delete process.env.AV_SCAN_MODE;
         if (scanEnv.host === undefined) delete process.env.CLAMAV_HOST;
+    });
+
+    it('scans the upload’s raw bytes, before anything is unpacked or parsed', async () => {
+        const book = await createBook(ctx, { title: 'Scanned first' });
+        const seen: Buffer[] = [];
+        const spy: ImportDeps = {
+            scan: async (bytes) => {
+                seen.push(Buffer.from(bytes));
+                return { status: 'INFECTED', threat: 'Eicar-Test-Signature', engine: 'test', durationMs: 0 };
+            },
+        };
+        // Not a zip at all: a scan after the unpacking would answer NOT_A_ZIP.
+        const upload = new TextEncoder().encode('X5O!P%@AP[4\\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*');
+        expect(await refusalOf(importBibleBundle(ctx, book.id, upload, {}, spy))).toMatchObject({ status: 400, reason: 'UPLOAD_INFECTED' });
+        expect(seen).toHaveLength(1);
+        expect(seen[0].equals(Buffer.from(upload))).toBe(true);
     });
 
     it('refuses an infected upload, writing nothing', async () => {
@@ -372,6 +489,16 @@ describe('the concept note', () => {
 
         const named = await importConceptNote(ctx, book.id, { text: 'Other', name: 'Pitch', slug: 'pitch' }, clean);
         expect(named).toMatchObject({ outcome: 'created', element: { name: 'Pitch', slug: 'pitch' } });
+    });
+
+    it('answers a note its markup would take past the rich-text bound as too long, the reason the modal words', async () => {
+        const book = await createBook(ctx, { title: 'Marked up' });
+        // 40,000 characters, within the note's bound; a <br /> per line takes
+        // its paragraphs past the rich-text field's.
+        const text = 'ab\n'.repeat(13_000).trim();
+        expect(text.length).toBeLessThan(50_000);
+        expect(await refusalOf(importConceptNote(ctx, book.id, { text }, clean))).toMatchObject({ status: 400, reason: 'TOO_LONG' });
+        expect(await prisma.bibleElement.count({ where: { bookId: book.id } })).toBe(0);
     });
 
     it('refuses a slug another kind holds, and an empty or over-long note', async () => {
