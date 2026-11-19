@@ -26,7 +26,6 @@ import { logEvent } from '@/app-layer/events/audit';
 import { assertPermission } from '@/app-layer/policies/permission.policy';
 import { BibleElementRepository, BibleFieldRepository, BibleRelationRepository, BibleVersionRepository, type ElementWrite } from '@/app-layer/repositories/bible.repository';
 import {
-    CUSTOM_LABEL_MAX,
     ELEMENT_NAME_MAX,
     ELEMENT_SUMMARY_MAX,
     ElementCreateInput,
@@ -35,11 +34,12 @@ import {
     FieldsUpdateInput,
 } from '@/app-layer/schemas/bible';
 import { runInWorkspaceContext, type PrismaTx } from '@/lib/db/rls-middleware';
-import { NotFoundError, ValidationError } from '@/lib/errors/types';
+import { NotFoundError } from '@/lib/errors/types';
 import { slugCandidates, slugify } from '@/lib/bible/slug';
 import { getFieldDef, getRelationType } from '@/lib/bible/templates';
 import {
     fieldViews,
+    customLabelFor,
     isUniqueViolation,
     normaliseFieldEntries,
     optionalBlock,
@@ -166,18 +166,6 @@ export async function getElement(ctx: WorkspaceRequestContext, bookId: string, e
 }
 
 // ─── Writes ─────────────────────────────────────────────────────────
-
-/** The CUSTOM label rule: required (and sanitised) for CUSTOM, absent for every other kind. */
-function customLabelFor(kind: BibleElementKind, input: string | null | undefined): string | null {
-    if (kind !== 'CUSTOM') {
-        if (input !== undefined && input !== null && input !== '') {
-            throw new ValidationError('Only a custom element carries a label of its own.', { reason: 'CUSTOM_LABEL_NOT_ALLOWED' });
-        }
-        return null;
-    }
-    if (input === undefined || input === null) throw new ValidationError('A custom element needs a label.', { reason: 'CUSTOM_LABEL_REQUIRED' });
-    return requiredLine(input, CUSTOM_LABEL_MAX, 'Custom label');
-}
 
 /** Candidates checked per query when deriving a slug. */
 const SLUG_CANDIDATE_BATCH = 50;

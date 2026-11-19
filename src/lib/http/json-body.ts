@@ -12,10 +12,14 @@
  * `req.json()` would buffer the whole body first, so one request could hold
  * the event loop for as long as it took to arrive and parse.
  *
+ * The bounded read is `readBoundedBytes` (`./bounded-body.ts`), shared with
+ * the routes whose body is not JSON (Phase 1.3's bundle upload).
+ *
  * `optional`: an empty body reads as `{}` (an action whose every input is optional).
  */
 import type { NextRequest } from 'next/server';
-import { DomainError, ValidationError } from '@/lib/errors/types';
+import { ValidationError } from '@/lib/errors/types';
+import { readBoundedBytes } from './bounded-body';
 
 /**
  * The largest JSON body a route reads: 2 MiB. The largest legitimate request
@@ -25,50 +29,8 @@ import { DomainError, ValidationError } from '@/lib/errors/types';
  */
 export const JSON_BODY_MAX_BYTES = 2 * 1024 * 1024;
 
-function tooLarge(): DomainError {
-    return new DomainError('The request body is too large.', 'PAYLOAD_TOO_LARGE', 413, {
-        reason: 'BODY_TOO_LARGE',
-        maxBytes: JSON_BODY_MAX_BYTES,
-    });
-}
-
-/** The body as text, refusing (and cancelling the stream) once it passes `max` bytes. */
-async function readBoundedText(req: NextRequest, max: number): Promise<string> {
-    const declared = req.headers.get('content-length');
-    if (declared !== null) {
-        const n = Number(declared);
-        if (Number.isFinite(n) && n > max) throw tooLarge();
-    }
-    const body = req.body;
-    if (!body) return '';
-    const reader = body.getReader();
-    const chunks: Uint8Array[] = [];
-    let total = 0;
-    try {
-        for (;;) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            total += value.byteLength;
-            if (total > max) {
-                await reader.cancel().catch(() => undefined);
-                throw tooLarge();
-            }
-            chunks.push(value);
-        }
-    } finally {
-        reader.releaseLock();
-    }
-    const bytes = new Uint8Array(total);
-    let offset = 0;
-    for (const c of chunks) {
-        bytes.set(c, offset);
-        offset += c.byteLength;
-    }
-    return new TextDecoder().decode(bytes);
-}
-
 export async function readJsonBody(req: NextRequest, options: { optional?: boolean } = {}): Promise<unknown> {
-    const text = await readBoundedText(req, JSON_BODY_MAX_BYTES);
+    const text = new TextDecoder().decode(await readBoundedBytes(req, JSON_BODY_MAX_BYTES));
     if (text.trim() === '') {
         if (options.optional) return {};
         throw new ValidationError('A JSON body is required.', { reason: 'BODY_REQUIRED' });

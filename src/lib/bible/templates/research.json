@@ -152,6 +152,15 @@
       "required": false,
       "order": 14,
       "dependsOn": ["why_needed", "open_questions"]
+    },
+    {
+      "key": "notes",
+      "label": "Notes",
+      "help": "Anything else worth keeping about this topic that no other field holds, in your own words: a concept note you brought in lands here.",
+      "type": "richtext",
+      "required": false,
+      "order": 15,
+      "dependsOn": []
     }
   ],
   "relationTypes": [

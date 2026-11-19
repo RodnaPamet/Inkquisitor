@@ -33,7 +33,7 @@ import type { BibleVersionSource } from '@/lib/bible/kinds';
 import { buildSnapshot, serialiseSnapshot } from '@/lib/bible/snapshot';
 import { getFieldDef, getTemplate } from '@/lib/bible/templates';
 import { plainBlock, plainLine } from '@/lib/bible/text';
-import { CHANGE_SUMMARY_MAX } from '@/app-layer/schemas/bible';
+import { CHANGE_SUMMARY_MAX, CUSTOM_LABEL_MAX } from '@/app-layer/schemas/bible';
 
 // ─── Lookups ────────────────────────────────────────────────────────
 
@@ -86,6 +86,18 @@ export function optionalBlock(input: string | null | undefined, max: number, wha
     const value = plainBlock(input);
     if (value.length > max) throw new ValidationError(`${what} is too long.`, { reason: 'TOO_LONG', field: what });
     return value.length === 0 ? null : value;
+}
+
+/** The CUSTOM label rule: required (and sanitised) for CUSTOM, absent for every other kind. */
+export function customLabelFor(kind: BibleElementKind, input: string | null | undefined): string | null {
+    if (kind !== 'CUSTOM') {
+        if (input !== undefined && input !== null && input !== '') {
+            throw new ValidationError('Only a custom element carries a label of its own.', { reason: 'CUSTOM_LABEL_NOT_ALLOWED' });
+        }
+        return null;
+    }
+    if (input === undefined || input === null) throw new ValidationError('A custom element needs a label.', { reason: 'CUSTOM_LABEL_REQUIRED' });
+    return requiredLine(input, CUSTOM_LABEL_MAX, 'Custom label');
 }
 
 // ─── Fields ─────────────────────────────────────────────────────────

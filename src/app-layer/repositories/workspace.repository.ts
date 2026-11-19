@@ -30,6 +30,11 @@ export async function createWorkspaceWithDek(db: Db, data: { name: string; slug:
 }
 
 export const WorkspaceRepository = {
+    /** The workspace's name, inside its own context (an export's cover, Phase 1.3). */
+    findName(db: Db, workspaceId: string) {
+        return db.workspace.findFirst({ where: { id: workspaceId }, select: { name: true } }).then((row) => row?.name ?? null);
+    },
+
     findBySlug(db: Db, slug: string) {
         return db.workspace.findUnique({ where: { slug }, select: { id: true, slug: true, name: true } });
     },

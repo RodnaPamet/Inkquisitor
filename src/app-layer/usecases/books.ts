@@ -57,8 +57,8 @@ function toView(b: BookRow): BookView {
     };
 }
 
-/** The sanitised write: each text value through the plain-text sanitiser, bounds checked after. */
-function bookWrite(input: BookUpdateInput): BookWrite {
+/** The sanitised write: each text value through the plain-text sanitiser, bounds checked after. (The bundle import applies book.md through it too.) */
+export function bookWrite(input: BookUpdateInput): BookWrite {
     return {
         ...(input.title !== undefined ? { title: requiredLine(input.title, BOOK_TITLE_MAX, 'Title') } : {}),
         ...(input.logline !== undefined ? { logline: optionalBlock(input.logline, BOOK_LOGLINE_MAX, 'Logline') } : {}),

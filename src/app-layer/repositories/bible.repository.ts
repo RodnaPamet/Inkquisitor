@@ -80,6 +80,12 @@ export const BibleElementRepository = {
         return db.bibleElement.findFirst({ where: { id: elementId, workspaceId, bookId }, select: ELEMENT_SELECT });
     },
 
+    /** The book's elements holding any of `slugs` (an import's lookup, Phase 1.3). */
+    findBySlugs(db: Db, workspaceId: string, bookId: string, slugs: readonly string[]) {
+        if (slugs.length === 0) return Promise.resolve([]);
+        return db.bibleElement.findMany({ where: { workspaceId, bookId, slug: { in: [...slugs] } }, select: ELEMENT_SELECT, take: slugs.length });
+    },
+
     /** An element of the workspace, whatever its book (to tell "another book" from "no such element"). */
     findInWorkspace(db: Db, workspaceId: string, elementId: string) {
         return db.bibleElement.findFirst({ where: { id: elementId, workspaceId }, select: { id: true, bookId: true, kind: true } });
@@ -131,6 +137,17 @@ export const BibleFieldRepository = {
         return db.bibleField.findMany({ where: { workspaceId, elementId }, orderBy: [{ order: 'asc' }, { key: 'asc' }], take: 200, select: FIELD_SELECT });
     },
 
+    /** The stored fields of every element asked for (an export's read, Phase 1.3). Bounded by the elements asked for times `perElement`. */
+    listForElements(db: Db, workspaceId: string, elementIds: readonly string[], perElement: number) {
+        if (elementIds.length === 0) return Promise.resolve([]);
+        return db.bibleField.findMany({
+            where: { workspaceId, elementId: { in: [...elementIds] } },
+            orderBy: [{ elementId: 'asc' }, { order: 'asc' }, { key: 'asc' }],
+            select: { elementId: true, key: true, value: true },
+            take: elementIds.length * perElement,
+        });
+    },
+
     /**
      * Which keys each element has a stored value for (no values: nothing is
      * decrypted). Bounded by the elements asked for times `perElement`.
@@ -180,6 +197,28 @@ export const BibleRelationRepository = {
         return db.bibleRelation.findFirst({ where: { id: relationId, workspaceId, bookId }, select: RELATION_SELECT });
     },
 
+    /** Every relation of the book, with its ends' slugs (an export's read, Phase 1.3); `take` bounds it. */
+    listForBook(db: Db, workspaceId: string, bookId: string, take: number) {
+        return db.bibleRelation.findMany({
+            where: { workspaceId, bookId },
+            orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+            take,
+            select: {
+                ...RELATION_SELECT,
+                from: { select: { slug: true } },
+                to: { select: { slug: true } },
+            },
+        });
+    },
+
+    /** The relation from `from` to `to` of this type, as stored (one direction). */
+    findExact(db: Db, workspaceId: string, bookId: string, from: string, to: string, type: string) {
+        return db.bibleRelation.findFirst({
+            where: { workspaceId, bookId, fromElementId: from, toElementId: to, type },
+            select: { id: true, fromElementId: true, toElementId: true, note: true },
+        });
+    },
+
     /** The relation between the two elements of this type, in either direction. */
     findPair(db: Db, workspaceId: string, bookId: string, a: string, b: string, type: string) {
         return db.bibleRelation.findFirst({
@@ -192,7 +231,7 @@ export const BibleRelationRepository = {
                     { fromElementId: b, toElementId: a },
                 ],
             },
-            select: { id: true, fromElementId: true, toElementId: true },
+            select: { id: true, fromElementId: true, toElementId: true, note: true },
         });
     },
 
@@ -203,6 +242,12 @@ export const BibleRelationRepository = {
         data: { fromElementId: string; toElementId: string; type: string; symmetric: boolean; note: string | null },
     ) {
         return db.bibleRelation.create({ data: { ...data, workspaceId, bookId }, select: RELATION_SELECT });
+    },
+
+    /** Replace a relation's note (sanitised by the caller), Phase 1.3's re-import of a changed note. */
+    async updateNote(db: Db, workspaceId: string, bookId: string, relationId: string, note: string | null) {
+        const res = await db.bibleRelation.updateMany({ where: { id: relationId, workspaceId, bookId }, data: { note } });
+        return res.count;
     },
 
     async remove(db: Db, workspaceId: string, bookId: string, relationId: string) {

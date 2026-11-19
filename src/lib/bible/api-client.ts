@@ -16,8 +16,22 @@ import type { BookView } from '@/app-layer/usecases/books';
 import type { ElementListItemView, ElementSummaryView, ElementView, FieldsSaveResult } from '@/app-layer/usecases/bible-elements';
 import type { CreatedRelationView } from '@/app-layer/usecases/bible-relations';
 import type { RestoreResult, VersionMetaView, VersionView } from '@/app-layer/usecases/bible-versions';
+import type { BundleImportReport, ConceptNoteReport, ImportProblem } from '@/app-layer/usecases/bible-import';
 
-export type { BookView, ElementListItemView, ElementSummaryView, ElementView, FieldsSaveResult, CreatedRelationView, RestoreResult, VersionMetaView, VersionView };
+export type {
+    BookView,
+    ElementListItemView,
+    ElementSummaryView,
+    ElementView,
+    FieldsSaveResult,
+    CreatedRelationView,
+    RestoreResult,
+    VersionMetaView,
+    VersionView,
+    BundleImportReport,
+    ConceptNoteReport,
+    ImportProblem,
+};
 
 const enc = encodeURIComponent;
 
@@ -38,6 +52,11 @@ export const BIBLE_API = {
     restore: (slug: string, bookId: string, elementId: string, n: number) => `${BIBLE_API.version(slug, bookId, elementId, n)}/restore`,
     relations: (slug: string, bookId: string) => `/api/w/${enc(slug)}/books/${enc(bookId)}/relations`,
     relation: (slug: string, bookId: string, relationId: string) => `/api/w/${enc(slug)}/books/${enc(bookId)}/relations/${enc(relationId)}`,
+    exportBundle: (slug: string, bookId: string) => `${BIBLE_API.book(slug, bookId)}/export/bundle`,
+    exportPdf: (slug: string, bookId: string) => `${BIBLE_API.book(slug, bookId)}/export/pdf`,
+    importBundle: (slug: string, bookId: string, options: { applyBookDetails?: boolean } = {}) =>
+        `${BIBLE_API.book(slug, bookId)}/import/bundle${options.applyBookDetails ? '?bookDetails=apply' : ''}`,
+    importConceptNote: (slug: string, bookId: string) => `${BIBLE_API.book(slug, bookId)}/import/concept-note`,
 } as const;
 
 export class BibleApiError extends Error {
@@ -65,6 +84,22 @@ export async function bibleFetch<T>(url: string, init: { method?: 'GET' | 'POST'
         credentials: 'same-origin',
         cache: 'no-store',
     });
+    return answerOf<T>(res);
+}
+
+/** A file POSTed as the request body itself (the bundle import, Phase 1.3); throws `BibleApiError` on a non-2xx answer. */
+export async function bibleUpload<T>(url: string, file: Blob, contentType: string): Promise<T> {
+    const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'content-type': contentType },
+        body: file,
+        credentials: 'same-origin',
+        cache: 'no-store',
+    });
+    return answerOf<T>(res);
+}
+
+async function answerOf<T>(res: Response): Promise<T> {
     if (!res.ok) {
         let details: unknown = null;
         try {
