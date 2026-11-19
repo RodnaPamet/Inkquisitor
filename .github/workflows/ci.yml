@@ -281,8 +281,12 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
       - run: npm ci
-      # The browser build that matches the pinned @playwright/test.
-      - run: npx playwright install --with-deps chromium
+      # The headless-shell build that matches the pinned @playwright/test
+      # (what headless Chromium runs). No --with-deps: that apt-installs
+      # fonts from Ubuntu's mirrors, which the runner image does not need
+      # (it ships Chrome's system libraries) and whose timeouts failed the
+      # job's first run before a single spec ran.
+      - run: npx playwright install --only-shell chromium
       - name: Apply migrations
         run: npm run migrate:deploy
       - run: npm run build

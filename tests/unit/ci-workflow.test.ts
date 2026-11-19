@@ -94,6 +94,14 @@ describe('.github/workflows/ci.yml', () => {
         );
     });
 
+    it('E2E installs only the Playwright headless shell, never apt packages', () => {
+        // --with-deps apt-installs fonts from Ubuntu's mirrors; their
+        // timeouts failed the job before any spec ran.
+        expect(all.e2e).toMatch(/- run: npx playwright install --only-shell chromium$/m);
+        const commands = all.e2e.split('\n').filter((l) => !/^\s*#/.test(l)).join('\n');
+        expect(commands).not.toMatch(/--with-deps|apt-get/);
+    });
+
     it('installs with npm ci on Node 24, cached, in every Node job', () => {
         expect(ci).toMatch(/^ {2}NODE_VERSION: '24'$/m);
         const nodeJobs = Object.entries(all).filter(([id]) => !['codeql', 'docker'].includes(id));
