@@ -260,19 +260,14 @@ jobs:
           --health-interval 3s
           --health-timeout 3s
           --health-retries 20
-      redis:
-        image: redis:7-alpine
-        ports:
-          - 6379:6379
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 3s
-          --health-timeout 3s
-          --health-retries 20
     env:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/inkquisitor_test?schema=public
       DIRECT_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/inkquisitor_test?schema=public
-      REDIS_URL: redis://localhost:6379
+      # No REDIS_URL here: the specs run the PRODUCTION build, whose start-up
+      # check refuses a Redis URL without a password. playwright.config.ts
+      # supplies redis://:e2e@localhost:6379, and the step below starts a
+      # Redis that requires exactly that (a service container cannot pass
+      # --requirepass).
       SKIP_ENV_VALIDATION: '1'
     steps:
       - uses: actions/checkout@v7
@@ -287,6 +282,11 @@ jobs:
       # (it ships Chrome's system libraries) and whose timeouts failed the
       # job's first run before a single spec ran.
       - run: npx playwright install --only-shell chromium
+      - name: Start Redis with a password
+        run: |
+          docker run -d --name e2e-redis -p 6379:6379 redis:7-alpine redis-server --requirepass e2e
+          for i in $(seq 1 30); do docker exec e2e-redis redis-cli -a e2e --no-auth-warning ping | grep -q PONG && exit 0; sleep 1; done
+          echo "Redis did not come up"; exit 1
       - name: Apply migrations
         run: npm run migrate:deploy
       - run: npm run build

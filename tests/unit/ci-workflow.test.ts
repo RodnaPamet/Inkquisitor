@@ -102,6 +102,13 @@ describe('.github/workflows/ci.yml', () => {
         expect(commands).not.toMatch(/--with-deps|apt-get/);
     });
 
+    it('E2E gives the production build a Redis that requires a password', () => {
+        // The start-up check refuses a passwordless REDIS_URL in production;
+        // a job-level REDIS_URL would override playwright.config.ts's one.
+        expect(all.e2e).not.toMatch(/^\s+REDIS_URL:/m);
+        expect(all.e2e).toMatch(/redis-server --requirepass e2e/);
+    });
+
     it('installs with npm ci on Node 24, cached, in every Node job', () => {
         expect(ci).toMatch(/^ {2}NODE_VERSION: '24'$/m);
         const nodeJobs = Object.entries(all).filter(([id]) => !['codeql', 'docker'].includes(id));
