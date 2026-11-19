@@ -147,6 +147,7 @@
     "next-auth": {
       "nodemailer": "$nodemailer",
       "next": "$next"
-    }
+    },
+    "effect": "3.22.5"
   }
 }
