@@ -124,6 +124,53 @@ it('the kill switch pauses a session that would need the model, sending nothing;
     expect(api.requests).toHaveLength(1);
 });
 
+it('the deployment’s own generator (none injected), holding a key, calls the Messages API through 2.1 and records the call', async () => {
+    // Every other case hands the usecase a generator built over the fake API.
+    // This one leaves `deps.generator` unset, so the path production runs —
+    // `defaultQuestionGenerator(ctx)` → `callStructured(ctx, …)` →
+    // `clientForRun` with the configured key — is the one under test; the
+    // SDK's default fetch (the global) is the fake, so nothing leaves.
+    const { owner, ctx, bookId, elementId } = await setup();
+    const api = fakeAnthropic([questionModel({ usage: USAGE })]);
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = api.fetch;
+    let view: Awaited<ReturnType<typeof startInterview>>;
+    try {
+        view = await startInterview(ctx, bookId, { scope: 'ELEMENT', elementId, depth: 2, detail: 3 }, { embedder });
+    } finally {
+        globalThis.fetch = realFetch;
+    }
+    expect(api.urls).toEqual(['https://api.anthropic.com/v1/messages']);
+    expect(api.headers[0].get('authorization')).toBe(`Bearer ${process.env.ANTHROPIC_API_KEY}`);
+    expect(view.session.status).toBe('ACTIVE');
+    expect(view.round!.questions.length).toBeGreaterThan(0);
+    expect(view.round!.questions.every((q) => q.origin === 'MODEL')).toBe(true);
+    const calls = await prisma.aiCallLog.findMany({ where: { workspaceId: owner.workspaceId } });
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toMatchObject({ bookId, requestedById: owner.userId, promptVersion: QUESTION_PROMPT_VERSION, outcome: 'OK' });
+    const session = await prisma.interviewSession.findUniqueOrThrow({ where: { id: view.session.id } });
+    expect(session.tokensUsed).toBe(2_800);
+});
+
+it('a round left empty pauses with what went wrong: an answer invalid after its repair is NO_ACCEPTABLE_QUESTION, a provider failure PROVIDER_FAILURE', async () => {
+    // Depth 1 with the role stored leaves only `prominence`, which the
+    // character pack has no example for: a failed call leaves nothing to ask.
+    const { ctx, bookId } = await setup();
+    const unaskable = async () => (await createElement(ctx, bookId, { kind: 'CHARACTER', name: `Unaskable ${Math.random()}`, fields: [{ key: 'role', value: 'Keeps the ferry log.' }] })).id;
+    const notJson = { kind: 'text' as const, text: 'not json', usage: { input_tokens: 500, output_tokens: 20 } };
+
+    const invalid = fakeAnthropic([notJson, notJson]);
+    const answeredWrongly = await startInterview(ctx, bookId, { scope: 'ELEMENT', elementId: await unaskable(), depth: 1, detail: 1 }, { generator: wired(ctx, invalid), embedder });
+    expect(invalid.requests).toHaveLength(2);
+    expect(answeredWrongly.session).toMatchObject({ status: 'PAUSED', stopReason: 'NO_ACCEPTABLE_QUESTION' });
+    expect(answeredWrongly.session.stopDetail).toMatchObject({ failures: { INVALID_OUTPUT: 1 } });
+
+    const down = fakeAnthropic([{ kind: 'http-error', status: 529, type: 'overloaded_error' }]);
+    const providerDown = await startInterview(ctx, bookId, { scope: 'ELEMENT', elementId: await unaskable(), depth: 1, detail: 1 }, { generator: wired(ctx, down), embedder });
+    expect(providerDown.session).toMatchObject({ status: 'PAUSED', stopReason: 'PROVIDER_FAILURE' });
+    expect(providerDown.session.stopDetail).toMatchObject({ failures: { PROVIDER: 1 } });
+});
+
 it('a month that cannot take even the least question call pauses the session WORKSPACE_CEILING before anything is claimed or sent', async () => {
     const { owner, ctx, bookId, elementId } = await setup();
     process.env.AI_MONTHLY_CEILING_USD_DEFAULT = '0';

@@ -78,11 +78,21 @@ export abstract class AiCallError extends AppError {
     /**
      * Every token the call used before it ended this way (input, output and
      * cache reads and writes, as the provider reported them; 0 when nothing
-     * was sent). Set by `callStructured` as it throws, so a feature that
-     * budgets tokens (the question engine's session budget) charges a failed
-     * call too. A count, never text; not part of `details`.
+     * was sent, and for an attempt the provider reported no usage for, whose
+     * cost is estimated: an upper bound is no count). Set by `callStructured`
+     * as it throws, so a feature that budgets tokens (the question engine's
+     * session budget) charges a failed call too. A count, never text; not
+     * part of `details`.
      */
     public tokensUsed = 0;
+    /**
+     * What the call cost before it ended this way, in micro-dollars: the
+     * figure settled on its `AiCallLog` row (estimated where the provider
+     * reported no usage). Set by `callStructured` as it throws, so a feature
+     * that accounts per call (rule 9's cost budget) counts a failed call's
+     * spend too — a call that failed after its repair cost two attempts.
+     */
+    public costMicroUsd = 0;
     protected constructor(
         message: string,
         code: string,

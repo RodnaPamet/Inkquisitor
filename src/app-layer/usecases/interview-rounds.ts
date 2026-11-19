@@ -22,8 +22,9 @@
  *      (a vector-store failure degrades later deduplication, never the
  *      round); a round that produced no question is
  *      FAILED and the session PAUSED with the reason (`GUARD_REFUSED` when the
- *      guard refused every call, `PROVIDER_FAILURE` when every call failed,
- *      else `NO_ACCEPTABLE_QUESTION`), resumable by the next round. A call
+ *      guard refused every call, `PROVIDER_FAILURE` when every call failed
+ *      and one at least for the provider's sake, else `NO_ACCEPTABLE_QUESTION`:
+ *      `emptyRoundStopReason`), resumable by the next round. A call
  *      that must stop the whole session (2.1's kill switch, the spend
  *      ceiling: `GenerationStop`, `model-seam.ts`) abandons the round — FAILED,
  *      its tokens charged — and pauses the session with that reason.
@@ -85,6 +86,32 @@ export function generatorOf(ctx: WorkspaceRequestContext, deps: InterviewDeps): 
 export function assertModelAvailable(generator: QuestionGenerator): void {
     const reason = generator.unavailableReason();
     if (reason) throw new AiUnavailableError(reason as AiUnavailableReason);
+}
+
+/**
+ * Why a round that produced no question pauses its session, from the round's
+ * calls (the table in `src/lib/interview/model-seam.ts`'s header):
+ *
+ *   GUARD_REFUSED           every call was refused by the guard
+ *   PROVIDER_FAILURE        every call failed, and at least one for the
+ *                           provider's sake (a timeout, an HTTP or connection
+ *                           failure, a model refusal, a cancellation, or a
+ *                           throw the seam could not name)
+ *   NO_ACCEPTABLE_QUESTION  otherwise: the model answered, but nothing it said
+ *                           (INVALID_OUTPUT: invalid after the repair, cut off,
+ *                           no answer) or nothing the packs hold could be asked
+ *
+ * A model that answered wrongly is not a provider failure: the provider was
+ * up, and saying so would send an operator looking in the wrong place.
+ */
+export function emptyRoundStopReason(m: Pick<RoundOutput['metrics'], 'generationCalls' | 'generationFailures' | 'failures'>): StopReason {
+    const allFailed = m.generationCalls > 0 && m.generationFailures === m.generationCalls;
+    if (!allFailed) return 'NO_ACCEPTABLE_QUESTION';
+    const guarded = m.failures.GUARD ?? 0;
+    if (guarded === m.generationCalls) return 'GUARD_REFUSED';
+    // Every failure the seam did not put down to the guard or the answer itself.
+    const byProvider = m.generationFailures - guarded - (m.failures.INVALID_OUTPUT ?? 0);
+    return byProvider > 0 ? 'PROVIDER_FAILURE' : 'NO_ACCEPTABLE_QUESTION';
 }
 
 /** End a session with its reason, in the caller's transaction. */
@@ -289,8 +316,7 @@ export async function generateClaimedRound(
             }
             const m = output.metrics;
             const allFailed = m.generationCalls > 0 && m.generationFailures === m.generationCalls;
-            const allGuarded = allFailed && (m.failures.GUARD ?? 0) === m.generationCalls;
-            await endSession(db, ctx, current, allGuarded ? 'GUARD_REFUSED' : allFailed ? 'PROVIDER_FAILURE' : 'NO_ACCEPTABLE_QUESTION', {
+            await endSession(db, ctx, current, emptyRoundStopReason(m), {
                 roundNumber: claim.roundNumber,
                 noQuestion: m.noQuestion.length,
                 ...(allFailed ? { failures: m.failures, aiCallIds: m.aiCallIds } : {}),

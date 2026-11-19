@@ -514,8 +514,9 @@ closed beta with an explicit operator flag (D5, amended 2026-11-19).
   BEFORE writing (`modelUnavailableReason`, 503 `AI_UNAVAILABLE` naming the
   reason). A template may carry its per-call cost budget
   (`costBudgetMicroUsd`, rule 9; logged `overBudget`, not a gate). A failed
-  call's tokens are on its error (`AiCallError.tokensUsed`), a successful
-  one's on the result (`tokensUsed`). Tests hand the SDK
+  call's tokens and cost are on its error (`AiCallError.tokensUsed`,
+  `.costMicroUsd`), a successful one's on the
+  result (`tokensUsed`, `costMicroUsd`). Tests hand the SDK
   `tests/helpers/fake-anthropic.ts` as its fetch (scripted, `respond` and
   `repeat` turns); no test reaches a provider.
 - **Hardening the bible (Phase 1.H).** CONCURRENT EDITS: every element

@@ -6,7 +6,7 @@
  * only a session that would need the model pauses for it.
  */
 import type { SessionRow } from '@/app-layer/repositories/interview.repository';
-import { stopNow } from '@/app-layer/usecases/interview-rounds';
+import { emptyRoundStopReason, stopNow } from '@/app-layer/usecases/interview-rounds';
 import type { InterviewState } from '@/app-layer/usecases/interview-state';
 import { getTemplate } from '@/lib/bible/templates';
 
@@ -55,4 +55,29 @@ it('a session that would need the model pauses: the kill switch first, then the 
     expect(stopNow(spent, state({}), { killSwitch: true, workspaceCeilingReached: true })?.reason).toBe('KILL_SWITCH');
     expect(stopNow(spent, state({}), { killSwitch: false, workspaceCeilingReached: true })?.reason).toBe('WORKSPACE_CEILING');
     expect(stopNow(session(), state({}), { killSwitch: true, workspaceCeilingReached: false })?.reason).toBe('KILL_SWITCH');
+});
+
+describe('a round left with no question: why it pauses (the seam header’s table)', () => {
+    const m = (generationCalls: number, generationFailures: number, failures: Record<string, number> = {}) => ({ generationCalls, generationFailures, failures });
+
+    it('every call refused by the guard: GUARD_REFUSED', () => {
+        expect(emptyRoundStopReason(m(1, 1, { GUARD: 1 }))).toBe('GUARD_REFUSED');
+    });
+
+    it('every call failed for the provider’s sake (named, or a throw the seam could not name): PROVIDER_FAILURE', () => {
+        for (const kind of ['TIMEOUT', 'ABORTED', 'PROVIDER']) expect(emptyRoundStopReason(m(1, 1, { [kind]: 1 }))).toBe('PROVIDER_FAILURE');
+        expect(emptyRoundStopReason(m(1, 1))).toBe('PROVIDER_FAILURE');
+        expect(emptyRoundStopReason(m(2, 2, { GUARD: 1, TIMEOUT: 1 }))).toBe('PROVIDER_FAILURE');
+    });
+
+    it('the model answered, but invalidly: NO_ACCEPTABLE_QUESTION, never a provider failure', () => {
+        expect(emptyRoundStopReason(m(1, 1, { INVALID_OUTPUT: 1 }))).toBe('NO_ACCEPTABLE_QUESTION');
+        expect(emptyRoundStopReason(m(2, 2, { GUARD: 1, INVALID_OUTPUT: 1 }))).toBe('NO_ACCEPTABLE_QUESTION');
+    });
+
+    it('a call that answered, or no call at all: NO_ACCEPTABLE_QUESTION', () => {
+        expect(emptyRoundStopReason(m(1, 0))).toBe('NO_ACCEPTABLE_QUESTION');
+        expect(emptyRoundStopReason(m(2, 1, { PROVIDER: 1 }))).toBe('NO_ACCEPTABLE_QUESTION');
+        expect(emptyRoundStopReason(m(0, 0))).toBe('NO_ACCEPTABLE_QUESTION');
+    });
 });

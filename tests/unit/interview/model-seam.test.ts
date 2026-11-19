@@ -215,6 +215,44 @@ describe('2.1 outcome → the engine (the mapping in model-seam.ts)', () => {
         expect(result).toMatchObject({ output: null, tokensUsed: 1_040, failure: { kind: 'INVALID_OUTPUT', errorCode: 'INVALID_AFTER_REPAIR' } });
     });
 
+    it('a failed call’s cost counts in the round like an answered one’s: its money and the per-call budget tally (rule 9)', async () => {
+        // Twice not JSON, each attempt dear: the call fails INVALID_OUTPUT having
+        // cost two attempts, past the template's per-call budget.
+        const bad: FakeTurn = { kind: 'text', text: 'not json', usage: { input_tokens: 100_000, output_tokens: 20 } };
+        const { generator, ledger } = wired([bad, bad]);
+        const out = await produceRound(roundInput(1), { generator });
+        expect(out.metrics.failures).toEqual({ INVALID_OUTPUT: 1 });
+        const record = ledger.records[0];
+        expect(record).toMatchObject({ outcome: 'INVALID_OUTPUT', attempts: 2 });
+        expect(record.costMicroUsd).toBeGreaterThan(QUESTION_CALL_COST_BUDGET_MICRO_USD);
+        expect(out.metrics.aiCallIds).toEqual([record.id]);
+        expect(out.metrics.costMicroUsd).toBe(record.costMicroUsd);
+        expect(out.metrics.maxCallCostMicroUsd).toBe(record.costMicroUsd);
+        expect(out.metrics.callsOverBudget).toBe(1);
+    });
+
+    it('a request cut off before the provider reported any usage: its estimated cost is counted, and no tokens are invented', async () => {
+        // The stream never opens: no usage ever arrives, and the deadline aborts it.
+        const silent = (async (_url: unknown, init?: RequestInit) =>
+            new Promise<Response>((_resolve, reject) => {
+                const signal = init?.signal;
+                const stop = () => reject(signal?.reason ?? new Error('aborted'));
+                if (signal?.aborted) stop();
+                else signal?.addEventListener('abort', stop, { once: true });
+            })) as typeof fetch;
+        const ledger = memoryLedger();
+        const generator = questionGeneratorOver((input) => callStructuredCore({ ...input, requestedById: 'user-1' }, { ledger, fetch: silent, env: {}, timeoutMs: 50 }));
+        const result = await generator.generateCandidates(await oneRequest());
+        expect(result.failure).toEqual({ kind: 'TIMEOUT', errorCode: 'DEADLINE' });
+        const record = ledger.records[0];
+        expect(record).toMatchObject({ costEstimated: true, inputTokens: 0, outputTokens: 0 });
+        expect(record.costMicroUsd).toBeGreaterThan(0);
+        // The money 2.1 charged the month travels with the failure; the
+        // session is charged only tokens the provider reported (none here).
+        expect(result.costMicroUsd).toBe(record.costMicroUsd);
+        expect(result.tokensUsed).toBe(0);
+    });
+
     it('a round whose calls fail goes to the pack fallback, the failures named; a stop abandons the round', async () => {
         const failing = wired([{ kind: 'repeat', turn: { kind: 'http-error', status: 400, type: 'invalid_request_error' } }]);
         const out = await produceRound(roundInput(1), { generator: failing.generator });
@@ -237,6 +275,28 @@ describe('the deployment generator', () => {
             restoreKey = setFakeApiKey();
         }
         expect(defaultQuestionGenerator(ctx).unavailableReason()).toBeNull();
+    });
+
+    it('in production, a key with no declared retention mode is a refusal named RETENTION_MODE_UNDECLARED (D5); a declared one is not', () => {
+        const before = { NODE_ENV: process.env.NODE_ENV, mode: process.env.AI_RETENTION_MODE, zdr: process.env.ANTHROPIC_ZDR_CONFIRMED };
+        const restore = (k: string, v: string | undefined) => (v === undefined ? delete process.env[k] : (process.env[k] = v));
+        try {
+            (process.env as Record<string, string>).NODE_ENV = 'production';
+            delete process.env.AI_RETENTION_MODE;
+            delete process.env.ANTHROPIC_ZDR_CONFIRMED;
+            expect(defaultQuestionGenerator(ctx).unavailableReason()).toBe('RETENTION_MODE_UNDECLARED');
+            for (const mode of ['zdr', 'standard-beta']) {
+                process.env.AI_RETENTION_MODE = mode;
+                expect(defaultQuestionGenerator(ctx).unavailableReason()).toBeNull();
+            }
+            delete process.env.AI_RETENTION_MODE;
+            process.env.ANTHROPIC_ZDR_CONFIRMED = '1';
+            expect(defaultQuestionGenerator(ctx).unavailableReason()).toBeNull();
+        } finally {
+            restore('NODE_ENV', before.NODE_ENV);
+            restore('AI_RETENTION_MODE', before.mode);
+            restore('ANTHROPIC_ZDR_CONFIRMED', before.zdr);
+        }
     });
 
     it('the kill switch is not a refusal but a session stop (modelBudgetSignals)', () => {

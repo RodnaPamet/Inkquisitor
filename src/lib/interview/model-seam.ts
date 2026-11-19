@@ -52,8 +52,10 @@
  *                           logged as one, then GenerationStop PROVIDER_FAILURE
  *                           PROMPT_INVALID: never a 500, never fake output
  *
- * Tokens are charged to the session on every path: a failed call's count is on
- * 2.1's error (`AiCallError.tokensUsed`).
+ * Tokens are charged to the session on every path, and a failed call's cost
+ * counts in the round's money and its per-call budget tally (rule 9) like an
+ * answered one's: both are on 2.1's error (`AiCallError.tokensUsed`,
+ * `.costMicroUsd`).
  */
 import type { z } from 'zod';
 
@@ -86,7 +88,7 @@ type Schema = typeof GeneratedQuestionsSchema;
 export type StructuredCaller = (input: Omit<StructuredCallInput<Schema>, 'requestedById'>) => Promise<StructuredCallResult<z.infer<Schema>>>;
 
 function failed(kind: GenerationFailureKind, err: AiCallError): GenerationResult {
-    return { output: null, tokensUsed: err.tokensUsed, failure: { kind, errorCode: err.reason }, callId: err.callId };
+    return { output: null, tokensUsed: err.tokensUsed, failure: { kind, errorCode: err.reason }, callId: err.callId, costMicroUsd: err.costMicroUsd };
 }
 
 /** 2.1's error → the engine's failure or stop (the table in the header). Rethrows what is neither. */

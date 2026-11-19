@@ -118,8 +118,8 @@ export interface StructuredCallResult<T> {
     readonly costMicroUsd: number;
     /**
      * Every token the call used, both attempts: input, output and cache reads
-     * and writes, as the provider reported them. A failed call's count is on
-     * the error it throws (`AiCallError.tokensUsed`).
+     * and writes, as the provider reported them. A failed call's count and
+     * cost are on the error it throws (`AiCallError.tokensUsed`, `.costMicroUsd`).
      */
     readonly tokensUsed: number;
 }
@@ -321,7 +321,10 @@ export async function callStructured<S extends z.ZodType>(
     const end = async (e: CallEnd): Promise<never> => {
         await settle(e.outcome, e.errorCode);
         const error = e.toThrow(callId);
-        if (error instanceof AiCallError) error.tokensUsed = tokensSoFar();
+        if (error instanceof AiCallError) {
+            error.tokensUsed = tokensSoFar();
+            error.costMicroUsd = spent;
+        }
         throw error;
     };
 
