@@ -16,10 +16,21 @@ import * as fs from 'node:fs';
 import { repoFiles, repoRelative } from '../helpers/repo-files';
 
 const SEAM = 'src/lib/ai/client.ts';
-// A substring search over source text, not a URL check: any mention of the
-// host, in any case and under any subdomain, counts.
+// Every host-like token in the text is compared with the provider's host:
+// the host itself or any subdomain of it, in any case. Tokens are runs of
+// letters, digits, dots and hyphens (one character class, so the match is
+// linear), with leading and trailing dots trimmed.
 const HOST = 'anthropic.com';
-const namesHost = (text: string): boolean => text.toLowerCase().includes(HOST);
+const HOST_TOKEN = /[a-z0-9.-]+/gi;
+const namesHost = (text: string): boolean =>
+    (text.match(HOST_TOKEN) ?? []).some((token) => {
+        let start = 0;
+        let end = token.length;
+        while (start < end && token[start] === '.') start += 1;
+        while (end > start && token[end - 1] === '.') end -= 1;
+        const host = token.slice(start, end).toLowerCase();
+        return host === HOST || host.endsWith(`.${HOST}`);
+    });
 
 const SOURCES = [...repoFiles({ under: 'src' }), ...repoFiles({ under: 'scripts' })];
 
