@@ -1,0 +1,193 @@
+/**
+ * Every list query has an index, every workspace table leads with its
+ * workspace, every foreign key is indexed (Phase 1.H, item 4).
+ *
+ * Ported from inflect-compliance's
+ * `tests/guardrails/schema-index-coverage.test.ts` (docs/carve-manifest.md):
+ * the four layers, read from the LIVE schema through the structured parser
+ * (`tests/helpers/prisma-schema-models.ts`), never a migration file.
+ *
+ *   Layer A  [auto]     every model with a `workspaceId` has an index, unique
+ *                       or id LED by `workspaceId` (Postgres uses an index's
+ *                       leftmost prefix; every repository query filters by it).
+ *   Layer B  [auto]     every foreign key is indexed: some index leads with one
+ *                       of its columns other than `workspaceId`, or with
+ *                       `workspaceId` and then one of them, so the reverse
+ *                       lookup (and its cascade) is no sequential scan. A key
+ *                       of `workspaceId` alone is Layer A's.
+ *   Layer C  [curated]  `LIST_QUERY_INDEXES`: the composite index each list
+ *                       query's filter and order stand on, asserted to exist
+ *                       exactly.
+ *   C-completeness      every model a `findMany` or `groupBy` in `src/` reads
+ *            [auto]     is in Layer C or in `LIST_MODELS_INDEX_SUFFICIENT`
+ *                       with a reason: a new list query on a new model fails
+ *                       until somebody looks at its index.
+ *
+ * Every exemption carries a reason and fails when stale. inflect's baseline
+ * maps (dozens of exempt foreign keys) are not carried: Inkquisitor starts at
+ * zero, so every map below is empty or curated.
+ */
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import { leadingIndexedFields, parseSchemaModels, type SchemaModel } from '../helpers/prisma-schema-models';
+import { REPO_ROOT, repoRelativeFiles } from '../helpers/repo-files';
+
+const MODELS = parseSchemaModels();
+const MODEL_BY_NAME = new Map(MODELS.map((m) => [m.name, m]));
+
+/** Foreign keys allowed without an index, `Model.field` → why. Empty: every key is indexed. */
+const FK_INDEX_EXEMPT: Readonly<Record<string, string>> = {};
+
+/** The index each list query stands on. */
+interface ListQueryIndex {
+    model: string;
+    fields: readonly string[];
+    justification: string;
+}
+
+const LIST_QUERY_INDEXES: readonly ListQueryIndex[] = [
+    { model: 'Book', fields: ['workspaceId', 'updatedAt'], justification: 'the books list: live books, most recently updated first' },
+    { model: 'Book', fields: ['workspaceId', 'deletedAt'], justification: 'the recently-deleted list, newest deletion first' },
+    { model: 'Book', fields: ['deletedAt'], justification: 'the purge’s discovery across workspaces: deleted at or before the cutoff' },
+    { model: 'BibleElement', fields: ['workspaceId', 'bookId', 'kind', 'name'], justification: 'the board and its pages: a kind’s elements by name; the count per kind' },
+    { model: 'BibleElement', fields: ['bookId', 'slug'], justification: 'slug lookups: import matching, free-slug candidates' },
+    { model: 'BibleField', fields: ['workspaceId', 'elementId'], justification: 'an element’s fields, and the keys of a page of elements' },
+    { model: 'BibleRelation', fields: ['fromElementId', 'toElementId', 'type'], justification: 'an element’s relations from its own end' },
+    { model: 'BibleRelation', fields: ['bookId', 'toElementId'], justification: 'an element’s relations from the other end' },
+    { model: 'BibleRelation', fields: ['workspaceId', 'bookId'], justification: 'a book’s relations (the export)' },
+    { model: 'BibleEntryVersion', fields: ['elementId', 'versionNumber'], justification: 'the history newest first, and the latest number every save reads' },
+    { model: 'WorkspaceMembership', fields: ['userId'], justification: 'a person’s workspaces' },
+    { model: 'WorkspaceMembership', fields: ['workspaceId', 'userId'], justification: 'a workspace’s members' },
+    { model: 'UserSession', fields: ['userId', 'revokedAt'], justification: 'a person’s live sessions' },
+];
+
+/** Models read by a list query whose index the model's leading ones already give, → why. Empty today. */
+const LIST_MODELS_INDEX_SUFFICIENT: Readonly<Record<string, string>> = {};
+
+// ─── The checks (pure, so the negative controls can drive them) ─────
+
+export function fkCovered(model: SchemaModel, group: readonly string[]): boolean {
+    const constructs = [...model.blockIndexes, ...model.blockUniques, ...(model.blockId ? [model.blockId] : [])];
+    const singles = [...(model.fieldIdName ? [model.fieldIdName] : []), ...model.fieldUniqueNames];
+    const own = group.filter((f) => f !== 'workspaceId');
+    return (
+        own.some((f) => singles.includes(f)) ||
+        constructs.some((c) => (c[0] !== 'workspaceId' && own.includes(c[0])) || (c[0] === 'workspaceId' && own.includes(c[1])))
+    );
+}
+
+export function fkViolations(models: readonly SchemaModel[]): string[] {
+    const out: string[] = [];
+    for (const m of models) {
+        for (const group of m.relationFkFieldGroups) {
+            if (group.every((f) => f === 'workspaceId')) continue; // Layer A's.
+            if (!fkCovered(m, group)) out.push(`${m.name}.${group.filter((f) => f !== 'workspaceId').join('+')}`);
+        }
+    }
+    return out;
+}
+
+/** Models a `<accessor>.findMany(` / `.groupBy(` call names, in the given sources. */
+export function listQueriedModels(sources: readonly string[], known: ReadonlySet<string>): Set<string> {
+    const found = new Set<string>();
+    for (const text of sources) {
+        for (const m of text.matchAll(/\b([a-z][A-Za-z0-9]*)\.(?:findMany|groupBy)\s*\(/g)) {
+            const name = m[1][0].toUpperCase() + m[1].slice(1);
+            if (known.has(name)) found.add(name);
+        }
+    }
+    return found;
+}
+
+// ─── Against the schema ─────────────────────────────────────────────
+
+describe('parser sanity (a parser that broke would pass every layer vacuously)', () => {
+    it('reads every model, with its indexes and foreign keys', () => {
+        expect(MODELS.length).toBeGreaterThanOrEqual(12);
+        expect(MODEL_BY_NAME.get('BibleElement')?.blockIndexes).toContainEqual(['workspaceId', 'bookId', 'kind', 'name']);
+        expect(MODEL_BY_NAME.get('BibleRelation')?.relationFkFieldGroups).toContainEqual(['bookId', 'fromElementId']);
+        expect(MODEL_BY_NAME.get('Book')?.fieldIdName).toBe('id');
+        expect(MODELS.reduce((n, m) => n + m.relationFkFieldGroups.length, 0)).toBeGreaterThanOrEqual(12);
+    });
+});
+
+describe('Layer A: every workspace-scoped model leads an index with workspaceId', () => {
+    const scoped = MODELS.filter((m) => m.scalarFieldNames.includes('workspaceId'));
+    it('finds the workspace-scoped models', () => {
+        expect(scoped.length).toBeGreaterThanOrEqual(8);
+    });
+    it.each(scoped.map((m) => [m.name, m] as const))('%s', (_name, m) => {
+        expect(leadingIndexedFields(m).has('workspaceId')).toBe(true);
+    });
+});
+
+describe('Layer B: every foreign key is indexed', () => {
+    const violations = fkViolations(MODELS);
+    it('no foreign key without an index (FK_INDEX_EXEMPT names any with a reason)', () => {
+        expect(violations.filter((v) => !(v in FK_INDEX_EXEMPT))).toEqual([]);
+    });
+    it('no stale exemption', () => {
+        expect(Object.keys(FK_INDEX_EXEMPT).filter((k) => !violations.includes(k))).toEqual([]);
+    });
+});
+
+describe('Layer C: the index of every list query exists, exactly', () => {
+    it.each(LIST_QUERY_INDEXES.map((i) => [`${i.model}(${i.fields.join(', ')}) — ${i.justification}`, i] as const))('%s', (_label, i) => {
+        const m = MODEL_BY_NAME.get(i.model);
+        expect(m).toBeDefined();
+        const all = [...m!.blockIndexes, ...m!.blockUniques, ...(m!.blockId ? [m!.blockId] : []), ...m!.fieldUniqueNames.map((f) => [f])];
+        expect(all).toContainEqual([...i.fields]);
+    });
+});
+
+describe('Layer C-completeness: every model a list query reads is triaged', () => {
+    const sources = repoRelativeFiles()
+        .filter((f) => /^src\/.*\.tsx?$/.test(f))
+        .map((f) => fs.readFileSync(path.join(REPO_ROOT, f), 'utf8'));
+    const queried = listQueriedModels(sources, new Set(MODEL_BY_NAME.keys()));
+    const curated = new Set(LIST_QUERY_INDEXES.map((i) => i.model));
+
+    it('finds the list queries (a scan that found none would pass vacuously)', () => {
+        expect([...queried]).toEqual(expect.arrayContaining(['Book', 'BibleElement', 'BibleEntryVersion']));
+    });
+    it('each is in LIST_QUERY_INDEXES or LIST_MODELS_INDEX_SUFFICIENT', () => {
+        expect([...queried].filter((m) => !curated.has(m) && !(m in LIST_MODELS_INDEX_SUFFICIENT)).sort()).toEqual([]);
+    });
+    it('no stale entry: every curated model is still list-queried', () => {
+        expect([...curated, ...Object.keys(LIST_MODELS_INDEX_SUFFICIENT)].filter((m) => !queried.has(m))).toEqual([]);
+    });
+});
+
+// ─── The checks catch what they should ──────────────────────────────
+
+describe('negative controls', () => {
+    const model = (over: Partial<SchemaModel>): SchemaModel => ({
+        name: 'X',
+        tableName: 'X',
+        fields: [],
+        scalarFieldNames: [],
+        blockIndexes: [],
+        blockUniques: [],
+        blockId: null,
+        fieldIdName: 'id',
+        fieldUniqueNames: [],
+        relationFkFieldGroups: [],
+        relations: [],
+        hasField: () => false,
+        ...over,
+    });
+
+    it('flags a foreign key no index leads, and passes one a composite covers', () => {
+        expect(fkViolations([model({ relationFkFieldGroups: [['workspaceId', 'bookId']] })])).toEqual(['X.bookId']);
+        expect(fkViolations([model({ relationFkFieldGroups: [['workspaceId', 'bookId']], blockIndexes: [['workspaceId', 'bookId', 'kind']] })])).toEqual([]);
+        expect(fkViolations([model({ relationFkFieldGroups: [['authorId']], blockIndexes: [['createdAt', 'authorId']] })])).toEqual(['X.authorId']);
+        expect(fkViolations([model({ relationFkFieldGroups: [['bookId', 'fromId']], blockUniques: [['fromId', 'toId']] })])).toEqual([]);
+        // The workspace key alone is Layer A's, not B's.
+        expect(fkViolations([model({ relationFkFieldGroups: [['workspaceId']] })])).toEqual([]);
+    });
+
+    it('finds the models list queries name, and only real ones', () => {
+        const found = listQueriedModels(['db.bibleElement.findMany({ take: 1 })', 'tx.book.groupBy({ by: ["stage"] })', 'delegate.findMany()'], new Set(['BibleElement', 'Book']));
+        expect([...found].sort()).toEqual(['BibleElement', 'Book']);
+    });
+});

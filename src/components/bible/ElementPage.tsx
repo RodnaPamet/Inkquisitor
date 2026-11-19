@@ -45,7 +45,7 @@ import type { RelationOption } from '@/lib/bible/ui-model';
 import { useApiErrorMessage } from './error-messages';
 import { FieldEditor } from './FieldEditor';
 import { HistoryPanel } from './HistoryPanel';
-import { RelationsPanel, type BookElementOption } from './RelationsPanel';
+import { RelationsPanel } from './RelationsPanel';
 import { useElementAutosave, type AutosaveState } from './use-element-autosave';
 
 export interface ElementPageProps {
@@ -55,7 +55,6 @@ export interface ElementPageProps {
     fieldDefs: FieldDef[];
     kindLabels: Record<BibleKind, string>;
     relationOptions: RelationOption[];
-    bookElements: BookElementOption[];
     initialVersions: VersionMetaView[];
     /** The page size the versions were read with (a full page means older ones may exist). */
     versionPageSize: number;
@@ -75,7 +74,7 @@ const detailsOf = (e: ElementView): Details => ({ name: e.name, status: e.status
 const valuesOf = (e: ElementView) => new Map<string, FieldValue | null>(e.fields.map((f) => [f.key, f.value as FieldValue | null]));
 
 export function ElementPage(props: ElementPageProps) {
-    const { workspaceSlug, book, fieldDefs, kindLabels, relationOptions, bookElements, canEdit, versionPageSize } = props;
+    const { workspaceSlug, book, fieldDefs, kindLabels, relationOptions, canEdit, versionPageSize } = props;
     const t = useTranslations('bible.element');
     const tDetails = useTranslations('bible.details');
     const tStatus = useTranslations('bible.status');
@@ -182,6 +181,39 @@ export function ElementPage(props: ElementPageProps) {
         autosave.setField(key, value);
     }
 
+    /** Put the element as the server now holds it into every input, and make it the base of the next save. */
+    function reseed(fresh: ElementView) {
+        setDetails(detailsOf(fresh));
+        setValues(valuesOf(fresh));
+        setNameError(false);
+        setCustomLabelError(false);
+        setRevision((r) => r + 1);
+        autosave.setBaseVersion(fresh.versionNumber);
+    }
+
+    // Someone else saved since this page's base (Phase 1.H): the author chooses.
+    const [resolving, setResolving] = useState(false);
+    async function reloadTheirs() {
+        setResolving(true);
+        try {
+            autosave.discardAll();
+            reseed(await reloadElement());
+            if (tab === 'history') await loadVersions();
+        } catch {
+            toast.error(t('conflictReloadFailed'));
+        } finally {
+            setResolving(false);
+        }
+    }
+    async function keepMine() {
+        setResolving(true);
+        try {
+            await autosave.keepMine();
+        } finally {
+            setResolving(false);
+        }
+    }
+
     async function restore(n: number) {
         if (!(await autosave.flush())) {
             toast.error(t('restoreBlocked'));
@@ -190,12 +222,11 @@ export function ElementPage(props: ElementPageProps) {
         try {
             const { restore: result } = await bibleFetch<{ restore: RestoreResult }>(BIBLE_API.restore(ids.slug, ids.bookId, ids.elementId, n), {
                 method: 'POST',
-                body: {},
+                body: { baseVersion: autosave.baseVersion() },
             });
-            const fresh = await reloadElement();
-            setDetails(detailsOf(fresh));
-            setValues(valuesOf(fresh));
-            setRevision((r) => r + 1);
+            // The restore is a new version: the next save is based on it.
+            autosave.setBaseVersion(result.version.versionNumber);
+            reseed(await reloadElement());
             await loadVersions();
             toast.success(t('restored', { from: result.restoredFromVersion, to: result.version.versionNumber }));
         } catch (err) {
@@ -242,6 +273,7 @@ export function ElementPage(props: ElementPageProps) {
                     <StatusBadge variant="info">{customLabelShown ? `${kindLabels[element.kind]} · ${customLabelShown}` : kindLabels[element.kind]}</StatusBadge>
                     <StatusBadge variant="neutral">{tStatus(details.status)}</StatusBadge>
                     {canEdit ? <SaveStatus state={autosave.state} error={autosave.error ? errorMessage(autosave.error.reason) : null} onRetry={() => void autosave.flush()} /> : null}
+                    {element.relationsTruncated ? <StatusBadge variant="warning">{t('relationsTruncated')}</StatusBadge> : null}
                 </div>
             }
             actions={
@@ -269,7 +301,6 @@ export function ElementPage(props: ElementPageProps) {
                         bookId={book.id}
                         element={element}
                         options={relationOptions}
-                        bookElements={bookElements}
                         kindLabels={kindLabels}
                         canEdit={editable}
                         onChanged={async () => {
@@ -279,6 +310,22 @@ export function ElementPage(props: ElementPageProps) {
                 </div>
             }
         >
+            {autosave.conflict ? (
+                <div className="space-y-default rounded-lg border border-border-default bg-bg-warning p-4" role="alert" data-testid="version-conflict">
+                    <div className="space-y-tight">
+                        <p className="text-sm font-semibold text-content-warning">{t('conflictTitle')}</p>
+                        <p className="text-sm text-content-default">{t('conflictBody', { version: autosave.conflict.currentVersion })}</p>
+                    </div>
+                    <div className="flex flex-wrap gap-tight">
+                        <Button variant="secondary" size="sm" onClick={() => void reloadTheirs()} disabled={resolving} id="conflict-reload">
+                            {t('conflictReload')}
+                        </Button>
+                        <Button variant="primary" size="sm" onClick={() => void keepMine()} disabled={resolving} id="conflict-keep">
+                            {t('conflictKeep')}
+                        </Button>
+                    </div>
+                </div>
+            ) : null}
             {deleting ? (
                 <p className="rounded-lg border border-border-default bg-bg-warning p-3 text-sm text-content-warning" role="status">
                     {t('deleting')}
@@ -350,8 +397,18 @@ function SaveStatus({ state, error, onRetry }: { state: AutosaveState; error: st
     const t = useTranslations('bible.autosave');
     return (
         <span className="inline-flex items-center gap-tight text-xs" data-testid="save-status" data-state={state}>
-            <span role="status" aria-live="polite" className={state === 'error' ? 'text-content-error' : 'text-content-muted'}>
-                {state === 'idle' ? t('idle') : state === 'pending' ? t('pending') : state === 'saving' ? t('saving') : state === 'saved' ? t('saved') : t('error', { reason: error ?? '' })}
+            <span role="status" aria-live="polite" className={state === 'error' || state === 'conflict' ? 'text-content-error' : 'text-content-muted'}>
+                {state === 'idle'
+                    ? t('idle')
+                    : state === 'pending'
+                      ? t('pending')
+                      : state === 'saving'
+                        ? t('saving')
+                        : state === 'saved'
+                          ? t('saved')
+                          : state === 'conflict'
+                            ? t('conflict')
+                            : t('error', { reason: error ?? '' })}
             </span>
             {state === 'error' ? (
                 <Button variant="secondary" size="sm" onClick={onRetry} data-testid="save-retry">

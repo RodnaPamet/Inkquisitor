@@ -6,7 +6,9 @@
  * trigger refuses UPDATE and DELETE). A RESTORE does not rewind: it applies
  * the old snapshot to the element as a NEW save, in one transaction under the
  * element's lock, and appends a new version whose snapshot equals the old one
- * (`source: MANUAL`, `restoredFromVersion` naming it). Nothing before it is
+ * (`source: MANUAL`, `restoredFromVersion` naming it; its change summary is
+ * the author's, or null — never product text, which the UI words from
+ * `restoredFromVersion`). Nothing before it is
  * touched, so a restore can itself be undone by restoring again.
  *
  * Restored values go through the same sanitiser and template checks as a
@@ -28,7 +30,7 @@ import { ConflictError, NotFoundError } from '@/lib/errors/types';
 import { normaliseFieldValue } from '@/lib/bible/field-values';
 import { parseSnapshot, type BibleSnapshot } from '@/lib/bible/snapshot';
 import { getFieldDef, getTemplate } from '@/lib/bible/templates';
-import { isUniqueViolation, optionalBlock, readFieldValues, recordVersion, requireElement, requiredLine, slugConflict, writeFieldValues } from './bible-common';
+import { assertBaseVersion, isUniqueViolation, optionalBlock, readFieldValues, recordVersion, requireElement, requiredLine, slugConflict, writeFieldValues } from './bible-common';
 
 export interface VersionMetaView {
     versionNumber: number;
@@ -102,11 +104,12 @@ export async function restoreVersion(
 ): Promise<RestoreResult> {
     await assertPermission(ctx, 'bible.edit');
     const n = VersionNumberParam.parse(versionNumber);
-    const { changeSummary } = RestoreInput.parse(input ?? {});
+    const { changeSummary, baseVersion } = RestoreInput.parse(input ?? {});
     const restore = () =>
         runInWorkspaceContext(ctx, async (db) => {
             await BibleElementRepository.lock(db, elementId);
             const element = await requireElement(db, ctx, bookId, elementId);
+            await assertBaseVersion(db, ctx, elementId, baseVersion);
             const row = await BibleVersionRepository.find(db, ctx.workspaceId, bookId, elementId, n);
             if (!row) throw new NotFoundError('Version not found.');
             const snapshot = parseSnapshot(row.snapshot);
@@ -140,7 +143,9 @@ export async function restoreVersion(
 
             const version = await recordVersion(db, ctx, bookId, elementId, {
                 source: 'MANUAL',
-                changeSummary: changeSummary ?? `Restored version ${n}`,
+                // Author data holds only the author's words: a restore with none
+                // stores null, and the history labels it from `restoredFromVersion`.
+                changeSummary: changeSummary ?? null,
                 restoredFromVersion: n,
             });
             await logEvent(

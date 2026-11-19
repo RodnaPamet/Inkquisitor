@@ -53,7 +53,7 @@ function tooLarge(what: 'elements' | 'relations' | 'bytes', max: number): Valida
 /** The whole bible of a book, as the bundle's data. The caller has asked `bible.view`. */
 export async function readBibleBundle(db: PrismaTx, ctx: WorkspaceRequestContext, bookId: string): Promise<BibleBundle> {
     const book = await requireBook(db, ctx, bookId);
-    const rows = await BibleElementRepository.list(db, ctx.workspaceId, bookId, { take: BUNDLE_MAX_ELEMENTS + 1 });
+    const rows = await BibleElementRepository.listForExport(db, ctx.workspaceId, bookId, BUNDLE_MAX_ELEMENTS + 1);
     if (rows.length > BUNDLE_MAX_ELEMENTS) throw tooLarge('elements', BUNDLE_MAX_ELEMENTS);
 
     const fieldsById = new Map<string, Map<string, FieldValue>>(rows.map((r) => [r.id, new Map()]));

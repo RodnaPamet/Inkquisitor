@@ -19,6 +19,7 @@ import {
     getTemplate,
     loadTemplates,
     RAW_TEMPLATES,
+    relationLookupCollisions,
     relationAllowed,
     relationTypesFrom,
     relationTypesInto,
@@ -181,6 +182,19 @@ describe('the schema refuses a broken template', () => {
         delete choice.options;
         refuses(t3);
         refuses({ ...base(), extra: true });
+    });
+
+    it('a relation key two kinds could each hold between the same two elements (#27: the symmetric lookup is by key)', () => {
+        const base = { relationTypes: [] as Array<{ key: string; label: string; inverseLabel: string; targetKinds: BibleKind[] }> };
+        const templates = Object.fromEntries(BIBLE_KINDS.map((k) => [k, { ...base, relationTypes: [] as typeof base.relationTypes }])) as Record<BibleKind, typeof base>;
+        const allied = (targetKinds: BibleKind[]) => ({ key: 'allied_with', label: 'allied with', inverseLabel: 'allied with', targetKinds });
+        templates.CHARACTER.relationTypes.push(allied(['CHARACTER', 'FACTION']));
+        templates.FACTION.relationTypes.push(allied(['FACTION']));
+        expect(relationLookupCollisions(templates)).toEqual([]);
+        templates.FACTION.relationTypes[0] = allied(['FACTION', 'CHARACTER']);
+        expect(relationLookupCollisions(templates)).toEqual(['allied_with: CHARACTER and FACTION']);
+        // The shipped templates have none (loadTemplates would have thrown).
+        expect(relationLookupCollisions(Object.fromEntries(BIBLE_KINDS.map((k) => [k, getTemplate(k)])) as Record<BibleKind, ReturnType<typeof getTemplate>>)).toEqual([]);
     });
 
     it('loadTemplates refuses a template filed under another kind', () => {

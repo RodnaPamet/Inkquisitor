@@ -569,6 +569,7 @@ export function KitchenSink({ initialFilters = {} }: KitchenSinkProps) {
                         value={draft.value}
                         contentType={draft.type}
                         onChange={(value, type) => setDraft({ value, type })}
+                        onModeChange={(type, value) => setDraft({ value, type })}
                     />
                 </div>
             </Section>

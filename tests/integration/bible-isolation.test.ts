@@ -62,7 +62,7 @@ describe("A's owner, through the usecases, reaches nothing of B's", () => {
             () => getVersion(actx, aBible.bookId, b1.characterId, 1),
         ];
         for (const attempt of attempts) await expect(attempt()).rejects.toBeInstanceOf(NotFoundError);
-        expect((await listBooks(actx)).map((x) => x.id)).toEqual([aBible.bookId]);
+        expect((await listBooks(actx)).books.map((x) => x.id)).toEqual([aBible.bookId]);
     });
 
     it('writes: every change aimed at B is refused and B is byte-for-byte unchanged', async () => {

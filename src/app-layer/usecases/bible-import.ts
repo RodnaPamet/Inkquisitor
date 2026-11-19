@@ -304,8 +304,17 @@ interface ParsedBundle {
     elements: PreparedElement[];
 }
 
-/** Every entry of the archive classified, parsed and checked; every problem collected. */
-function parseBundle(entries: ReadonlyMap<string, Uint8Array>, wantBook: boolean, problems: Problems): ParsedBundle {
+/** Let the event loop serve other requests between two files' parses (Phase 1.H, #27). */
+const yieldToEventLoop = () => new Promise<void>((resolve) => setImmediate(resolve));
+
+/**
+ * Every entry of the archive classified, parsed and checked; every problem
+ * collected. Parsing is CPU-bound (about 1.5 µs a character of dense YAML), so
+ * it yields to the event loop after every file: one request's import holds
+ * the process for one file's parse at most (`BUNDLE_ZIP_LIMITS.maxEntryBytes`),
+ * never for the whole bundle.
+ */
+async function parseBundle(entries: ReadonlyMap<string, Uint8Array>, wantBook: boolean, problems: Problems): Promise<ParsedBundle> {
     let book: BundleBookFrontmatter | null = null;
     let templateFields: BundleManifest['templateFields'];
     const manifest = entries.get(MANIFEST_FILE);
@@ -330,7 +339,11 @@ function parseBundle(entries: ReadonlyMap<string, Uint8Array>, wantBook: boolean
     let elementFiles = 0;
     for (const [path, bytes] of [...entries].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) {
         if (path === MANIFEST_FILE || isDesktopLitter(path)) continue;
+        await yieldToEventLoop();
         if (path === BOOK_FILE) {
+            // Read only when it will be applied: book details not asked for are
+            // never parsed, so a book.md the import ignores cannot refuse it.
+            if (!wantBook) continue;
             const value = frontmatterValue(path, bytes, problems);
             if (value === undefined) continue;
             const parsed = BundleBookFrontmatter.safeParse(value);
@@ -481,6 +494,8 @@ export async function importBibleBundle(
     deps: ImportDeps = {},
 ): Promise<BundleImportReport> {
     await assertPermission(ctx, 'bible.edit');
+    // A book that is not there (or deleted) is a 404 before the upload is read or scanned.
+    await runInWorkspaceContext(ctx, (db) => requireBook(db, ctx, bookId));
     const opts = BundleImportOptions.parse(options);
     if (bytes.byteLength === 0) throw new ValidationError('A bundle is required.', { reason: 'BODY_REQUIRED' });
     await assertUploadClean(ctx, bytes, deps, 'bundle');
@@ -495,7 +510,7 @@ export async function importBibleBundle(
         throw problems.refusal();
     }
     const wantBook = opts.bookDetails === 'apply';
-    const bundle = parseBundle(entries, wantBook, problems);
+    const bundle = await parseBundle(entries, wantBook, problems);
     if (problems.any) throw problems.refusal();
 
     try {
@@ -651,6 +666,8 @@ export function conceptNoteName(text: string): string {
 
 export async function importConceptNote(ctx: WorkspaceRequestContext, bookId: string, input: unknown, deps: ImportDeps = {}): Promise<ConceptNoteReport> {
     await assertPermission(ctx, 'bible.edit');
+    // A book that is not there (or deleted) is a 404 before the note is read or scanned.
+    await runInWorkspaceContext(ctx, (db) => requireBook(db, ctx, bookId));
     const parsed = ConceptNoteInput.parse(input);
     await assertUploadClean(ctx, new TextEncoder().encode(parsed.text), deps, 'concept-note');
 

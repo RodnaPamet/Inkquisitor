@@ -18,7 +18,7 @@ import { BookBoard } from '@/components/bible/BookBoard';
 import { BooksList } from '@/components/bible/BooksList';
 import type { BookView, ElementListItemView } from '@/lib/bible/api-client';
 import { kindSummaries, type KindSummary } from '@/lib/bible/ui-model';
-import { mockFetch, SLUG } from '../helpers/bible-ui';
+import { boardOf, mockFetch, SLUG } from '../helpers/bible-ui';
 
 const BOOK: BookView = {
     id: 'book_1',
@@ -40,7 +40,6 @@ const entry = (id: string, kind: ElementListItemView['kind'], name: string, fill
     slug: id,
     status: 'DRAFT',
     customLabel: null,
-    summary: null,
     updatedAt: '2026-11-19T10:00:00.000Z',
     filledFieldCount,
 });
@@ -51,7 +50,7 @@ const card = (kind: string) => document.querySelector(`[data-kind="${kind}"]`) a
 
 describe('the book board', () => {
     it('shows each kind once, in the fixed order, with its entries', () => {
-        render(<BookBoard workspaceSlug={SLUG} book={BOOK} kinds={KINDS} elements={[entry('e1', 'CHARACTER', 'Mara', 7), entry('e2', 'CHARACTER', 'Jon', 0)]} canEdit />);
+        render(<BookBoard workspaceSlug={SLUG} book={BOOK} kinds={KINDS} board={boardOf([entry('e1', 'CHARACTER', 'Mara', 7), entry('e2', 'CHARACTER', 'Jon', 0)])} canEdit />);
         const cards = Array.from(screen.getByRole('list', { name: 'Bible sections' }).children);
         expect(cards.map((c) => [c.getAttribute('role'), c.getAttribute('data-kind')])).toEqual(KINDS.map((k) => ['listitem', k.kind]));
         const character = card('CHARACTER');
@@ -61,7 +60,7 @@ describe('the book board', () => {
 
     it('measures a kind with entries: filled fields out of template fields times entries', () => {
         const fields = KINDS.find((k) => k.kind === 'CHARACTER')!.fieldCount;
-        render(<BookBoard workspaceSlug={SLUG} book={BOOK} kinds={KINDS} elements={[entry('e1', 'CHARACTER', 'Mara', 7), entry('e2', 'CHARACTER', 'Jon', 0)]} canEdit />);
+        render(<BookBoard workspaceSlug={SLUG} book={BOOK} kinds={KINDS} board={boardOf([entry('e1', 'CHARACTER', 'Mara', 7), entry('e2', 'CHARACTER', 'Jon', 0)])} canEdit />);
         const bar = within(card('CHARACTER')).getByRole('progressbar', { name: 'Character completeness' });
         expect(bar).toHaveAttribute('value', '7');
         expect(bar).toHaveAttribute('max', String(fields * 2));
@@ -71,7 +70,7 @@ describe('the book board', () => {
     });
 
     it('reads "Not started", with no bar and no percentage, for a kind with no entries', () => {
-        render(<BookBoard workspaceSlug={SLUG} book={BOOK} kinds={KINDS} elements={[entry('e1', 'CHARACTER', 'Mara', 3)]} canEdit />);
+        render(<BookBoard workspaceSlug={SLUG} book={BOOK} kinds={KINDS} board={boardOf([entry('e1', 'CHARACTER', 'Mara', 3)])} canEdit />);
         const setting = card('SETTING');
         expect(setting).toHaveTextContent('Not started');
         expect(within(setting).queryByRole('progressbar')).toBeNull();
@@ -80,7 +79,7 @@ describe('the book board', () => {
 
     it('reads "Not assessed", never 0% or 100%, for a template with no fields', () => {
         const noFields: KindSummary[] = KINDS.map((k) => (k.kind === 'CUSTOM' ? { ...k, fieldCount: 0 } : k));
-        render(<BookBoard workspaceSlug={SLUG} book={BOOK} kinds={noFields} elements={[entry('c1', 'CUSTOM', 'The prophecy', 0)]} canEdit />);
+        render(<BookBoard workspaceSlug={SLUG} book={BOOK} kinds={noFields} board={boardOf([entry('c1', 'CUSTOM', 'The prophecy', 0)])} canEdit />);
         const custom = card('CUSTOM');
         expect(custom).toHaveTextContent('Not assessed');
         expect(within(custom).queryByRole('progressbar')).toBeNull();
@@ -88,7 +87,7 @@ describe('the book board', () => {
     });
 
     it('opens the create modal with the kind of the card it was asked from', async () => {
-        render(<BookBoard workspaceSlug={SLUG} book={BOOK} kinds={KINDS} elements={[]} canEdit />);
+        render(<BookBoard workspaceSlug={SLUG} book={BOOK} kinds={KINDS} board={boardOf([])} canEdit />);
         fireEvent.click(within(card('FACTION')).getByRole('button', { name: 'Add Faction' }));
         const dialog = await screen.findByRole('dialog');
         expect(within(dialog).getByText('Faction')).toBeInTheDocument();
@@ -96,7 +95,7 @@ describe('the book board', () => {
 
     it('creates an element from the modal and opens its page', async () => {
         const { requests } = mockFetch({ 'POST /api/w/ada/books/book_1/elements': { status: 201, json: { element: { id: 'new_1' } } } });
-        render(<BookBoard workspaceSlug={SLUG} book={BOOK} kinds={KINDS} elements={[]} canEdit />);
+        render(<BookBoard workspaceSlug={SLUG} book={BOOK} kinds={KINDS} board={boardOf([])} canEdit />);
         fireEvent.click(within(card('CUSTOM')).getByRole('button', { name: 'Add Custom element' }));
         const dialog = await screen.findByRole('dialog');
         fireEvent.change(within(dialog).getByLabelText(/^Name/), { target: { value: 'The prophecy' } });
@@ -112,12 +111,12 @@ describe('the book board', () => {
     });
 
     it('has no axe violations', async () => {
-        const { container } = render(<BookBoard workspaceSlug={SLUG} book={BOOK} kinds={KINDS} elements={[entry('e1', 'CHARACTER', 'Mara', 3)]} canEdit />);
+        const { container } = render(<BookBoard workspaceSlug={SLUG} book={BOOK} kinds={KINDS} board={boardOf([entry('e1', 'CHARACTER', 'Mara', 3)])} canEdit />);
         expect(await axe(container)).toHaveNoViolations();
     });
 
     it('offers a reader no create affordance at all', () => {
-        render(<BookBoard workspaceSlug={SLUG} book={BOOK} kinds={KINDS} elements={[entry('e1', 'CHARACTER', 'Mara', 3)]} canEdit={false} />);
+        render(<BookBoard workspaceSlug={SLUG} book={BOOK} kinds={KINDS} board={boardOf([entry('e1', 'CHARACTER', 'Mara', 3)])} canEdit={false} />);
         expect(screen.queryByRole('button', { name: 'Element' })).toBeNull();
         expect(screen.queryByRole('button', { name: /^Add / })).toBeNull();
         // Reading still works.

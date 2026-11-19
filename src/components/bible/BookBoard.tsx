@@ -12,45 +12,60 @@
  * chosen) or from a kind's card (that kind). Shown only when the server says
  * the viewer may edit (`canEdit`).
  *
- * Export (Phase 1.3) is two download links, the Markdown bundle and the PDF,
- * for every viewer (`bible.view`); Import opens `<ImportModal>` and, like
- * create, is offered only when the viewer may edit.
+ * Export (Phase 1.3) is two buttons, the Markdown bundle and the PDF, for
+ * every viewer (`bible.view`); each downloads through `bibleDownload`, so a
+ * refusal is a toast rather than a saved error (Phase 1.H, #27). Import opens
+ * `<ImportModal>` and, like create, is offered only when the viewer may edit.
+ *
+ * A book of any size (Phase 1.H, #18): each card's count and completeness are
+ * the server's aggregates over EVERY entry of the kind, and the card lists
+ * the first page of entries by name with "Show more" fetching the next
+ * (`listElements` with `kind` and `after`). Deleting the book opens
+ * `<DeleteBookModal>` (export first, then a typed confirmation), for the
+ * workspace's OWNER only (`canDeleteBook`, `books.delete`).
  */
 import { useState } from 'react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
-import { FileDown, FileText, Plus, Upload } from 'lucide-react';
+import { toast } from 'sonner';
+import { FileDown, FileText, Plus, Trash2, Upload } from 'lucide-react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Button } from '@/components/ui/button';
-import { buttonVariants } from '@/components/ui/button-variants';
 import { Card } from '@/components/ui/card';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { APP_ROUTES } from '@/lib/app-routes';
-import { BIBLE_API, type BookView, type ElementListItemView } from '@/lib/bible/api-client';
+import { BIBLE_API, bibleFetch, type BoardKindView, type BookView, type ElementListItemView, type ElementPageView } from '@/lib/bible/api-client';
 import { completeness, type Completeness } from '@/lib/bible/completeness';
 import type { BibleKind } from '@/lib/bible/kinds';
 import type { KindSummary } from '@/lib/bible/ui-model';
 import { CompletenessMeter } from './CompletenessMeter';
 import { CreateElementModal } from './CreateElementModal';
+import { DeleteBookModal } from './DeleteBookModal';
 import { ImportModal } from './ImportModal';
+import { useExportDownload } from './use-export-download';
 
 export interface BookBoardProps {
     workspaceSlug: string;
     book: BookView;
     kinds: KindSummary[];
-    elements: ElementListItemView[];
+    /** Per kind: the aggregate counts and the first page of entries (`getBookBoard`). */
+    board: BoardKindView[];
     canEdit: boolean;
+    /** The viewer may delete the book (`books.delete`: the workspace's OWNER). */
+    canDeleteBook?: boolean;
 }
 
-export function BookBoard({ workspaceSlug, book, kinds, elements, canEdit }: BookBoardProps) {
+export function BookBoard({ workspaceSlug, book, kinds, board, canEdit, canDeleteBook = false }: BookBoardProps) {
     const t = useTranslations('bible.board');
     const tStage = useTranslations('bible.stage');
     const tTransfer = useTranslations('bible.transfer');
+    const tDelete = useTranslations('bible.deleteBook');
     const [creating, setCreating] = useState<{ kind: BibleKind | null } | null>(null);
     const [importing, setImporting] = useState(false);
+    const [deleting, setDeleting] = useState(false);
+    const download = useExportDownload(workspaceSlug, book.id);
 
-    const byKind = new Map<BibleKind, ElementListItemView[]>();
-    for (const e of elements) byKind.set(e.kind, [...(byKind.get(e.kind) ?? []), e]);
+    const byKind = new Map<BibleKind, BoardKindView>(board.map((k) => [k.kind, k]));
 
     return (
         <DashboardLayout
@@ -62,14 +77,24 @@ export function BookBoard({ workspaceSlug, book, kinds, elements, canEdit }: Boo
                 meta: <StatusBadge variant="neutral">{tStage(book.stage)}</StatusBadge>,
                 actions: (
                     <div className="flex flex-wrap items-center gap-tight">
-                        <a href={BIBLE_API.exportBundle(workspaceSlug, book.id)} download className={buttonVariants({ variant: 'secondary' })} id="export-bundle">
-                            <FileDown className="size-4" aria-hidden="true" />
+                        <Button
+                            variant="secondary"
+                            icon={<FileDown className="size-4" aria-hidden="true" />}
+                            loading={download.busy === 'bundle'}
+                            onClick={() => void download.start('bundle')}
+                            id="export-bundle"
+                        >
                             {tTransfer('exportBundle')}
-                        </a>
-                        <a href={BIBLE_API.exportPdf(workspaceSlug, book.id)} download className={buttonVariants({ variant: 'secondary' })} id="export-pdf">
-                            <FileText className="size-4" aria-hidden="true" />
+                        </Button>
+                        <Button
+                            variant="secondary"
+                            icon={<FileText className="size-4" aria-hidden="true" />}
+                            loading={download.busy === 'pdf'}
+                            onClick={() => void download.start('pdf')}
+                            id="export-pdf"
+                        >
                             {tTransfer('exportPdf')}
-                        </a>
+                        </Button>
                         {canEdit ? (
                             <>
                                 <Button variant="secondary" icon={<Upload className="size-4" aria-hidden="true" />} onClick={() => setImporting(true)} id="import-open">
@@ -80,18 +105,23 @@ export function BookBoard({ workspaceSlug, book, kinds, elements, canEdit }: Boo
                                 </Button>
                             </>
                         ) : null}
+                        {canDeleteBook ? (
+                            <Button variant="secondary" icon={<Trash2 className="size-4" aria-hidden="true" />} onClick={() => setDeleting(true)} id="delete-book-open">
+                                {tDelete('open')}
+                            </Button>
+                        ) : null}
                     </div>
                 ),
             }}
         >
             <div className="grid grid-cols-1 gap-default md:grid-cols-2 xl:grid-cols-3" role="list" aria-label={t('kindsAria')}>
                 {kinds.map((k) => {
-                    const entries = byKind.get(k.kind) ?? [];
+                    const entry = byKind.get(k.kind) ?? { kind: k.kind, entryCount: 0, filledFieldCount: 0, entries: [], nextCursor: null };
                     return (
                         <KindCard
                             key={k.kind}
                             summary={k}
-                            entries={entries}
+                            board={entry}
                             workspaceSlug={workspaceSlug}
                             bookId={book.id}
                             onAdd={canEdit ? () => setCreating({ kind: k.kind }) : undefined}
@@ -113,27 +143,54 @@ export function BookBoard({ workspaceSlug, book, kinds, elements, canEdit }: Boo
                 />
             ) : null}
             {canEdit ? <ImportModal open={importing} setOpen={setImporting} workspaceSlug={workspaceSlug} bookId={book.id} /> : null}
+            {canDeleteBook ? <DeleteBookModal open={deleting} setOpen={setDeleting} workspaceSlug={workspaceSlug} book={{ id: book.id, title: book.title }} /> : null}
         </DashboardLayout>
     );
 }
 
 function KindCard({
     summary,
-    entries,
+    board,
     workspaceSlug,
     bookId,
     onAdd,
 }: {
     summary: KindSummary;
-    entries: ElementListItemView[];
+    board: BoardKindView;
     workspaceSlug: string;
     bookId: string;
     onAdd?: () => void;
 }) {
     const t = useTranslations('bible.board');
+    // The first page came with the board; "Show more" appends the next. A new
+    // board (after a create or an import re-renders the page) starts again.
+    const signature = `${board.entryCount}:${board.filledFieldCount}:${board.nextCursor ?? ''}:${board.entries.map((e) => e.id).join(',')}`;
+    const [more, setMore] = useState<{ from: string; entries: ElementListItemView[]; nextCursor: string | null }>({
+        from: signature,
+        entries: [],
+        nextCursor: board.nextCursor,
+    });
+    const [loadingMore, setLoadingMore] = useState(false);
+    if (more.from !== signature) setMore({ from: signature, entries: [], nextCursor: board.nextCursor });
+    const entries = [...board.entries, ...more.entries];
+    const entryCount = board.entryCount;
+
+    async function showMore() {
+        if (!more.nextCursor) return;
+        setLoadingMore(true);
+        try {
+            const page = await bibleFetch<ElementPageView>(BIBLE_API.elements(workspaceSlug, bookId, { kind: summary.kind, after: more.nextCursor }));
+            setMore((m) => ({ from: m.from, entries: [...m.entries, ...page.elements], nextCursor: page.nextCursor }));
+        } catch {
+            toast.error(t('moreFailed'));
+        } finally {
+            setLoadingMore(false);
+        }
+    }
+
     const kindCompleteness: Completeness = completeness({
-        entries: entries.length,
-        filled: entries.reduce((n, e) => n + e.filledFieldCount, 0),
+        entries: entryCount,
+        filled: board.filledFieldCount,
         fieldsPerEntry: summary.fieldCount,
     });
     const headingId = `kind-${summary.kind}-heading`;
@@ -145,7 +202,7 @@ function KindCard({
                         {summary.label}
                     </h2>
                     <p className="text-xs text-content-muted">
-                        {entries.length === 0 ? t('noEntries') : entries.length === 1 ? t('entriesOne') : t('entries', { count: entries.length })}
+                        {entryCount === 0 ? t('noEntries') : entryCount === 1 ? t('entriesOne') : t('entries', { count: entryCount })}
                     </p>
                 </div>
                 {onAdd ? (
@@ -161,7 +218,7 @@ function KindCard({
             </div>
             <CompletenessMeter value={kindCompleteness} label={t('completenessOf', { kind: summary.label })} />
             {entries.length > 0 ? (
-                <ul className="divide-y divide-[var(--border-subtle)]">
+                <ul className="divide-y divide-[var(--border-subtle)]" aria-label={t('entriesOf', { kind: summary.label })}>
                     {entries.map((e) => {
                         const own = completeness({ entries: 1, filled: e.filledFieldCount, fieldsPerEntry: summary.fieldCount });
                         return (
@@ -177,6 +234,14 @@ function KindCard({
                         );
                     })}
                 </ul>
+            ) : null}
+            {more.nextCursor ? (
+                <div className="flex items-center justify-between gap-tight">
+                    <span className="text-xs text-content-muted">{t('showing', { shown: entries.length, count: entryCount })}</span>
+                    <Button variant="secondary" size="sm" loading={loadingMore} onClick={() => void showMore()} data-testid={`more-${summary.kind}`}>
+                        {t('showMore')}
+                    </Button>
+                </div>
             ) : null}
         </Card>
     );

@@ -68,7 +68,7 @@ const PROBES: Record<KitchenSinkPrimitive, (s: HTMLElement) => void | Promise<vo
     card: (s) => expect(within(s).getByText('A card holds one discrete thing.')).toBeInTheDocument(),
     typography: (s) => expect(within(s).getByRole('heading', { level: 3, name: 'A heading' })).toBeInTheDocument(),
     'status-badge': (s) => expect(within(s).getByText('Blocked')).toBeInTheDocument(),
-    'initials-avatar': (s) => expect(s.textContent).toContain('AQ'),
+    'initials-avatar': (s) => expect(s.querySelector('[data-initials="AQ"]')).not.toBeNull(),
     breadcrumbs: (s) => expect(within(s).getByRole('navigation', { name: 'Breadcrumb' })).toBeInTheDocument(),
     'empty-state': (s) => expect(within(s).getByText('No books yet')).toBeInTheDocument(),
     'error-state': (s) => expect(within(s).getByText('Could not load')).toBeInTheDocument(),

@@ -26,15 +26,28 @@
  *   - An edit that may not be saved (an empty name) is DISCARDED from the
  *     queue, so a keystroke typed on the way to it is never saved instead.
  *
- * Conflict handling is 1.H's (an optimistic version check): `baseVersion`
- * holds the version the last answer named, which is what that check will
- * send; nothing reads it yet.
+ * CONCURRENT EDITS (Phase 1.H). Every save names the version its edit is
+ * based on (`baseVersion`: the version the page loaded, then the one each
+ * answer names). When someone else has saved in between, the server refuses
+ * it 409 `VERSION_CONFLICT`, writing nothing; the hook then holds the batch
+ * (as it holds a failed one), stops sending — a new edit queues but is not
+ * sent — and reports `conflict` with the version the element is now at. The
+ * page decides, never the hook: `keepMine()` re-bases the held edits on that
+ * version and sends them (overwriting those keys, knowingly), `discardAll()`
+ * drops them for a reload. A restore or a reload sets the base itself
+ * (`setBaseVersion`). Nothing is ever re-sent over a newer version unasked.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { FieldValue } from '@/lib/bible/field-values';
-import { BIBLE_API, bibleFetch, reasonOf, type ElementView, type FieldsSaveResult } from '@/lib/bible/api-client';
+import { BIBLE_API, BibleApiError, bibleFetch, reasonOf, type ElementView, type FieldsSaveResult } from '@/lib/bible/api-client';
 
-export type AutosaveState = 'idle' | 'pending' | 'saving' | 'saved' | 'error';
+export type AutosaveState = 'idle' | 'pending' | 'saving' | 'saved' | 'error' | 'conflict';
+
+/** Someone else saved the element after this page's base version (409 `VERSION_CONFLICT`). */
+export interface AutosaveConflict {
+    /** The version the element is at now. */
+    currentVersion: number;
+}
 
 export type DetailKey = 'name' | 'status' | 'summary' | 'customLabel';
 export type DetailValue = string | null;
@@ -81,12 +94,27 @@ export interface UseElementAutosaveResult {
     flush: () => Promise<boolean>;
     /** True while an edit has not been saved (pending, in flight, or refused). */
     hasUnsaved: () => boolean;
-    /** The version the API last named (for 1.H's optimistic check). */
+    /** The version every save names as its base (the optimistic check): as loaded, then as each answer names it. */
     baseVersion: () => number;
+    /** Set the base after the page has re-read the element itself (a restore, a reload). */
+    setBaseVersion: (version: number) => void;
+    /** Set while a save was refused because someone else saved first; nothing is sent until it is resolved. */
+    conflict: AutosaveConflict | null;
+    /** Resolve a conflict by saving the held edits over the element's current version; resolves as `flush` does. */
+    keepMine: () => Promise<boolean>;
+    /** Drop every edit not yet saved (pending, refused or in conflict), for a reload of the element. */
+    discardAll: () => void;
 }
 
 /** Debounce before a save: long enough that steady typing is one version. */
 export const AUTOSAVE_DEBOUNCE_MS = 1000;
+
+/** The version a `VERSION_CONFLICT` refusal says the element is at, or null for any other error. */
+function conflictVersionOf(err: unknown): number | null {
+    if (!(err instanceof BibleApiError) || err.reason !== 'VERSION_CONFLICT') return null;
+    const v = (err.details as { currentVersion?: unknown } | null)?.currentVersion;
+    return typeof v === 'number' && Number.isInteger(v) ? v : null;
+}
 
 function refusedKeys(details: unknown): string[] {
     const fields = (details as { fields?: unknown } | null)?.fields;
@@ -98,6 +126,8 @@ export function useElementAutosave(options: UseElementAutosaveOptions): UseEleme
     const { workspaceSlug, bookId, elementId, enabled, initialVersion, debounceMs = AUTOSAVE_DEBOUNCE_MS } = options;
     const [state, setState] = useState<AutosaveState>('idle');
     const [error, setError] = useState<AutosaveError | null>(null);
+    const [conflict, setConflictState] = useState<AutosaveConflict | null>(null);
+    const conflictRef = useRef<AutosaveConflict | null>(null);
 
     const details = useRef(new Map<DetailKey, DetailValue>());
     const fields = useRef(new Map<string, FieldValue | null>());
@@ -111,6 +141,10 @@ export function useElementAutosave(options: UseElementAutosaveOptions): UseEleme
     const onSavedAfterUnmountRef = useRef(options.onSavedAfterUnmount);
     const enabledRef = useRef(enabled);
     const mounted = useRef(true);
+    const setConflict = useCallback((next: AutosaveConflict | null) => {
+        conflictRef.current = next;
+        if (mounted.current) setConflictState(next);
+    }, []);
     useEffect(() => {
         onSavedRef.current = options.onSaved;
         onSavedAfterUnmountRef.current = options.onSavedAfterUnmount;
@@ -141,7 +175,7 @@ export function useElementAutosave(options: UseElementAutosaveOptions): UseEleme
                 if (detailBatch.size > 0) {
                     const { element } = await bibleFetch<{ element: ElementView }>(BIBLE_API.element(slug, book, id), {
                         method: 'PATCH',
-                        body: Object.fromEntries(detailBatch),
+                        body: { ...Object.fromEntries(detailBatch), baseVersion: version.current },
                     });
                     sentDetails = true;
                     version.current = element.versionNumber;
@@ -150,7 +184,7 @@ export function useElementAutosave(options: UseElementAutosaveOptions): UseEleme
                 if (fieldBatch.size > 0) {
                     const { element } = await bibleFetch<{ element: FieldsSaveResult }>(BIBLE_API.fields(slug, book, id), {
                         method: 'PUT',
-                        body: { fields: [...fieldBatch].map(([key, value]) => ({ key, value })) },
+                        body: { fields: [...fieldBatch].map(([key, value]) => ({ key, value })), baseVersion: version.current },
                     });
                     version.current = element.versionNumber;
                     onSavedRef.current?.(element);
@@ -163,6 +197,16 @@ export function useElementAutosave(options: UseElementAutosaveOptions): UseEleme
                 if (!sentDetails) requeue(detailBatch, details.current);
                 requeue(fieldBatch, fields.current);
                 failed.current = true;
+                const current = conflictVersionOf(err);
+                if (current !== null) {
+                    // Someone else saved first: hold everything, send nothing more, let the page decide.
+                    setConflict({ currentVersion: current });
+                    if (mounted.current) {
+                        setError(null);
+                        setState('conflict');
+                    }
+                    return false;
+                }
                 if (mounted.current) {
                     setError({ reason: reasonOf(err), fieldKeys: refusedKeys((err as { details?: unknown }).details) });
                     setState('error');
@@ -177,7 +221,7 @@ export function useElementAutosave(options: UseElementAutosaveOptions): UseEleme
             setState('saved');
         }
         return true;
-    }, []);
+    }, [setConflict]);
 
     const run = useCallback((): Promise<boolean> => {
         if (!inFlight.current) {
@@ -199,6 +243,8 @@ export function useElementAutosave(options: UseElementAutosaveOptions): UseEleme
 
     const schedule = useCallback(() => {
         if (timer.current) clearTimeout(timer.current);
+        // In conflict an edit is held with the rest, never sent over the newer version.
+        if (conflictRef.current) return;
         if (!inFlight.current) report('pending');
         timer.current = setTimeout(() => {
             timer.current = null;
@@ -236,6 +282,29 @@ export function useElementAutosave(options: UseElementAutosaveOptions): UseEleme
 
     const hasUnsaved = useCallback(() => hasPending() || inFlight.current !== null || failed.current, []);
 
+    const setBaseVersion = useCallback((v: number) => {
+        version.current = v;
+    }, []);
+
+    const keepMine = useCallback(async (): Promise<boolean> => {
+        const c = conflictRef.current;
+        if (!c) return flush();
+        version.current = c.currentVersion;
+        setConflict(null);
+        return flush();
+    }, [flush, setConflict]);
+
+    const discardAll = useCallback(() => {
+        if (timer.current) clearTimeout(timer.current);
+        timer.current = null;
+        details.current.clear();
+        fields.current.clear();
+        failed.current = false;
+        setConflict(null);
+        if (mounted.current) setError(null);
+        report(settled.current);
+    }, [setConflict]);
+
     // Leaving the page still saves what is unsaved (mid-debounce, in flight, or
     // put back after a failure), then has the page now shown re-read; a
     // browser unload asks first.
@@ -260,5 +329,7 @@ export function useElementAutosave(options: UseElementAutosaveOptions): UseEleme
         };
     }, [run]);
 
-    return { state, error, setDetail, setField, discardDetail, flush, hasUnsaved, baseVersion: () => version.current };
+    const baseVersion = useCallback(() => version.current, []);
+
+    return { state, error, setDetail, setField, discardDetail, flush, hasUnsaved, baseVersion, setBaseVersion, conflict, keepMine, discardAll };
 }

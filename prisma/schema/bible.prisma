@@ -23,6 +23,9 @@
 //  Titles, element names, slugs and custom labels stay readable: they are
 //  what lists sort and unique keys compare.
 //
+//  A BOOK IS SOFT-DELETED (Phase 1.H): `deletedAt` hides it and everything
+//  in it; only the purge, 30 days later, deletes the rows.
+//
 //  BibleEntryVersion is APPEND-ONLY: a trigger refuses UPDATE and DELETE for
 //  every role, except the delete its book's (or workspace's) cascade makes
 //  and the clearing of `authorId` when that person is deleted.
@@ -42,6 +45,10 @@ model Book {
   /// The intended length in words.
   targetLength Int?
   stage        BookStage @default(CONCEPT)
+  /// Set when the book is deleted (Phase 1.H): it leaves every list and
+  /// route at once, its OWNER may restore it for 30 days, and the daily
+  /// `book-purge` job then deletes it and everything in it for good.
+  deletedAt    DateTime?
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 
@@ -52,7 +59,12 @@ model Book {
   vectorEmbeddings VectorEmbedding[]
 
   @@unique([workspaceId, id])
+  /// The books list: a workspace's live books, most recently updated first.
   @@index([workspaceId, updatedAt])
+  /// The recently-deleted list: a workspace's deleted books, newest deletion first.
+  @@index([workspaceId, deletedAt])
+  /// The purge's scan across workspaces: books deleted before the cutoff.
+  @@index([deletedAt])
 }
 
 /// One entry of a book's bible: a character, a place, a theme, …
@@ -81,7 +93,8 @@ model BibleElement {
   @@unique([bookId, slug])
   @@unique([bookId, id])
   @@unique([workspaceId, id])
-  @@index([workspaceId, bookId, kind])
+  /// The board and the kind lists: a book's elements of one kind by name (Phase 1.H).
+  @@index([workspaceId, bookId, kind, name])
 }
 
 /// One field of an element, keyed by its kind's template.

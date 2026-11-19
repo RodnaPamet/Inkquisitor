@@ -37,6 +37,8 @@ export type AuditAction =
     | 'BOOK_CREATED'
     | 'BOOK_UPDATED'
     | 'BOOK_DELETED'
+    | 'BOOK_RESTORED'
+    | 'BOOK_PURGED'
     | 'BIBLE_ELEMENT_CREATED'
     | 'BIBLE_ELEMENT_UPDATED'
     | 'BIBLE_ELEMENT_DELETED'

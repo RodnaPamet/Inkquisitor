@@ -1,7 +1,7 @@
 /**
  * GET    /api/w/:workspaceSlug/books/:bookId — one book (`bible.view`)
  * PATCH  /api/w/:workspaceSlug/books/:bookId — change it (`bible.edit`)
- * DELETE /api/w/:workspaceSlug/books/:bookId — delete it and its whole bible (`bible.edit`)
+ * DELETE /api/w/:workspaceSlug/books/:bookId — delete it: hidden at once, restorable for 30 days, then purged (`books.delete`, OWNER)
  */
 import { NextResponse } from 'next/server';
 import { withApiErrorHandling } from '@/lib/errors/api';
@@ -22,5 +22,5 @@ export const PATCH = withApiErrorHandling(
 );
 
 export const DELETE = withApiErrorHandling(
-    requirePermission<Params>('bible.edit', async (_req, { params }, ctx) => NextResponse.json(await deleteBook(ctx, params.bookId))),
+    requirePermission<Params>('books.delete', async (_req, { params }, ctx) => NextResponse.json({ book: await deleteBook(ctx, params.bookId) })),
 );

@@ -15,7 +15,10 @@
  * `executor-registry.ts`, and, if it runs on a cadence, a schedule in
  * `schedules.ts`.
  *
- * Phase 0.4 ships ONE job, `heartbeat`, which does nothing. Its only purpose
+ * Phase 1.H adds `book-purge`, the daily hard delete of books deleted more
+ * than 30 days ago.
+ *
+ * Phase 0.4 shipped ONE job, `heartbeat`, which does nothing. Its only purpose
  * is to give the worker something to complete on a quiet queue, which proves
  * the queue → worker → executor wiring end to end and keeps the worker's
  * heartbeat key fresh (`heartbeat.ts`).
@@ -43,8 +46,15 @@ export interface HeartbeatPayload {
     enqueuedAt?: string;
 }
 
+/**
+ * The daily book purge (Phase 1.H): no payload. The job finds every book
+ * deleted more than 30 days ago itself (`usecases/book-purge.ts`).
+ */
+export type BookPurgePayload = Record<string, never>;
+
 export interface JobPayloadMap {
     heartbeat: HeartbeatPayload;
+    'book-purge': BookPurgePayload;
 }
 
 export type JobName = keyof JobPayloadMap;
@@ -64,6 +74,14 @@ export const JOB_DEFAULTS: Record<JobName, JobDefaults> = {
         attempts: 1,
         backoff: { type: 'fixed', delay: 0 },
         removeOnComplete: 50,
+        removeOnFail: 100,
+    },
+    'book-purge': {
+        // A failed run is retried twice; a book that fails every time is
+        // logged and due again the next day (the purge is idempotent).
+        attempts: 3,
+        backoff: { type: 'exponential', delay: 60_000 },
+        removeOnComplete: 30,
         removeOnFail: 100,
     },
 };

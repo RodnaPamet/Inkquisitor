@@ -11,6 +11,8 @@ export const APP_ROUTES = {
     /** One bible element of a book. */
     bibleElement: (workspaceSlug: string, bookId: string, elementId: string) =>
         `/w/${encodeURIComponent(workspaceSlug)}/books/${encodeURIComponent(bookId)}/elements/${encodeURIComponent(elementId)}`,
+    /** The workspace's books deleted in the last 30 days (Phase 1.H; the OWNER's). */
+    deletedBooks: (workspaceSlug: string) => `/w/${encodeURIComponent(workspaceSlug)}/deleted-books`,
     settings: (workspaceSlug: string) => `/w/${encodeURIComponent(workspaceSlug)}/settings`,
 } as const;
 

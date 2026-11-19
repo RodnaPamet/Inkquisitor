@@ -17,6 +17,7 @@ import { runInWorkspaceContext } from '@/lib/db/rls-middleware';
 import { createElement, deleteElement, getElement, updateElement, updateElementFields } from '@/app-layer/usecases/bible-elements';
 import { getVersion, listVersions, restoreVersion } from '@/app-layer/usecases/bible-versions';
 import { createBook, deleteBook } from '@/app-layer/usecases/books';
+import { purgeDeletedBooks } from '@/app-layer/usecases/book-purge';
 import { ValidationError } from '@/lib/errors/types';
 import { addMember, createAccount, createBareUser, workspaceCtx } from '../helpers/workspaces';
 
@@ -134,6 +135,8 @@ describe('restore', () => {
         const result = await restoreVersion(ctx, bookId, el.id, 1);
         expect(result.version.versionNumber).toBe(4);
         expect(result.version.restoredFromVersion).toBe(1);
+        // No product English in author data (#20): the UI words the restore from restoredFromVersion.
+        expect(result.version.changeSummary).toBeNull();
         expect(result.skippedFieldKeys).toEqual([]);
 
         const v1 = await getVersion(ctx, bookId, el.id, 1);
@@ -201,13 +204,18 @@ describe('append-only in the database', () => {
         expect(await versionCount(el.id)).toBe(1);
     });
 
-    it("an element's deletion keeps its history; its book's deletion (by app_user) takes the history with it", async () => {
+    it("an element's deletion keeps its history; its book's deletion keeps it too, and the purge (as app_user) takes it", async () => {
         const book = await createBook(ctx, { title: 'Doomed' });
         const el = await createElement(ctx, book.id, { kind: 'THEME', name: 'Loss' });
         await updateElement(ctx, book.id, el.id, { summary: 'grief' });
         await deleteElement(ctx, book.id, el.id);
         expect(await versionCount(el.id)).toBe(2);
+        // Deleting a book is soft (1.H): its history stays until the purge.
         await deleteBook(ctx, book.id);
+        expect(await versionCount(el.id)).toBe(2);
+        // 31 days on (the row's deletion back-dated as the superuser; the database refuses an earlier purge).
+        await prisma.book.update({ where: { id: book.id }, data: { deletedAt: new Date(Date.now() - 31 * 24 * 60 * 60 * 1000) } });
+        await purgeDeletedBooks();
         expect(await versionCount(el.id)).toBe(0);
         expect(await prisma.book.findUnique({ where: { id: book.id } })).toBeNull();
     });

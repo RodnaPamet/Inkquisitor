@@ -10,9 +10,15 @@
  * Every change writes an audit row in the same transaction, carrying ids and
  * counts only.
  *
- * Deleting a book deletes everything in it: its elements, fields, relations
- * and their whole version history (the append-only trigger admits a version's
- * deletion only once its book is gone).
+ * DELETING A BOOK IS SOFT (Phase 1.H), and the workspace's OWNER's alone
+ * (`books.delete`): `deleteBook` sets `deletedAt`, which hides the book from
+ * every list and makes every route under it a 404 (`requireBook` reads live
+ * books only). For `BOOK_RESTORE_DAYS` (30) the OWNER may list it
+ * (`listDeletedBooks`) and bring it back (`restoreBook`), whole; after that
+ * the daily `book-purge` job (`book-purge.ts`) deletes it and everything in
+ * it — elements, fields, relations, the version history (the append-only
+ * trigger admits a version's deletion only once its book is gone) and its
+ * vectors.
  */
 import type { WorkspaceRequestContext } from '@/app-layer/types';
 import { logEvent } from '@/app-layer/events/audit';
@@ -27,6 +33,7 @@ import {
 } from '@/app-layer/schemas/bible';
 import { runInWorkspaceContext } from '@/lib/db/rls-middleware';
 import { NotFoundError } from '@/lib/errors/types';
+import { restorableUntil, restoreCutoff } from '@/lib/bible/book-retention';
 import { optionalBlock, optionalLine, requireBook, requiredLine } from './bible-common';
 
 export interface BookView {
@@ -69,10 +76,19 @@ export function bookWrite(input: BookUpdateInput): BookWrite {
     };
 }
 
-export async function listBooks(ctx: WorkspaceRequestContext): Promise<BookView[]> {
+/** Books listed at most; the list reads one more, so a cut list says so (`truncated`). */
+export const BOOK_LIST_MAX = 200;
+
+export interface BookListView {
+    books: BookView[];
+    /** True when the workspace holds more live books than the list shows (the most recently updated `BOOK_LIST_MAX`). */
+    truncated: boolean;
+}
+
+export async function listBooks(ctx: WorkspaceRequestContext): Promise<BookListView> {
     await assertPermission(ctx, 'bible.view');
-    const rows = await runInWorkspaceContext(ctx, (db) => BookRepository.list(db, ctx.workspaceId));
-    return rows.map(toView);
+    const rows = await runInWorkspaceContext(ctx, (db) => BookRepository.list(db, ctx.workspaceId, BOOK_LIST_MAX + 1));
+    return { books: rows.slice(0, BOOK_LIST_MAX).map(toView), truncated: rows.length > BOOK_LIST_MAX };
 }
 
 export async function getBook(ctx: WorkspaceRequestContext, bookId: string): Promise<BookView> {
@@ -106,13 +122,57 @@ export async function updateBook(ctx: WorkspaceRequestContext, bookId: string, i
     });
 }
 
-export async function deleteBook(ctx: WorkspaceRequestContext, bookId: string): Promise<{ id: string }> {
-    await assertPermission(ctx, 'bible.edit');
+export interface DeletedBookView {
+    id: string;
+    title: string;
+    deletedAt: string;
+    /** After this the book can no longer be restored; the next daily purge deletes it. */
+    restorableUntil: string;
+}
+
+/** Delete a book: hidden at once, restorable by the OWNER for 30 days, then purged (`books.delete`). */
+export async function deleteBook(ctx: WorkspaceRequestContext, bookId: string): Promise<DeletedBookView> {
+    await assertPermission(ctx, 'books.delete');
     return runInWorkspaceContext(ctx, async (db) => {
-        await requireBook(db, ctx, bookId);
+        const book = await requireBook(db, ctx, bookId);
         const contents = await BookRepository.contents(db, ctx.workspaceId, bookId);
-        if ((await BookRepository.remove(db, ctx.workspaceId, bookId)) === 0) throw new NotFoundError('Book not found.');
-        await logEvent(ctx, { action: 'BOOK_DELETED', entityType: 'Book', entityId: bookId, details: contents }, { db });
-        return { id: bookId };
+        const at = new Date();
+        if ((await BookRepository.softDelete(db, ctx.workspaceId, bookId, at)) === 0) throw new NotFoundError('Book not found.');
+        const until = restorableUntil(at);
+        await logEvent(
+            ctx,
+            { action: 'BOOK_DELETED', entityType: 'Book', entityId: bookId, details: { ...contents, restorableUntil: until.toISOString() } },
+            { db },
+        );
+        return { id: bookId, title: book.title, deletedAt: at.toISOString(), restorableUntil: until.toISOString() };
+    });
+}
+
+/** Deleted books listed at most (newest deletion first); the list reads one more and says when it is cut. */
+export const DELETED_BOOK_LIST_MAX = 100;
+
+/** The workspace's books deleted in the last 30 days, still restorable (`books.delete`). */
+export async function listDeletedBooks(ctx: WorkspaceRequestContext): Promise<{ books: DeletedBookView[]; truncated: boolean }> {
+    await assertPermission(ctx, 'books.delete');
+    const rows = await runInWorkspaceContext(ctx, (db) => BookRepository.listDeleted(db, ctx.workspaceId, restoreCutoff(new Date()), DELETED_BOOK_LIST_MAX + 1));
+    return {
+        books: rows.slice(0, DELETED_BOOK_LIST_MAX).map((b) => ({
+            id: b.id,
+            title: b.title,
+            deletedAt: b.deletedAt!.toISOString(),
+            restorableUntil: restorableUntil(b.deletedAt!).toISOString(),
+        })),
+        truncated: rows.length > DELETED_BOOK_LIST_MAX,
+    };
+}
+
+/** Bring back a book deleted in the last 30 days, whole (`books.delete`). Past the window, or never deleted, it is a 404. */
+export async function restoreBook(ctx: WorkspaceRequestContext, bookId: string): Promise<BookView> {
+    await assertPermission(ctx, 'books.delete');
+    return runInWorkspaceContext(ctx, async (db) => {
+        if ((await BookRepository.restore(db, ctx.workspaceId, bookId, restoreCutoff(new Date()))) === 0) throw new NotFoundError('Book not found.');
+        const contents = await BookRepository.contents(db, ctx.workspaceId, bookId);
+        await logEvent(ctx, { action: 'BOOK_RESTORED', entityType: 'Book', entityId: bookId, details: contents }, { db });
+        return toView(await requireBook(db, ctx, bookId));
     });
 }

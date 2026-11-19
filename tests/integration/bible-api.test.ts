@@ -127,7 +127,7 @@ it('an OWNER walks the whole bible through the routes, and the audit trail holds
     }
     expect(JSON.stringify(rows)).not.toContain(MARK);
     const deleted = rows.find((r) => r.action === 'BOOK_DELETED')?.detailsJson;
-    expect(deleted).toEqual({ elements: 1, relations: 0, versions: 5 });
+    expect(deleted).toEqual({ elements: 1, relations: 0, versions: 5, restorableUntil: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/) });
 });
 
 it('an EDITOR writes the bible', async () => {

@@ -115,6 +115,7 @@ export async function addRelation(ctx: WorkspaceRequestContext, bookId: string, 
 export async function removeRelation(ctx: WorkspaceRequestContext, bookId: string, relationId: string): Promise<{ id: string }> {
     await assertPermission(ctx, 'bible.edit');
     return runInWorkspaceContext(ctx, async (db) => {
+        await requireBook(db, ctx, bookId);
         const relation = await BibleRelationRepository.find(db, ctx.workspaceId, bookId, relationId);
         if (!relation) throw new NotFoundError('Relation not found.');
         await BibleRelationRepository.remove(db, ctx.workspaceId, bookId, relationId);

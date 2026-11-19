@@ -140,6 +140,7 @@ const MAX_COMMENT = 0xffff;
 const MAX_NAME_LENGTH = 255;
 
 const FLAG_ENCRYPTED = 0x0001;
+const FLAG_DATA_DESCRIPTOR = 0x0008;
 const FLAG_STRONG_ENCRYPTION = 0x0040;
 const FLAG_UTF8 = 0x0800;
 
@@ -243,6 +244,22 @@ export function readZip(bytes: Uint8Array, limits: ZipLimits): Map<string, Uint8
         const extraLength = buf.readUInt16LE(local + 28);
         const localName = buf.subarray(local + LOCAL_SIZE, local + LOCAL_SIZE + nameLength);
         if (!localName.equals(e.rawName)) throw new ZipRefusal('ENTRY_CORRUPT', e.name);
+        // The local header must say what the central directory says. A virus
+        // scanner reads an archive front to back, through these headers; this
+        // reader trusts the directory. Were they allowed to differ, the two
+        // could read different content (Phase 1.H). The method always; the
+        // CRC and sizes unless the entry defers them to a data descriptor
+        // (flag bit 3), where the local header leaves them zero.
+        const localFlags = buf.readUInt16LE(local + 6);
+        if (buf.readUInt16LE(local + 8) !== e.method || (localFlags & FLAG_DATA_DESCRIPTOR) !== (e.flags & FLAG_DATA_DESCRIPTOR)) {
+            throw new ZipRefusal('ENTRY_CORRUPT', e.name);
+        }
+        if (
+            !(localFlags & FLAG_DATA_DESCRIPTOR) &&
+            (buf.readUInt32LE(local + 14) !== e.crc || buf.readUInt32LE(local + 18) !== e.compressedSize || buf.readUInt32LE(local + 22) !== e.size)
+        ) {
+            throw new ZipRefusal('ENTRY_CORRUPT', e.name);
+        }
         const start = local + LOCAL_SIZE + nameLength + extraLength;
         const end = start + e.compressedSize;
         if (end > directoryOffset) throw new ZipRefusal('ENTRY_CORRUPT', e.name);

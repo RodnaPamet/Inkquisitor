@@ -105,7 +105,14 @@ export function InitialsAvatar({
     return (
         <span
             aria-hidden="true"
+            // The glyphs are painted from this attribute (`::before`), not
+            // written as text (Phase 1.H): a control named "Account menu for
+            // Ada Lovelace" whose subtree held the TEXT "AL" failed axe's
+            // label-in-name check (WCAG 2.5.3), the decorative initials read as
+            // a visible label the name does not contain.
+            data-initials={getInitials(value, mode)}
             className={cn(
+                "before:content-[attr(data-initials)]",
                 // The initials are TEXT on the brand tint, so they take
                 // `--content-emphasis`, not a brand FILL token.
                 // `--brand-emphasis` was 4.25:1 against the tint
@@ -122,9 +129,9 @@ export function InitialsAvatar({
                 className,
             )}
         >
-            {/* Initials are the always-present fallback layer — the
-                image (when it resolves) is painted on top. */}
-            {getInitials(value, mode)}
+            {/* Initials are the always-present fallback layer (the
+                `::before` above) — the image (when it resolves) is
+                painted on top. */}
             {resolvedUrl && (
                 // Plain <img>, not next/image — these avatars are
                 // 20–32px chrome; the optimizer round-trip costs more

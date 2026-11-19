@@ -34,7 +34,7 @@ import {
     type ConceptNoteReport,
     type ImportProblem,
 } from '@/lib/bible/api-client';
-import { BUNDLE_UPLOAD_MAX_BYTES, CONCEPT_NOTE_MAX } from '@/lib/bible/transfer-limits';
+import { BUNDLE_UPLOAD_MAX_BYTES, CONCEPT_NOTE_FILE_MAX_BYTES, CONCEPT_NOTE_MAX } from '@/lib/bible/transfer-limits';
 import { useImportReasonMessage } from './import-messages';
 
 export interface ImportModalProps {
@@ -91,6 +91,11 @@ export function ImportModal({ open, setOpen, workspaceSlug, bookId }: ImportModa
     async function pickNoteFile(e: ChangeEvent<HTMLInputElement>) {
         const picked = e.target.files?.[0];
         if (!picked) return;
+        // The size first: a huge file is refused before it is read into memory.
+        if (picked.size > CONCEPT_NOTE_FILE_MAX_BYTES) {
+            setFormError(t('noteFileTooLarge'));
+            return;
+        }
         const text = await picked.text();
         if (text.length > CONCEPT_NOTE_MAX * 4) {
             setFormError(t('noteFileTooLarge'));

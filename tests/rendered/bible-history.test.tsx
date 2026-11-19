@@ -99,8 +99,9 @@ it('restore calls the restore API, then shows the restored values and the new ve
             return { status: 201, json: { restore: { version: versionMeta(4, { restoredFromVersion: 1 }), restoredFromVersion: 1, skippedFieldKeys: [], slugKept: false } } };
         },
         [`GET ${EL}`]: { json: { element: restoredElement } },
-        [`GET ${EL}/versions?take=50`]: () => ({ json: { versions: restored ? [versionMeta(4, { restoredFromVersion: 1, changeSummary: 'Restored version 1' }), ...VERSIONS] : VERSIONS } }),
+        [`GET ${EL}/versions?take=50`]: () => ({ json: { versions: restored ? [versionMeta(4, { restoredFromVersion: 1, changeSummary: null }), ...VERSIONS] : VERSIONS } }),
         [`GET ${EL}/versions/4`]: { json: { version: { ...versionView(4, { role: 'Protagonist' }), restoredFromVersion: 1 } } },
+        [`PUT ${EL}/fields`]: { json: { element: { ...elementView({ versionNumber: 5, values: { role: 'Pilot' } }), changedKeys: ['role'] } } },
     });
     render(
         <>
@@ -129,6 +130,12 @@ it('restore calls the restore API, then shows the restored values and the new ve
     // Back on the Fields tab, the restored value is what the editor holds.
     fireEvent.click(screen.getByRole('tab', { name: 'Fields' }));
     expect(screen.getByTestId('field-input-role')).toHaveValue('Protagonist');
+
+    // The restore named the page's base, and the next save is based on the restore (1.H).
+    expect(requests.find((r) => r.url === `${EL}/versions/1/restore`)?.body).toEqual({ baseVersion: 3 });
+    fireEvent.change(screen.getByTestId('field-input-role'), { target: { value: 'Pilot' } });
+    await waitFor(() => expect(requests.some((r) => r.method === 'PUT')).toBe(true), { timeout: 3_000 });
+    expect(requests.find((r) => r.method === 'PUT')?.body).toEqual({ fields: [{ key: 'role', value: 'Pilot' }], baseVersion: 4 });
 });
 
 it('a version that failed to load is fetched again when picked, and only its own comparison says it failed', async () => {

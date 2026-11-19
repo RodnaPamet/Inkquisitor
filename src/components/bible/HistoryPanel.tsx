@@ -162,7 +162,8 @@ export function HistoryPanel({ workspaceSlug, bookId, elementId, fieldDefs, vers
                                 </p>
                                 <p className="text-xs text-content-muted">
                                     {formatDateTime(v.createdAt)}
-                                    {v.restoredFromVersion !== null ? ` · ${t('restoredFrom', { number: v.restoredFromVersion })}` : v.changeSummary ? ` · ${v.changeSummary}` : ''}
+                                    {v.restoredFromVersion !== null ? ` · ${t('restoredFrom', { number: v.restoredFromVersion })}` : ''}
+                                    {v.changeSummary ? ` · ${v.changeSummary}` : ''}
                                 </p>
                             </div>
                             {canEdit && v.versionNumber !== latest ? (

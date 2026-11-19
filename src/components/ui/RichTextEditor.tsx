@@ -24,6 +24,23 @@
  * textarea verbatim — round-trip-safe for the storage layer because
  * the contentType prop changes at the same time).
  *
+ * Phase 1.H (#19) hardened the lifted editor:
+ *
+ *   - `onChange` reports EDITS only. A mode switch is reported through
+ *     `onModeChange(mode, value)` with the payload in the new mode, and is
+ *     never an edit: the switch to markdown used to emit the plain text
+ *     (formatting gone) through `onChange`, so a consumer that saved on
+ *     change lost every format on a click.
+ *   - `disabled` disables every toolbar button, not only the mode toggle,
+ *     and turns editing off in an editor already mounted.
+ *   - The mode labels and the markdown textarea's label come from next-intl.
+ *   - The content area takes its colours from the tokens, which hold WCAG
+ *     AA in both themes; the inverted-prose class it carried named a
+ *     typography plugin this product does not ship.
+ *   - A new `value` is applied whenever it differs from what the editor last
+ *     reported, so a parent may reset the editor in the same tick as an edit
+ *     (the old microtask gate dropped such a reset).
+ *
  * Bundle posture: callers SHOULD lazy-load this component via
  * `next/dynamic({ ssr: false })` so the Tiptap + ProseMirror chunks
  * (~200KB gzipped) don't land in every policy detail page render —
@@ -61,12 +78,17 @@ export interface RichTextEditorProps {
     /** Markdown text vs HTML markup. Drives the rendered editor mode. */
     contentType: RichTextContentType;
     /**
-     * Called on every edit AND on mode toggle. The second argument
-     * tells the consumer which content type the value is in — so a
-     * user toggling from markdown → wysiwyg sends `(htmlValue,
-     * 'HTML')` even before any character is typed.
+     * Called on every EDIT, with the content type the value is in. A mode
+     * switch is not an edit and never calls it (`onModeChange`).
      */
     onChange: (value: string, contentType: RichTextContentType) => void;
+    /**
+     * Called when the author switches mode, with the payload as it reads in
+     * the new mode: the plain text on the way to markdown (formatting gone),
+     * the text as escaped paragraphs on the way to WYSIWYG. A consumer that
+     * keeps `value` in sync should take it; nothing here was typed.
+     */
+    onModeChange?: (contentType: RichTextContentType, value: string) => void;
     /** Placeholder shown in the empty editor body. */
     placeholder?: string;
     /** Disable editing entirely (still renders the current value). */
@@ -123,6 +145,7 @@ export function RichTextEditor({
     value,
     contentType,
     onChange,
+    onModeChange,
     placeholder: placeholderProp,
     disabled = false,
     minHeightPx = 300,
@@ -133,9 +156,10 @@ export function RichTextEditor({
     const t = useTranslations('richtext');
     const placeholder = placeholderProp ?? t('placeholder');
     const [mode, setMode] = useState<RichTextContentType>(contentType);
-    // Track whether onChange originated from the editor (avoids the
-    // round-trip render → onUpdate → setEditorContent loop).
-    const fromEditorRef = useRef(false);
+    // The HTML the editor last reported: a `value` equal to it is the echo of
+    // our own edit and is not set back (which would move the caret); any other
+    // value — a parent's reset, even in the same tick — is applied.
+    const lastEmittedRef = useRef<string | null>(null);
 
     // ── Tiptap instance ────────────────────────────────────────────
     const editor = useEditor({
@@ -146,7 +170,7 @@ export function RichTextEditor({
         editorProps: {
             attributes: {
                 class:
-                    'prose prose-sm prose-invert max-w-none p-4 focus:outline-none',
+                    'max-w-none p-4 text-sm leading-relaxed text-content-default focus:outline-none [&_a]:text-[var(--brand-default)] [&_a]:underline [&_blockquote]:border-l-2 [&_blockquote]:border-border-default [&_blockquote]:pl-3 [&_blockquote]:text-content-muted [&_h1]:text-xl [&_h1]:font-semibold [&_h1]:text-content-emphasis [&_h2]:text-lg [&_h2]:font-semibold [&_h2]:text-content-emphasis [&_ol]:list-decimal [&_ol]:pl-5 [&_ul]:list-disc [&_ul]:pl-5 [&_p]:my-1',
                 'data-testid': 'rich-text-editor-content',
                 role: 'textbox',
                 'aria-multiline': 'true',
@@ -154,27 +178,28 @@ export function RichTextEditor({
             },
         },
         onUpdate: ({ editor: ed }) => {
-            fromEditorRef.current = true;
-            onChange(ed.getHTML(), 'HTML');
-            // micro-task gate: clear after the same tick so the
-            // useEffect below doesn't reset content.
-            queueMicrotask(() => {
-                fromEditorRef.current = false;
-            });
+            const html = ed.getHTML();
+            lastEmittedRef.current = html;
+            onChange(html, 'HTML');
         },
     });
 
-    // Re-sync external `value` changes when in HTML mode (e.g. parent
-    // resets the value after a successful save).
+    // Re-sync an external `value` in HTML mode (a parent's reset). Our own
+    // edit's echo is skipped by value, not by a timing gate.
     useEffect(() => {
         if (!editor) return;
-        if (fromEditorRef.current) return;
         if (mode !== 'HTML') return;
-        const current = editor.getHTML();
-        if (current !== value) {
+        if (value === lastEmittedRef.current) return;
+        if (editor.getHTML() !== value) {
             editor.commands.setContent(value || '', { emitUpdate: false });
         }
     }, [editor, value, mode]);
+
+    // `disabled` reaches an editor already mounted (useEditor reads it once).
+    useEffect(() => {
+        if (!editor) return;
+        editor.setEditable(!disabled && mode === 'HTML', false);
+    }, [editor, disabled, mode]);
 
     // External `contentType` change — drive the mode (rare but
     // supported, e.g. parent flips mode programmatically).
@@ -190,8 +215,10 @@ export function RichTextEditor({
     //   HTML → markdown: extract plain text via editor.getText()
     //     (loses formatting; explicit, expected, and recoverable
     //     because saving doesn't lose the text).
+    // A switch is reported through `onModeChange`, never `onChange`, and
+    // changes editability without emitting an update.
     const toggleMode = useCallback(() => {
-        if (!editor) return;
+        if (!editor || disabled) return;
         const next: RichTextContentType = mode === 'MARKDOWN' ? 'HTML' : 'MARKDOWN';
         if (next === 'HTML') {
             // Markdown text → set as a single paragraph block so the
@@ -203,16 +230,17 @@ export function RichTextEditor({
                       .join('')
                 : '';
             editor.commands.setContent(seeded, { emitUpdate: false });
-            editor.setEditable(true);
+            lastEmittedRef.current = editor.getHTML();
+            editor.setEditable(true, false);
             setMode('HTML');
-            onChange(seeded, 'HTML');
+            onModeChange?.('HTML', seeded);
         } else {
             const plain = editor.getText();
-            editor.setEditable(false);
+            editor.setEditable(false, false);
             setMode('MARKDOWN');
-            onChange(plain, 'MARKDOWN');
+            onModeChange?.('MARKDOWN', plain);
         }
-    }, [editor, mode, value, onChange]);
+    }, [editor, disabled, mode, value, onModeChange]);
 
     // ── Render ─────────────────────────────────────────────────────
     return (
@@ -236,14 +264,9 @@ export function RichTextEditor({
                     style={{ minHeight: `${minHeightPx}px` }}
                     value={value}
                     disabled={disabled}
-                    onChange={(e) => {
-                        fromEditorRef.current = true;
-                        onChange(e.target.value, 'MARKDOWN');
-                        queueMicrotask(() => {
-                            fromEditorRef.current = false;
-                        });
-                    }}
+                    onChange={(e) => onChange(e.target.value, 'MARKDOWN')}
                     placeholder={placeholder}
+                    aria-label={t('markdownAria')}
                     data-testid="rich-text-editor-textarea"
                 />
             ) : (
@@ -285,11 +308,11 @@ function Toolbar({
             >
                 {mode === 'MARKDOWN' ? (
                     <>
-                        <Eye size={11} /> WYSIWYG
+                        <Eye size={11} aria-hidden="true" /> {t('modeWysiwyg')}
                     </>
                 ) : (
                     <>
-                        <Pencil size={11} /> Markdown
+                        <Pencil size={11} aria-hidden="true" /> {t('modeMarkdown')}
                     </>
                 )}
             </button>
@@ -297,6 +320,7 @@ function Toolbar({
                 <>
                     <Divider />
                     <FormatButton
+                        disabled={disabled}
                         editor={editor}
                         action={() => editor.chain().focus().toggleBold().run()}
                         active={editor.isActive('bold')}
@@ -304,6 +328,7 @@ function Toolbar({
                         label={t('bold')}
                     />
                     <FormatButton
+                        disabled={disabled}
                         editor={editor}
                         action={() => editor.chain().focus().toggleItalic().run()}
                         active={editor.isActive('italic')}
@@ -311,6 +336,7 @@ function Toolbar({
                         label={t('italic')}
                     />
                     <FormatButton
+                        disabled={disabled}
                         editor={editor}
                         action={() => editor.chain().focus().toggleStrike().run()}
                         active={editor.isActive('strike')}
@@ -319,6 +345,7 @@ function Toolbar({
                     />
                     <Divider />
                     <FormatButton
+                        disabled={disabled}
                         editor={editor}
                         action={() =>
                             editor.chain().focus().toggleHeading({ level: 1 }).run()
@@ -328,6 +355,7 @@ function Toolbar({
                         label={t('heading1')}
                     />
                     <FormatButton
+                        disabled={disabled}
                         editor={editor}
                         action={() =>
                             editor.chain().focus().toggleHeading({ level: 2 }).run()
@@ -338,6 +366,7 @@ function Toolbar({
                     />
                     <Divider />
                     <FormatButton
+                        disabled={disabled}
                         editor={editor}
                         action={() =>
                             editor.chain().focus().toggleBulletList().run()
@@ -347,6 +376,7 @@ function Toolbar({
                         label={t('bulletList')}
                     />
                     <FormatButton
+                        disabled={disabled}
                         editor={editor}
                         action={() =>
                             editor.chain().focus().toggleOrderedList().run()
@@ -356,6 +386,7 @@ function Toolbar({
                         label={t('numberedList')}
                     />
                     <FormatButton
+                        disabled={disabled}
                         editor={editor}
                         action={() =>
                             editor.chain().focus().toggleBlockquote().run()
@@ -365,6 +396,7 @@ function Toolbar({
                         label={t('quote')}
                     />
                     <FormatButton
+                        disabled={disabled}
                         editor={editor}
                         action={() => editor.chain().focus().toggleCode().run()}
                         active={editor.isActive('code')}
@@ -373,6 +405,7 @@ function Toolbar({
                     />
                     <Divider />
                     <FormatButton
+                        disabled={disabled}
                         editor={editor}
                         action={() => editor.chain().focus().setHorizontalRule().run()}
                         active={false}
@@ -382,6 +415,7 @@ function Toolbar({
                     <Divider />
                     <button
                         type="button"
+                        disabled={disabled}
                         onClick={() => {
                             const url = window.prompt(t('linkUrlPrompt'));
                             if (!url) return;
@@ -392,7 +426,7 @@ function Toolbar({
                                 .setLink({ href: url })
                                 .run();
                         }}
-                        className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-content-muted hover:bg-bg-muted hover:text-content-emphasis"
+                        className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-content-muted hover:bg-bg-muted hover:text-content-emphasis disabled:pointer-events-none disabled:opacity-50"
                         aria-label={t('insertLink')}
                         data-testid="rich-text-editor-link"
                     >
@@ -413,18 +447,21 @@ function FormatButton({
     active,
     icon,
     label,
+    disabled,
 }: {
     editor: Editor;
     action: () => void;
     active: boolean;
     icon: React.ReactNode;
     label: string;
+    disabled: boolean;
 }) {
     return (
         <button
             type="button"
             onClick={action}
-            className={`inline-flex h-6 w-6 items-center justify-center rounded-md transition-colors ${
+            disabled={disabled}
+            className={`inline-flex h-6 w-6 items-center justify-center rounded-md transition-colors disabled:pointer-events-none disabled:opacity-50 ${
                 active
                     ? 'bg-bg-muted text-content-emphasis'
                     : 'text-content-muted hover:bg-bg-muted hover:text-content-emphasis'

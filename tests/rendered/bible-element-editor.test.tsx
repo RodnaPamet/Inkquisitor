@@ -67,7 +67,7 @@ it('saves an edit once, after the debounce, with the field key and the latest va
     expect(requests).toHaveLength(0);
 
     await elapse(1);
-    expect(requests).toEqual([{ method: 'PUT', url: FIELDS_URL, body: { fields: [{ key: 'role', value: 'Ferrywoman' }] } }]);
+    expect(requests).toEqual([{ method: 'PUT', url: FIELDS_URL, body: { fields: [{ key: 'role', value: 'Ferrywoman' }], baseVersion: 3 } }]);
     expect(status()).toHaveAttribute('data-state', 'saved');
     expect(status()).toHaveTextContent('All changes saved');
 });
@@ -77,7 +77,7 @@ it('clearing a field sends null, which the API reads as "clear"', async () => {
     render(<ElementPage {...pageProps({ element: elementView({ values: { role: 'Ferrywoman' } }) })} />);
     fireEvent.change(roleInput(), { target: { value: '' } });
     await elapse(AUTOSAVE_DEBOUNCE_MS);
-    expect(requests[0]?.body).toEqual({ fields: [{ key: 'role', value: null }] });
+    expect(requests[0]?.body).toEqual({ fields: [{ key: 'role', value: null }], baseVersion: 3 });
 });
 
 it('a failed save keeps the edit, says it was not saved, and Retry sends it again', async () => {
@@ -130,7 +130,7 @@ it('a change to the name goes through PATCH on the element, never the fields API
     mount();
     fireEvent.change(screen.getByLabelText(/^Name/), { target: { value: 'Mara Vell' } });
     await elapse(AUTOSAVE_DEBOUNCE_MS);
-    expect(requests).toEqual([{ method: 'PATCH', url: `${API}/elements/el_1`, body: { name: 'Mara Vell' } }]);
+    expect(requests).toEqual([{ method: 'PATCH', url: `${API}/elements/el_1`, body: { name: 'Mara Vell', baseVersion: 3 } }]);
 });
 
 it('an emptied name is not sent: the field says it needs one', async () => {
@@ -161,7 +161,7 @@ it('a custom entry\'s label: the header follows what is typed, and an emptied la
     fireEvent.change(label, { target: { value: 'Prophecy' } });
     expect(screen.getByText('Custom element · Prophecy')).toBeInTheDocument();
     await elapse(AUTOSAVE_DEBOUNCE_MS);
-    expect(requests).toEqual([{ method: 'PATCH', url: `${API}/elements/el_1`, body: { customLabel: 'Prophecy' } }]);
+    expect(requests).toEqual([{ method: 'PATCH', url: `${API}/elements/el_1`, body: { customLabel: 'Prophecy', baseVersion: 3 } }]);
 
     fireEvent.change(label, { target: { value: 'P' } });
     fireEvent.change(label, { target: { value: ' ' } });
@@ -177,7 +177,7 @@ it('leaving the page mid-debounce saves the edit, then has the page now shown re
     // A client-side navigation renders the next page, then unmounts this one.
     view.unmount();
     await elapse(0);
-    expect(requests).toEqual([{ method: 'PUT', url: FIELDS_URL, body: { fields: [{ key: 'role', value: 'Ferrywoman' }] } }]);
+    expect(requests).toEqual([{ method: 'PUT', url: FIELDS_URL, body: { fields: [{ key: 'role', value: 'Ferrywoman' }], baseVersion: 3 } }]);
     expect(refresh).toHaveBeenCalledTimes(1);
 });
 
@@ -206,7 +206,7 @@ it('rich text written in the editor\'s markdown mode is saved as escaped HTML pa
     fireEvent.change(within(wound).getByTestId('rich-text-editor-textarea'), { target: { value: 'Lost the <boat>\n\nAnd the map' } });
     await elapse(AUTOSAVE_DEBOUNCE_MS);
     const last = requests[requests.length - 1];
-    expect(last.body).toEqual({ fields: [{ key: 'wound', value: '<p>Lost the &lt;boat&gt;</p><p>And the map</p>' }] });
+    expect(last.body).toEqual({ fields: [{ key: 'wound', value: '<p>Lost the &lt;boat&gt;</p><p>And the map</p>' }], baseVersion: 3 });
 });
 
 it('switching the rich-text editor between its modes saves nothing, and coming back keeps the formatting', async () => {
@@ -233,7 +233,7 @@ it('a choice field saves the option value, and its clear button sends null', asy
     expect(field).toHaveTextContent('Major presence');
     fireEvent.click(within(field).getByRole('button', { name: 'Clear Prominence' }));
     await elapse(AUTOSAVE_DEBOUNCE_MS);
-    expect(requests[0].body).toEqual({ fields: [{ key: 'prominence', value: null }] });
+    expect(requests[0].body).toEqual({ fields: [{ key: 'prominence', value: null }], baseVersion: 3 });
 });
 
 it('a scale field saves the number picked', async () => {
@@ -242,7 +242,7 @@ it('a scale field saves the number picked', async () => {
     const field = document.querySelector('[data-field-key="agency"]') as HTMLElement;
     fireEvent.click(within(field).getByRole('radio', { name: '4' }));
     await elapse(AUTOSAVE_DEBOUNCE_MS);
-    expect(requests[0].body).toEqual({ fields: [{ key: 'agency', value: 4 }] });
+    expect(requests[0].body).toEqual({ fields: [{ key: 'agency', value: 4 }], baseVersion: 3 });
 });
 
 it('a list field sends its items, leaving blank rows out', async () => {
@@ -253,7 +253,7 @@ it('a list field sends its items, leaving blank rows out', async () => {
     fireEvent.change(within(field).getByLabelText('Defining traits, item 2'), { target: { value: 'kind' } });
     fireEvent.click(within(field).getByRole('button', { name: 'Add item' }));
     await elapse(AUTOSAVE_DEBOUNCE_MS);
-    expect(requests[requests.length - 1].body).toEqual({ fields: [{ key: 'defining_traits', value: ['stubborn', 'kind'] }] });
+    expect(requests[requests.length - 1].body).toEqual({ fields: [{ key: 'defining_traits', value: ['stubborn', 'kind'] }], baseVersion: 3 });
 });
 
 it('Enrich is disabled, and says why: enrichment arrives with interviews', async () => {

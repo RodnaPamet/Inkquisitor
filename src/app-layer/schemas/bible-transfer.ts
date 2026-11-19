@@ -46,10 +46,19 @@ export const BUNDLE_MAX_RELATIONS = 20_000;
 export const BUNDLE_ZIP_LIMITS = {
     /** Every element, an index per kind, book.md, manifest.json, and room for directory entries. */
     maxEntries: BUNDLE_MAX_ELEMENTS + 2 * BIBLE_KINDS.length + 2,
-    /** One file, inflated: 8 MiB (an element with every rich-text field full is well under it). */
-    maxEntryBytes: 8 * 1024 * 1024,
-    /** Every file, inflated: 64 MiB. */
-    maxTotalBytes: 64 * 1024 * 1024,
+    /**
+     * One file, inflated: 2 MiB. Also the longest the import holds the event
+     * loop: it yields between files, and the densest YAML parses at about
+     * 1.5 µs a character, so ~3 s (Phase 1.H, #27; it was 8 MiB, ~12 s).
+     */
+    maxEntryBytes: 2 * 1024 * 1024,
+    /**
+     * Every file, inflated: 24 MiB, an average of 12 KiB for each of the
+     * 2,000 elements a bundle may carry (a full CHARACTER file of ordinary
+     * prose is 3–6 KiB). The densest YAML that fits costs ~35 s of CPU,
+     * spread file by file; it was 64 MiB, ~90 s (Phase 1.H, #27).
+     */
+    maxTotalBytes: 24 * 1024 * 1024,
     /** Inflated over compressed, for an entry past the exempt size. */
     maxRatio: 100,
 } as const;

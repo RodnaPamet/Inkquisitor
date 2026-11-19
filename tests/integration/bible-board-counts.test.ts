@@ -36,7 +36,7 @@ it('counts each element\'s filled template fields, and nothing else', async () =
     });
     const guild = await createElement(ctx, book.id, { kind: 'FACTION', name: 'Guild' });
 
-    const byId = async () => Object.fromEntries((await listElements(ctx, book.id)).map((e) => [e.id, e.filledFieldCount]));
+    const byId = async () => Object.fromEntries((await listElements(ctx, book.id)).elements.map((e) => [e.id, e.filledFieldCount]));
     expect(await byId()).toEqual({ [mara.id]: 3, [guild.id]: 0 });
 
     await updateElementFields(ctx, book.id, mara.id, { fields: [{ key: 'want', value: null }] });
@@ -72,6 +72,6 @@ it('never counts another workspace\'s fields', async () => {
             INSERT INTO "BibleField" ("id", "workspaceId", "elementId", "key", "value", "order", "updatedAt")
             VALUES (${randomUUID()}, ${b.workspaceId}, ${el.id}, 'want', 'x', 6, now())`,
     ).rejects.toThrow();
-    expect((await listElements(ctxA, book.id)).map((e) => e.filledFieldCount)).toEqual([1]);
+    expect((await listElements(ctxA, book.id)).elements.map((e) => e.filledFieldCount)).toEqual([1]);
     await expect(listElements(workspaceCtx(b), book.id)).rejects.toThrow('Book not found.');
 });

@@ -170,17 +170,13 @@ function ClearButton({ label, onClear }: { label: string; onClear: () => void })
 /**
  * Labelled by its `FieldShell` group.
  *
- * The editor reports a switch between its two modes through `onChange` too,
- * with the text it switched to: the plain text on the way into markdown mode
- * (formatting gone) and that text re-seeded as paragraphs on the way back. A
- * switch is NOT an edit, so it saves nothing; coming back without having
- * typed in markdown mode puts the field's own HTML back, in a fresh editor
- * (the editor ignores a new value in the tick it reported a change), with
- * focus returned to its mode toggle. (The
- * switch is told apart by the mode it reports, against the mode this render
- * shows: the editor reports one switch more than once.) A report of the HTML
- * the field already holds is not an edit either — the editor sends one when
- * it turns editing off for markdown mode. Only a change saves.
+ * The editor reports EDITS through `onChange` and a switch between its two
+ * modes through `onModeChange` (Phase 1.H, #19: the primitive no longer
+ * reports a switch as an edit). A switch saves nothing: on the way to
+ * markdown mode the field shows the editor's plain text; coming back without
+ * having typed in markdown mode puts the field's own HTML back, in a fresh
+ * editor, with focus returned to its mode toggle. Only a change saves, and a
+ * report of the HTML the field already holds is not a change.
  */
 function RichTextField({ value, onChange, fieldKey }: { value: string; onChange: (v: string | null) => void; fieldKey: string }) {
     const [draft, setDraft] = useState<{ value: string; type: RichTextContentType }>({ value, type: 'HTML' });
@@ -199,17 +195,19 @@ function RichTextField({ value, onChange, fieldKey }: { value: string; onChange:
                 value={draft.value}
                 contentType={draft.type}
                 minHeightPx={140}
-                onChange={(next, type) => {
-                    if (type !== draft.type) {
-                        if (type === 'MARKDOWN') typedInMarkdown.current = false;
-                        if (type === 'HTML' && !typedInMarkdown.current) {
-                            if (draft.value !== html.current) setGeneration((g) => g + 1);
-                            setDraft({ value: html.current, type });
-                        } else {
-                            setDraft({ value: next, type });
-                        }
-                        return;
+                onModeChange={(type, converted) => {
+                    if (type === 'MARKDOWN') {
+                        typedInMarkdown.current = false;
+                        setDraft({ value: converted, type });
+                    } else if (!typedInMarkdown.current) {
+                        // Nothing typed in markdown: the field's own HTML, formatting and all.
+                        if (draft.value !== html.current) setGeneration((g) => g + 1);
+                        setDraft({ value: html.current, type });
+                    } else {
+                        setDraft({ value: converted, type });
                     }
+                }}
+                onChange={(next, type) => {
                     if (type === 'MARKDOWN') typedInMarkdown.current = true;
                     setDraft({ value: next, type });
                     const out = type === 'HTML' ? next : plainTextToHtml(next);
@@ -259,7 +257,7 @@ function ListField({ items, onChange, fieldKey, label }: { items: string[]; onCh
 function ReadOnlyValue({ def, value }: { def: FieldDef; value: FieldValue | null }) {
     const t = useTranslations('bible.fields');
     if (value === null || (Array.isArray(value) && value.length === 0)) {
-        return <p className="text-sm text-content-subtle">{t('empty')}</p>;
+        return <p className="text-sm text-content-muted">{t('empty')}</p>;
     }
     if (Array.isArray(value)) {
         return (

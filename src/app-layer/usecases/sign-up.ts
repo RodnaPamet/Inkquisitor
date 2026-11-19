@@ -34,6 +34,7 @@ import { normaliseEmail } from '@/lib/auth/credentials';
 import { checkPasswordAgainstHIBP, type BreachedPasswordCheckResult } from '@/lib/security/password-check';
 import { ConflictError, ForbiddenError, ValidationError } from '@/lib/errors/types';
 import { logger } from '@/lib/observability/logger';
+import { cleanLine } from '@/lib/text-utils';
 import { MembershipRepository } from '@/app-layer/repositories/membership.repository';
 import { UserRepository } from '@/app-layer/repositories/user.repository';
 import { WorkspaceRepository, createWorkspaceWithDek } from '@/app-layer/repositories/workspace.repository';
@@ -205,13 +206,14 @@ export interface SignUpDeps {
 }
 
 function defaultWorkspaceName(name: string | null, email: string): string {
-    const who = name?.trim() || email.split('@')[0] || 'My';
+    const who = name || cleanLine(email.split('@')[0] ?? '') || 'My';
     return `${who}'s workspace`.slice(0, 80);
 }
 
 export async function signUpWithPassword(input: SignUpInput, deps: SignUpDeps = {}): Promise<ProvisionedAccount> {
     const email = normaliseEmail(input.email);
-    const name = input.name?.trim() || null;
+    // Control characters out (#17): a NUL in either name was a 500.
+    const name = (input.name && cleanLine(input.name)) || null;
 
     const policy = validatePasswordPolicy(input.password);
     if (!policy.ok) {
@@ -241,7 +243,7 @@ export async function signUpWithPassword(input: SignUpInput, deps: SignUpDeps = 
         name,
         passwordHash,
         emailVerified: null,
-        workspaceName: input.workspaceName?.trim() || defaultWorkspaceName(name, email),
+        workspaceName: (input.workspaceName && cleanLine(input.workspaceName)) || defaultWorkspaceName(name, email),
         requestId: deps.requestId,
     });
 }
@@ -310,7 +312,7 @@ export async function resolveGoogleSignIn(identity: GoogleIdentity, requestId?: 
         return { userId: existing.id, outcome: claim ? 'claimed' : 'linked' };
     }
 
-    const name = identity.name?.trim() || null;
+    const name = (identity.name && cleanLine(identity.name)) || null;
     const created = await provisionAccountWithWorkspace({
         email,
         name,

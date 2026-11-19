@@ -34,4 +34,12 @@ export const SCHEDULED_JOBS: readonly ScheduleDefinition[] = [
         description: 'Give the worker a job to complete on a quiet queue; completing it refreshes the heartbeat key.',
         defaultPayload: {},
     },
+    {
+        // Daily, off the hour (03:17 UTC). A book becomes due 30 days after
+        // its deletion; a day's lateness is the most it waits.
+        name: 'book-purge',
+        pattern: '17 3 * * *',
+        description: 'Delete for good every book deleted more than 30 days ago, with its elements, history and vectors (Phase 1.H).',
+        defaultPayload: {},
+    },
 ];

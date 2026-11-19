@@ -19,14 +19,27 @@
  * unique per book, derived from the name unless given; a derived slug that
  * a concurrent create takes first is retried with the next free suffix, never
  * refused (`DERIVED_SLUG_ATTEMPTS`).
+ *
+ * CONCURRENT EDITS (Phase 1.H): a change or a fields save may name the
+ * version its edit is based on (`baseVersion`); under the element's lock, a
+ * newer version refuses it 409 `VERSION_CONFLICT` (`assertBaseVersion`), so
+ * one writer never silently overwrites another's save.
  */
 import type { BibleElementKind } from '@prisma/client';
 import type { WorkspaceRequestContext } from '@/app-layer/types';
 import { logEvent } from '@/app-layer/events/audit';
 import { assertPermission } from '@/app-layer/policies/permission.policy';
-import { BibleElementRepository, BibleFieldRepository, BibleRelationRepository, BibleVersionRepository, type ElementWrite } from '@/app-layer/repositories/bible.repository';
+import {
+    BibleElementRepository,
+    BibleFieldRepository,
+    BibleRelationRepository,
+    BibleVersionRepository,
+    type ElementListRow,
+    type ElementWrite,
+} from '@/app-layer/repositories/bible.repository';
 import {
     ELEMENT_NAME_MAX,
+    ELEMENT_PAGE_DEFAULT,
     ELEMENT_SUMMARY_MAX,
     ElementCreateInput,
     ElementListQuery,
@@ -34,10 +47,12 @@ import {
     FieldsUpdateInput,
 } from '@/app-layer/schemas/bible';
 import { runInWorkspaceContext, type PrismaTx } from '@/lib/db/rls-middleware';
-import { NotFoundError } from '@/lib/errors/types';
+import { NotFoundError, ValidationError } from '@/lib/errors/types';
+import { BIBLE_KINDS } from '@/lib/bible/kinds';
 import { slugCandidates, slugify } from '@/lib/bible/slug';
 import { getFieldDef, getRelationType } from '@/lib/bible/templates';
 import {
+    assertBaseVersion,
     fieldViews,
     customLabelFor,
     isUniqueViolation,
@@ -82,7 +97,8 @@ function summaryView(e: ElementRow): ElementSummaryView {
     };
 }
 
-export interface ElementListItemView extends ElementSummaryView {
+/** An element as a list shows it (no summary: a list decrypts nothing). */
+export interface ElementListItemView extends Omit<ElementSummaryView, 'summary'> {
     /**
      * How many of the kind's template fields hold a value (the book board's
      * completeness, Phase 1.2). A stored key the template no longer has is
@@ -106,19 +122,27 @@ export interface RelationView {
 
 export interface ElementView extends ElementSummaryView {
     fields: ReturnType<typeof fieldViews>;
+    /** Its relations, oldest first, at most `RELATIONS_SHOWN_MAX`. */
     relations: RelationView[];
+    /** True when the element has more relations than `relations` holds (rule 6's sibling: a cut list says so). */
+    relationsTruncated: boolean;
     /** The latest version's number (0 never happens: creation writes version 1). */
     versionNumber: number;
 }
 
+/** Relations an element view carries at most; it reads one more to know when it is cut. */
+export const RELATIONS_SHOWN_MAX = 1_000;
+
 async function elementView(db: PrismaTx, ctx: WorkspaceRequestContext, bookId: string, elementId: string): Promise<ElementView> {
     const element = await requireElement(db, ctx, bookId, elementId);
     const values = await readFieldValues(db, ctx, elementId);
-    const relations = await BibleRelationRepository.listForElement(db, ctx.workspaceId, bookId, elementId);
+    const read = await BibleRelationRepository.listForElement(db, ctx.workspaceId, bookId, elementId, RELATIONS_SHOWN_MAX + 1);
+    const relations = read.slice(0, RELATIONS_SHOWN_MAX);
     const versionNumber = await BibleVersionRepository.latestNumber(db, ctx.workspaceId, elementId);
     return {
         ...summaryView(element),
         fields: fieldViews(element.kind, values),
+        relationsTruncated: read.length > RELATIONS_SHOWN_MAX,
         relations: relations.map((r) => {
             const outgoing = r.fromElementId === elementId;
             const type = getRelationType(r.from.kind, r.type);
@@ -138,25 +162,134 @@ async function elementView(db: PrismaTx, ctx: WorkspaceRequestContext, bookId: s
 
 // ─── Reads ──────────────────────────────────────────────────────────
 
-export async function listElements(ctx: WorkspaceRequestContext, bookId: string, query: unknown = {}): Promise<ElementListItemView[]> {
+function listItemView(r: ElementListRow, filled: ReadonlyMap<string, number>): ElementListItemView {
+    return {
+        id: r.id,
+        bookId: r.bookId,
+        kind: r.kind,
+        name: r.name,
+        slug: r.slug,
+        status: r.status,
+        customLabel: r.customLabel,
+        updatedAt: (r.updatedAt instanceof Date ? r.updatedAt : new Date(r.updatedAt)).toISOString(),
+        filledFieldCount: filled.get(r.id) ?? 0,
+    };
+}
+
+/** A page cursor: the last row's name and id, opaque to the client. */
+function encodeCursor(row: { name: string; id: string }): string {
+    return Buffer.from(JSON.stringify([row.name, row.id]), 'utf8').toString('base64url');
+}
+
+function decodeCursor(cursor: string): { name: string; id: string } {
+    try {
+        const value: unknown = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8'));
+        if (Array.isArray(value) && value.length === 2 && typeof value[0] === 'string' && typeof value[1] === 'string') return { name: value[0], id: value[1] };
+    } catch {
+        // fall through
+    }
+    throw new ValidationError('That page cursor is not one this list gave.', { reason: 'CURSOR_INVALID' });
+}
+
+/** Each element's count of filled template fields (stored keys its kind's template has; nothing decrypted). */
+async function filledCounts(db: PrismaTx, ctx: WorkspaceRequestContext, rows: ReadonlyArray<{ id: string; kind: BibleElementKind }>): Promise<Map<string, number>> {
+    const keys = await BibleFieldRepository.keysForElements(
+        db,
+        ctx.workspaceId,
+        rows.map((r) => r.id),
+        FIELD_KEYS_PER_ELEMENT,
+    );
+    const kindOf = new Map(rows.map((r) => [r.id, r.kind] as const));
+    const filled = new Map<string, number>();
+    for (const { elementId, key } of keys) {
+        const elementKind = kindOf.get(elementId);
+        if (elementKind && getFieldDef(elementKind, key)) filled.set(elementId, (filled.get(elementId) ?? 0) + 1);
+    }
+    return filled;
+}
+
+async function elementPage(
+    db: PrismaTx,
+    ctx: WorkspaceRequestContext,
+    bookId: string,
+    options: { kinds?: readonly BibleElementKind[]; q?: string; after?: { name: string; id: string }; take: number },
+): Promise<ElementPageView> {
+    const rows = await BibleElementRepository.page(db, ctx.workspaceId, bookId, { ...options, take: options.take + 1 });
+    const shown = rows.slice(0, options.take);
+    const filled = await filledCounts(db, ctx, shown);
+    return {
+        elements: shown.map((r) => listItemView(r, filled)),
+        nextCursor: rows.length > options.take ? encodeCursor(shown[shown.length - 1]) : null,
+    };
+}
+
+export interface ElementPageView {
+    elements: ElementListItemView[];
+    /** Pass as `after` for the next page; null when this page is the last. */
+    nextCursor: string | null;
+}
+
+/**
+ * One page of the book's elements, by name (Phase 1.H, #18: the list used to
+ * stop silently at 500). Filtered by one kind (`kind`, the board's "show
+ * more") or several (`kinds`, the relation picker) and by a name fragment
+ * (`q`); `after` is the previous page's `nextCursor`.
+ */
+export async function listElements(ctx: WorkspaceRequestContext, bookId: string, query: unknown = {}): Promise<ElementPageView> {
     await assertPermission(ctx, 'bible.view');
-    const { kind } = ElementListQuery.parse(query);
+    const parsed = ElementListQuery.parse(query);
+    const kinds = parsed.kinds ?? (parsed.kind ? [parsed.kind] : undefined);
+    const q = parsed.q?.trim() || undefined;
+    const after = parsed.after ? decodeCursor(parsed.after) : undefined;
     return runInWorkspaceContext(ctx, async (db) => {
         await requireBook(db, ctx, bookId);
-        const rows = await BibleElementRepository.list(db, ctx.workspaceId, bookId, { kind });
-        const keys = await BibleFieldRepository.keysForElements(
-            db,
-            ctx.workspaceId,
-            rows.map((r) => r.id),
-            FIELD_KEYS_PER_ELEMENT,
-        );
-        const kindOf = new Map(rows.map((r) => [r.id, r.kind] as const));
-        const filled = new Map<string, number>();
-        for (const { elementId, key } of keys) {
-            const elementKind = kindOf.get(elementId);
-            if (elementKind && getFieldDef(elementKind, key)) filled.set(elementId, (filled.get(elementId) ?? 0) + 1);
+        return elementPage(db, ctx, bookId, { kinds, q, after, take: parsed.take ?? ELEMENT_PAGE_DEFAULT });
+    });
+}
+
+/** Entries the board shows per kind before "show more" (Phase 1.H). */
+export const BOARD_ENTRIES_PER_KIND = 25;
+
+export interface BoardKindView {
+    kind: BibleElementKind;
+    /** Every element of the kind the book holds (an aggregate, not the length of `entries`). */
+    entryCount: number;
+    /** Filled template fields over every element of the kind (an aggregate). */
+    filledFieldCount: number;
+    /** The first `BOARD_ENTRIES_PER_KIND` by name. */
+    entries: ElementListItemView[];
+    /** The next page of this kind (`listElements` with `kind` and `after`), or null. */
+    nextCursor: string | null;
+}
+
+/**
+ * A book's board (Phase 1.H, #18): per kind, how many entries and how many
+ * filled fields — both aggregates in the database, so the board is right for
+ * a book of any size — and the first page of entries.
+ */
+export async function getBookBoard(ctx: WorkspaceRequestContext, bookId: string): Promise<BoardKindView[]> {
+    await assertPermission(ctx, 'bible.view');
+    return runInWorkspaceContext(ctx, async (db) => {
+        await requireBook(db, ctx, bookId);
+        const counts = await BibleElementRepository.countByKind(db, ctx.workspaceId, bookId);
+        const filled = new Map<BibleElementKind, number>();
+        for (const { kind, key, n } of await BibleFieldRepository.filledKeysByKind(db, ctx.workspaceId, bookId)) {
+            if (getFieldDef(kind, key)) filled.set(kind, (filled.get(kind) ?? 0) + n);
         }
-        return rows.map((r) => ({ ...summaryView(r), filledFieldCount: filled.get(r.id) ?? 0 }));
+        // The first page of every kind in one query, and their filled counts in one more.
+        const first = await BibleElementRepository.firstPerKind(db, ctx.workspaceId, bookId, BOARD_ENTRIES_PER_KIND);
+        const filledById = await filledCounts(db, ctx, first);
+        return BIBLE_KINDS.map((kind) => {
+            const entryCount = counts.get(kind) ?? 0;
+            const shown = first.filter((r) => r.kind === kind);
+            return {
+                kind,
+                entryCount,
+                filledFieldCount: filled.get(kind) ?? 0,
+                entries: shown.map((r) => listItemView(r, filledById)),
+                nextCursor: entryCount > shown.length && shown.length > 0 ? encodeCursor(shown[shown.length - 1]) : null,
+            };
+        });
     });
 }
 
@@ -251,6 +384,7 @@ export async function updateElement(ctx: WorkspaceRequestContext, bookId: string
         return await runInWorkspaceContext(ctx, async (db) => {
             await BibleElementRepository.lock(db, elementId);
             const element = await requireElement(db, ctx, bookId, elementId);
+            await assertBaseVersion(db, ctx, elementId, parsed.baseVersion);
             const data: ElementWrite = {};
             if (parsed.name !== undefined) data.name = requiredLine(parsed.name, ELEMENT_NAME_MAX, 'Name');
             if (parsed.status !== undefined) data.status = parsed.status;
@@ -293,6 +427,7 @@ export async function updateElementFields(ctx: WorkspaceRequestContext, bookId: 
     return runInWorkspaceContext(ctx, async (db) => {
         await BibleElementRepository.lock(db, elementId);
         const element = await requireElement(db, ctx, bookId, elementId);
+        await assertBaseVersion(db, ctx, elementId, parsed.baseVersion);
         const changedKeys = await writeFieldValues(db, ctx, element, parsed.fields);
         if (changedKeys.length > 0) {
             await BibleElementRepository.touch(db, ctx.workspaceId, bookId, elementId);

@@ -21,6 +21,7 @@ import { randomBytes } from 'node:crypto';
 import { Prisma } from '@prisma/client';
 import { getVectorRepository, VectorStoreError, type VectorRecord } from '@/app-layer/repositories/vector.repository';
 import { deleteBook } from '@/app-layer/usecases/books';
+import { purgeDeletedBooks } from '@/app-layer/usecases/book-purge';
 import { vectorContentHash } from '@/lib/ai/embeddings/content-hash';
 import { prisma } from '@/lib/db';
 import { runInWorkspaceContext } from '@/lib/db/rls-middleware';
@@ -416,14 +417,19 @@ describe('a source row takes its vectors with it', () => {
         }
     });
 
-    it("deleting a book deletes its vectors (the composite key's cascade), and no other book's", async () => {
+    it("purging a deleted book deletes its vectors (the composite key's cascade), and no other book's", async () => {
         const doomed = await seedBible(actx, 'vec-doomed');
         const id = uid('q-book');
         await inA(async (db) => repo.upsert(db, a.workspaceId, [await recordFor('A question about a doomed book', { sourceId: id, bookId: doomed.bookId })]));
         const otherBefore = await prisma.$queryRaw<Array<{ n: number }>>`
             SELECT count(*)::int AS n FROM "VectorEmbedding" WHERE "bookId" = ${aBible.bookId}`;
         expect(await rowsOf(id)).toHaveLength(1);
+        // Deleting a book is soft (1.H); its purge, 30 days on, takes the vectors.
         await deleteBook(actx, doomed.bookId);
+        expect(await rowsOf(id)).toHaveLength(1);
+        // 31 days on (the row's deletion back-dated as the superuser; the database refuses an earlier purge).
+        await prisma.book.update({ where: { id: doomed.bookId }, data: { deletedAt: new Date(Date.now() - 31 * 24 * 60 * 60 * 1000) } });
+        await purgeDeletedBooks();
         expect(await rowsOf(id)).toEqual([]);
         const otherAfter = await prisma.$queryRaw<Array<{ n: number }>>`
             SELECT count(*)::int AS n FROM "VectorEmbedding" WHERE "bookId" = ${aBible.bookId}`;
