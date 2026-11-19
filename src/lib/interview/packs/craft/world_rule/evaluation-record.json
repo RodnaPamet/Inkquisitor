@@ -1,0 +1,338 @@
+{
+  "format": "inkquisitor-pack-evaluation/1",
+  "pack": {
+    "name": "craft-world_rule",
+    "version": 1,
+    "contentHash": "sha256:bf77f6837f5da4307cbd2306c8f5ec8ae4f408fe0e69bdc6c1847e32d5dc714a"
+  },
+  "set": {
+    "hash": "sha256:3b062c5000aaa16edd284853ed85d99ac0c0eb7dd0b7b6eb27d3baf806b23f2d"
+  },
+  "promptVersion": "question-generation.2.3.0",
+  "generator": {
+    "kind": "structural",
+    "id": "structural-generator.1"
+  },
+  "ranAt": "2026-11-19T23:18:41.144Z",
+  "answers": [
+    {
+      "caseId": "world_rule-01",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-world_rule-01",
+              "targetsFieldKeys": [
+                "rule_statement"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the rule statement.",
+              "kind": "CHOICE",
+              "text": "Which way does the rule statement lean?",
+              "options": [
+                "rule statement leans inward",
+                "rule statement leans outward",
+                "rule statement holds still"
+              ]
+            },
+            {
+              "elementId": "eval-world_rule-01",
+              "targetsFieldKeys": [
+                "domain"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the domain.",
+              "kind": "CHOICE",
+              "text": "Which way does the domain lean?",
+              "options": [
+                "domain leans inward",
+                "domain leans outward",
+                "domain holds still"
+              ]
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "world_rule-02",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-world_rule-02",
+              "targetsFieldKeys": [
+                "rule_statement"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the rule statement.",
+              "kind": "OPEN",
+              "text": "What rule statement matters most here, in your own words?"
+            },
+            {
+              "elementId": "eval-world_rule-02",
+              "targetsFieldKeys": [
+                "domain"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the domain.",
+              "kind": "OPEN",
+              "text": "What domain matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "world_rule-03",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-world_rule-03",
+              "targetsFieldKeys": [
+                "cost_or_limit"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the cost or limit.",
+              "kind": "OPEN",
+              "text": "What cost or limit matters most here, in your own words?"
+            },
+            {
+              "elementId": "eval-world_rule-03",
+              "targetsFieldKeys": [
+                "who_knows"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the who knows.",
+              "kind": "OPEN",
+              "text": "What who knows matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "world_rule-04",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-world_rule-04",
+              "targetsFieldKeys": [
+                "who_knows"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the who knows.",
+              "kind": "OPEN",
+              "text": "What who knows matters most here, in your own words?"
+            },
+            {
+              "elementId": "eval-world_rule-04",
+              "targetsFieldKeys": [
+                "story_consequence"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the story consequence.",
+              "kind": "OPEN",
+              "text": "What story consequence matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "world_rule-05",
+      "outputs": []
+    },
+    {
+      "caseId": "world_rule-06",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-world_rule-06",
+              "targetsFieldKeys": [
+                "cost_or_limit"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the cost or limit.",
+              "kind": "OPEN",
+              "text": "What cost or limit matters most here, in your own words?"
+            },
+            {
+              "elementId": "eval-world_rule-06",
+              "targetsFieldKeys": [
+                "who_knows"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the who knows.",
+              "kind": "OPEN",
+              "text": "What who knows matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "world_rule-07",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-world_rule-07",
+              "targetsFieldKeys": [
+                "story_consequence"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the story consequence.",
+              "kind": "CHOICE",
+              "text": "Which way does the story consequence lean?",
+              "options": [
+                "story consequence leans inward",
+                "story consequence leans outward",
+                "story consequence holds still"
+              ]
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "world_rule-08",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-world_rule-08",
+              "targetsFieldKeys": [
+                "domain"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the domain.",
+              "kind": "OPEN",
+              "text": "What domain matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "world_rule-09",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-world_rule-09",
+              "targetsFieldKeys": [
+                "who_knows"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the who knows.",
+              "kind": "OPEN",
+              "text": "What who knows matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "world_rule-10",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-world_rule-10",
+              "targetsFieldKeys": [
+                "domain"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the domain.",
+              "kind": "OPEN",
+              "text": "What domain matters most here, in your own words?"
+            },
+            {
+              "elementId": "eval-world_rule-10",
+              "targetsFieldKeys": [
+                "cost_or_limit"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the cost or limit.",
+              "kind": "OPEN",
+              "text": "What cost or limit matters most here, in your own words?"
+            },
+            {
+              "elementId": "eval-world_rule-10",
+              "targetsFieldKeys": [
+                "who_knows"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the who knows.",
+              "kind": "OPEN",
+              "text": "What who knows matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "world_rule-11",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-world_rule-11",
+              "targetsFieldKeys": [
+                "who_knows"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the who knows.",
+              "kind": "OPEN",
+              "text": "What who knows matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "world_rule-12",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-world_rule-12",
+              "targetsFieldKeys": [
+                "domain"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the domain.",
+              "kind": "OPEN",
+              "text": "What domain matters most here, in your own words?"
+            },
+            {
+              "elementId": "eval-world_rule-12",
+              "targetsFieldKeys": [
+                "story_consequence"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the story consequence.",
+              "kind": "OPEN",
+              "text": "What story consequence matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    }
+  ]
+}

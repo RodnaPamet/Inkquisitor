@@ -52,7 +52,8 @@ export type AuditAction =
     | 'INTERVIEW_STARTED'
     | 'INTERVIEW_ROUND_OPENED'
     | 'INTERVIEW_ROUND_CLOSED'
-    | 'INTERVIEW_ENDED';
+    | 'INTERVIEW_ENDED'
+    | 'INTERVIEW_DEFAULTS_UPDATED';
 
 export interface AuditEventPayload {
     action: AuditAction;

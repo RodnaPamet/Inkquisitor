@@ -7,7 +7,11 @@
  *   1c. the question packs load and validate (`src/lib/interview/packs.ts`,
  *      Phase 2.2): they are read from disk, so an image that lost them, or a
  *      pack an edit broke, is refused at boot rather than at an author's
- *      first interview;
+ *      first interview; then (Phase 2.3) the mount gate is asked about every
+ *      pack (`src/lib/interview/pack-mount.ts`), and a production server says
+ *      at every start, `[startup] WARN`, how many cannot mount and why — the
+ *      rest of the product runs, and interviews answer 503
+ *      PACKS_NOT_MOUNTABLE until the records are there;
  *   2. OpenTelemetry (no-op unless OTEL_ENABLED=true) and Sentry (no-op
  *      unless SENTRY_DSN is set);
  *   3. the mailer's SMTP transport (console sink when SMTP_HOST is unset);
@@ -38,9 +42,10 @@ export interface RegisterNodeSeams {
 }
 
 async function loadServices() {
-    const [sentinel, packs, telemetry, sentry, mailer, shutdown] = await Promise.all([
+    const [sentinel, packs, mount, telemetry, sentry, mailer, shutdown] = await Promise.all([
         import('@/lib/security/encryption-sentinel'),
         import('@/lib/interview/packs'),
+        import('@/lib/interview/pack-mount'),
         import('@/lib/observability/instrumentation'),
         import('@/lib/observability/sentry'),
         import('@/lib/mailer'),
@@ -49,11 +54,22 @@ async function loadServices() {
     return {
         runEncryptionSentinel: sentinel.runEncryptionSentinel,
         loadQuestionPacks: packs.getPacks,
+        packMountReport: async () => mountReport(await mount.packMounts(packs.getPacks(), mount.packRecordModeOf(process.env))),
         initTelemetry: telemetry.initTelemetry,
         initSentry: sentry.initSentry,
         initMailerFromEnv: mailer.initMailerFromEnv,
         installShutdownHandlers: shutdown.installShutdownHandlers,
     };
+}
+
+/** The start-up line about packs that cannot mount: counts and reasons, never a pack's text. Null when all mount. */
+export function mountReport(mounts: ReadonlyMap<string, { ok: true } | { ok: false; reason: string }>): string | null {
+    const refused = [...mounts].filter(([, v]) => !v.ok);
+    if (refused.length === 0) return null;
+    const byReason = new Map<string, number>();
+    for (const [, v] of refused) if (!v.ok) byReason.set(v.reason, (byReason.get(v.reason) ?? 0) + 1);
+    const reasons = [...byReason].map(([r, n]) => `${r} ×${n}`).join(', ');
+    return `${refused.length} of ${mounts.size} interview packs cannot mount (${reasons}): interviews that need them answer 503 PACKS_NOT_MOUNTABLE.`;
 }
 
 /** A running production server (not `next build`, which holds no runtime configuration). */
@@ -98,6 +114,10 @@ export async function registerNode(seams: RegisterNodeSeams = {}): Promise<void>
         report(`[startup] FATAL: the question packs failed to load: ${err instanceof Error ? err.message.split('\n')[0] : String(err)}`);
         exit(1);
         return;
+    }
+    if (isProductionServer(process.env)) {
+        const line = await services.packMountReport();
+        if (line) report(`[startup] WARN: ${line}`);
     }
 
     await services.initTelemetry();

@@ -1,0 +1,312 @@
+{
+  "format": "inkquisitor-pack-evaluation/1",
+  "pack": {
+    "name": "craft-mood",
+    "version": 1,
+    "contentHash": "sha256:36f2acf82c431bf59dc3eaa248801974f889ce531bda680f715cde0e8dadfd94"
+  },
+  "set": {
+    "hash": "sha256:e3812f13420015f6aeedfd801603cba5ca07b9201aee9ba047e82961e7cc9600"
+  },
+  "promptVersion": "question-generation.2.3.0",
+  "generator": {
+    "kind": "structural",
+    "id": "structural-generator.1"
+  },
+  "ranAt": "2026-11-19T23:18:40.522Z",
+  "answers": [
+    {
+      "caseId": "mood-01",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-mood-01",
+              "targetsFieldKeys": [
+                "dominant_feeling"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the dominant feeling.",
+              "kind": "CHOICE",
+              "text": "Which way does the dominant feeling lean?",
+              "options": [
+                "dominant feeling leans inward",
+                "dominant feeling leans outward",
+                "dominant feeling holds still"
+              ]
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "mood-02",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-mood-02",
+              "targetsFieldKeys": [
+                "dominant_feeling"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the dominant feeling.",
+              "kind": "OPEN",
+              "text": "What dominant feeling matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "mood-03",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-mood-03",
+              "targetsFieldKeys": [
+                "mood_shifts"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the mood shifts.",
+              "kind": "OPEN",
+              "text": "What mood shifts matters most here, in your own words?"
+            },
+            {
+              "elementId": "eval-mood-03",
+              "targetsFieldKeys": [
+                "closing_feeling"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the closing feeling.",
+              "kind": "OPEN",
+              "text": "What closing feeling matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "mood-04",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-mood-04",
+              "targetsFieldKeys": [
+                "intensity"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the intensity.",
+              "kind": "OPEN",
+              "text": "What intensity matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "mood-05",
+      "outputs": []
+    },
+    {
+      "caseId": "mood-06",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-mood-06",
+              "targetsFieldKeys": [
+                "intensity"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the intensity.",
+              "kind": "OPEN",
+              "text": "What intensity matters most here, in your own words?"
+            },
+            {
+              "elementId": "eval-mood-06",
+              "targetsFieldKeys": [
+                "mood_shifts"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the mood shifts.",
+              "kind": "OPEN",
+              "text": "What mood shifts matters most here, in your own words?"
+            },
+            {
+              "elementId": "eval-mood-06",
+              "targetsFieldKeys": [
+                "closing_feeling"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the closing feeling.",
+              "kind": "OPEN",
+              "text": "What closing feeling matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "mood-07",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-mood-07",
+              "targetsFieldKeys": [
+                "mood_shifts"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the mood shifts.",
+              "kind": "CHOICE",
+              "text": "Which way does the mood shifts lean?",
+              "options": [
+                "mood shifts leans inward",
+                "mood shifts leans outward",
+                "mood shifts holds still"
+              ]
+            },
+            {
+              "elementId": "eval-mood-07",
+              "targetsFieldKeys": [
+                "closing_feeling"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the closing feeling.",
+              "kind": "CHOICE",
+              "text": "Which way does the closing feeling lean?",
+              "options": [
+                "closing feeling leans inward",
+                "closing feeling leans outward",
+                "closing feeling holds still"
+              ]
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "mood-08",
+      "outputs": []
+    },
+    {
+      "caseId": "mood-09",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-mood-09",
+              "targetsFieldKeys": [
+                "intensity"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the intensity.",
+              "kind": "OPEN",
+              "text": "What intensity matters most here, in your own words?"
+            },
+            {
+              "elementId": "eval-mood-09",
+              "targetsFieldKeys": [
+                "closing_feeling"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the closing feeling.",
+              "kind": "OPEN",
+              "text": "What closing feeling matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "mood-10",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-mood-10",
+              "targetsFieldKeys": [
+                "intensity"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the intensity.",
+              "kind": "OPEN",
+              "text": "What intensity matters most here, in your own words?"
+            },
+            {
+              "elementId": "eval-mood-10",
+              "targetsFieldKeys": [
+                "mood_shifts"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the mood shifts.",
+              "kind": "OPEN",
+              "text": "What mood shifts matters most here, in your own words?"
+            },
+            {
+              "elementId": "eval-mood-10",
+              "targetsFieldKeys": [
+                "closing_feeling"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the closing feeling.",
+              "kind": "OPEN",
+              "text": "What closing feeling matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "mood-11",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-mood-11",
+              "targetsFieldKeys": [
+                "closing_feeling"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the closing feeling.",
+              "kind": "OPEN",
+              "text": "What closing feeling matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "mood-12",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-mood-12",
+              "targetsFieldKeys": [
+                "mood_shifts"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the mood shifts.",
+              "kind": "OPEN",
+              "text": "What mood shifts matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    }
+  ]
+}

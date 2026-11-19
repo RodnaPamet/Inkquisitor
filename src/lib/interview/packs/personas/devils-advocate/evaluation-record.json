@@ -1,0 +1,238 @@
+{
+  "format": "inkquisitor-pack-evaluation/1",
+  "pack": {
+    "name": "persona-devils-advocate",
+    "version": 1,
+    "contentHash": "sha256:6791277a821e43af4f851e34d727f479a21be17143fafb8dbea799428674a6f1"
+  },
+  "set": {
+    "hash": "sha256:0ae01c4e75b6507fc5e88281652f74433ad4a250b994d0058ce5f88bf690b72c"
+  },
+  "promptVersion": "question-generation.2.3.0",
+  "generator": {
+    "kind": "structural",
+    "id": "structural-generator.1"
+  },
+  "ranAt": "2026-11-19T23:18:42.695Z",
+  "answers": [
+    {
+      "caseId": "devils-advocate-01",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-devils-advocate-01",
+              "targetsFieldKeys": [
+                "wound"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the wound.",
+              "kind": "OPEN",
+              "text": "What wound matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "devils-advocate-02",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-devils-advocate-02",
+              "targetsFieldKeys": [
+                "stance"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the stance.",
+              "kind": "OPEN",
+              "text": "What stance matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "devils-advocate-03",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-devils-advocate-03",
+              "targetsFieldKeys": [
+                "resolution"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the resolution.",
+              "kind": "OPEN",
+              "text": "What resolution matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "devils-advocate-04",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-devils-advocate-04",
+              "targetsFieldKeys": [
+                "false_belief"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the false belief.",
+              "kind": "OPEN",
+              "text": "What false belief matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "devils-advocate-05",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-devils-advocate-05",
+              "targetsFieldKeys": [
+                "story_consequence"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the story consequence.",
+              "kind": "OPEN",
+              "text": "What story consequence matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "devils-advocate-06",
+      "outputs": []
+    },
+    {
+      "caseId": "devils-advocate-07",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-devils-advocate-07",
+              "targetsFieldKeys": [
+                "story_purpose"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the story purpose.",
+              "kind": "OPEN",
+              "text": "What story purpose matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "devils-advocate-08",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-devils-advocate-08",
+              "targetsFieldKeys": [
+                "internal_tension"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the internal tension.",
+              "kind": "OPEN",
+              "text": "What internal tension matters most here, in your own words?"
+            },
+            {
+              "elementId": "eval-devils-advocate-08",
+              "targetsFieldKeys": [
+                "role_in_conflict"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the role in conflict.",
+              "kind": "OPEN",
+              "text": "What role in conflict matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "devils-advocate-09",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-devils-advocate-09",
+              "targetsFieldKeys": [
+                "narrative_distance"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the narrative distance.",
+              "kind": "OPEN",
+              "text": "What narrative distance matters most here, in your own words?"
+            },
+            {
+              "elementId": "eval-devils-advocate-09",
+              "targetsFieldKeys": [
+                "knowledge_limits"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the knowledge limits.",
+              "kind": "OPEN",
+              "text": "What knowledge limits matters most here, in your own words?"
+            },
+            {
+              "elementId": "eval-devils-advocate-09",
+              "targetsFieldKeys": [
+                "switching_pattern"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the switching pattern.",
+              "kind": "OPEN",
+              "text": "What switching pattern matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "devils-advocate-10",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-devils-advocate-10",
+              "targetsFieldKeys": [
+                "dominant_feeling"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the dominant feeling.",
+              "kind": "CHOICE",
+              "text": "Which way does the dominant feeling lean?",
+              "options": [
+                "dominant feeling leans inward",
+                "dominant feeling leans outward",
+                "dominant feeling holds still"
+              ]
+            }
+          ],
+          "declined": []
+        }
+      ]
+    }
+  ]
+}

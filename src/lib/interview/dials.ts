@@ -1,6 +1,7 @@
 /**
- * The depth and detail dials (Phase 2.2 stores them on the session; 2.3 adds
- * workspace and book defaults and the manner dial's packs). A dial changes
+ * The depth and detail dials' tables (Phase 2.2; 2.3 adds the manner, the
+ * workspace and book defaults and their precedence in `dial-settings.ts`).
+ * A dial changes
  * what is asked and how, and the budgets; it never changes what may be
  * written to the bible (roadmap 2.3).
  *
@@ -13,7 +14,7 @@ import type { QuestionKind } from './vocabulary';
 export const DIAL_MIN = 1;
 export const DIAL_MAX = 5;
 
-/** The dials a session starts with when the request names none (2.3 adds workspace and book defaults). */
+/** The depth and detail a session runs with when no layer sets them (`CODE_DEFAULT_DIALS` in `dial-settings.ts`). */
 export const DEFAULT_DIALS = Object.freeze({ depth: 3, detail: 3 });
 
 export interface Dials {

@@ -1,18 +1,18 @@
 /**
- * THE QUESTION PACKS, read as plain data (Phase 2.2).
+ * THE QUESTION PACKS, read as plain data (Phase 2.2; mounting since 2.3).
  *
  * A craft pack per element kind (`packs/craft/<dir>/PACK.md`) teaches the
  * interviewer how to question an element of that kind; a persona pack
  * (`packs/personas/<key>/PACK.md`) shapes how a question is worded. Both are
  * original text written for Inkquisitor in the content formats v1 (sections
- * 3 and 4), each with the evaluation set beside it (`evals.json`).
+ * 3 and 4), each with the evaluation set beside it (`evals.json`); the persona
+ * sets refer to the three fixed situations of `personas/situations.json`
+ * (formats Appendix B).
  *
- * 2.2 uses a pack two ways: its text goes into the generation prompt's
- * fixed instructions (it is product text, not author text), and a craft
- * pack's numbered EXAMPLE QUESTIONS are the fallback a field gets when no
- * generated question for it survives (`fillGapsFromPack`). Mounting — the
- * content hash pinned on a session, the text scan and the evaluation record
- * a pack must pass before it mounts — is 2.3's, on the lifted skill system.
+ * A pack is used two ways: its text goes into the generation prompt's fixed
+ * instructions (it is product text, not author text), and a craft pack's
+ * numbered EXAMPLE QUESTIONS are the fallback a field gets when no generated
+ * question for it survives (`fillGapsFromPack`).
  *
  * Every file is validated with Zod when the registry first loads, against
  * the formats' rules a structure can carry: the frontmatter keys and values
@@ -23,16 +23,26 @@
  * stops the registry from loading, so a bad edit fails every test, never a
  * request.
  *
+ * MOUNTING (2.3, the lifted skill mount system: `pack-mount.ts`) reads three
+ * more facts the registry records per pack, without deciding anything: the
+ * pack's CONTENT HASH (`sha256:` over the file exactly as the prompt carries
+ * it), its TEXT SCAN (`pack-text-scan.ts`; a refused pack loads, is held
+ * apart by rule id and never mounts) and its committed EVALUATION RECORD
+ * (`evaluation-record.json`, read raw and hashed; `pack-evaluation.ts`
+ * checks it).
+ *
  * Read from disk at `process.cwd()` (as inflect-compliance reads its skill
  * corpus): the files stay readable Markdown — what the interviewer was told
  * is a question a reviewer asks — and the runtime image copies the directory
  * (Dockerfile). Server-only.
  */
+import { createHash } from 'node:crypto';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { z } from 'zod';
 import { BIBLE_KINDS, IDENTIFIER_MAX, IDENTIFIER_PATTERN, type BibleKind } from '@/lib/bible/kinds';
 import { getTemplate } from '@/lib/bible/templates';
+import { scanPackText, type PackTextScan } from './pack-text-scan';
 import { PERSONA_KEYS, QUESTION_KINDS, type PersonaKey, type QuestionKind } from './vocabulary';
 
 export const PACK_MAX_BYTES = 8_192;
@@ -167,6 +177,8 @@ export interface CraftPack {
     description: string;
     /** The whole file, frontmatter included: what the prompt carries. */
     text: string;
+    /** `sha256:` over `text`: what a session pins (2.3). */
+    contentHash: string;
     examples: PackExample[];
 }
 
@@ -220,7 +232,7 @@ export function parseCraftPack(raw: string, kind: BibleKind): CraftPack {
     for (const k of core) {
         if (!examples.some((e) => e.keys.includes(k))) throw new Error(`${where}: no example covers core key ${k}`);
     }
-    return { name: parsed.data.name, version: 1, kind, coverage, description, text: raw, examples };
+    return { name: parsed.data.name, version: 1, kind, coverage, description, text: raw, contentHash: sha256Of(raw), examples };
 }
 
 // ─── Persona packs ─────────────────────────────────────────────────
@@ -259,6 +271,8 @@ export interface PersonaPack {
     displayName: string;
     description: string;
     text: string;
+    /** `sha256:` over `text`: what a session pins (2.3). */
+    contentHash: string;
 }
 
 export function parsePersonaPack(raw: string, persona: PersonaKey): PersonaPack {
@@ -283,10 +297,10 @@ export function parsePersonaPack(raw: string, persona: PersonaKey): PersonaPack 
             throw new Error(`${where}: ${s.slice(4)} is not one Question line and one Recommended line`);
         }
     }
-    return { name: parsed.data.name, version: 1, persona, displayName, description, text: raw };
+    return { name: parsed.data.name, version: 1, persona, displayName, description, text: raw, contentHash: sha256Of(raw) };
 }
 
-// ─── Evaluation sets beside the packs (shapes; graded in 2.3) ─────
+// ─── Evaluation sets beside the packs (shapes; graded by pack-evaluation.ts) ─
 
 const CORE_VALUE = z.union([z.string().min(1).max(1_200), z.array(z.string().min(1).max(200)).min(1).max(12), z.number().int().min(1).max(5)]).nullable();
 const DIALS = z.object({ depth: z.number().int().min(1).max(5), detail: z.number().int().min(1).max(5) }).strict();
@@ -320,25 +334,28 @@ export const CraftEvalCaseSchema = z
     .strict();
 export type CraftEvalCase = z.infer<typeof CraftEvalCaseSchema>;
 
-const SITUATION = z.union([
-    z.enum(['S1', 'S2', 'S3']),
-    z
-        .object({
-            kind: z.enum(BIBLE_KINDS),
-            elementName: z.string().min(1).max(60),
-            customLabel: z.string().min(1).max(40).optional(),
-            bibleState: z.record(z.string(), CORE_VALUE),
-            priorAnswers: z.array(PRIOR_ANSWER),
-            dials: DIALS,
-        })
-        .strict(),
-]);
+
+/** One fixed persona situation (formats Appendix B), or an inline one. */
+export const SituationSchema = z
+    .object({
+        kind: z.enum(BIBLE_KINDS),
+        elementName: z.string().min(1).max(60),
+        customLabel: z.string().min(1).max(40).optional(),
+        bibleState: z.record(z.string(), CORE_VALUE),
+        priorAnswers: z.array(PRIOR_ANSWER),
+        dials: DIALS,
+    })
+    .strict();
+export type Situation = z.infer<typeof SituationSchema>;
+
+export const SITUATION_IDS = ['S1', 'S2', 'S3'] as const;
+export type SituationId = (typeof SITUATION_IDS)[number];
 
 export const PersonaEvalCaseSchema = z
     .object({
         id: z.string().regex(/^[a-z-]+-\d{2}$/),
         rationale: z.string().min(1).max(400),
-        situation: SITUATION,
+        situation: z.union([z.enum(SITUATION_IDS), SituationSchema]),
         expect: z.object({ tone: z.array(z.string()).min(1).max(3), mustNot: MUST_NOT }).strict(),
     })
     .strict();
@@ -366,35 +383,148 @@ export function parseCraftEvals(raw: string, kind: BibleKind): CraftEvalCase[] {
     return cases;
 }
 
-export function parsePersonaEvals(raw: string, persona: PersonaKey) {
+export type PersonaEvalCase = z.infer<typeof PersonaEvalCaseSchema>;
+
+export function parsePersonaEvals(raw: string, persona: PersonaKey): PersonaEvalCase[] {
     return parseEvals(raw, PersonaEvalCaseSchema, `persona evals ${persona}`, persona, 6, 10);
 }
 
+/** The fixed situations every persona's examples and evaluation set refer to (formats Appendix B). */
+export function parseSituations(raw: string): Record<SituationId, Situation> {
+    const parsed = z.object({ S1: SituationSchema, S2: SituationSchema, S3: SituationSchema }).strict().safeParse(JSON.parse(raw));
+    if (!parsed.success) throw new Error(`persona situations: ${parsed.error.issues.slice(0, 3).map((i) => `${i.path.join('.')}: ${i.message}`).join('; ')}`);
+    for (const id of SITUATION_IDS) {
+        const s = parsed.data[id];
+        const core = getTemplate(s.kind)
+            .fields.filter((f) => f.required)
+            .map((f) => f.key);
+        if (Object.keys(s.bibleState).join(',') !== core.join(',')) throw new Error(`persona situations: ${id}'s bibleState is not exactly the core keys in order`);
+    }
+    return parsed.data;
+}
+
+// ─── Hashes ────────────────────────────────────────────────────────
+
+/** `sha256:` over text exactly as given, UTF-8: a pack's content hash, an evaluation set's, a record's. */
+export function sha256Of(text: string): string {
+    return `sha256:${createHash('sha256').update(text, 'utf8').digest('hex')}`;
+}
+
+/** A persona's evaluation set is its `evals.json` AND the situations it refers to: both are hashed. */
+export function personaSetHash(evalsRaw: string, situationsRaw: string): string {
+    return sha256Of(`${evalsRaw}\n\u0000situations.json\n${situationsRaw}`);
+}
+
 // ─── The registry ──────────────────────────────────────────────────
+
+/** The file an evaluation run writes beside a pack (`npm run packs:evaluate`). */
+export const PACK_RECORD_FILE = 'evaluation-record.json';
+export const SITUATIONS_FILE = 'situations.json';
+
+export type PackGroup = 'craft' | 'persona';
+
+/**
+ * What mounting reads about one pack: its identity, the hashes that pin it,
+ * its text scan, and its committed evaluation record (raw: `pack-evaluation.ts`
+ * checks it). Nothing here decides whether the pack mounts.
+ */
+export interface PackFile {
+    /** `craft-character`, `persona-socratic`, … (the frontmatter `name`). */
+    name: string;
+    group: PackGroup;
+    /** The element kind (craft) or the persona key (persona). */
+    key: string;
+    version: number;
+    /** Relative to the packs directory: `craft/character`, `personas/socratic`. */
+    dir: string;
+    /** `sha256:` over PACK.md exactly as the prompt carries it. */
+    contentHash: string;
+    /** `sha256:` over the evaluation set (a persona's includes the situations). */
+    setHash: string;
+    scan: PackTextScan;
+    /** The committed record: absent, unreadable (JSON), or read with its file's hash. */
+    record: { state: 'absent' } | { state: 'unreadable'; error: string } | { state: 'present'; raw: unknown; hash: string };
+}
 
 export interface PackRegistry {
     craft: Readonly<Record<BibleKind, CraftPack>>;
     personas: Readonly<Record<PersonaKey, PersonaPack>>;
     craftEvals: Readonly<Record<BibleKind, CraftEvalCase[]>>;
+    personaEvals: Readonly<Record<PersonaKey, PersonaEvalCase[]>>;
+    situations: Readonly<Record<SituationId, Situation>>;
+    /** Every pack, by name: 15 craft, then 6 personas. */
+    files: Readonly<Record<string, PackFile>>;
     personaEvalCount: number;
 }
 
-/** Load and validate every pack and evaluation set under `dir`. Throws, naming the file, on the first problem. */
+export function craftPackName(kind: BibleKind): string {
+    return `craft-${packDirOf(kind)}`;
+}
+
+export function personaPackName(persona: PersonaKey): string {
+    return `persona-${persona}`;
+}
+
+function readRecord(dir: string): PackFile['record'] {
+    const full = path.join(dir, PACK_RECORD_FILE);
+    if (!fs.existsSync(full)) return { state: 'absent' };
+    const text = fs.readFileSync(full, 'utf8');
+    try {
+        return { state: 'present', raw: JSON.parse(text) as unknown, hash: sha256Of(text) };
+    } catch (err) {
+        return { state: 'unreadable', error: err instanceof Error ? err.name : 'unreadable' };
+    }
+}
+
+/** Load and validate every pack and evaluation set under `dir`. Throws, naming the file, on the first problem of shape. */
 export function loadPacks(dir: string = PACKS_DIR): PackRegistry {
     const read = (...parts: string[]) => fs.readFileSync(path.join(dir, ...parts), 'utf8');
     const craft = {} as Record<BibleKind, CraftPack>;
     const craftEvals = {} as Record<BibleKind, CraftEvalCase[]>;
+    const files: Record<string, PackFile> = {};
     for (const kind of BIBLE_KINDS) {
-        craft[kind] = parseCraftPack(read('craft', packDirOf(kind), 'PACK.md'), kind);
-        craftEvals[kind] = parseCraftEvals(read('craft', packDirOf(kind), 'evals.json'), kind);
+        const rel = path.join('craft', packDirOf(kind));
+        const raw = read(rel, 'PACK.md');
+        const evalsRaw = read(rel, 'evals.json');
+        craft[kind] = parseCraftPack(raw, kind);
+        craftEvals[kind] = parseCraftEvals(evalsRaw, kind);
+        files[craft[kind].name] = {
+            name: craft[kind].name,
+            group: 'craft',
+            key: kind,
+            version: craft[kind].version,
+            dir: rel,
+            contentHash: craft[kind].contentHash,
+            setHash: sha256Of(evalsRaw),
+            scan: scanPackText(raw),
+            record: readRecord(path.join(dir, rel)),
+        };
     }
+    const situationsRaw = read('personas', SITUATIONS_FILE);
+    const situations = parseSituations(situationsRaw);
     const personas = {} as Record<PersonaKey, PersonaPack>;
+    const personaEvals = {} as Record<PersonaKey, PersonaEvalCase[]>;
     let personaEvalCount = 0;
     for (const key of PERSONA_KEYS) {
-        personas[key] = parsePersonaPack(read('personas', key, 'PACK.md'), key);
-        personaEvalCount += parsePersonaEvals(read('personas', key, 'evals.json'), key).length;
+        const rel = path.join('personas', key);
+        const raw = read(rel, 'PACK.md');
+        const evalsRaw = read(rel, 'evals.json');
+        personas[key] = parsePersonaPack(raw, key);
+        personaEvals[key] = parsePersonaEvals(evalsRaw, key);
+        personaEvalCount += personaEvals[key].length;
+        files[personas[key].name] = {
+            name: personas[key].name,
+            group: 'persona',
+            key,
+            version: personas[key].version,
+            dir: rel,
+            contentHash: personas[key].contentHash,
+            setHash: personaSetHash(evalsRaw, situationsRaw),
+            scan: scanPackText(raw),
+            record: readRecord(path.join(dir, rel)),
+        };
     }
-    return { craft, personas, craftEvals, personaEvalCount };
+    return { craft, personas, craftEvals, personaEvals, situations, files, personaEvalCount };
 }
 
 let registry: PackRegistry | undefined;

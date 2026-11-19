@@ -23,6 +23,7 @@ export const STOP_REASONS = [
     'PROVIDER_FAILURE',
     'NO_ACCEPTABLE_QUESTION',
     'GUARD_REFUSED',
+    'PACK_CHANGED',
 ] as const;
 export type StopReason = (typeof STOP_REASONS)[number];
 
@@ -52,8 +53,8 @@ export function isPersonaKey(value: unknown): value is PersonaKey {
 /**
  * How a stop leaves the session. A stop that ran out of things to ask or of
  * rounds COMPLETES it; the author's stop STOPS it; a stop that can clear (a
- * failed model call, a guard refusal, a budget, the kill switch) PAUSES it, and the next round
- * resumes it.
+ * failed model call, a guard refusal, a budget, the kill switch, a changed
+ * pack) PAUSES it, and the next round resumes it.
  */
 export const STATUS_AFTER_STOP: Readonly<Record<StopReason, Exclude<InterviewStatus, 'ACTIVE'>>> = {
     FRONTIER_EMPTY: 'COMPLETED',
@@ -66,4 +67,8 @@ export const STATUS_AFTER_STOP: Readonly<Record<StopReason, Exclude<InterviewSta
     PROVIDER_FAILURE: 'PAUSED',
     NO_ACCEPTABLE_QUESTION: 'PAUSED',
     GUARD_REFUSED: 'PAUSED',
+    // A pack the session pinned is not the file this deployment would teach it
+    // (Phase 2.3): paused, because the pins are written once and a deployment
+    // that restores the file lets it resume; the author can start afresh.
+    PACK_CHANGED: 'PAUSED',
 };

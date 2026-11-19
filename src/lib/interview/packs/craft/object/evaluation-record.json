@@ -1,0 +1,332 @@
+{
+  "format": "inkquisitor-pack-evaluation/1",
+  "pack": {
+    "name": "craft-object",
+    "version": 1,
+    "contentHash": "sha256:e72631d22ad64615b1e575d034f7b322c9f034472e1d39926f3397758cb69be5"
+  },
+  "set": {
+    "hash": "sha256:0bf104b917c5e420780531b35ea4de436f21123d6d7390a47018375f77ef2c4e"
+  },
+  "promptVersion": "question-generation.2.3.0",
+  "generator": {
+    "kind": "structural",
+    "id": "structural-generator.1"
+  },
+  "ranAt": "2026-11-19T23:18:41.628Z",
+  "answers": [
+    {
+      "caseId": "object-01",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-object-01",
+              "targetsFieldKeys": [
+                "physical_description"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the physical description.",
+              "kind": "CHOICE",
+              "text": "Which way does the physical description lean?",
+              "options": [
+                "physical description leans inward",
+                "physical description leans outward",
+                "physical description holds still"
+              ]
+            },
+            {
+              "elementId": "eval-object-01",
+              "targetsFieldKeys": [
+                "current_holder"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the current holder.",
+              "kind": "CHOICE",
+              "text": "Which way does the current holder lean?",
+              "options": [
+                "current holder leans inward",
+                "current holder leans outward",
+                "current holder holds still"
+              ]
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "object-02",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-object-02",
+              "targetsFieldKeys": [
+                "physical_description"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the physical description.",
+              "kind": "OPEN",
+              "text": "What physical description matters most here, in your own words?"
+            },
+            {
+              "elementId": "eval-object-02",
+              "targetsFieldKeys": [
+                "current_holder"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the current holder.",
+              "kind": "OPEN",
+              "text": "What current holder matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "object-03",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-object-03",
+              "targetsFieldKeys": [
+                "origin"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the origin.",
+              "kind": "OPEN",
+              "text": "What origin matters most here, in your own words?"
+            },
+            {
+              "elementId": "eval-object-03",
+              "targetsFieldKeys": [
+                "significance"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the significance.",
+              "kind": "OPEN",
+              "text": "What significance matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "object-04",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-object-04",
+              "targetsFieldKeys": [
+                "current_holder"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the current holder.",
+              "kind": "OPEN",
+              "text": "What current holder matters most here, in your own words?"
+            },
+            {
+              "elementId": "eval-object-04",
+              "targetsFieldKeys": [
+                "significance"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the significance.",
+              "kind": "OPEN",
+              "text": "What significance matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "object-05",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-object-05",
+              "targetsFieldKeys": [
+                "origin"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the origin.",
+              "kind": "OPEN",
+              "text": "What origin matters most here, in your own words?"
+            },
+            {
+              "elementId": "eval-object-05",
+              "targetsFieldKeys": [
+                "significance"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the significance.",
+              "kind": "OPEN",
+              "text": "What significance matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "object-06",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-object-06",
+              "targetsFieldKeys": [
+                "significance"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the significance.",
+              "kind": "OPEN",
+              "text": "What significance matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "object-07",
+      "outputs": []
+    },
+    {
+      "caseId": "object-08",
+      "outputs": []
+    },
+    {
+      "caseId": "object-09",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-object-09",
+              "targetsFieldKeys": [
+                "current_holder"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the current holder.",
+              "kind": "OPEN",
+              "text": "What current holder matters most here, in your own words?"
+            },
+            {
+              "elementId": "eval-object-09",
+              "targetsFieldKeys": [
+                "significance"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the significance.",
+              "kind": "OPEN",
+              "text": "What significance matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "object-10",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-object-10",
+              "targetsFieldKeys": [
+                "current_holder"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the current holder.",
+              "kind": "CHOICE",
+              "text": "Which way does the current holder lean?",
+              "options": [
+                "current holder leans inward",
+                "current holder leans outward",
+                "current holder holds still"
+              ]
+            },
+            {
+              "elementId": "eval-object-10",
+              "targetsFieldKeys": [
+                "origin"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the origin.",
+              "kind": "CHOICE",
+              "text": "Which way does the origin lean?",
+              "options": [
+                "origin leans inward",
+                "origin leans outward",
+                "origin holds still"
+              ]
+            },
+            {
+              "elementId": "eval-object-10",
+              "targetsFieldKeys": [
+                "significance"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the significance.",
+              "kind": "CHOICE",
+              "text": "Which way does the significance lean?",
+              "options": [
+                "significance leans inward",
+                "significance leans outward",
+                "significance holds still"
+              ]
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "object-11",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-object-11",
+              "targetsFieldKeys": [
+                "significance"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the significance.",
+              "kind": "OPEN",
+              "text": "What significance matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "object-12",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-object-12",
+              "targetsFieldKeys": [
+                "current_holder"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the current holder.",
+              "kind": "OPEN",
+              "text": "What current holder matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    }
+  ]
+}

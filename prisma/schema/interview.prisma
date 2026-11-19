@@ -31,6 +31,14 @@
 //  `answeredById` when that person is deleted. A re-answer is a new row with
 //  the next `revision`; the latest revision is the answer.
 //
+//  DIALS AND DEFAULTS (Phase 2.3). A session stores the dials it runs with
+//  (depth, detail, personas, the two toggles), resolved when it starts from
+//  its own request, then the book's defaults (BookInterviewDefaults), then the
+//  workspace's (WorkspaceInterviewDefaults), then the code default
+//  (src/lib/interview/dial-settings.ts). A defaults column left NULL passes
+//  the dial on. A dial changes prompts and budgets only: nothing here is read
+//  on the bible's write path.
+//
 //  A question's vectors (deduplication, through the 2.0 vector store) are
 //  deleted with it by `vector_embedding_delete_with_source('Question')`, and a
 //  vector is never written for a question that no longer exists
@@ -51,7 +59,8 @@ model InterviewSession {
   depth            Int
   /// How specific a question is and how long a reply it invites, 1..5 (CHECK).
   detail           Int
-  /// The persona keys mounted (Phase 2.2: at most one, CHECK; 2.3 widens it).
+  /// The persona keys mounted, in the author's order: at most three, known,
+  /// no repeats (CHECK; Phase 2.3). Each words its share of every round.
   personaKeys      String[]
   offerRecommended Boolean              @default(true)
   /// "Multiple choice where possible".
@@ -65,6 +74,11 @@ model InterviewSession {
   roundBudget      Int
   /// Rounds closed so far.
   roundsRun        Int                  @default(0)
+  /// The packs the session mounted, pinned when it started (Phase 2.3): a JSON
+  /// array of `{ name, version, contentHash, recordHash, recordKind }`
+  /// (src/lib/interview/pack-mount.ts). WRITTEN ONCE: a trigger refuses any
+  /// change after the insert. NULL: the session predates pinning (2.2).
+  packPins         Json?
   /// Tokens the session may spend (input and output together); 2.1 counts `tokensUsed`.
   tokenBudget      Int
   tokensUsed       Int                  @default(0)
@@ -196,4 +210,39 @@ model Answer {
   @@unique([questionId, revision])
   @@index([workspaceId, sessionId, questionId])
   @@index([answeredById])
+}
+
+/// A workspace's interview defaults (Phase 2.3): each dial set, or NULL to
+/// pass it on to the code default. One row per workspace.
+model WorkspaceInterviewDefaults {
+  workspaceId      String   @id
+  /// 1..5 (CHECK), or NULL.
+  depth            Int?
+  /// 1..5 (CHECK), or NULL.
+  detail           Int?
+  /// A JSON array of at most three known persona keys, no repeats (CHECK), or NULL.
+  /// `[]` is a setting: no persona.
+  personaKeys      Json?
+  offerRecommended Boolean?
+  preferChoice     Boolean?
+  updatedAt        DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+}
+
+/// A book's interview defaults (Phase 2.3): each dial set, or NULL to pass it
+/// on to the workspace's default. One row per book.
+model BookInterviewDefaults {
+  bookId           String   @id
+  workspaceId      String
+  depth            Int?
+  detail           Int?
+  personaKeys      Json?
+  offerRecommended Boolean?
+  preferChoice     Boolean?
+  updatedAt        DateTime @updatedAt
+
+  book Book @relation(fields: [workspaceId, bookId], references: [workspaceId, id], onDelete: Cascade)
+
+  @@unique([workspaceId, bookId])
 }

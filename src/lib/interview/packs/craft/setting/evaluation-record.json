@@ -1,0 +1,287 @@
+{
+  "format": "inkquisitor-pack-evaluation/1",
+  "pack": {
+    "name": "craft-setting",
+    "version": 1,
+    "contentHash": "sha256:f6c0b3ea416606468afbe20b907f32a3fa28a50c71d0241b10a94a85f6035be7"
+  },
+  "set": {
+    "hash": "sha256:fab2107330b19d3d4f5c7275e2ff949c0a3a15711d0798743c2475c33cb297ba"
+  },
+  "promptVersion": "question-generation.2.3.0",
+  "generator": {
+    "kind": "structural",
+    "id": "structural-generator.1"
+  },
+  "ranAt": "2026-11-19T23:18:40.241Z",
+  "answers": [
+    {
+      "caseId": "setting-01",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-setting-01",
+              "targetsFieldKeys": [
+                "place_type"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the place type.",
+              "kind": "CHOICE",
+              "text": "Which way does the place type lean?",
+              "options": [
+                "place type leans inward",
+                "place type leans outward",
+                "place type holds still"
+              ]
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "setting-02",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-setting-02",
+              "targetsFieldKeys": [
+                "place_type"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the place type.",
+              "kind": "OPEN",
+              "text": "What place type matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "setting-03",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-setting-03",
+              "targetsFieldKeys": [
+                "sensory_signature"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the sensory signature.",
+              "kind": "CHOICE",
+              "text": "Which way does the sensory signature lean?",
+              "options": [
+                "sensory signature leans inward",
+                "sensory signature leans outward",
+                "sensory signature holds still"
+              ]
+            },
+            {
+              "elementId": "eval-setting-03",
+              "targetsFieldKeys": [
+                "story_purpose"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the story purpose.",
+              "kind": "CHOICE",
+              "text": "Which way does the story purpose lean?",
+              "options": [
+                "story purpose leans inward",
+                "story purpose leans outward",
+                "story purpose holds still"
+              ]
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "setting-04",
+      "outputs": []
+    },
+    {
+      "caseId": "setting-05",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-setting-05",
+              "targetsFieldKeys": [
+                "story_purpose"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the story purpose.",
+              "kind": "OPEN",
+              "text": "What story purpose matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "setting-06",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-setting-06",
+              "targetsFieldKeys": [
+                "sensory_signature"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the sensory signature.",
+              "kind": "OPEN",
+              "text": "What sensory signature matters most here, in your own words?"
+            },
+            {
+              "elementId": "eval-setting-06",
+              "targetsFieldKeys": [
+                "pressure_on_characters"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the pressure on characters.",
+              "kind": "OPEN",
+              "text": "What pressure on characters matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "setting-07",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-setting-07",
+              "targetsFieldKeys": [
+                "pressure_on_characters"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the pressure on characters.",
+              "kind": "OPEN",
+              "text": "What pressure on characters matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "setting-08",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-setting-08",
+              "targetsFieldKeys": [
+                "sensory_signature"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the sensory signature.",
+              "kind": "OPEN",
+              "text": "What sensory signature matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "setting-09",
+      "outputs": []
+    },
+    {
+      "caseId": "setting-10",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-setting-10",
+              "targetsFieldKeys": [
+                "sensory_signature"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the sensory signature.",
+              "kind": "OPEN",
+              "text": "What sensory signature matters most here, in your own words?"
+            },
+            {
+              "elementId": "eval-setting-10",
+              "targetsFieldKeys": [
+                "story_purpose"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the story purpose.",
+              "kind": "OPEN",
+              "text": "What story purpose matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "setting-11",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-setting-11",
+              "targetsFieldKeys": [
+                "sensory_signature"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the sensory signature.",
+              "kind": "OPEN",
+              "text": "What sensory signature matters most here, in your own words?"
+            },
+            {
+              "elementId": "eval-setting-11",
+              "targetsFieldKeys": [
+                "pressure_on_characters"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the pressure on characters.",
+              "kind": "OPEN",
+              "text": "What pressure on characters matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "setting-12",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-setting-12",
+              "targetsFieldKeys": [
+                "story_purpose"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the story purpose.",
+              "kind": "CHOICE",
+              "text": "Which way does the story purpose lean?",
+              "options": [
+                "story purpose leans inward",
+                "story purpose leans outward",
+                "story purpose holds still"
+              ]
+            }
+          ],
+          "declined": []
+        }
+      ]
+    }
+  ]
+}

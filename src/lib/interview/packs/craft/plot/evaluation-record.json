@@ -1,0 +1,232 @@
+{
+  "format": "inkquisitor-pack-evaluation/1",
+  "pack": {
+    "name": "craft-plot",
+    "version": 1,
+    "contentHash": "sha256:55db924596c7ff83b4e8a8920fc26d721c223ee6e1e7c8ad78f7c366268f2fd0"
+  },
+  "set": {
+    "hash": "sha256:8e881b12e49ef38c2600356615216e00d5b88aabcfe19721b2489070f7b00059"
+  },
+  "promptVersion": "question-generation.2.3.0",
+  "generator": {
+    "kind": "structural",
+    "id": "structural-generator.1"
+  },
+  "ranAt": "2026-11-19T23:18:39.960Z",
+  "answers": [
+    {
+      "caseId": "plot-01",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-plot-01",
+              "targetsFieldKeys": [
+                "plotline_owner"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the plotline owner.",
+              "kind": "CHOICE",
+              "text": "Which way does the plotline owner lean?",
+              "options": [
+                "plotline owner leans inward",
+                "plotline owner leans outward",
+                "plotline owner holds still"
+              ]
+            },
+            {
+              "elementId": "eval-plot-01",
+              "targetsFieldKeys": [
+                "opening_disturbance"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the opening disturbance.",
+              "kind": "CHOICE",
+              "text": "Which way does the opening disturbance lean?",
+              "options": [
+                "opening disturbance leans inward",
+                "opening disturbance leans outward",
+                "opening disturbance holds still"
+              ]
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "plot-02",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-plot-02",
+              "targetsFieldKeys": [
+                "driving_goal"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the driving goal.",
+              "kind": "OPEN",
+              "text": "What driving goal matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "plot-03",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-plot-03",
+              "targetsFieldKeys": [
+                "opening_disturbance"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the opening disturbance.",
+              "kind": "OPEN",
+              "text": "What opening disturbance matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "plot-04",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-plot-04",
+              "targetsFieldKeys": [
+                "complications"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the complications.",
+              "kind": "OPEN",
+              "text": "What complications matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "plot-05",
+      "outputs": []
+    },
+    {
+      "caseId": "plot-06",
+      "outputs": []
+    },
+    {
+      "caseId": "plot-07",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-plot-07",
+              "targetsFieldKeys": [
+                "climax"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the climax.",
+              "kind": "OPEN",
+              "text": "What climax matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "plot-08",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-plot-08",
+              "targetsFieldKeys": [
+                "climax"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the climax.",
+              "kind": "CHOICE",
+              "text": "Which way does the climax lean?",
+              "options": [
+                "climax leans inward",
+                "climax leans outward",
+                "climax holds still"
+              ]
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "plot-09",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-plot-09",
+              "targetsFieldKeys": [
+                "climax"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the climax.",
+              "kind": "OPEN",
+              "text": "What climax matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "plot-10",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-plot-10",
+              "targetsFieldKeys": [
+                "resolution"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the resolution.",
+              "kind": "OPEN",
+              "text": "What resolution matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "plot-11",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-plot-11",
+              "targetsFieldKeys": [
+                "plotline_owner"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the plotline owner.",
+              "kind": "OPEN",
+              "text": "What plotline owner matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    }
+  ]
+}

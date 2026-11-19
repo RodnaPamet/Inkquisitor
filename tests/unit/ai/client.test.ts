@@ -20,6 +20,7 @@ import {
     PERMITTED_SERVER_TOOL_TYPES,
 } from '@/lib/ai/client';
 import { AiPromptError } from '@/lib/ai/errors';
+import { anthropicWorkspaceHeaders } from '@/lib/ai/anthropic-workspace';
 import { z } from 'zod';
 import { FAKE_API_KEY_VALUE, fakeAnthropic, setFakeApiKey } from '../../helpers/fake-anthropic';
 
@@ -113,7 +114,7 @@ describe('inspectRequest (pure)', () => {
 describe('clientForRun', () => {
     const saved = { ...process.env };
     afterEach(() => {
-        for (const k of ['ANTHROPIC_API_KEY', 'ANTHROPIC_CUSTOM_HEADERS', 'AI_DISABLED', 'ANTHROPIC_ZDR_CONFIRMED', 'AI_RETENTION_MODE', 'NODE_ENV']) {
+        for (const k of ['ANTHROPIC_API_KEY', 'ANTHROPIC_CUSTOM_HEADERS', 'AI_DISABLED', 'ANTHROPIC_ZDR_CONFIRMED', 'AI_RETENTION_MODE', 'NODE_ENV', 'ANTHROPIC_WORKSPACE_ID']) {
             const e = process.env as Record<string, string | undefined>;
             if (saved[k] === undefined) delete e[k];
             else e[k] = saved[k];
@@ -167,6 +168,23 @@ describe('clientForRun', () => {
         expect(api.headers[0].get('anthropic-beta')).toBeNull();
         // SDK 1.x sends the key as a bearer credential.
         expect(api.headers[0].get('authorization')).toBe(`Bearer ${FAKE_API_KEY_VALUE}`);
+    });
+
+    it('names the workspace an organisation-level key belongs to, only when one is configured (2.3)', async () => {
+        setFakeApiKey();
+        const api = fakeAnthropic([{ kind: 'text', text: '{}' }, { kind: 'text', text: '{}' }]);
+        const send = async () => {
+            const choice = clientForRun({ fetch: api.fetch });
+            if (!choice.ok) throw new Error(choice.reason);
+            await choice.client.messages.stream({ model: 'claude-haiku-5-5', max_tokens: 10, messages: [{ role: 'user', content: 'hi' }] }).finalMessage();
+        };
+        delete process.env.ANTHROPIC_WORKSPACE_ID;
+        await send();
+        process.env.ANTHROPIC_WORKSPACE_ID = '  wrkspc_evals01\n';
+        await send();
+        expect(api.headers[0].get('anthropic-workspace-id')).toBeNull();
+        expect(api.headers[1].get('anthropic-workspace-id')).toBe('wrkspc_evals01');
+        expect(anthropicWorkspaceHeaders('   ')).toEqual({});
     });
 
     it.each([

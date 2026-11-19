@@ -209,6 +209,10 @@ export const env = createEnv({
         // The 2.1 spelling of `AI_RETENTION_MODE=zdr`, still honoured: `1`
         // states the key's organization has a zero-data-retention arrangement.
         ANTHROPIC_ZDR_CONFIRMED: z.enum(['0', '1']).optional(),
+        // The Anthropic workspace an ORGANISATION-level key's requests belong
+        // to (Phase 2.3, lifted from inflect): sent as `anthropic-workspace-id`
+        // by `clientForRun` when set; a workspace-scoped key needs none.
+        ANTHROPIC_WORKSPACE_ID: z.string().trim().optional(),
         // Read by the SDK itself and merged into every request; declared so
         // the model layer can refuse to build a client while it is set.
         ANTHROPIC_CUSTOM_HEADERS: z.string().optional(),
@@ -286,6 +290,7 @@ export const env = createEnv({
         ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
         AI_RETENTION_MODE: process.env.AI_RETENTION_MODE,
         ANTHROPIC_ZDR_CONFIRMED: process.env.ANTHROPIC_ZDR_CONFIRMED,
+        ANTHROPIC_WORKSPACE_ID: process.env.ANTHROPIC_WORKSPACE_ID,
         ANTHROPIC_CUSTOM_HEADERS: process.env.ANTHROPIC_CUSTOM_HEADERS,
         AI_DISABLED: process.env.AI_DISABLED,
         AI_MONTHLY_CEILING_USD_DEFAULT: process.env.AI_MONTHLY_CEILING_USD_DEFAULT,
