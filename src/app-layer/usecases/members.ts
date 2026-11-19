@@ -12,15 +12,24 @@
  * other at once cannot both succeed under READ COMMITTED (the loser waits,
  * then counts one owner and is refused).
  *
+ * AUTHORITY IS RE-CHECKED UNDER THE LOCK. The context's role was read when
+ * the request was gated, before the lock; by the time a change runs the
+ * actor may have been demoted or removed by a change that committed first.
+ * So inside the locked transaction the actor's own membership is read again
+ * and the permission asked of THAT role; if it no longer holds, the
+ * transaction does nothing, an AUTHZ_DENIED row (with `currentRole`) is
+ * written on its own, and the answer is the same generic 403.
+ *
  * No invitation flow exists yet (memberships other than the sign-up OWNER
  * arrive with invites), but the rules live here so that flow inherits them.
  */
 import type { WorkspaceRequestContext, WorkspaceRole } from '@/app-layer/types';
 import { logEvent } from '@/app-layer/events/audit';
-import { assertPermission } from '@/app-layer/policies/permission.policy';
+import { assertPermission, denyPermission } from '@/app-layer/policies/permission.policy';
 import { MembershipRepository } from '@/app-layer/repositories/membership.repository';
 import { runInWorkspaceContext, type PrismaTx } from '@/lib/db/rls-middleware';
 import { ConflictError, NotFoundError } from '@/lib/errors/types';
+import { getPermissionsForRole, hasPermission, type PermissionKey } from '@/lib/permissions';
 
 export interface MemberView {
     membershipId: string;
@@ -50,10 +59,36 @@ async function lockOwners(db: PrismaTx, workspaceId: string): Promise<void> {
 
 const LAST_OWNER = { reason: 'LAST_OWNER' } as const;
 
+/** The actor's authority, re-read inside the transaction, no longer holds. Never leaves this module. */
+class AuthorityLapsed extends Error {
+    constructor(readonly currentRole: WorkspaceRole | null) {
+        super('authority lapsed');
+        this.name = 'AuthorityLapsed';
+    }
+}
+
+/**
+ * Run `fn` in a workspace transaction that holds the owner lock and has
+ * re-checked `key` against the actor's CURRENT membership. A lapse rolls the
+ * transaction back, then is recorded and refused like any denial.
+ */
+async function withLiveAuthority<T>(ctx: WorkspaceRequestContext, key: PermissionKey, fn: (db: PrismaTx) => Promise<T>): Promise<T> {
+    try {
+        return await runInWorkspaceContext(ctx, async (db) => {
+            await lockOwners(db, ctx.workspaceId);
+            const own = await MembershipRepository.findForUser(db, ctx.workspaceId, ctx.userId);
+            if (!own || !hasPermission(getPermissionsForRole(own.role), key)) throw new AuthorityLapsed(own?.role ?? null);
+            return fn(db);
+        });
+    } catch (err) {
+        if (err instanceof AuthorityLapsed) return denyPermission(ctx, key, {}, { currentRole: err.currentRole });
+        throw err;
+    }
+}
+
 export async function changeMemberRole(ctx: WorkspaceRequestContext, membershipId: string, role: WorkspaceRole): Promise<{ membershipId: string; role: WorkspaceRole }> {
     await assertPermission(ctx, 'members.manage');
-    return runInWorkspaceContext(ctx, async (db) => {
-        await lockOwners(db, ctx.workspaceId);
+    return withLiveAuthority(ctx, 'members.manage', async (db) => {
         const member = await MembershipRepository.find(db, ctx.workspaceId, membershipId);
         if (!member) throw new NotFoundError('Member not found.');
         if (member.role === role) return { membershipId, role };
@@ -77,8 +112,7 @@ export async function changeMemberRole(ctx: WorkspaceRequestContext, membershipI
 
 export async function removeMember(ctx: WorkspaceRequestContext, membershipId: string): Promise<{ membershipId: string }> {
     await assertPermission(ctx, 'members.manage');
-    return runInWorkspaceContext(ctx, async (db) => {
-        await lockOwners(db, ctx.workspaceId);
+    return withLiveAuthority(ctx, 'members.manage', async (db) => {
         const member = await MembershipRepository.find(db, ctx.workspaceId, membershipId);
         if (!member) throw new NotFoundError('Member not found.');
         if (member.role === 'OWNER' && (await MembershipRepository.countOwners(db, ctx.workspaceId)) <= 1) {

@@ -121,14 +121,16 @@ async function provisionOnce(input: ProvisionInput, slug: string, requestId: str
                 });
             }
             const { workspace, dek } = await createWorkspaceWithDek(tx, { name: input.workspaceName, slug });
-            // Primed before the switch: from here on the encryption extension
-            // may need the key, and the workspace is not committed for the key
-            // manager's own connection to read. A rollback leaves a cached key
-            // for an id that will never exist, which is harmless.
+            // The key travels in the database context, so the encryption
+            // extension never looks it up: the workspace is not committed for
+            // the key manager's own connection to read, and that lookup would
+            // need a second connection while this transaction holds one. It is
+            // also primed for the requests that follow; a rollback leaves a
+            // cached key for an id that will never exist, which is harmless.
             workspaceKeys.prime(workspace.id, dek);
 
             await bindWorkspaceInTransaction(tx, { workspaceId: workspace.id, requestId });
-            await runWithDbContext({ workspaceId: workspace.id, actorUserId: user.id, requestId, source: 'workspace' }, async () => {
+            await runWithDbContext({ workspaceId: workspace.id, actorUserId: user.id, requestId, source: 'workspace', deks: { primary: dek, previous: null } }, async () => {
                 const membership = await MembershipRepository.create(tx, { workspaceId: workspace.id, userId: user.id, role: 'OWNER' });
                 await writeSignUpAudit(tx, {
                     workspaceId: workspace.id,

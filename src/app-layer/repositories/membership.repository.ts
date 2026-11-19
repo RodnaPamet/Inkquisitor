@@ -58,6 +58,11 @@ export const MembershipRepository = {
         });
     },
 
+    /** `userId`'s own membership in the workspace (the actor's current role, re-read inside a transaction). */
+    findForUser(db: Db, workspaceId: string, userId: string) {
+        return db.workspaceMembership.findFirst({ where: { workspaceId, userId }, select: { id: true, role: true } });
+    },
+
     countOwners(db: Db, workspaceId: string) {
         return db.workspaceMembership.count({ where: { workspaceId, role: 'OWNER' } });
     },

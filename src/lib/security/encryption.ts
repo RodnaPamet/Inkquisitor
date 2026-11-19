@@ -160,7 +160,12 @@ export function decryptWithKeyOrPrevious(primary: Buffer, previous: Buffer | nul
     }
 }
 
-/** True for a `v1:` or `v2:` envelope. Writes skip these, so encryption is idempotent. */
+/**
+ * True for a value SHAPED like a `v1:` or `v2:` envelope — a prefix check,
+ * nothing more. It says how to try to open a stored value; it never proves a
+ * value is ciphertext, so no write path may skip encryption on it (an
+ * author's text can start `v2:` too).
+ */
 export function isEncryptedValue(value: unknown): value is string {
     return typeof value === 'string' && (value.startsWith(VERSION_PREFIX_V1) || value.startsWith(VERSION_PREFIX_V2));
 }

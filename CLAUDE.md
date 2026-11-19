@@ -184,7 +184,9 @@ only under zero-retention terms (D5).
   caller.
 - **Authentication.** Credentials go through `authenticateWithPassword` only
   (bcrypt over a sha256 pre-hash, progressive lockout per email, one bcrypt
-  compare on every failure path so timing does not enumerate). Sign-up runs the
+  compare on every failure path so timing does not enumerate; the failure's
+  audit row is never awaited, at most one per user per lockout window, none for
+  a lockout refusal). Sign-up runs the
   password policy and the HIBP check (`PASSWORD_BREACH_CHECK=off` skips it;
   tests inject `breachCheck` and never reach the network) and provisions the
   user, the workspace with its data key and the OWNER membership in ONE
@@ -197,13 +199,19 @@ only under zero-retention terms (D5).
   `superuser_bypass`, in its migration, and is reached only through
   `runInWorkspaceContext` (as `app_user`). Every other model is listed in
   `GLOBAL_MODELS` with a reason. `runWithoutRls` takes a reason from a closed
-  list. See `docs/rls-workspace-isolation.md`; both coverage tests fail for a
-  gap.
+  list. See `docs/rls-workspace-isolation.md`; both coverage tests compare the
+  policies exactly (not by substring) and the live one proves isolation per
+  table. `app_user` reads only `id`, `name`, `email` of `User` and writes none
+  of it; a new column read in a workspace context is a grant in a migration.
 - **Field encryption.** Author text is encrypted at rest by listing its column
   in `src/lib/security/encrypted-fields.ts` (empty until Phase 1), never by
   calling the primitives: inside a workspace context a manifest field is a `v2:`
   envelope under the workspace's data key (`createWorkspaceWithDek` makes one
-  per workspace, wrapped under `DATA_ENCRYPTION_KEY`). Production refuses to
+  per workspace, wrapped under `DATA_ENCRYPTION_KEY`). A field is encrypted only
+  on the model that lists it (nested writes and includes resolve their model
+  from the DMMF); every value is sealed, with no "already an envelope" skip;
+  `runInWorkspaceContext` resolves the key before opening its transaction.
+  Production refuses to
   start without `DATA_ENCRYPTION_KEY` and `AUTH_SECRET`; the web tier and the
   worker run an encrypt → decrypt sentinel at boot.
 - **Audit trail.** Write through `logEvent(ctx, …)` (pass `{ db }` to commit

@@ -19,7 +19,9 @@ when the application is right). This page is the guide to the first layer.
 | RLS tripwire | A Prisma extension that logs (never blocks) a query on a workspace-scoped model made outside both a context and the bypass. |
 
 `app_user` holds no grant on `Account`, `UserSession` or `VerificationToken`:
-those are read only on the plain client. `AuditLog` is append-only for every
+those are read only on the plain client. On `User` it holds SELECT on `id`,
+`name` and `email` only (what a member list shows) and no write: a password
+hash or a session version is never readable from a workspace transaction. `AuditLog` is append-only for every
 role (a trigger refuses `UPDATE`, `DELETE` and `TRUNCATE`; `app_user` has no
 `UPDATE`/`DELETE` grant either).
 
@@ -46,7 +48,13 @@ With no workspace bound, `app_user` sees nothing: the policy compares with
 
 `tests/guards/rls-migration-coverage.test.ts` (no database) and
 `tests/integration/rls-coverage.test.ts` (the live catalogue) both fail until
-the table has all four statements. A model WITHOUT a `workspaceId` fails them
+the table has all four statements, EXACTLY as above: the guard compares the
+whole statements, and the live test compares `pg_policies` (qual, with_check,
+permissive, roles, cmd) with PostgreSQL's normalised form, then proves, per
+table, that `app_user` bound to one workspace sees its own rows, none of
+another's, and cannot insert one of another's. A predicate that merely
+mentions `app.workspace_id` (`!=`, `IS NOT NULL`) fails both; their negative
+controls prove it. A model WITHOUT a `workspaceId` fails them
 too unless it is listed, with a reason, in `GLOBAL_MODELS`
 (`src/lib/db/rls-tripwire.ts`): a table cannot dodge isolation by leaving the
 column out.

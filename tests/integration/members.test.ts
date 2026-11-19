@@ -142,3 +142,85 @@ describe('the usecase holds its own rules', () => {
         expect((await verifyAuditChain(owner.workspaceId)).valid).toBe(true);
     });
 });
+
+describe('authority is re-checked inside the transaction that acts on it', () => {
+    /** Three owners in a fresh workspace: A (the account), B and C. */
+    async function threeOwners() {
+        const acc = await createAccount();
+        const b = await createBareUser();
+        const c = await createBareUser();
+        const aId = (await prisma.workspaceMembership.findFirstOrThrow({ where: { workspaceId: acc.workspaceId, userId: acc.userId } })).id;
+        const bId = (await addMember(acc.workspaceId, b.id, 'OWNER')).id;
+        const cId = (await addMember(acc.workspaceId, c.id, 'OWNER')).id;
+        return { acc, a: { userId: acc.userId, membershipId: aId }, b: { userId: b.id, membershipId: bId }, c: { userId: c.id, membershipId: cId } };
+    }
+
+    const roleOf = async (id: string) => (await prisma.workspaceMembership.findUnique({ where: { id } }))?.role ?? null;
+    const lastDenial = (workspaceId: string) =>
+        prisma.auditLog.findFirstOrThrow({ where: { workspaceId, action: 'AUTHZ_DENIED' }, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }] });
+    const deniedIn = (workspaceId: string) => prisma.auditLog.count({ where: { workspaceId, action: 'AUTHZ_DENIED' } });
+
+    /** Ungranted advisory-lock requests: how many transactions are queued on the owner lock. */
+    const waiters = async () =>
+        (await prisma.$queryRaw<Array<{ n: number }>>`SELECT count(*)::int AS n FROM pg_locks WHERE locktype = 'advisory' AND NOT granted`)[0].n;
+    const heldAdvisoryLocks = async () =>
+        (await prisma.$queryRaw<Array<{ n: number }>>`SELECT count(*)::int AS n FROM pg_locks WHERE locktype = 'advisory' AND granted`)[0].n;
+    async function until(predicate: () => Promise<boolean>): Promise<void> {
+        for (let i = 0; i < 200; i++) {
+            if (await predicate()) return;
+            await new Promise((r) => setTimeout(r, 25));
+        }
+        throw new Error('timed out waiting for the lock queue');
+    }
+
+    it('three owners: A demotes B while B demotes C — B, demoted first, is refused, and C stays an OWNER', async () => {
+        const { acc, a, b, c } = await threeOwners();
+        // Both requests have passed their gate (their contexts say OWNER)
+        // before either reaches the database. The lock is held so the order
+        // in which they reach it is known: A first, then B.
+        let release!: () => void;
+        const gate = new Promise<void>((r) => (release = r));
+        const holder = prisma.$transaction(
+            async (tx) => {
+                await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${'workspace-owner:' + acc.workspaceId}))`;
+                await gate;
+            },
+            { timeout: 20_000 },
+        );
+        await until(async () => (await heldAdvisoryLocks()) >= 1);
+        const before = await waiters();
+        const aDemotesB = changeMemberRole(workspaceCtx({ ...acc, userId: a.userId }, 'OWNER'), b.membershipId, 'EDITOR');
+        await until(async () => (await waiters()) === before + 1);
+        const bDemotesC = changeMemberRole(workspaceCtx({ ...acc, userId: b.userId }, 'OWNER'), c.membershipId, 'EDITOR');
+        await until(async () => (await waiters()) === before + 2);
+        const deniedBefore = await deniedIn(acc.workspaceId);
+        release();
+        await holder;
+
+        await expect(aDemotesB).resolves.toEqual({ membershipId: b.membershipId, role: 'EDITOR' });
+        await expect(bDemotesC).rejects.toBeInstanceOf(ForbiddenError);
+        await expect(bDemotesC).rejects.toThrow('Permission denied');
+        expect(await roleOf(b.membershipId)).toBe('EDITOR');
+        expect(await roleOf(c.membershipId)).toBe('OWNER');
+        expect(await deniedIn(acc.workspaceId)).toBe(deniedBefore + 1);
+        const row = await lastDenial(acc.workspaceId);
+        expect(row.actorUserId).toBe(b.userId);
+        expect(row.detailsJson).toMatchObject({ permission: 'members.manage', role: 'OWNER', currentRole: 'EDITOR' });
+        expect((await verifyAuditChain(acc.workspaceId)).valid).toBe(true);
+    });
+
+    it('a member removed while their request is in flight is refused, and nothing changes', async () => {
+        const { acc, a, b, c } = await threeOwners();
+        const bInFlight = workspaceCtx({ ...acc, userId: b.userId }, 'OWNER');
+        await removeMember(workspaceCtx({ ...acc, userId: a.userId }, 'OWNER'), b.membershipId);
+        const deniedBefore = await deniedIn(acc.workspaceId);
+
+        await expect(changeMemberRole(bInFlight, c.membershipId, 'READER')).rejects.toBeInstanceOf(ForbiddenError);
+        await expect(removeMember(bInFlight, c.membershipId)).rejects.toBeInstanceOf(ForbiddenError);
+        expect(await roleOf(c.membershipId)).toBe('OWNER');
+        expect(await deniedIn(acc.workspaceId)).toBe(deniedBefore + 2);
+        const row = await lastDenial(acc.workspaceId);
+        expect(row.actorUserId).toBe(b.userId);
+        expect(row.detailsJson).toMatchObject({ permission: 'members.manage', currentRole: null });
+    });
+});

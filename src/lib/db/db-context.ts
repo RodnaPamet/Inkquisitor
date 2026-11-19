@@ -26,6 +26,12 @@ export interface DbContextData {
     actorUserId?: string;
     requestId?: string;
     /**
+     * The workspace's data keys, resolved before the transaction opened
+     * (`runInWorkspaceContext`, or sign-up with the key it just made). The
+     * encryption extension uses these and makes no lookup of its own.
+     */
+    deks?: { primary: Buffer; previous: Buffer | null };
+    /**
      * `workspace` inside `runInWorkspaceContext`; `bypass:<reason>` inside
      * `runWithoutRls`. The tripwire is silent for both.
      */

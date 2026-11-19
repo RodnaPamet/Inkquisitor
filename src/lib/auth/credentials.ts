@@ -8,8 +8,10 @@
  *     ├─ user lookup                  (plain client: User is not workspace-scoped)
  *     ├─ password verify              (./passwords)
  *     ├─ silent rehash on verify      (when BCRYPT_COST moved)
- *     └─ audit                        (USER_SIGN_IN_FAILED; success is recorded
- *                                      by the jwt callback with the session id)
+ *     └─ audit                        (USER_SIGN_IN_FAILED, NOT awaited, at most one
+ *                                      per user per lockout window, none for a
+ *                                      lockout refusal; success is recorded by
+ *                                      the jwt callback with the session id)
  *
  * ACCOUNT-ENUMERATION SAFE. Unknown email, a Google-only account (no
  * password) and a wrong password all return `credentials_invalid`, and every
@@ -17,7 +19,17 @@
  * no real hash), so neither the answer nor its timing says which. A locked
  * out identifier answers `rate_limited` — but only after the same compare,
  * and the lockout is reached by failing, so it tells an attacker nothing an
- * attacker did not cause.
+ * attacker did not cause. The failure's audit row is NOT awaited: appending it
+ * fans out to every workspace the user belongs to, and an unknown email has
+ * none, so awaiting it made the known-email answer measurably slower. Both
+ * paths await the same work: one lookup, one bcrypt compare.
+ *
+ * BOUNDED AUDIT VOLUME. Anyone can fail a sign-in for anyone's address, and
+ * the trail is append-only, so a failure writes at most ONE row per user per
+ * lockout window (`LOGIN_PROGRESSIVE_POLICY.lockoutMs`), with the limiter on
+ * or off, and an attempt refused DURING a lockout writes none (it is the
+ * lockout's own consequence, already evidenced by the row that preceded it).
+ * The window is per process, like the lockout store.
  *
  * PROGRESSIVE LOCKOUT (`LOGIN_PROGRESSIVE_POLICY`, src/lib/security/rate-limit.ts):
  * 3 failures → 5 s delay before the next verify, 5 → 30 s, 10 → 15 minutes
@@ -113,7 +125,10 @@ export async function authenticateWithPassword(input: AuthenticateInput, options
         if (!decision.allowed) {
             // The same compare a real verify costs, so a locked-out answer is not faster.
             await dummyVerify(password);
-            await recordFailure(user?.id ?? null, 'rate_limited', decision.failureCount, input.requestId);
+            // No audit row: a refusal during a lockout is the lockout's own
+            // consequence, and unauthenticated callers must not be able to
+            // grow a victim's append-only trail with it.
+            logger.warn('auth.sign_in_refused_locked', { component: 'auth', ...(user ? { userId: user.id } : {}) });
             return { ok: false, reason: 'rate_limited', retryAfterSeconds: decision.retryAfterSeconds };
         }
         if (decision.delayMs > 0) await sleepImpl(decision.delayMs);
@@ -122,14 +137,14 @@ export async function authenticateWithPassword(input: AuthenticateInput, options
     if (!user || !user.passwordHash) {
         await dummyVerify(password);
         const after = lockoutOn ? recordProgressiveFailure(key, LOGIN_PROGRESSIVE_POLICY) : null;
-        await recordFailure(user?.id ?? null, user ? 'no_password' : 'unknown_email', after?.failureCount, input.requestId);
+        recordFailure(user?.id ?? null, user ? 'no_password' : 'unknown_email', after?.failureCount, input.requestId);
         return { ok: false, reason: 'credentials_invalid' };
     }
 
     const valid = await verifyPassword(password, user.passwordHash);
     if (!valid) {
         const after = lockoutOn ? recordProgressiveFailure(key, LOGIN_PROGRESSIVE_POLICY) : null;
-        await recordFailure(user.id, 'credentials_invalid', after?.failureCount, input.requestId);
+        recordFailure(user.id, 'credentials_invalid', after?.failureCount, input.requestId);
         return { ok: false, reason: 'credentials_invalid' };
     }
 
@@ -146,21 +161,81 @@ export async function authenticateWithPassword(input: AuthenticateInput, options
     return { ok: true, userId: user.id, email: user.email, name: user.name };
 }
 
-async function recordFailure(
+// ─── The failure trail: fire and forget, bounded per user ───────────
+
+/** userId → when its current audit window opened. Insertion-ordered (oldest first). */
+const failureWindowOpenedAt = new Map<string, number>();
+const MAX_TRACKED_USERS = 10_000;
+/** In-flight appends, so a test (or a graceful shutdown) can wait for them. */
+const pendingAudits = new Set<Promise<void>>();
+
+/** True when this failure may write a row: the first for `userId` in the current lockout window. */
+function claimFailureWindow(userId: string, now: number): boolean {
+    const windowMs = LOGIN_PROGRESSIVE_POLICY.lockoutMs;
+    const opened = failureWindowOpenedAt.get(userId);
+    if (opened !== undefined && now - opened < windowMs) return false;
+    failureWindowOpenedAt.delete(userId);
+    // Swept on a caller's turn, never on a timer.
+    if (failureWindowOpenedAt.size >= MAX_TRACKED_USERS) {
+        for (const [id, at] of failureWindowOpenedAt) {
+            if (now - at >= windowMs) failureWindowOpenedAt.delete(id);
+        }
+        while (failureWindowOpenedAt.size >= MAX_TRACKED_USERS) {
+            const oldest = failureWindowOpenedAt.keys().next().value;
+            if (oldest === undefined) break;
+            failureWindowOpenedAt.delete(oldest);
+        }
+    }
+    failureWindowOpenedAt.set(userId, now);
+    return true;
+}
+
+/**
+ * Record a failed sign-in WITHOUT making the caller wait for it. An unknown
+ * email has no workspace trail and is only logged (without the address); a
+ * known one writes at most one row per lockout window. Errors are logged by
+ * user id, never the email.
+ */
+function recordFailure(
     userId: string | null,
-    reason: 'credentials_invalid' | 'no_password' | 'unknown_email' | 'rate_limited',
+    reason: 'credentials_invalid' | 'no_password' | 'unknown_email',
     failureCount: number | undefined,
     requestId: string | undefined,
-): Promise<void> {
+): void {
     if (!userId) {
-        // No account, so no workspace trail to write to. The address is not logged.
         logger.warn('auth.sign_in_failed', { component: 'auth', reason });
         return;
     }
-    await recordUserAuthEvent({
+    if (!claimFailureWindow(userId, Date.now())) {
+        logger.warn('auth.sign_in_failed', { component: 'auth', reason, userId, audited: false });
+        return;
+    }
+    const append = recordUserAuthEvent({
         userId,
         action: 'USER_SIGN_IN_FAILED',
         details: { method: 'credentials', reason, ...(failureCount !== undefined ? { failureCount } : {}) },
         requestId,
-    });
+    })
+        .catch((err: unknown) => {
+            logger.error('auth.sign_in_failure_audit_failed', {
+                component: 'auth',
+                userId,
+                errorName: err instanceof Error ? err.name : 'unknown',
+            });
+        })
+        .finally(() => {
+            pendingAudits.delete(append);
+        });
+    pendingAudits.add(append);
+}
+
+/** Resolves once every failure audit started so far has settled (tests; graceful shutdown). */
+export async function settleSignInFailureAudits(): Promise<void> {
+    await Promise.all([...pendingAudits]);
+}
+
+/** @internal Forget every per-user audit window and stop tracking in-flight appends (tests). */
+export function _resetSignInFailureAuditWindow(): void {
+    failureWindowOpenedAt.clear();
+    pendingAudits.clear();
 }

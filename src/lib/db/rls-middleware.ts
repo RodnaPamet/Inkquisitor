@@ -33,7 +33,8 @@
 import type { Prisma, PrismaClient } from '@prisma/client';
 import type { RequestContext } from '@/app-layer/types';
 import { logger } from '@/lib/observability/logger';
-import { runWithDbContext } from './db-context';
+import { runWithDbContext, type DbContextData } from './db-context';
+import { workspaceKeysFor } from './key-registry';
 import { prisma } from '@/lib/db';
 
 /** The transaction client handed to a context callback. */
@@ -62,8 +63,20 @@ export async function runInWorkspaceContext<T>(
         throw new Error('runInWorkspaceContext requires a workspaceId');
     }
     const client = options.client ?? prisma;
+    // The workspace's data keys, resolved NOW, before the transaction holds a
+    // connection: the key manager reads them on a pooled connection of its
+    // own, and a lookup made from inside the transaction would wait for a
+    // second connection while holding the first (a small pool deadlocks).
+    // Only a client that encrypts is registered; a missing key fails here.
+    const keys = workspaceKeysFor(client);
+    let deks: DbContextData['deks'];
+    if (keys) {
+        const primary = await keys.getDek(ctx.workspaceId);
+        const previous = await keys.getPreviousDek(ctx.workspaceId).catch(() => null);
+        deks = { primary, previous };
+    }
     return runWithDbContext(
-        { workspaceId: ctx.workspaceId, actorUserId: ctx.userId, requestId: ctx.requestId, source: 'workspace' },
+        { workspaceId: ctx.workspaceId, actorUserId: ctx.userId, requestId: ctx.requestId, source: 'workspace', deks },
         () =>
             client.$transaction(
                 async (tx) => {

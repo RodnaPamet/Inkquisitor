@@ -33,20 +33,17 @@ export const ENCRYPTED_FIELDS: EncryptedFieldManifest = Object.freeze({});
 export interface CompiledManifest {
     fieldsOf(model: string): readonly string[] | undefined;
     isEncryptedModel(model: string): boolean;
-    /** Every field name in the manifest, for nested writes whose model is unknown. */
-    allFieldNames: ReadonlySet<string>;
-    nodeHasAnyEncryptedFieldKey(node: Record<string, unknown>): boolean;
     isEmpty: boolean;
 }
 
 export function compileManifest(manifest: EncryptedFieldManifest): CompiledManifest {
-    const all = new Set<string>();
-    for (const fields of Object.values(manifest)) for (const f of fields) all.add(f);
+    // A field is encrypted only on the model that lists it; there is no
+    // model-less "any field of this name" lookup (a nested write is resolved
+    // to its model through the schema's relations instead).
+    const fieldCount = Object.values(manifest).reduce((n, fields) => n + fields.length, 0);
     return {
         fieldsOf: (model) => (Object.prototype.hasOwnProperty.call(manifest, model) ? manifest[model] : undefined),
-        isEncryptedModel: (model) => Object.prototype.hasOwnProperty.call(manifest, model),
-        allFieldNames: all,
-        nodeHasAnyEncryptedFieldKey: (node) => Object.keys(node).some((k) => all.has(k)),
-        isEmpty: all.size === 0,
+        isEncryptedModel: (model) => Object.prototype.hasOwnProperty.call(manifest, model) && manifest[model].length > 0,
+        isEmpty: fieldCount === 0,
     };
 }

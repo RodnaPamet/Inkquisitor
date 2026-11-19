@@ -45,25 +45,70 @@ function escapeRe(s: string): string {
     return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-/** What the migrations lack for one scoped table. */
+/** The column a table is scoped on: `Workspace` on its own id, everything else on `workspaceId`. */
+export function isolationColumn(table: string): string {
+    return table === 'Workspace' ? 'id' : 'workspaceId';
+}
+
+/** Whitespace collapsed, so a reflowed statement compares equal. */
+function normaliseSql(stmt: string): string {
+    return stmt.replace(/\s+/g, ' ').replace(/\(\s+/g, '(').replace(/\s+\)/g, ')').trim();
+}
+
+/** The one isolation statement a scoped table's migration may carry, exactly. */
+export function expectedIsolationStatement(table: string): string {
+    const pred = `"${isolationColumn(table)}" = current_setting('app.workspace_id', true)::text`;
+    return `CREATE POLICY workspace_isolation ON "${table}" USING (${pred}) WITH CHECK (${pred})`;
+}
+
+/** The one bypass statement a scoped table's migration may carry, exactly. */
+export function expectedBypassStatement(table: string): string {
+    return `CREATE POLICY superuser_bypass ON "${table}" USING (current_setting('role') != 'app_user')`;
+}
+
+/** The LAST statement of the given policy on the table, normalised (a later CREATE replaces an earlier one). */
+function lastPolicyStatement(policy: string, t: string, sql: string): { stmt: string; index: number } | null {
+    const re = new RegExp(`CREATE POLICY ${policy} ON "${t}"[^;]*;`, 'g');
+    let last: { stmt: string; index: number } | null = null;
+    for (const m of sql.matchAll(re)) last = { stmt: normaliseSql(m[0].slice(0, -1)), index: m.index ?? 0 };
+    return last;
+}
+
+/**
+ * What the migrations lack for one scoped table. The policies are compared
+ * as whole statements (whitespace aside), never searched for a substring:
+ * "mentions app.workspace_id" is true of an inverted (`!=`) or vacuous
+ * (`IS NOT NULL`) predicate too. The live-database twin compares what
+ * PostgreSQL stored and proves the policies isolate.
+ */
 export function migrationProblems(table: string, sql: string): string[] {
     const t = escapeRe(table);
     const problems: string[] = [];
     if (!new RegExp(`ALTER TABLE "${t}" ENABLE ROW LEVEL SECURITY`).test(sql)) problems.push(`${table}: RLS never enabled`);
     if (!new RegExp(`ALTER TABLE "${t}" FORCE ROW LEVEL SECURITY`).test(sql)) problems.push(`${table}: RLS never forced`);
-    // Bounded to the one statement: up to the terminating semicolon.
-    const isolation = new RegExp(`CREATE POLICY workspace_isolation ON "${t}"([^;]*);`).exec(sql);
-    if (!isolation) {
-        problems.push(`${table}: no workspace_isolation policy`);
-    } else {
-        const stmt = isolation[1];
-        const using = /USING\s*\(([^;]*?)\)\s*(WITH CHECK|$)/.exec(stmt);
-        const check = /WITH CHECK\s*\(([^;]*)\)/.exec(stmt);
-        if (!using || !using[1].includes('app.workspace_id')) problems.push(`${table}: workspace_isolation USING does not read app.workspace_id`);
-        if (!check || !check[1].includes('app.workspace_id')) problems.push(`${table}: workspace_isolation has no WITH CHECK on app.workspace_id`);
-        if (/\bFOR\s+(SELECT|INSERT|UPDATE|DELETE)\b/i.test(stmt)) problems.push(`${table}: workspace_isolation is limited to one command`);
+    if (new RegExp(`ALTER TABLE "${t}" (NO FORCE|DISABLE) ROW LEVEL SECURITY`).test(sql)) {
+        problems.push(`${table}: RLS is disabled or un-forced by a later statement`);
     }
-    if (!new RegExp(`CREATE POLICY superuser_bypass ON "${t}"`).test(sql)) problems.push(`${table}: no superuser_bypass policy`);
+    for (const [policy, expected] of [
+        ['workspace_isolation', expectedIsolationStatement(table)],
+        ['superuser_bypass', expectedBypassStatement(table)],
+    ] as const) {
+        const last = lastPolicyStatement(policy, t, sql);
+        if (!last) {
+            problems.push(`${table}: no ${policy} policy`);
+            continue;
+        }
+        if (last.stmt !== expected) problems.push(`${table}: ${policy} is \`${last.stmt}\`, expected \`${expected}\``);
+        const droppedAfter = new RegExp(`DROP POLICY (IF EXISTS )?${policy} ON "${t}"`, 'g');
+        for (const m of sql.matchAll(droppedAfter)) {
+            if ((m.index ?? 0) > last.index) problems.push(`${table}: ${policy} is dropped after it is created`);
+        }
+        if (new RegExp(`ALTER POLICY ${policy} ON "${t}"`).test(sql)) problems.push(`${table}: ${policy} is altered after it is created`);
+    }
+    const other = new RegExp(`CREATE POLICY (\\w+) ON "${t}"`, 'g');
+    for (const m of sql.matchAll(other)) {
+        if (m[1] !== 'workspace_isolation' && m[1] !== 'superuser_bypass') problems.push(`${table}: unexpected policy ${m[1]}`);
+    }
     return problems;
 }
 
@@ -115,17 +160,46 @@ describe('the checker (negative controls)', () => {
         ]);
     });
 
+    const complete = (isolation: string, bypass = `CREATE POLICY superuser_bypass ON "Chapter" USING (current_setting('role') != 'app_user');`) =>
+        ['ALTER TABLE "Chapter" ENABLE ROW LEVEL SECURITY;', 'ALTER TABLE "Chapter" FORCE ROW LEVEL SECURITY;', isolation, bypass].join('\n');
+    const isolationProblem = (problems: string[]) => problems.filter((p) => p.startsWith('Chapter: workspace_isolation is `'));
+
     it('flags an isolation policy without WITH CHECK, or limited to one command', () => {
+        expect(
+            isolationProblem(
+                migrationProblems(
+                    'Chapter',
+                    complete(`CREATE POLICY workspace_isolation ON "Chapter" FOR SELECT USING ("workspaceId" = current_setting('app.workspace_id', true)::text);`),
+                ),
+            ),
+        ).toHaveLength(1);
+    });
+
+    it('flags an INVERTED isolation predicate (= written as !=)', () => {
+        const inverted = `"workspaceId" != current_setting('app.workspace_id', true)::text`;
+        const problems = migrationProblems('Chapter', complete(`CREATE POLICY workspace_isolation ON "Chapter" USING (${inverted}) WITH CHECK (${inverted});`));
+        expect(isolationProblem(problems)).toHaveLength(1);
+    });
+
+    it('flags a VACUOUS isolation predicate (IS NOT NULL), though it reads app.workspace_id', () => {
+        const vacuous = `current_setting('app.workspace_id', true) IS NOT NULL`;
+        const problems = migrationProblems('Chapter', complete(`CREATE POLICY workspace_isolation ON "Chapter" USING (${vacuous}) WITH CHECK (${vacuous});`));
+        expect(isolationProblem(problems)).toHaveLength(1);
+    });
+
+    it('flags a widened bypass, a later drop and a third policy', () => {
+        const ok = `"workspaceId" = current_setting('app.workspace_id', true)::text`;
         const sql = [
-            'ALTER TABLE "Chapter" ENABLE ROW LEVEL SECURITY;',
-            'ALTER TABLE "Chapter" FORCE ROW LEVEL SECURITY;',
-            `CREATE POLICY workspace_isolation ON "Chapter" FOR SELECT USING ("workspaceId" = current_setting('app.workspace_id', true));`,
-            `CREATE POLICY superuser_bypass ON "Chapter" USING (current_setting('role') != 'app_user');`,
+            complete(`CREATE POLICY workspace_isolation ON "Chapter" USING (${ok}) WITH CHECK (${ok});`, `CREATE POLICY superuser_bypass ON "Chapter" USING (true);`),
+            'DROP POLICY workspace_isolation ON "Chapter";',
+            'CREATE POLICY open_reads ON "Chapter" FOR SELECT USING (true);',
         ].join('\n');
-        expect(migrationProblems('Chapter', sql)).toEqual([
-            'Chapter: workspace_isolation has no WITH CHECK on app.workspace_id',
-            'Chapter: workspace_isolation is limited to one command',
-        ]);
+        const problems = migrationProblems('Chapter', sql);
+        expect(problems).toContain(
+            `Chapter: superuser_bypass is \`CREATE POLICY superuser_bypass ON "Chapter" USING (true)\`, expected \`CREATE POLICY superuser_bypass ON "Chapter" USING (current_setting('role') != 'app_user')\``,
+        );
+        expect(problems).toContain('Chapter: workspace_isolation is dropped after it is created');
+        expect(problems).toContain('Chapter: unexpected policy open_reads');
     });
 
     it('a complete set passes', () => {

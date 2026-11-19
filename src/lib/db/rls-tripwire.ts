@@ -38,7 +38,7 @@ export const WORKSPACE_SCOPED_MODELS: ReadonlySet<string> = new Set(workspaceSco
  * decision: it says no workspace's data can ever live in that table.
  */
 export const GLOBAL_MODELS: Readonly<Record<string, string>> = Object.freeze({
-    User: 'A person exists before and across workspaces; a member list reads names through a workspace context.',
+    User: 'A person exists before and across workspaces; app_user may SELECT only id, name and email (member lists), and write nothing.',
     Account: 'An OAuth identity of a person; read on the plain client by sign-in only (app_user holds no grant).',
     VerificationToken: 'An email-verification token keyed by address, before any workspace is known (app_user holds no grant).',
     UserSession: 'A signed-in browser of a person, who may reach several workspaces (app_user holds no grant).',

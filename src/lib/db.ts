@@ -1,7 +1,8 @@
 import { PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { env } from '@/env';
-import { withEncryptionExtension } from '@/lib/db/encryption-middleware';
+import { encryptionIsActive, withEncryptionExtension } from '@/lib/db/encryption-middleware';
+import { registerWorkspaceKeys } from '@/lib/db/key-registry';
 import { withRlsTripwire } from '@/lib/db/rls-tripwire';
 import type { EncryptedFieldManifest } from '@/lib/security/encrypted-fields';
 import { createWorkspaceKeyManager, type WorkspaceKeyManager } from '@/lib/security/workspace-key-manager';
@@ -20,7 +21,10 @@ import { createWorkspaceKeyManager, type WorkspaceKeyManager } from '@/lib/secur
  *      a workspace-scoped model made outside any database context.
  *
  * The key manager reads `Workspace.encryptedDek` through the UNEXTENDED base
- * client, so a key lookup never re-enters the encryption extension.
+ * client, so a key lookup never re-enters the encryption extension, and
+ * `runInWorkspaceContext` makes that lookup BEFORE its transaction opens
+ * (the client is registered in `src/lib/db/key-registry.ts`), so it never
+ * needs a second pooled connection while the transaction holds one.
  *
  * Workspace-scoped tables are reached ONLY through `runInWorkspaceContext`
  * (`@/lib/db/rls-middleware`), which runs the transaction as `app_user` with
@@ -39,12 +43,19 @@ export interface Database {
 export interface CreateDatabaseOptions {
     /** Replaces the encrypted-fields manifest (tests prove the extension against their own). */
     manifest?: EncryptedFieldManifest;
+    /** The connection pool's size (pg's default otherwise). Tests shrink it to prove no query needs a second connection. */
+    poolMax?: number;
 }
 
 export function createDatabase(connectionString: string = env.DATABASE_URL, options: CreateDatabaseOptions = {}): Database {
-    const base = new PrismaClient({ adapter: new PrismaPg({ connectionString }) });
+    const base = new PrismaClient({
+        adapter: new PrismaPg({ connectionString, ...(options.poolMax !== undefined ? { max: options.poolMax } : {}) }),
+    });
     const keys = createWorkspaceKeyManager(base);
     const client = withRlsTripwire(withEncryptionExtension(base, { keys, manifest: options.manifest }));
+    // Only a client that encrypts needs its keys resolved ahead of a
+    // workspace transaction (`src/lib/db/key-registry.ts`).
+    if (encryptionIsActive(options.manifest)) registerWorkspaceKeys(client, keys);
     return { client, keys };
 }
 

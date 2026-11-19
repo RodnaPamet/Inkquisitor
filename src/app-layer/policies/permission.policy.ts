@@ -29,11 +29,31 @@ export interface DenialSite {
 
 export async function assertPermission(ctx: WorkspaceRequestContext, key: PermissionKey, site: DenialSite = {}): Promise<void> {
     if (hasPermission(ctx.permissions, key)) return;
+    await denyPermission(ctx, key, site);
+}
+
+/**
+ * Record the refusal (AUTHZ_DENIED, in a transaction of its own so it survives
+ * the caller's rollback) and throw the generic 403. `extra` carries codes only,
+ * e.g. the role the database holds NOW when it no longer matches the context's.
+ */
+export async function denyPermission(
+    ctx: WorkspaceRequestContext,
+    key: PermissionKey,
+    site: DenialSite = {},
+    extra: Record<string, string | null> = {},
+): Promise<never> {
     await logEvent(ctx, {
         action: 'AUTHZ_DENIED',
         entityType: 'Permission',
         entityId: null,
-        details: { permission: key, role: ctx.role, ...(site.method ? { method: site.method } : {}), ...(site.path ? { path: site.path } : {}) },
+        details: {
+            permission: key,
+            role: ctx.role,
+            ...(site.method ? { method: site.method } : {}),
+            ...(site.path ? { path: site.path } : {}),
+            ...extra,
+        },
     });
     throw new ForbiddenError('Permission denied');
 }

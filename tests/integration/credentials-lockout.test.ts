@@ -14,7 +14,7 @@ jest.mock('bcrypt', () => {
 
 import bcrypt from 'bcrypt';
 import { prisma } from '@/lib/db';
-import { authenticateWithPassword, progressiveKeyFor } from '@/lib/auth/credentials';
+import { _resetSignInFailureAuditWindow, authenticateWithPassword, progressiveKeyFor, settleSignInFailureAudits } from '@/lib/auth/credentials';
 import { hashPassword } from '@/lib/auth/passwords';
 import { resetProgressiveFailures, LOGIN_PROGRESSIVE_POLICY } from '@/lib/security/rate-limit';
 import { createAccount, uniqueEmail } from '../helpers/workspaces';
@@ -96,7 +96,9 @@ it('an unknown email and a wrong password give the same answer', async () => {
 });
 
 it('a failure is recorded on the account’s workspace trail, without the address or the password', async () => {
+    _resetSignInFailureAuditWindow();
     await attempt('definitely-wrong');
+    await settleSignInFailureAudits();
     const rows = await prisma.auditLog.findMany({ where: { workspaceId: account.workspaceId, action: 'USER_SIGN_IN_FAILED' } });
     expect(rows.length).toBeGreaterThan(0);
     const last = rows[rows.length - 1];
@@ -104,6 +106,16 @@ it('a failure is recorded on the account’s workspace trail, without the addres
     expect(last.detailsJson).toMatchObject({ method: 'credentials', reason: 'credentials_invalid' });
     expect(JSON.stringify(last.detailsJson)).not.toContain(account.email);
     expect(JSON.stringify(last.detailsJson)).not.toContain('definitely-wrong');
+});
+
+it('ten failures and the refusals during the lockout leave ONE row on the trail', async () => {
+    const victim = await createAccount({ passwordHash: await hashPassword(PASSWORD) });
+    const count = () => prisma.auditLog.count({ where: { workspaceId: victim.workspaceId, action: 'USER_SIGN_IN_FAILED' } });
+    expect(await count()).toBe(0);
+    for (let i = 0; i < LOGIN_PROGRESSIVE_POLICY.lockoutAtFailures; i++) await attempt(`wrong-${i}`, victim.email);
+    for (let i = 0; i < 5; i++) expect(await attempt(PASSWORD, victim.email)).toMatchObject({ reason: 'rate_limited' });
+    await settleSignInFailureAudits();
+    expect(await count()).toBe(1);
 });
 
 it('with the limiter off (RATE_LIMIT_ENABLED=0) there is no lockout', async () => {

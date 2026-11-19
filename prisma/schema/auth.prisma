@@ -8,8 +8,8 @@
 //  sign-in (`src/lib/auth/**`, `src/auth.ts`), sign-up
 //  (`src/app-layer/usecases/sign-up.ts`) and the session tracker
 //  (`src/lib/security/session-tracker.ts`); app_user holds no grant on
-//  Account, VerificationToken or UserSession, and reads User only for
-//  member names.
+//  Account, VerificationToken or UserSession, and on User only SELECT
+//  of id, name and email (member lists) — no passwordHash, no write.
 //  Workspace-scoped models live in workspace.prisma / audit.prisma.
 // ─────────────────────────────────────────────────────────────────
 

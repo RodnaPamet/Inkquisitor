@@ -201,8 +201,18 @@ $$;
 -- (`src/lib/auth/**`, `src/lib/security/session-tracker.ts`); app_user, which
 -- every workspace transaction runs as, cannot read a password-reset-style
 -- token, another person's linked identity or another person's session rows.
--- `User` stays readable: a member list names its members.
 REVOKE ALL ON TABLE "Account", "UserSession", "VerificationToken" FROM app_user;
+
+-- `User`: a member list names its members, and that is all app_user needs of
+-- it. No table-wide grant (that would read every row's passwordHash and
+-- sessionVersion, and UPDATE any person); SELECT on the three columns the
+-- member list selects (`MembershipRepository.listForWorkspace`) and nothing
+-- else. Sign-in, sign-up, linking and session revocation write User on the
+-- owning connection (`runWithoutRls`), never as app_user. A query in a
+-- workspace context that needs another column is a grant decision made here.
+-- tests/integration/app-user-user-grants.test.ts holds both halves.
+REVOKE ALL ON TABLE "User" FROM app_user;
+GRANT SELECT ("id", "name", "email") ON TABLE "User" TO app_user;
 
 -- `SET ROLE app_user` needs membership for a non-superuser owner; a
 -- superuser has it implicitly. Granted to whoever runs the migration.
