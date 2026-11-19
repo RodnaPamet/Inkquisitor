@@ -1,0 +1,193 @@
+{
+  "kind": "TIMELINE_EVENT",
+  "label": "Timeline event",
+  "description": "One event placed in story time, whether shown on the page, reported, or kept in backstory: what happens, when, who is involved, what brings it about and what it changes. The shape of a whole plotline belongs to Plot.",
+  "fields": [
+    {
+      "key": "what_happens",
+      "label": "What happens",
+      "help": "The event itself, set down plainly and in order as a record of what took place, not as the book will narrate it.",
+      "type": "richtext",
+      "required": true,
+      "order": 1,
+      "dependsOn": []
+    },
+    {
+      "key": "story_time",
+      "label": "When it happens",
+      "help": "When the event takes place in story time, as a date, a character's age, or a marker relative to other events.",
+      "type": "text",
+      "required": true,
+      "order": 2,
+      "dependsOn": ["what_happens"]
+    },
+    {
+      "key": "time_precision",
+      "label": "How firmly the time is fixed",
+      "help": "How precisely the story pins down when the event happens, which decides how closely later dates and ages must be checked against it.",
+      "type": "choice",
+      "options": [
+        { "value": "exact", "label": "To the day or hour" },
+        { "value": "approximate", "label": "Roughly, to a season or a year" },
+        { "value": "relative_only", "label": "Only in relation to events around it" },
+        { "value": "left_unclear", "label": "Deliberately left unclear" }
+      ],
+      "required": false,
+      "order": 3,
+      "dependsOn": ["story_time"]
+    },
+    {
+      "key": "span_position",
+      "label": "Before, during or after the book",
+      "help": "Whether the event falls before the book's first scene, within the span of its main action, or after its last scene.",
+      "type": "choice",
+      "options": [
+        { "value": "before_opening", "label": "Before the first scene" },
+        { "value": "within_span", "label": "Within the main action" },
+        { "value": "after_ending", "label": "After the last scene" }
+      ],
+      "required": false,
+      "order": 4,
+      "dependsOn": ["what_happens"]
+    },
+    {
+      "key": "duration",
+      "label": "How long it lasts",
+      "help": "How long the event lasts in story time, from a single moment to years, and whether it runs without a break or in separate stretches.",
+      "type": "text",
+      "required": false,
+      "order": 5,
+      "dependsOn": ["what_happens"]
+    },
+    {
+      "key": "participants",
+      "label": "Who takes part",
+      "help": "Each person or group who takes part in the event or is present for it, one per item, with a word on their part in it where that helps.",
+      "type": "list",
+      "required": true,
+      "order": 6,
+      "dependsOn": ["what_happens"]
+    },
+    {
+      "key": "who_knows",
+      "label": "Who knows of it",
+      "help": "Which characters know the event happened, which of them know the full truth of it, and any false or competing version that others believe.",
+      "type": "richtext",
+      "required": false,
+      "order": 7,
+      "dependsOn": ["participants"]
+    },
+    {
+      "key": "immediate_cause",
+      "label": "What brings it about",
+      "help": "The decisions, circumstances or earlier events that lead directly to this one, or a note that it arrives without warning.",
+      "type": "richtext",
+      "required": false,
+      "order": 8,
+      "dependsOn": ["what_happens"]
+    },
+    {
+      "key": "consequences",
+      "label": "Consequences",
+      "help": "What changes because the event happened, for those involved, for others and for the course of the story, both at once and later on.",
+      "type": "richtext",
+      "required": true,
+      "order": 9,
+      "dependsOn": ["what_happens"]
+    },
+    {
+      "key": "story_weight",
+      "label": "Weight in the story",
+      "help": "How far the event changes the course of the book, from a detail that colours one scene to a turning point the rest of the story depends on.",
+      "type": "scale",
+      "scaleLabels": { "low": "A passing detail", "high": "A turning point for the book" },
+      "required": false,
+      "order": 10,
+      "dependsOn": ["consequences"]
+    },
+    {
+      "key": "rendering",
+      "label": "How the book renders it",
+      "help": "Whether the reader meets the event in a scene, in a flashback, in summary or only by implication, or whether it stays in the bible alone.",
+      "type": "choice",
+      "options": [
+        { "value": "shown_in_scene", "label": "Shown in a scene as it happens" },
+        { "value": "shown_in_flashback", "label": "Shown later in a flashback or memory" },
+        { "value": "summarised", "label": "Summarised or reported" },
+        { "value": "implied", "label": "Implied or mentioned in passing" },
+        { "value": "bible_only", "label": "Kept in the bible, never on the page" }
+      ],
+      "required": false,
+      "order": 11,
+      "dependsOn": ["span_position"]
+    },
+    {
+      "key": "reader_reveal",
+      "label": "When the reader learns of it",
+      "help": "Where in the book the reader first learns of the event, whether in full or in pieces, and whether the first version they meet is the true one.",
+      "type": "richtext",
+      "required": false,
+      "order": 12,
+      "dependsOn": ["rendering"]
+    },
+    {
+      "key": "fixed_details",
+      "label": "Details to keep consistent",
+      "help": "Facts about the event that later scenes must not contradict, one per item, such as times, injuries, the weather or who was absent.",
+      "type": "list",
+      "required": false,
+      "order": 13,
+      "dependsOn": ["story_time", "participants"]
+    }
+  ],
+  "relationTypes": [
+    {
+      "key": "causes",
+      "label": "causes",
+      "inverseLabel": "caused by",
+      "targetKinds": ["TIMELINE_EVENT"]
+    },
+    {
+      "key": "precedes",
+      "label": "precedes",
+      "inverseLabel": "follows",
+      "targetKinds": ["TIMELINE_EVENT"]
+    },
+    {
+      "key": "stage_of",
+      "label": "stage of",
+      "inverseLabel": "has as a stage",
+      "targetKinds": ["TIMELINE_EVENT"]
+    },
+    {
+      "key": "involves",
+      "label": "involves",
+      "inverseLabel": "involved in",
+      "targetKinds": ["FACTION", "OBJECT"]
+    },
+    {
+      "key": "instigated_by",
+      "label": "instigated by",
+      "inverseLabel": "instigated",
+      "targetKinds": ["FACTION"]
+    },
+    {
+      "key": "creates",
+      "label": "creates",
+      "inverseLabel": "created in",
+      "targetKinds": ["FACTION", "OBJECT"]
+    },
+    {
+      "key": "ends_or_destroys",
+      "label": "ends or destroys",
+      "inverseLabel": "ended or destroyed in",
+      "targetKinds": ["FACTION", "OBJECT"]
+    },
+    {
+      "key": "draws_on",
+      "label": "draws on",
+      "inverseLabel": "informs",
+      "targetKinds": ["RESEARCH"]
+    }
+  ]
+}

@@ -1,0 +1,199 @@
+{
+  "kind": "WORLD_RULE",
+  "label": "World rule",
+  "description": "One rule of how the story's world works, in magic, technology, law, custom or nature: what it says, what it costs, who knows it and how it shapes events. Places and groups belong to other kinds.",
+  "fields": [
+    {
+      "key": "rule_statement",
+      "label": "Rule in one sentence",
+      "help": "The rule itself, stated plainly in a single sentence that a reader checking your draft for consistency could apply.",
+      "type": "text",
+      "required": true,
+      "order": 1,
+      "dependsOn": []
+    },
+    {
+      "key": "domain",
+      "label": "What it governs",
+      "help": "The area of the world the rule belongs to, such as magic, technology, law, custom or nature, or another area you name.",
+      "type": "text",
+      "required": true,
+      "order": 2,
+      "dependsOn": []
+    },
+    {
+      "key": "who_it_applies_to",
+      "label": "Who it applies to",
+      "help": "Whether the rule binds, or can be used by, everyone in the story's world or only some; where it stops applying belongs under its cost and limits.",
+      "type": "choice",
+      "options": [
+        { "value": "everyone", "label": "Everyone, without exception" },
+        { "value": "most_people", "label": "Most people, with some exceptions" },
+        { "value": "one_group", "label": "Members of one group or people" },
+        { "value": "rare_few", "label": "A rare few" },
+        { "value": "not_people", "label": "Things or forces rather than people" }
+      ],
+      "required": false,
+      "order": 3,
+      "dependsOn": ["rule_statement"]
+    },
+    {
+      "key": "in_world_origin",
+      "label": "Source within the world",
+      "help": "Where the rule comes from inside the story's world, or a note that the story deliberately gives it no source.",
+      "type": "richtext",
+      "required": false,
+      "order": 4,
+      "dependsOn": ["rule_statement"]
+    },
+    {
+      "key": "binding_force",
+      "label": "What keeps it in force",
+      "help": "What makes the rule go on holding now, as distinct from where it came from.",
+      "type": "choice",
+      "options": [
+        { "value": "own_nature", "label": "Its own nature; nothing enforces it" },
+        { "value": "authority", "label": "An authority that enforces it" },
+        { "value": "shared_belief", "label": "Custom or shared belief" },
+        { "value": "binding_agreement", "label": "An oath, pact or agreement" },
+        { "value": "unexplained", "label": "A force the story leaves unexplained" }
+      ],
+      "required": false,
+      "order": 5,
+      "dependsOn": ["rule_statement"]
+    },
+    {
+      "key": "cost_or_limit",
+      "label": "Cost and limits",
+      "help": "What using, keeping or breaking the rule costs, and the point beyond which it stops applying.",
+      "type": "richtext",
+      "required": true,
+      "order": 6,
+      "dependsOn": ["rule_statement"]
+    },
+    {
+      "key": "firmness",
+      "label": "How absolute it is",
+      "help": "How strictly the rule holds in the story, from one that is often bent or broken to one that has never once been broken.",
+      "type": "scale",
+      "scaleLabels": { "low": "Often bent or broken", "high": "Never once broken" },
+      "required": false,
+      "order": 7,
+      "dependsOn": ["rule_statement"]
+    },
+    {
+      "key": "who_knows",
+      "label": "Who knows it",
+      "help": "Who in the story understands the rule and how widely it is known, including any mistaken version most people hold.",
+      "type": "text",
+      "required": true,
+      "order": 8,
+      "dependsOn": ["rule_statement"]
+    },
+    {
+      "key": "explanation_depth",
+      "label": "How much the reader is told",
+      "help": "How fully the book sets out the rule's workings for the reader, from leaving them a mystery to stating every condition.",
+      "type": "scale",
+      "scaleLabels": { "low": "Left a mystery", "high": "Fully explained" },
+      "required": false,
+      "order": 9,
+      "dependsOn": ["rule_statement"]
+    },
+    {
+      "key": "reader_discovery",
+      "label": "How the reader learns it",
+      "help": "When and through what the reader first learns the rule, and whether they grasp it before it decides anything that matters.",
+      "type": "richtext",
+      "required": false,
+      "order": 10,
+      "dependsOn": ["who_knows"]
+    },
+    {
+      "key": "everyday_impact",
+      "label": "Effect on everyday life",
+      "help": "How the rule and its cost show in ordinary life beyond the main characters, in work, trade, habit and belief.",
+      "type": "richtext",
+      "required": false,
+      "order": 11,
+      "dependsOn": ["cost_or_limit"]
+    },
+    {
+      "key": "story_consequence",
+      "label": "Consequences for the story",
+      "help": "How the rule shapes events and the choices characters make, including the choices it forbids them or forces on them.",
+      "type": "richtext",
+      "required": true,
+      "order": 12,
+      "dependsOn": ["cost_or_limit"]
+    },
+    {
+      "key": "continuity_risks",
+      "label": "Continuity risks",
+      "help": "Points in the book where a draft could contradict the rule or its limits without meaning to, one per item, to check in revision.",
+      "type": "list",
+      "required": false,
+      "order": 13,
+      "dependsOn": ["story_consequence"]
+    },
+    {
+      "key": "rule_change",
+      "label": "Change across the book",
+      "help": "Whether the rule itself alters, fails or proves other than it first seemed by the end of the book, and what brings that about.",
+      "type": "richtext",
+      "required": false,
+      "order": 14,
+      "dependsOn": ["story_consequence"]
+    }
+  ],
+  "relationTypes": [
+    {
+      "key": "rests_on",
+      "label": "rests on",
+      "inverseLabel": "underpins",
+      "targetKinds": ["WORLD_RULE"]
+    },
+    {
+      "key": "conflicts_with",
+      "label": "conflicts with",
+      "inverseLabel": "conflicts with",
+      "targetKinds": ["WORLD_RULE"]
+    },
+    {
+      "key": "established_by",
+      "label": "established by",
+      "inverseLabel": "establishes",
+      "targetKinds": ["TIMELINE_EVENT", "FACTION"]
+    },
+    {
+      "key": "tested_at",
+      "label": "tested at",
+      "inverseLabel": "tests",
+      "targetKinds": ["TIMELINE_EVENT"]
+    },
+    {
+      "key": "enforced_by",
+      "label": "enforced by",
+      "inverseLabel": "enforces",
+      "targetKinds": ["FACTION"]
+    },
+    {
+      "key": "contested_by",
+      "label": "contested by",
+      "inverseLabel": "contests",
+      "targetKinds": ["FACTION"]
+    },
+    {
+      "key": "embodied_in",
+      "label": "embodied in",
+      "inverseLabel": "embodies",
+      "targetKinds": ["OBJECT"]
+    },
+    {
+      "key": "draws_on",
+      "label": "draws on",
+      "inverseLabel": "informs",
+      "targetKinds": ["RESEARCH"]
+    }
+  ]
+}

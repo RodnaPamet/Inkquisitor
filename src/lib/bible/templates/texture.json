@@ -1,0 +1,186 @@
+{
+  "kind": "TEXTURE",
+  "label": "Texture",
+  "description": "The concrete sensory and material grain of the page, for the whole book or one part of it: which senses lead, how much detail the page carries, what recurs and which motifs gather meaning. Sentence mechanics and the description of one place belong to other kinds.",
+  "fields": [
+    {
+      "key": "sensory_emphasis",
+      "label": "Leading senses",
+      "help": "Which senses the page leans on most across the span this texture covers, in rough order of weight.",
+      "type": "text",
+      "required": true,
+      "order": 1,
+      "dependsOn": []
+    },
+    {
+      "key": "span",
+      "label": "Span covered",
+      "help": "How much of the book this texture applies to, so that a texture for one part can be read against the book-wide one.",
+      "type": "choice",
+      "options": [
+        { "value": "whole_book", "label": "The whole book" },
+        { "value": "one_part", "label": "One part or act" },
+        { "value": "one_plotline", "label": "One plotline" },
+        { "value": "one_viewpoint", "label": "One viewpoint's chapters" },
+        { "value": "recurring_scenes", "label": "A recurring kind of scene" }
+      ],
+      "required": false,
+      "order": 2,
+      "dependsOn": []
+    },
+    {
+      "key": "material_palette",
+      "label": "Material palette",
+      "help": "The broad classes of material, goods, food, clothing and everyday technology that furnish the page and fix its period and station, one class per item.",
+      "type": "list",
+      "required": false,
+      "order": 3,
+      "dependsOn": []
+    },
+    {
+      "key": "detail_density",
+      "label": "Density of detail",
+      "help": "How much concrete detail a typical page carries, from only what the action needs to every surface furnished.",
+      "type": "scale",
+      "scaleLabels": { "low": "Sparse: only what the scene needs", "high": "Lush: every surface furnished" },
+      "required": true,
+      "order": 4,
+      "dependsOn": []
+    },
+    {
+      "key": "detail_precision",
+      "label": "Precision of detail",
+      "help": "How exactly concrete things are rendered on the page, from broad impressions to precise, named and measured particulars.",
+      "type": "scale",
+      "scaleLabels": { "low": "Broad impressions", "high": "Exact, named particulars" },
+      "required": false,
+      "order": 5,
+      "dependsOn": ["detail_density"]
+    },
+    {
+      "key": "density_shifts",
+      "label": "Where detail thickens or thins",
+      "help": "The scenes or moments where concrete detail deliberately rises above or falls below the usual density, and why, one per item.",
+      "type": "list",
+      "required": false,
+      "order": 6,
+      "dependsOn": ["detail_density"]
+    },
+    {
+      "key": "sensory_absences",
+      "label": "Senses held back",
+      "help": "Senses or kinds of detail the page deliberately keeps scarce or withholds, and what that restraint is for, one per item.",
+      "type": "list",
+      "required": false,
+      "order": 7,
+      "dependsOn": ["sensory_emphasis"]
+    },
+    {
+      "key": "selection_principle",
+      "label": "What earns a detail its place",
+      "help": "The main test a concrete detail must pass before it goes on the page.",
+      "type": "choice",
+      "options": [
+        { "value": "viewpoint_noticing", "label": "The viewpoint character would notice it" },
+        { "value": "builds_atmosphere", "label": "It builds the atmosphere" },
+        { "value": "grounds_world", "label": "It makes the world feel solid" },
+        { "value": "reveals_people", "label": "It reveals the people in the scene" },
+        { "value": "plants_payoff", "label": "It sets up a later payoff" },
+        { "value": "varies_by_scene", "label": "The test changes from scene to scene" }
+      ],
+      "required": false,
+      "order": 8,
+      "dependsOn": ["sensory_emphasis"]
+    },
+    {
+      "key": "recurring_details",
+      "label": "Recurring details",
+      "help": "Concrete objects, sounds, smells, habits or materials that come back across the span, one per item, in the order a reader first meets them.",
+      "type": "list",
+      "required": true,
+      "order": 9,
+      "dependsOn": ["sensory_emphasis"]
+    },
+    {
+      "key": "motifs",
+      "label": "Motifs",
+      "help": "Repeated images or patterns that gather meaning each time they return, one per item, each named by its concrete form.",
+      "type": "list",
+      "required": true,
+      "order": 10,
+      "dependsOn": ["recurring_details"]
+    },
+    {
+      "key": "motif_visibility",
+      "label": "How openly the motifs show",
+      "help": "How far the motifs announce themselves to a reader, from passing unnoticed on a first read to being plainly signalled.",
+      "type": "scale",
+      "scaleLabels": { "low": "Barely noticed on a first read", "high": "Openly signalled to the reader" },
+      "required": false,
+      "order": 11,
+      "dependsOn": ["motifs"]
+    },
+    {
+      "key": "motif_development",
+      "label": "How the motifs develop",
+      "help": "How each motif changes in form or meaning across its returns, and where its last appearance leaves it.",
+      "type": "richtext",
+      "required": false,
+      "order": 12,
+      "dependsOn": ["motifs"]
+    },
+    {
+      "key": "texture_risks",
+      "label": "Texture risks",
+      "help": "Ways the concrete detail could misfire for a reader, such as clutter, stock images, anachronism or numbing repetition, one per item.",
+      "type": "list",
+      "required": false,
+      "order": 13,
+      "dependsOn": ["detail_density", "recurring_details"]
+    }
+  ],
+  "relationTypes": [
+    {
+      "key": "variant_of",
+      "label": "variant of",
+      "inverseLabel": "has variant",
+      "targetKinds": ["TEXTURE"]
+    },
+    {
+      "key": "contrasts_with",
+      "label": "contrasts with",
+      "inverseLabel": "contrasts with",
+      "targetKinds": ["TEXTURE"]
+    },
+    {
+      "key": "filtered_through",
+      "label": "filtered through",
+      "inverseLabel": "filters",
+      "targetKinds": ["POV"]
+    },
+    {
+      "key": "shaped_by",
+      "label": "shaped by",
+      "inverseLabel": "shapes",
+      "targetKinds": ["WORLD_RULE", "FACTION"]
+    },
+    {
+      "key": "features",
+      "label": "features",
+      "inverseLabel": "featured in",
+      "targetKinds": ["OBJECT"]
+    },
+    {
+      "key": "returns_at",
+      "label": "returns at",
+      "inverseLabel": "marks a return of",
+      "targetKinds": ["TIMELINE_EVENT"]
+    },
+    {
+      "key": "draws_on",
+      "label": "draws on",
+      "inverseLabel": "informs",
+      "targetKinds": ["RESEARCH"]
+    }
+  ]
+}

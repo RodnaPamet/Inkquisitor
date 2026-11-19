@@ -124,7 +124,9 @@ const scoped = models.filter((m) => m.hasWorkspaceId || m.name === 'Workspace');
 
 it('reads a schema with models in it (zero models is never full coverage)', () => {
     expect(models.length).toBeGreaterThan(0);
-    expect(scoped.map((m) => m.name)).toEqual(expect.arrayContaining(['Workspace', 'WorkspaceMembership', 'AuditLog']));
+    expect(scoped.map((m) => m.name)).toEqual(
+        expect.arrayContaining(['Workspace', 'WorkspaceMembership', 'AuditLog', 'Book', 'BibleElement', 'BibleField', 'BibleRelation', 'BibleEntryVersion']),
+    );
 });
 
 it('agrees with the runtime list the tripwire uses', () => {

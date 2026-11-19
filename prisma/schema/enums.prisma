@@ -11,3 +11,49 @@ enum WorkspaceRole {
   EDITOR
   READER
 }
+
+/// The kinds of bible element (Phase 1.1). Closed: the field template of each
+/// lives in `src/lib/bible/templates/<kind>.json`, and the order here is the
+/// order of `BIBLE_KINDS` (`src/lib/bible/kinds.ts`), which decides which
+/// template declares a relation between two kinds.
+enum BibleElementKind {
+  PREMISE
+  PLOT
+  CHARACTER
+  SETTING
+  THEME
+  MOOD
+  TEXTURE
+  STYLE
+  POV
+  WORLD_RULE
+  TIMELINE_EVENT
+  FACTION
+  OBJECT
+  RESEARCH
+  CUSTOM
+}
+
+/// How settled the author considers an element.
+enum BibleElementStatus {
+  DRAFT
+  IN_PROGRESS
+  SETTLED
+}
+
+/// Where a book stands on the way to publication.
+enum BookStage {
+  CONCEPT
+  PLANNING
+  DRAFTING
+  REVISING
+  PUBLISHING
+}
+
+/// What produced a bible version: the author by hand, an interview the
+/// author accepted (Phase 2), or an import (Phase 1.3).
+enum BibleVersionSource {
+  MANUAL
+  INTERVIEW
+  IMPORT
+}

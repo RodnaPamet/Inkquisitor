@@ -1,0 +1,184 @@
+{
+  "kind": "MOOD",
+  "label": "Mood",
+  "description": "The emotional atmosphere a reader lives in, across the whole book or one part of it: the feeling that dominates, how hard it presses, where it shifts and what it leaves behind. Concrete details and sentence mechanics belong to other kinds.",
+  "fields": [
+    {
+      "key": "dominant_feeling",
+      "label": "Dominant feeling",
+      "help": "The one feeling a reader should carry through most of the book, or of the part this mood covers, named as plainly as you can.",
+      "type": "text",
+      "required": true,
+      "order": 1,
+      "dependsOn": []
+    },
+    {
+      "key": "span",
+      "label": "Span covered",
+      "help": "How much of the book this mood governs, which decides which other moods it has to sit alongside.",
+      "type": "choice",
+      "options": [
+        { "value": "whole_book", "label": "The whole book" },
+        { "value": "one_part", "label": "One part or act" },
+        { "value": "one_plotline", "label": "One plotline" },
+        { "value": "recurring_scenes", "label": "A recurring kind of scene" },
+        { "value": "one_sequence", "label": "A single sequence or chapter" }
+      ],
+      "required": false,
+      "order": 2,
+      "dependsOn": []
+    },
+    {
+      "key": "undertone",
+      "label": "Undertone",
+      "help": "A second feeling that runs beneath the dominant one and colours it, if the mood carries one.",
+      "type": "text",
+      "required": false,
+      "order": 3,
+      "dependsOn": ["dominant_feeling"]
+    },
+    {
+      "key": "sources_of_feeling",
+      "label": "What produces the feeling",
+      "help": "The story situations, pressures or uncertainties that produce the feeling, as distinct from the words and details on the page, one per item.",
+      "type": "list",
+      "required": false,
+      "order": 4,
+      "dependsOn": ["dominant_feeling"]
+    },
+    {
+      "key": "intensity",
+      "label": "Intensity",
+      "help": "How hard the dominant feeling presses on the reader across the span, from held well back to overwhelming.",
+      "type": "scale",
+      "scaleLabels": { "low": "Restrained", "high": "Overwhelming" },
+      "required": true,
+      "order": 5,
+      "dependsOn": ["dominant_feeling"]
+    },
+    {
+      "key": "intensity_pattern",
+      "label": "How the intensity moves",
+      "help": "The shape the intensity takes from the start of the span to its end.",
+      "type": "choice",
+      "options": [
+        { "value": "steady", "label": "Holds steady" },
+        { "value": "slow_build", "label": "Builds slowly" },
+        { "value": "waves", "label": "Rises and falls in waves" },
+        { "value": "front_loaded", "label": "Strikes early, then eases" },
+        { "value": "late_surge", "label": "Stays low, then surges late" }
+      ],
+      "required": false,
+      "order": 6,
+      "dependsOn": ["intensity"]
+    },
+    {
+      "key": "tonal_weight",
+      "label": "Weight of tone",
+      "help": "How far the mood leans towards gravity rather than lightness, counting how much humour it leaves room for.",
+      "type": "scale",
+      "scaleLabels": { "low": "Light throughout", "high": "Grave throughout" },
+      "required": false,
+      "order": 7,
+      "dependsOn": ["dominant_feeling"]
+    },
+    {
+      "key": "reader_alignment",
+      "label": "Reader beside the characters",
+      "help": "Whether the reader feels what the viewpoint characters feel, or something sooner, sharper or different that they cannot.",
+      "type": "choice",
+      "options": [
+        { "value": "shares", "label": "Feels what the characters feel" },
+        { "value": "feels_more", "label": "Feels it sooner or more than they do" },
+        { "value": "feels_otherwise", "label": "Feels something they do not" },
+        { "value": "varies", "label": "Moves between these" }
+      ],
+      "required": false,
+      "order": 8,
+      "dependsOn": ["dominant_feeling"]
+    },
+    {
+      "key": "opening_feeling",
+      "label": "Opening feeling",
+      "help": "The feeling the first pages of the span set up, and how soon they arrive at the dominant feeling.",
+      "type": "text",
+      "required": false,
+      "order": 9,
+      "dependsOn": ["dominant_feeling"]
+    },
+    {
+      "key": "mood_shifts",
+      "label": "Planned shifts",
+      "help": "The points where the feeling deliberately changes and what it changes to, one shift per item, in the order a reader meets them.",
+      "type": "list",
+      "required": true,
+      "order": 10,
+      "dependsOn": ["dominant_feeling"]
+    },
+    {
+      "key": "relief_moments",
+      "label": "Moments of relief",
+      "help": "Where and how the reader is briefly let off the pressure of the dominant feeling without the mood itself changing, one per item.",
+      "type": "list",
+      "required": false,
+      "order": 11,
+      "dependsOn": ["intensity"]
+    },
+    {
+      "key": "closing_feeling",
+      "label": "Closing feeling",
+      "help": "The feeling a reader is left with on closing the book, or on leaving the part this mood covers.",
+      "type": "text",
+      "required": true,
+      "order": 12,
+      "dependsOn": ["dominant_feeling"]
+    },
+    {
+      "key": "tonal_risks",
+      "label": "Tonal risks",
+      "help": "Ways this mood could misfire for a reader, such as numbing through sameness or tipping into excess, one per item, to test in later sessions.",
+      "type": "list",
+      "required": false,
+      "order": 13,
+      "dependsOn": ["dominant_feeling"]
+    }
+  ],
+  "relationTypes": [
+    {
+      "key": "gives_way_to",
+      "label": "gives way to",
+      "inverseLabel": "takes over from",
+      "targetKinds": ["MOOD"]
+    },
+    {
+      "key": "sits_within",
+      "label": "sits within",
+      "inverseLabel": "frames",
+      "targetKinds": ["MOOD"]
+    },
+    {
+      "key": "contrasts_with",
+      "label": "contrasts with",
+      "inverseLabel": "contrasts with",
+      "targetKinds": ["MOOD"]
+    },
+    {
+      "key": "evoked_through",
+      "label": "evoked through",
+      "inverseLabel": "evokes",
+      "targetKinds": ["TEXTURE", "STYLE", "POV"]
+    },
+    {
+      "key": "shifts_at",
+      "label": "shifts at",
+      "inverseLabel": "marks a shift in",
+      "targetKinds": ["TIMELINE_EVENT"]
+    },
+    {
+      "key": "fed_by",
+      "label": "fed by",
+      "inverseLabel": "feeds",
+      "targetKinds": ["WORLD_RULE", "TIMELINE_EVENT", "FACTION", "OBJECT"]
+    }
+  ]
+}

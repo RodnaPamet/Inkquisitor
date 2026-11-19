@@ -1,0 +1,312 @@
+{
+  "kind": "POV",
+  "label": "Point of view",
+  "description": "The point of view of the book, or of one part of it: whose perspective the narration follows, in which person, how close it sits to their thoughts and what it may know. Tense and the prose surface belong to prose style.",
+  "fields": [
+    {
+      "key": "viewpoint_characters",
+      "label": "Viewpoint characters",
+      "help": "The characters whose perspective the narration follows, one per item, or the narrator alone when the telling follows no single character.",
+      "type": "list",
+      "required": true,
+      "order": 1,
+      "dependsOn": []
+    },
+    {
+      "key": "span",
+      "label": "Span covered",
+      "help": "How much of the book this point of view governs, so that a part told differently can be read against the book-wide arrangement.",
+      "type": "choice",
+      "options": [
+        {
+          "value": "whole_book",
+          "label": "The whole book"
+        },
+        {
+          "value": "one_part",
+          "label": "One part or act"
+        },
+        {
+          "value": "one_plotline",
+          "label": "One plotline"
+        },
+        {
+          "value": "frame_narrative",
+          "label": "A framing narrative"
+        },
+        {
+          "value": "embedded_accounts",
+          "label": "Accounts quoted within the story"
+        }
+      ],
+      "required": false,
+      "order": 2,
+      "dependsOn": []
+    },
+    {
+      "key": "person",
+      "label": "Grammatical person",
+      "help": "Whether the narration is in first, second or third person, or a planned mix, and which person each viewpoint uses where they differ.",
+      "type": "text",
+      "required": true,
+      "order": 3,
+      "dependsOn": []
+    },
+    {
+      "key": "narrator_type",
+      "label": "Who tells the story",
+      "help": "Who does the telling, which may differ from whose perspective is followed, and whether that teller has a presence of their own on the page.",
+      "type": "choice",
+      "options": [
+        {
+          "value": "viewpoint_character",
+          "label": "The viewpoint character themselves"
+        },
+        {
+          "value": "witness",
+          "label": "A witness to another's story"
+        },
+        {
+          "value": "unseen_narrator",
+          "label": "An unseen outside narrator"
+        },
+        {
+          "value": "present_narrator",
+          "label": "An outside narrator with a presence"
+        },
+        {
+          "value": "collective_voice",
+          "label": "A collective voice"
+        },
+        {
+          "value": "documents",
+          "label": "Documents or records in the story"
+        }
+      ],
+      "required": false,
+      "order": 4,
+      "dependsOn": [
+        "person"
+      ]
+    },
+    {
+      "key": "narrating_moment",
+      "label": "Moment of telling",
+      "help": "Where the teller stands in time relative to the events, which decides how much hindsight the narration carries; tense belongs to prose style.",
+      "type": "choice",
+      "options": [
+        {
+          "value": "alongside_events",
+          "label": "Alongside the events, without hindsight"
+        },
+        {
+          "value": "soon_after",
+          "label": "Soon after, with little hindsight"
+        },
+        {
+          "value": "long_after",
+          "label": "Long after, with full hindsight"
+        },
+        {
+          "value": "unfixed",
+          "label": "Not fixed at any one moment"
+        }
+      ],
+      "required": false,
+      "order": 5,
+      "dependsOn": [
+        "narrator_type"
+      ]
+    },
+    {
+      "key": "narrative_distance",
+      "label": "Narrative distance",
+      "help": "How close the narration usually sits to a viewpoint character's thoughts and feelings, from an outside view to inside their head.",
+      "type": "scale",
+      "scaleLabels": {
+        "low": "Distant",
+        "high": "Inside their head"
+      },
+      "required": true,
+      "order": 6,
+      "dependsOn": [
+        "viewpoint_characters",
+        "person"
+      ]
+    },
+    {
+      "key": "distance_shifts",
+      "label": "Planned shifts in distance",
+      "help": "Where the narration deliberately moves closer to or further from its usual distance, and what each shift is meant to do for the reader.",
+      "type": "richtext",
+      "required": false,
+      "order": 7,
+      "dependsOn": [
+        "narrative_distance"
+      ]
+    },
+    {
+      "key": "perceptual_lens",
+      "label": "Perceptual lens",
+      "help": "How seeing through each viewpoint character bends what the narration notices, names and misreads, given what that character knows and overlooks.",
+      "type": "richtext",
+      "required": false,
+      "order": 8,
+      "dependsOn": [
+        "viewpoint_characters",
+        "narrative_distance"
+      ]
+    },
+    {
+      "key": "knowledge_limits",
+      "label": "Limits of knowledge",
+      "help": "What the narration may know beyond the viewpoint's own experience, what it keeps back from the reader, and what it reveals and when.",
+      "type": "richtext",
+      "required": true,
+      "order": 9,
+      "dependsOn": [
+        "viewpoint_characters"
+      ]
+    },
+    {
+      "key": "reader_knowledge",
+      "label": "What the reader knows",
+      "help": "Whether the reader usually knows more than, as much as or less than the viewpoint character, which decides how suspense and surprise work.",
+      "type": "choice",
+      "options": [
+        {
+          "value": "reader_ahead",
+          "label": "Reader knows more than the viewpoint"
+        },
+        {
+          "value": "reader_level",
+          "label": "Reader knows as much as the viewpoint"
+        },
+        {
+          "value": "reader_behind",
+          "label": "Reader knows less than the viewpoint"
+        },
+        {
+          "value": "varies_by_scene",
+          "label": "Shifts from scene to scene"
+        }
+      ],
+      "required": false,
+      "order": 10,
+      "dependsOn": [
+        "knowledge_limits"
+      ]
+    },
+    {
+      "key": "reliability",
+      "label": "Narrator reliability",
+      "help": "How far the reader can trust the narration's account of events, given the teller's errors, biases or deliberate deceptions.",
+      "type": "scale",
+      "scaleLabels": {
+        "low": "Deeply unreliable",
+        "high": "Fully trustworthy"
+      },
+      "required": false,
+      "order": 11,
+      "dependsOn": [
+        "narrator_type",
+        "knowledge_limits"
+      ]
+    },
+    {
+      "key": "switching_pattern",
+      "label": "Viewpoint switching",
+      "help": "When and how the narration moves from one viewpoint to another, for instance by chapter or by scene, or a note that it never does.",
+      "type": "text",
+      "required": true,
+      "order": 12,
+      "dependsOn": [
+        "viewpoint_characters"
+      ]
+    },
+    {
+      "key": "viewpoint_rationale",
+      "label": "Reason for these viewpoints",
+      "help": "Why the story is best told through these eyes, in this person and at this distance, and what a different choice would gain or lose.",
+      "type": "richtext",
+      "required": false,
+      "order": 13,
+      "dependsOn": [
+        "viewpoint_characters",
+        "person"
+      ]
+    },
+    {
+      "key": "viewpoint_risks",
+      "label": "Viewpoint risks",
+      "help": "Ways the narration could break its own limits, such as knowing what no viewpoint could or drifting between minds mid-scene, one per item.",
+      "type": "list",
+      "required": false,
+      "order": 14,
+      "dependsOn": [
+        "knowledge_limits",
+        "switching_pattern"
+      ]
+    }
+  ],
+  "relationTypes": [
+    {
+      "key": "variant_of",
+      "label": "variant of",
+      "inverseLabel": "has variant",
+      "targetKinds": [
+        "POV"
+      ]
+    },
+    {
+      "key": "frames",
+      "label": "frames",
+      "inverseLabel": "framed by",
+      "targetKinds": [
+        "POV"
+      ]
+    },
+    {
+      "key": "shaped_by",
+      "label": "shaped by",
+      "inverseLabel": "shapes the viewpoint of",
+      "targetKinds": [
+        "WORLD_RULE"
+      ]
+    },
+    {
+      "key": "switches_at",
+      "label": "switches at",
+      "inverseLabel": "marks a viewpoint switch in",
+      "targetKinds": [
+        "TIMELINE_EVENT"
+      ]
+    },
+    {
+      "key": "withholds",
+      "label": "withholds",
+      "inverseLabel": "withheld by",
+      "targetKinds": [
+        "WORLD_RULE",
+        "TIMELINE_EVENT",
+        "OBJECT"
+      ]
+    },
+    {
+      "key": "told_from_within",
+      "label": "told from within",
+      "inverseLabel": "seen from within by",
+      "targetKinds": [
+        "FACTION"
+      ]
+    },
+    {
+      "key": "informed_by",
+      "label": "informed by",
+      "inverseLabel": "informs",
+      "targetKinds": [
+        "RESEARCH"
+      ]
+    }
+  ]
+}

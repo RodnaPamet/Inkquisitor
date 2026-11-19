@@ -6,14 +6,22 @@
  * key inside `runInWorkspaceContext`) and decrypts it on read. Callers never
  * see ciphertext and never call the primitives themselves.
  *
- * EMPTY UNTIL PHASE 1. Phase 0.3 has no author text: users, workspaces,
- * memberships and the audit trail carry identifiers, not content. Phase 1.1
- * adds the bible's `value`, `summary` and `snapshot` here (roadmap rule 4:
- * author text is encrypted at rest). The round trip, and that a listed
- * field is ciphertext in the database, are proved against a test manifest
+ * THE BIBLE'S AUTHOR TEXT (Phase 1.1, roadmap rule 4: author text is
+ * encrypted at rest): a book's logline, an element's summary, every field
+ * value, a relation's note, and a version's snapshot (the element and its
+ * fields, serialised to one JSON string, `src/lib/bible/snapshot.ts`) and
+ * change summary. Users, workspaces, memberships and the audit trail carry
+ * identifiers, not content. Book titles, element names, slugs and custom
+ * labels stay readable on purpose: lists sort by them and the slug is a
+ * unique key (docs/implementation-notes/2026-11-19-1.1-bible-model.md).
+ *
+ * Every listed field is ciphertext at rest and reads back in its own
+ * workspace (`tests/integration/bible-encryption.test.ts`); the extension's
+ * behaviour is also proved against a test manifest
  * (`tests/unit/security/encryption-extension.test.ts`,
- * `tests/integration/field-encryption.test.ts`): the extension takes the
- * manifest as a parameter for exactly that reason.
+ * `tests/integration/field-encryption.test.ts`), which is why it takes the
+ * manifest as a parameter. Every listed field's write path sanitises it
+ * first (`tests/guards/encrypted-field-sanitiser-coverage.test.ts`).
  *
  * Adding a field: list it here, in the same change as the column. A field is
  * a `String`/`String?` column; anything else passes through untouched.
@@ -27,7 +35,13 @@
 /** Model name → the string fields encrypted at rest. */
 export type EncryptedFieldManifest = Readonly<Record<string, readonly string[]>>;
 
-export const ENCRYPTED_FIELDS: EncryptedFieldManifest = Object.freeze({});
+export const ENCRYPTED_FIELDS: EncryptedFieldManifest = Object.freeze({
+    Book: Object.freeze(['logline']),
+    BibleElement: Object.freeze(['summary']),
+    BibleField: Object.freeze(['value']),
+    BibleRelation: Object.freeze(['note']),
+    BibleEntryVersion: Object.freeze(['snapshot', 'changeSummary']),
+});
 
 /** The lookups the extension runs per operation, compiled once per manifest. */
 export interface CompiledManifest {

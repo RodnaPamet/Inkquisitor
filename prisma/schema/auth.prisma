@@ -10,7 +10,7 @@
 //  (`src/lib/security/session-tracker.ts`); app_user holds no grant on
 //  Account, VerificationToken or UserSession, and on User only SELECT
 //  of id, name and email (member lists) — no passwordHash, no write.
-//  Workspace-scoped models live in workspace.prisma / audit.prisma.
+//  Workspace-scoped models live in workspace.prisma, audit.prisma and bible.prisma.
 // ─────────────────────────────────────────────────────────────────
 
 /// A person. `email` is stored lower-cased and trimmed; it is the
@@ -36,6 +36,9 @@ model User {
   accounts    Account[]
   sessions    UserSession[]
   memberships WorkspaceMembership[]
+  /// Bible versions this person saved; the link is cleared (and the version
+  /// kept) when the person is deleted.
+  bibleVersions BibleEntryVersion[]
 }
 
 /// An OAuth identity linked to a user (Google). No provider token is

@@ -120,6 +120,20 @@ scripts/carve-audit.mjs      → the carve-manifest audit against an inflect che
 tests/helpers/api-routes.ts, client-import-graph.ts → the route classes and the import-graph walk the guards share
 ```
 
+Phase 1.1 (the book bible) added:
+
+```
+prisma/schema/bible.prisma   → Book, BibleElement, BibleField, BibleRelation, BibleEntryVersion (append-only)
+src/lib/bible/               → kinds (client-safe enum lists), templates/<kind>.json + the registry (templates.ts,
+                               template-schema.ts), field-values (type checks + sanitising), snapshot, slug, text
+src/lib/security/sanitize.ts → sanitizePlainText / sanitizeRichTextHtml (sanitize-html), the write-path sanitiser
+src/app-layer/schemas/bible.ts → the bible API's request shapes (Zod, strict)
+src/app-layer/repositories/  → book, bible (elements, fields, relations, versions)
+src/app-layer/usecases/      → books, bible-elements, bible-relations, bible-versions; bible-common (the versioned save)
+src/app/api/w/[workspaceSlug]/books/** → books, elements, fields, relations, versions, restore
+src/lib/http/json-body.ts    → readJsonBody: a malformed body is a 400, never a 500
+```
+
 ## Rules every change obeys
 
 These are `docs/ROADMAP.md` section 3, restated. The roadmap is authoritative
@@ -238,13 +252,16 @@ only under zero-retention terms (D5).
   table. `app_user` reads only `id`, `name`, `email` of `User` and writes none
   of it; a new column read in a workspace context is a grant in a migration.
 - **Field encryption.** Author text is encrypted at rest by listing its column
-  in `src/lib/security/encrypted-fields.ts` (empty until Phase 1), never by
-  calling the primitives: inside a workspace context a manifest field is a `v2:`
-  envelope under the workspace's data key (`createWorkspaceWithDek` makes one
+  in `src/lib/security/encrypted-fields.ts` (since Phase 1.1: the bible's
+  logline, summary, field value, relation note, version snapshot and change
+  summary), never by calling the primitives: inside a workspace context a
+  manifest field is a `v2:` envelope under the workspace's data key (`createWorkspaceWithDek` makes one
   per workspace, wrapped under `DATA_ENCRYPTION_KEY`). A field is encrypted only
   on the model that lists it (nested writes and includes resolve their model
   from the DMMF); every value is sealed, with no "already an envelope" skip;
   `runInWorkspaceContext` resolves the key before opening its transaction.
+  The extension seals strings only, so a JSON document (the version
+  snapshot) is serialised to a string column first and sealed whole.
   Production refuses to
   start without `DATA_ENCRYPTION_KEY` and `AUTH_SECRET`; the web tier and the
   worker run an encrypt → decrypt sentinel at boot.
@@ -260,6 +277,43 @@ only under zero-retention terms (D5).
   workspace's own cascade delete passes). Keep the trigger function VOLATILE.
   Deleting the last OWNER's user account is refused until the workspace is
   dealt with.
+- **The book bible (Phase 1.1).** A book's bible is `BibleElement`s of a
+  CLOSED set of kinds (`BibleElementKind`, mirrored client-safe in
+  `src/lib/bible/kinds.ts`; their order decides which template declares a
+  relation). Each kind's fields and relation types are a JSON template in
+  `src/lib/bible/templates/<kind>.json`, parsed with `templateSchema` when the
+  registry loads (`getTemplate`, `getFieldDef`, `getRelationType`); labels
+  are original, neutral craft words, never a published framework's
+  (`tests/unit/bible/templates.test.ts` bans the names). A field is stored
+  only when it has a value (`null`, blank or all-markup clears it), JSON-encoded
+  by type, after `normaliseFieldValue` has checked it against the template
+  (choice from the options, scale 1..5, list of strings) and sanitised it.
+  An element's kind is fixed; a CUSTOM element carries a `customLabel` and no
+  other kind may (CHECK). Slugs are unique per book. A relation is stored
+  ONCE, from the element whose kind declares the type (or the built-in
+  `related_to`), and read from both ends with the inverse label; cross-book
+  and self relations are refused, and the composite `(bookId, elementId)` keys
+  refuse them in the database too. **Every save of an element or its fields
+  writes exactly one `BibleEntryVersion` in the same transaction**
+  (`bible-common.ts`: `BibleElementRepository.lock` — a per-element advisory
+  lock — then the change, then `recordVersion`); a save that changes nothing
+  writes none. A restore applies an old snapshot as a NEW version. The
+  version table is append-only by trigger (P0001 `BIBLE_VERSION_APPEND_ONLY`):
+  only its book's cascade deletes a version, and only an author's deletion
+  clears `authorId`; an element's own deletion leaves its history with the
+  book. Permissions are `bible.view` (all) and `bible.edit` (OWNER, EDITOR).
+- **Sanitising author text.** Every author-text write sanitises at the
+  usecase layer before it is stored: plain text through `plainLine` /
+  `plainBlock` (`src/lib/bible/text.ts`, over `sanitizePlainText`), rich text
+  through `sanitizeRichTextHtml`, field values through `normaliseFieldValue`.
+  An encrypted-manifest field must be classified in
+  `tests/guards/encrypted-field-sanitiser-coverage.test.ts` with the sanitiser
+  its writers call; that guard fails for a field, or a new caller of its
+  repository's write method, without one, and for a second Prisma write path.
+  `sanitize-html` and its parser are ESM: the unit and integration Jest
+  projects transform them (`NODE_ESM_ALLOW_LIST` in `jest.config.js`).
+- **Request bodies.** A route reads its body with `readJsonBody(req)`
+  (`src/lib/http/json-body.ts`), so a malformed body is a 400.
 - **Security headers.** The proxy stamps a per-request-nonce CSP (script-src
   `'nonce-…' 'strict-dynamic'`, no `unsafe-inline`; style-src `unsafe-inline`
   and no nonce) and `SECURITY_HEADERS` (`src/lib/security/csp.ts`) on every

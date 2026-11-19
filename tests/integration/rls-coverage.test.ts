@@ -24,7 +24,8 @@ import { randomBytes } from 'node:crypto';
 import { prisma } from '@/lib/db';
 import { GLOBAL_MODELS, workspaceScopedModelNames } from '@/lib/db/rls-tripwire';
 import { isolationColumn, rlsProblems, type TableRlsFacts } from '../helpers/rls-coverage';
-import { createAccount } from '../helpers/workspaces';
+import { seedBible } from '../helpers/bible';
+import { createAccount, workspaceCtx } from '../helpers/workspaces';
 
 afterAll(() => prisma.$disconnect());
 
@@ -102,15 +103,20 @@ const scoped = workspaceScopedModelNames();
 let a: Awaited<ReturnType<typeof createAccount>>;
 let b: Awaited<ReturnType<typeof createAccount>>;
 beforeAll(async () => {
-    // Each account brings a Workspace, an OWNER membership and audit rows:
+    // Each account brings a Workspace, an OWNER membership and audit rows,
+    // and a seeded bible (a book, elements, fields, a relation and versions):
     // a row in every scoped table, for both workspaces.
     a = await createAccount({ workspaceName: 'RLS A' });
     b = await createAccount({ workspaceName: 'RLS B' });
+    await seedBible(workspaceCtx(a), 'rls-a');
+    await seedBible(workspaceCtx(b), 'rls-b');
 });
 
 it('there is something to cover: zero tables is never complete coverage', () => {
     expect(scoped.length).toBeGreaterThan(0);
-    expect(scoped).toEqual(expect.arrayContaining(['Workspace', 'WorkspaceMembership', 'AuditLog']));
+    expect(scoped).toEqual(
+        expect.arrayContaining(['Workspace', 'WorkspaceMembership', 'AuditLog', 'Book', 'BibleElement', 'BibleField', 'BibleRelation', 'BibleEntryVersion']),
+    );
 });
 
 it.each(scoped)('%s has FORCE RLS and exactly the expected workspace_isolation and superuser_bypass policies', async (table) => {

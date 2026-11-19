@@ -1,0 +1,174 @@
+{
+  "kind": "PREMISE",
+  "label": "Premise",
+  "description": "The seed of the book: who the story is chiefly about, what stands against them, what they stand to lose and the question that keeps a reader going. A book usually has one.",
+  "fields": [
+    {
+      "key": "central_character",
+      "label": "Central character",
+      "help": "Who the story is chiefly about, in a short phrase; the full profile belongs in that character's own entry.",
+      "type": "text",
+      "required": true,
+      "order": 1,
+      "dependsOn": []
+    },
+    {
+      "key": "starting_situation",
+      "label": "Starting situation",
+      "help": "How things stand for the central character when the story opens, before the trouble begins.",
+      "type": "richtext",
+      "required": true,
+      "order": 2,
+      "dependsOn": []
+    },
+    {
+      "key": "central_conflict",
+      "label": "Central conflict",
+      "help": "What stands against the central character, and why they cannot simply walk away from it.",
+      "type": "richtext",
+      "required": true,
+      "order": 3,
+      "dependsOn": ["central_character", "starting_situation"]
+    },
+    {
+      "key": "stakes",
+      "label": "Stakes",
+      "help": "What the central character, or the people around them, would lose if they fail.",
+      "type": "text",
+      "required": true,
+      "order": 4,
+      "dependsOn": ["central_conflict"]
+    },
+    {
+      "key": "character_fit",
+      "label": "Why this character",
+      "help": "Why this particular person must face this conflict, whether because they are best equipped for it or least suited to it.",
+      "type": "richtext",
+      "required": false,
+      "order": 5,
+      "dependsOn": ["central_character", "central_conflict"]
+    },
+    {
+      "key": "conflict_scope",
+      "label": "Scope of the conflict",
+      "help": "How far beyond the central character the outcome of the conflict reaches.",
+      "type": "choice",
+      "options": [
+        { "value": "personal", "label": "One life or a few" },
+        { "value": "close_circle", "label": "A family or close circle" },
+        { "value": "community", "label": "A community or institution" },
+        { "value": "society", "label": "A nation or whole society" },
+        { "value": "world", "label": "A whole world or more" }
+      ],
+      "required": false,
+      "order": 6,
+      "dependsOn": ["central_conflict"]
+    },
+    {
+      "key": "inner_outer_balance",
+      "label": "Inner and outer conflict",
+      "help": "How much of the central conflict is fought within the central character rather than against the world around them.",
+      "type": "scale",
+      "scaleLabels": { "low": "Chiefly an outer struggle", "high": "Chiefly an inner struggle" },
+      "required": false,
+      "order": 7,
+      "dependsOn": ["central_conflict"]
+    },
+    {
+      "key": "story_question",
+      "label": "Story question",
+      "help": "The one question a reader keeps reading to see settled, written as a question the ending must close.",
+      "type": "text",
+      "required": true,
+      "order": 8,
+      "dependsOn": ["central_conflict", "stakes"]
+    },
+    {
+      "key": "distinctive_angle",
+      "label": "Distinctive angle",
+      "help": "What sets this premise apart from familiar stories of its kind, as you see it.",
+      "type": "text",
+      "required": false,
+      "order": 9,
+      "dependsOn": ["central_conflict"]
+    },
+    {
+      "key": "genre_expectations",
+      "label": "Genre expectations",
+      "help": "Conventions readers of this genre will expect the premise to honour, and any it means to turn on their head.",
+      "type": "list",
+      "required": false,
+      "order": 10,
+      "dependsOn": ["central_conflict"]
+    },
+    {
+      "key": "outcome_direction",
+      "label": "Direction of the outcome",
+      "help": "Which way you currently expect the story question to be settled for the central character.",
+      "type": "choice",
+      "options": [
+        { "value": "prevails", "label": "The central character prevails" },
+        { "value": "prevails_at_cost", "label": "Prevails at a heavy cost" },
+        { "value": "defeated", "label": "The central character is defeated" },
+        { "value": "defeated_with_gain", "label": "Defeated but wins something else" },
+        { "value": "left_open", "label": "Left open for the reader" }
+      ],
+      "required": false,
+      "order": 11,
+      "dependsOn": ["story_question"]
+    },
+    {
+      "key": "known_weaknesses",
+      "label": "Known weak points",
+      "help": "Doubts you already hold about the premise, such as plausibility, familiarity or thin stakes, to test in later sessions.",
+      "type": "list",
+      "required": false,
+      "order": 12,
+      "dependsOn": ["story_question"]
+    }
+  ],
+  "relationTypes": [
+    {
+      "key": "centres_on",
+      "label": "centres on",
+      "inverseLabel": "is central to",
+      "targetKinds": ["CHARACTER", "FACTION"]
+    },
+    {
+      "key": "opposition",
+      "label": "casts as opposition",
+      "inverseLabel": "cast as opposition in",
+      "targetKinds": ["CHARACTER", "SETTING", "WORLD_RULE", "FACTION"]
+    },
+    {
+      "key": "carried_by",
+      "label": "is carried by",
+      "inverseLabel": "carries",
+      "targetKinds": ["PLOT"]
+    },
+    {
+      "key": "raises",
+      "label": "raises",
+      "inverseLabel": "is raised by",
+      "targetKinds": ["THEME"]
+    },
+    {
+      "key": "set_in",
+      "label": "is set in",
+      "inverseLabel": "is the setting of",
+      "targetKinds": ["SETTING"]
+    },
+    {
+      "key": "hinges_on",
+      "label": "hinges on",
+      "inverseLabel": "underpins",
+      "targetKinds": ["WORLD_RULE", "TIMELINE_EVENT", "OBJECT", "RESEARCH"]
+    },
+    {
+      "key": "alternative_to",
+      "label": "is an alternative to",
+      "inverseLabel": "is an alternative to",
+      "targetKinds": ["PREMISE"]
+    }
+  ]
+}

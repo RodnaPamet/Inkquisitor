@@ -33,7 +33,17 @@ export type AuditAction =
     | 'ACCOUNT_LINKED'
     | 'ACCOUNT_CLAIMED'
     | 'SESSION_REVOKED'
-    | 'AUTHZ_DENIED';
+    | 'AUTHZ_DENIED'
+    | 'BOOK_CREATED'
+    | 'BOOK_UPDATED'
+    | 'BOOK_DELETED'
+    | 'BIBLE_ELEMENT_CREATED'
+    | 'BIBLE_ELEMENT_UPDATED'
+    | 'BIBLE_ELEMENT_DELETED'
+    | 'BIBLE_FIELDS_UPDATED'
+    | 'BIBLE_RELATION_CREATED'
+    | 'BIBLE_RELATION_DELETED'
+    | 'BIBLE_VERSION_RESTORED';
 
 export interface AuditEventPayload {
     action: AuditAction;

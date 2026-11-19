@@ -8,11 +8,11 @@ it('OWNER holds every key', () => {
 });
 
 it('EDITOR writes content but manages nothing and reads no audit trail', () => {
-    expect(grants('EDITOR').sort()).toEqual(['content.edit', 'content.view', 'members.view', 'workspace.view']);
+    expect(grants('EDITOR').sort()).toEqual(['bible.edit', 'bible.view', 'members.view', 'workspace.view']);
 });
 
 it('READER only reads', () => {
-    expect(grants('READER').sort()).toEqual(['content.view', 'members.view', 'workspace.view']);
+    expect(grants('READER').sort()).toEqual(['bible.view', 'members.view', 'workspace.view']);
 });
 
 it('the table cannot be mutated through a returned set', () => {

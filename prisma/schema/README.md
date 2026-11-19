@@ -6,12 +6,13 @@ and concatenates them at generate and migrate time.
 | File | Holds |
 |---|---|
 | `base.prisma` | The `generator` and `datasource` blocks — and nothing else. Prisma rejects a duplicate of either anywhere in the folder. |
-| `enums.prisma` | Every shared enum (`WorkspaceRole`). |
+| `enums.prisma` | Every shared enum (`WorkspaceRole`; the bible's `BibleElementKind`, `BibleElementStatus`, `BookStage`, `BibleVersionSource`). |
 | `auth.prisma` | People and how they sign in: `User`, `Account`, `VerificationToken`, `UserSession`. Not workspace-scoped. |
 | `workspace.prisma` | `Workspace` (with its wrapped data key) and `WorkspaceMembership`. Workspace-scoped. |
 | `audit.prisma` | `AuditLog`, the append-only, hash-chained trail. Workspace-scoped. |
+| `bible.prisma` | The book bible (Phase 1.1): `Book`, `BibleElement`, `BibleField`, `BibleRelation`, `BibleEntryVersion` (append-only). Workspace-scoped; the workspace travels in every foreign key. |
 
-Phase 1.1 adds `bible.prisma`. Pick the file that matches a new model's
+Pick the file that matches a new model's
 domain and keep files to about thirty models. A model with a `workspaceId` is
 workspace-scoped and needs its row-level security in the same migration
 (`docs/rls-workspace-isolation.md`); a model without one must be listed in
