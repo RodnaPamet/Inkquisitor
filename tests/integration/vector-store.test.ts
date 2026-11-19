@@ -197,6 +197,68 @@ describe('content-hash idempotence', () => {
     });
 });
 
+describe('one revision, one dimension count, under concurrency', () => {
+    it("two concurrent first writes of a revision with different counts: one commits, the other is refused, and the revision stays usable", async () => {
+        const rev = `race-${randomBytes(4).toString('hex')}`;
+        const raw = (sourceId: string, embedding: number[]): VectorRecord => ({
+            sourceModel: 'Question',
+            sourceId,
+            chunkIndex: 0,
+            embeddingRevision: rev,
+            bookId: null,
+            contentHash: 'c'.repeat(64),
+            embedding,
+        });
+        let firstWrote!: () => void;
+        const wrote = new Promise<void>((resolve) => {
+            firstWrote = resolve;
+        });
+        // The first holds its transaction open after writing; the second
+        // writes while the first's rows are still uncommitted.
+        const results = await Promise.allSettled([
+            inA(async (db) => {
+                const outcome = await repo.upsert(db, a.workspaceId, [raw(uid('race2'), [1, 0])]);
+                firstWrote();
+                await new Promise((resolve) => setTimeout(resolve, 300));
+                return outcome;
+            }),
+            (async () => {
+                await wrote;
+                return inA((db) => repo.upsert(db, a.workspaceId, [raw(uid('race3'), [1, 0, 0])]));
+            })(),
+        ]);
+        expect(results[0].status).toBe('fulfilled');
+        expect(results[1].status).toBe('rejected');
+        expect(((results[1] as PromiseRejectedResult).reason as VectorStoreError).reason).toBe('REVISION_DIMENSION_MISMATCH');
+        // Not wedged: the revision holds one count and still answers.
+        const hits = await inA((db) => repo.search(db, a.workspaceId, { embeddingRevision: rev, embedding: [1, 0], k: 5 }));
+        expect(hits).toHaveLength(1);
+    });
+});
+
+describe("the seam's float bounds are the database's", () => {
+    const raw = (sourceId: string, embedding: number[]): VectorRecord => ({
+        sourceModel: 'Question',
+        sourceId,
+        chunkIndex: 0,
+        embeddingRevision: 'float-bounds:d2:p00000000',
+        bookId: null,
+        contentHash: 'd'.repeat(64),
+        embedding,
+    });
+
+    it('what the seam admits, pgvector stores: the largest 32-bit float and a subnormal', async () => {
+        expect(await inA((db) => repo.upsert(db, a.workspaceId, [raw(uid('fmax'), [3.4e38, 1]), raw(uid('fsub'), [1e-40, 0])]))).toMatchObject({
+            inserted: 2,
+        });
+    });
+
+    it('what pgvector would refuse, the seam refuses first, by name', async () => {
+        expect(await refusal(inA((db) => repo.upsert(db, a.workspaceId, [raw(uid('fbig'), [1e39, 1])])))).toBe('INVALID_RECORD');
+        expect(await refusal(inA((db) => repo.upsert(db, a.workspaceId, [raw(uid('fzero'), [1e-50, 0])])))).toBe('INVALID_RECORD');
+    });
+});
+
 describe('workspace isolation', () => {
     const shared = 'Where was Mara born?';
     let aId: string;

@@ -50,11 +50,14 @@ docker run -d --name "$NAME" \
 
 ready=0
 for _ in $(seq 1 60); do
-    # The entrypoint starts a temporary server for initdb and restarts it, so
-    # ask twice in a row before trusting a "ready".
-    if docker exec "$NAME" pg_isready -U smoke -d smoke -q 2>/dev/null \
+    # The entrypoint runs initdb's work on a temporary server that listens on
+    # the Unix socket only, then restarts it: ask over TCP, which only the
+    # real server answers (a socket probe can pass against the temporary one
+    # and the checks below then meet a server that is going away), and twice
+    # in a row before trusting a "ready".
+    if docker exec "$NAME" pg_isready -h 127.0.0.1 -U smoke -d smoke -q 2>/dev/null \
         && sleep 1 \
-        && docker exec "$NAME" pg_isready -U smoke -d smoke -q 2>/dev/null; then
+        && docker exec "$NAME" pg_isready -h 127.0.0.1 -U smoke -d smoke -q 2>/dev/null; then
         ready=1
         break
     fi

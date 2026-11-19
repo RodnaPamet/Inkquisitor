@@ -91,6 +91,11 @@ function lockKey(workspaceId: string, embeddingRevision: string): Prisma.Sql {
     return Prisma.sql`hashtext(${`vector-store:${workspaceId}`}), hashtext(${embeddingRevision})`;
 }
 
+/** The (workspace, revision) key that serialises a revision's first writes (`writeBatch`). */
+function firstWriteLockKey(workspaceId: string, embeddingRevision: string): Prisma.Sql {
+    return Prisma.sql`hashtext(${`vector-store-first-write:${workspaceId}`}), hashtext(${embeddingRevision})`;
+}
+
 function dimensionSql(dimensions: number): Prisma.Sql {
     if (!Number.isInteger(dimensions) || dimensions < 1 || dimensions > MAX_DIMENSIONS) {
         throw new VectorStoreError('INVALID_QUERY', 'dimension count out of range');
@@ -220,7 +225,19 @@ export function createPgvectorStore(): VectorStoreBackend {
         // so no write's writeSeq can fall below a startSeq drawn while it is in flight.
         // `void` cannot be deserialised by $queryRaw, hence $executeRaw.
         await db.$executeRaw(Prisma.sql`SELECT pg_advisory_xact_lock_shared(${lockKey(workspaceId, embeddingRevision)})`);
-        const stored = await revisionDimensions(db, workspaceId, embeddingRevision);
+        let stored = await revisionDimensions(db, workspaceId, embeddingRevision);
+        if (stored === null) {
+            // The revision's FIRST write in this workspace fixes its dimension
+            // count, and two of them may race: each sees no rows (the other's
+            // are uncommitted), and under the shared lock alone both would
+            // commit, leaving a revision of two counts that every later call
+            // refuses. So a first write takes the revision's first-write lock
+            // (held to commit) and asks again: a second first write waits for
+            // the first to commit and then sees its rows. Taken after the shared
+            // lock and never before it, so it cannot deadlock with a rebuild.
+            await db.$executeRaw(Prisma.sql`SELECT pg_advisory_xact_lock(${firstWriteLockKey(workspaceId, embeddingRevision)})`);
+            stored = await revisionDimensions(db, workspaceId, embeddingRevision);
+        }
         if (stored !== null && stored !== embedding.length) {
             throw new VectorStoreError('REVISION_DIMENSION_MISMATCH', `revision ${embeddingRevision} holds ${stored}-dimensional vectors`);
         }

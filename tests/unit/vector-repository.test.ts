@@ -188,8 +188,28 @@ describe('vectors only: a record carries a key, a scope, a content hash and a ve
         ['a negative chunk', { chunkIndex: -1 }],
         ['a revision with a space', { embeddingRevision: 'my model' }],
         ['a non-finite number', { embedding: [1, Number.NaN, 0, 0] }],
+        // pgvector holds 32-bit floats: what it would refuse (out of range) or
+        // read as the zero vector (every component underflows) is refused here,
+        // never handed to the database as a raw error quoting the value.
+        ['a component past the 32-bit float range', { embedding: [1, 1e39, 0, 0] }],
+        ['a vector that is zero in 32 bits', { embedding: [1e-50, 0, 0, 0] }],
     ])('refuses %s', async (_label, change) => {
         expect(await refusal(repo.upsert(DB, A, [{ ...rec('q1', 0, [1, 0, 0, 0]), ...change } as VectorRecord]))).toBe('INVALID_RECORD');
+    });
+
+    it('admits the 32-bit extremes the database holds: the largest float and a subnormal', async () => {
+        expect(await repo.upsert(DB, A, [rec('q1', 0, [3.4e38, 0, 0, 0]), rec('q2', 0, [1e-40, 0, 0, 0])])).toEqual({
+            inserted: 2,
+            updated: 0,
+            unchanged: 0,
+        });
+    });
+
+    it('refuses a query that is zero in 32 bits (its cosine is NaN), or past the float range', async () => {
+        await repo.upsert(DB, A, DOC1);
+        for (const embedding of [[1e-50, 0, 0, 0], [1e39, 0, 0, 0]]) {
+            expect(await refusal(repo.search(DB, A, { embeddingRevision: REV, embedding, k: 1 }))).toBe('INVALID_QUERY');
+        }
     });
 });
 
@@ -236,6 +256,14 @@ describe('every read and write is bounded', () => {
         await repo.upsert(DB, A, [...DOC1, ...DOC2]);
         expect(await refusal(repo.search(DB, A, { embeddingRevision: REV, embedding: [1, 0, 0, 0], k: MAX_SEARCH_K + 1 }))).toBe('INVALID_QUERY');
         expect(await repo.search(DB, A, { embeddingRevision: REV, embedding: [1, 0, 0, 0], k: 2 })).toHaveLength(2);
+    });
+
+    it('reads a non-finite listing limit as the bound, never as NaN', async () => {
+        await repo.upsert(DB, A, DOC1);
+        for (const limit of [Number.NaN, Number.POSITIVE_INFINITY]) {
+            expect(await repo.listKeys(DB, A, REV, { limit })).toHaveLength(DOC1.length);
+            expect(await repo.listSourceKeys(DB, A, REV, 'Question', 'q1', { limit })).toHaveLength(DOC1.length);
+        }
     });
 
     it('refuses a key repeated in one call, and an unknown query member', async () => {

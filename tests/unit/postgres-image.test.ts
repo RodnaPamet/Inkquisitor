@@ -16,7 +16,9 @@
  *
  * Adapted from inflect-compliance's `tests/guards/postgres-pgvector-image.test.ts`.
  */
+import { spawnSync } from 'node:child_process';
 import * as fs from 'node:fs';
+import * as os from 'node:os';
 import * as path from 'node:path';
 import * as yaml from 'js-yaml';
 
@@ -65,6 +67,7 @@ type Job = {
     outputs?: Record<string, string>;
     services?: Record<string, { image?: unknown }>;
     container?: unknown;
+    permissions?: Record<string, string>;
 };
 type Workflow = {
     on?: unknown;
@@ -190,8 +193,15 @@ describe('the publish workflow — weekly, on an upstream digest move and on dis
         expect(run.includes('could not read the upstream')).toBe(true);
     });
 
-    it('holds read access to the code and write access to packages, nothing more', () => {
-        expect(wf.permissions).toEqual({ contents: 'read', packages: 'write' });
+    it('holds read access to the code, and package write in the pushing job alone', () => {
+        // A job without its own block inherits the workflow's: decide reads
+        // registry metadata anonymously and must never hold package write.
+        expect(wf.permissions).toEqual({ contents: 'read' });
+        expect(decide.permissions).toBeUndefined();
+        expect(job.permissions).toEqual({ contents: 'read', packages: 'write' });
+        for (const [name, j] of Object.entries(wf.jobs)) {
+            if (name !== 'build-scan-push') expect([name, j.permissions?.packages]).toEqual([name, undefined]);
+        }
     });
 
     it('publishes from main only, and only when decide says so', () => {
@@ -355,5 +365,70 @@ describe('every Postgres the repository runs is deploy/postgres/Dockerfile', () 
         for (const image of ['redis:7-alpine', 'edoburu/pgbouncer:latest', 'node:24-alpine']) {
             expect(isPostgresImage(image)).toBe(false);
         }
+    });
+});
+
+describe("start.sh and smoke.sh wait for the REAL server, not the entrypoint's initdb server", () => {
+    /*
+     * The upstream entrypoint does initdb's work on a temporary server that
+     * listens on the Unix socket only (`listen_addresses=''`), stops it, and
+     * starts the real one. A fake `docker` plays that sequence: while the
+     * temporary server runs, `pg_isready` over the socket answers ready and
+     * over TCP (`-h`) does not; once the real server is up, both answer. The
+     * scripts must do their first real work (start.sh's extension query,
+     * smoke.sh's first check) only against the real server.
+     */
+    const TEMP_PROBES = 3;
+    const FAKE_DOCKER = `#!/usr/bin/env bash
+state="$FAKE_STATE"
+n=$(cat "$state/probes" 2>/dev/null || echo 0)
+phase=temp; [ "$n" -ge ${TEMP_PROBES} ] && phase=real
+case "$1" in
+  run) echo fake-container-id ;;
+  inspect) echo true ;;
+  logs) ;;
+  exec)
+    shift 2
+    if [ "$1" = pg_isready ]; then
+      echo $((n + 1)) > "$state/probes"
+      case " $* " in
+        *" -h "*) [ "$phase" = real ] ;;
+        *) true ;;
+      esac
+      exit $?
+    fi
+    [ -f "$state/first-work" ] || echo "$phase" > "$state/first-work"
+    if [ "$1" = psql ]; then echo 1; exit 0; fi
+    exit 1 ;;
+esac
+`;
+
+    function runWithFakeDocker(script: string, args: string[]): { status: number | null; firstWork: string } {
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pg-start-'));
+        try {
+            const bin = path.join(dir, 'bin');
+            fs.mkdirSync(bin);
+            fs.writeFileSync(path.join(bin, 'docker'), FAKE_DOCKER, { mode: 0o755 });
+            fs.writeFileSync(path.join(bin, 'sleep'), '#!/usr/bin/env bash\nexit 0\n', { mode: 0o755 });
+            const result = spawnSync('bash', [path.join(REPO_ROOT, script), ...args], {
+                env: { ...process.env, PATH: `${bin}:${process.env.PATH ?? ''}`, FAKE_STATE: dir },
+                encoding: 'utf-8',
+                timeout: 20_000,
+            });
+            const marker = path.join(dir, 'first-work');
+            return { status: result.status, firstWork: fs.existsSync(marker) ? fs.readFileSync(marker, 'utf-8').trim() : 'none' };
+        } finally {
+            fs.rmSync(dir, { recursive: true, force: true });
+        }
+    }
+
+    it('start.sh queries the extension only once the real server answers, and succeeds', () => {
+        expect(runWithFakeDocker(START, ['img', 'inkquisitor_test'])).toEqual({ status: 0, firstWork: 'real' });
+    });
+
+    it("smoke.sh's first check meets the real server", () => {
+        // The fake answers every check after readiness with a failure, so the
+        // script stops at its first one; what matters is which server it met.
+        expect(runWithFakeDocker(SMOKE, ['img']).firstWork).toBe('real');
     });
 });

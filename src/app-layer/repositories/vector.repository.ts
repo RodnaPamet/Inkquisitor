@@ -97,11 +97,23 @@ const SOURCE_MODEL = z.string().regex(/^[A-Z][A-Za-z0-9]{0,63}$/);
 const ROW_ID = z.string().regex(/^[A-Za-z0-9_:.-]{1,128}$/);
 const EMBEDDING_REVISION = z.string().regex(EMBEDDING_REVISION_PATTERN);
 const CONTENT_HASH = z.string().regex(/^[0-9a-f]{64}$/);
+/**
+ * pgvector stores 32-bit floats, so a component is judged as the database
+ * will hold it (`Math.fround`, the same round-to-nearest as its `strtof`): a
+ * double past the float range is refused here rather than as a raw
+ * out-of-range error quoting the value, and a vector whose every component
+ * rounds to zero is the zero vector the table's CHECK refuses (and, as a
+ * query, a cosine of NaN).
+ */
+const COMPONENT = z
+    .number()
+    .finite()
+    .refine((x) => Number.isFinite(Math.fround(x)), 'outside the 32-bit float range the store holds');
 const EMBEDDING = z
-    .array(z.number().finite())
+    .array(COMPONENT)
     .min(1)
     .max(MAX_DIMENSIONS)
-    .refine((v) => v.some((x) => x !== 0), 'a zero vector has no direction');
+    .refine((v) => v.some((x) => Math.fround(x) !== 0), 'a zero vector has no direction');
 
 /** `.strict()` is the vectors-only rule at run time: an unnamed member is refused. */
 const RECORD = z
@@ -174,8 +186,10 @@ function validateBatch(records: readonly VectorRecord[], revision?: string): Vec
     return parsed;
 }
 
+/** 1..MAX_LIST_KEYS; an absent or non-finite limit (NaN would reach SQL's LIMIT) is the maximum. */
 function boundedLimit(limit: number | undefined): number {
-    return Math.min(Math.max(1, Math.trunc(limit ?? MAX_LIST_KEYS)), MAX_LIST_KEYS);
+    const asked = limit !== undefined && Number.isFinite(limit) ? Math.trunc(limit) : MAX_LIST_KEYS;
+    return Math.min(Math.max(1, asked), MAX_LIST_KEYS);
 }
 
 // ─── Outcome metric ──────────────────────────────────────────────────

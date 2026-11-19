@@ -11,8 +11,15 @@
 # 5432 on 127.0.0.1 only, with the well-known throwaway credentials the jobs'
 # DATABASE_URL names (postgres/postgres: the image's superuser, which
 # `prisma migrate deploy` needs for `CREATE EXTENSION vector`), waits until
-# the server answers twice in a row (the entrypoint restarts it after initdb),
-# and refuses unless the vector extension is available to create.
+# the server answers over TCP twice in a row, and refuses unless the vector
+# extension is available to create.
+#
+# OVER TCP, NOT THE SOCKET. The upstream entrypoint runs initdb's work on a
+# TEMPORARY server that listens on the Unix socket only
+# (`listen_addresses=''`), then stops it and starts the real one. A
+# `pg_isready` over the socket answers "ready" from the temporary server, so
+# a probe that way can pass, run its checks and hand the job a server that is
+# about to go away. The real server is the first to listen on 127.0.0.1.
 set -euo pipefail
 
 IMAGE="${1:?usage: start.sh <image-ref> <database>}"
@@ -25,9 +32,9 @@ docker run -d --name "$NAME" \
     "$IMAGE" >/dev/null
 
 for _ in $(seq 1 60); do
-    if docker exec "$NAME" pg_isready -U postgres -d "$DATABASE" -q 2>/dev/null \
+    if docker exec "$NAME" pg_isready -h 127.0.0.1 -U postgres -d "$DATABASE" -q 2>/dev/null \
         && sleep 1 \
-        && docker exec "$NAME" pg_isready -U postgres -d "$DATABASE" -q 2>/dev/null; then
+        && docker exec "$NAME" pg_isready -h 127.0.0.1 -U postgres -d "$DATABASE" -q 2>/dev/null; then
         available=$(docker exec "$NAME" psql -U postgres -d "$DATABASE" -qAt \
             -c "SELECT count(*) FROM pg_available_extensions WHERE name = 'vector'")
         if [ "$available" != "1" ]; then
