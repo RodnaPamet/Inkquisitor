@@ -15,6 +15,9 @@ import { useTranslations } from 'next-intl';
 import { useMemo, type ComponentType, type SVGProps } from 'react';
 
 import { useTheme } from '@/components/theme/ThemeProvider';
+import { usePathname } from 'next/navigation';
+import { APP_ROUTES, workspaceSlugFromPath } from '@/lib/app-routes';
+import { useOptionalWorkspace } from '@/lib/workspace/workspace-context';
 
 export type PaletteCommandGroup = 'Navigation' | 'Actions';
 
@@ -49,37 +52,47 @@ export interface PaletteCommand {
 }
 
 /**
- * The palette's static commands. Inkquisitor edit (docs/carve-manifest.md):
+ * The palette's commands. Inkquisitor edit (docs/carve-manifest.md):
  * inflect's tenant-scoped compliance navigation, the assistant command and
- * the next-auth sign-out are replaced by the shell's own two destinations
- * (Books, Settings) and the theme toggle. One workspace per author (D4), so
- * the routes carry no slug and the commands do not depend on a workspace.
- * Sign-out returns with authentication (subphase 0.3).
+ * the next-auth sign-out are replaced by the shell's two destinations (Books,
+ * Settings) and the theme toggle. The destinations are built per workspace
+ * from `APP_ROUTES`, the sidebar's own table, so the two never disagree;
+ * outside a workspace there is nowhere to go and only the actions remain.
  */
 export function usePaletteCommands(): PaletteCommand[] {
     const t = useTranslations('commandPalette.commands');
     const { toggle: toggleTheme } = useTheme();
+    const pathname = usePathname();
+    // The palette is mounted by the root providers, above the workspace
+    // layout's provider, so in the app it reads the slug from the URL; the
+    // context wins where there is one (a provider wrapping the palette).
+    const workspaceSlug = useOptionalWorkspace()?.workspaceSlug ?? workspaceSlugFromPath(pathname);
 
-    return useMemo<PaletteCommand[]>(
-        () => [
-            {
-                id: 'nav:books',
-                group: 'Navigation',
-                label: t('goToBooks'),
-                matchLabel: 'Go to Books',
-                icon: BookOpen,
-                href: '/books',
-                keywords: ['book', 'books', 'manuscript', 'library'],
-            },
-            {
-                id: 'nav:settings',
-                group: 'Navigation',
-                label: t('goToSettings'),
-                matchLabel: 'Go to Settings',
-                icon: Settings,
-                href: '/settings',
-                keywords: ['preferences', 'workspace', 'account'],
-            },
+    return useMemo<PaletteCommand[]>(() => {
+        const navigation: PaletteCommand[] = workspaceSlug
+            ? [
+                  {
+                      id: 'nav:books',
+                      group: 'Navigation',
+                      label: t('goToBooks'),
+                      matchLabel: 'Go to Books',
+                      icon: BookOpen,
+                      href: APP_ROUTES.books(workspaceSlug),
+                      keywords: ['book', 'books', 'manuscript', 'library'],
+                  },
+                  {
+                      id: 'nav:settings',
+                      group: 'Navigation',
+                      label: t('goToSettings'),
+                      matchLabel: 'Go to Settings',
+                      icon: Settings,
+                      href: APP_ROUTES.settings(workspaceSlug),
+                      keywords: ['preferences', 'workspace', 'account', 'sessions'],
+                  },
+              ]
+            : [];
+        return [
+            ...navigation,
             {
                 id: 'action:toggle-theme',
                 group: 'Actions',
@@ -89,9 +102,8 @@ export function usePaletteCommands(): PaletteCommand[] {
                 perform: toggleTheme,
                 keywords: ['dark', 'light', 'appearance'],
             },
-        ],
-        [t, toggleTheme],
-    );
+        ];
+    }, [t, toggleTheme, workspaceSlug]);
 }
 
 export function filterPaletteCommands(

@@ -77,6 +77,22 @@ export async function runInWorkspaceContext<T>(
 }
 
 /**
+ * Switch a transaction the caller already holds into a workspace's row-level
+ * security: `SET LOCAL ROLE app_user` and the transaction-local
+ * `app.workspace_id`. For the one flow that must do work as the owning role
+ * first and as the workspace after, in ONE transaction: sign-up creates the
+ * user and the workspace (no workspace context can exist before the
+ * workspace does), then switches here to write the membership and the audit
+ * rows under the policies (`src/app-layer/usecases/sign-up.ts`). Everything
+ * else uses `runInWorkspaceContext`.
+ */
+export async function bindWorkspaceInTransaction(tx: PrismaTx, ctx: { workspaceId: string; requestId: string }): Promise<void> {
+    if (!ctx.workspaceId) throw new Error('bindWorkspaceInTransaction requires a workspaceId');
+    await tx.$executeRaw`SET LOCAL ROLE app_user`;
+    await tx.$executeRaw`SELECT set_config('app.workspace_id', ${ctx.workspaceId}, true), set_config('app.request_id', ${ctx.requestId}, true)`;
+}
+
+/**
  * Why a caller may skip row-level security. Adding a reason is a review
  * decision, not a routine change; the runtime refuses any other string.
  */
@@ -115,4 +131,4 @@ export async function runWithoutRls<T>(
     return runWithDbContext({ source: `bypass:${options.reason}` }, () => callback(options.client ?? prisma));
 }
 
-export { WORKSPACE_SCOPED_MODELS, workspaceScopedModelNames, withRlsTripwire } from './rls-tripwire';
+export { GLOBAL_MODELS, WORKSPACE_SCOPED_MODELS, workspaceScopedModelNames, withRlsTripwire } from './rls-tripwire';

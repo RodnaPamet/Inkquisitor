@@ -196,6 +196,14 @@ BEGIN
 END
 $$;
 
+-- The identity tables a workspace context never needs. Sign-in, the session
+-- check and Google account linking read them on the plain client
+-- (`src/lib/auth/**`, `src/lib/security/session-tracker.ts`); app_user, which
+-- every workspace transaction runs as, cannot read a password-reset-style
+-- token, another person's linked identity or another person's session rows.
+-- `User` stays readable: a member list names its members.
+REVOKE ALL ON TABLE "Account", "UserSession", "VerificationToken" FROM app_user;
+
 -- `SET ROLE app_user` needs membership for a non-superuser owner; a
 -- superuser has it implicitly. Granted to whoever runs the migration.
 DO $$

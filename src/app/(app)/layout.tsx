@@ -1,20 +1,16 @@
 import type { ReactNode } from 'react';
 import { AppShell } from '@/components/layout/AppShell';
 import { WorkspaceProvider } from '@/lib/workspace/workspace-context';
-import { getCurrentWorkspace } from '@/lib/workspace/current-workspace';
 
 /**
- * The application shell's layout: every page under `(app)` renders inside
- * `<AppShell>`, with the current workspace in context.
- *
- * The workspace is resolved on the server (a stub returning `null` until
- * subphase 0.3) and handed to the client provider as a plain serializable
- * value. With `null` every piece of chrome renders its signed-out state.
+ * The shell outside any workspace: today only `/dev/kitchen-sink` (a 404 in
+ * production), which renders the chrome in its signed-out state. Workspace
+ * pages live under `/w/[workspaceSlug]` and get a real workspace from that
+ * layout.
  */
-export default async function AppLayout({ children }: { children: ReactNode }) {
-    const workspace = await getCurrentWorkspace();
+export default function DevShellLayout({ children }: { children: ReactNode }) {
     return (
-        <WorkspaceProvider value={workspace}>
+        <WorkspaceProvider value={null}>
             <AppShell>{children}</AppShell>
         </WorkspaceProvider>
     );

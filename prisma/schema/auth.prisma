@@ -3,8 +3,13 @@
 //
 //  None of these tables is workspace-scoped: a person exists before
 //  and across workspaces, so they carry no `workspaceId` and no
-//  row-level security. They are reached from the global client in
-//  `src/lib/auth/**` and `src/lib/security/session-tracker.ts` only.
+//  row-level security (they are listed in `GLOBAL_MODELS`,
+//  src/lib/db/rls-tripwire.ts). They are reached on the plain client by
+//  sign-in (`src/lib/auth/**`, `src/auth.ts`), sign-up
+//  (`src/app-layer/usecases/sign-up.ts`) and the session tracker
+//  (`src/lib/security/session-tracker.ts`); app_user holds no grant on
+//  Account, VerificationToken or UserSession, and reads User only for
+//  member names.
 //  Workspace-scoped models live in workspace.prisma / audit.prisma.
 // ─────────────────────────────────────────────────────────────────
 

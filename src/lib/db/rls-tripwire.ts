@@ -28,6 +28,22 @@ export function workspaceScopedModelNames(): string[] {
 
 export const WORKSPACE_SCOPED_MODELS: ReadonlySet<string> = new Set(workspaceScopedModelNames());
 
+/**
+ * The models that are deliberately NOT workspace-scoped, each with the reason.
+ * Every model is one or the other: the RLS coverage tests
+ * (tests/guards/rls-migration-coverage.test.ts,
+ * tests/integration/rls-coverage.test.ts) fail for a model that has no
+ * `workspaceId` and is not listed here, so a new table cannot dodge row-level
+ * security by simply leaving the column out. Adding an entry is a review
+ * decision: it says no workspace's data can ever live in that table.
+ */
+export const GLOBAL_MODELS: Readonly<Record<string, string>> = Object.freeze({
+    User: 'A person exists before and across workspaces; a member list reads names through a workspace context.',
+    Account: 'An OAuth identity of a person; read on the plain client by sign-in only (app_user holds no grant).',
+    VerificationToken: 'An email-verification token keyed by address, before any workspace is known (app_user holds no grant).',
+    UserSession: 'A signed-in browser of a person, who may reach several workspaces (app_user holds no grant).',
+});
+
 const WRITE_OPERATIONS = new Set(['create', 'createMany', 'createManyAndReturn', 'update', 'updateMany', 'delete', 'deleteMany', 'upsert']);
 
 /** Wire the observation-only tripwire onto a client (outermost extension). */

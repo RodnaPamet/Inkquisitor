@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 
-test('home page shows the product name, styled by Tailwind', async ({ page }) => {
+test('home page shows the product name, styled by Tailwind, and the ways in', async ({ page }) => {
     await page.goto('/');
     const heading = page.getByRole('main').getByRole('heading', { level: 1 });
     await expect(heading).toHaveText('Inkquisitor');
@@ -12,6 +12,8 @@ test('home page shows the product name, styled by Tailwind', async ({ page }) =>
     await expect(heading).toHaveCSS('font-size', '48px');
     await expect(heading).toHaveCSS('letter-spacing', '-1.2px');
     await expect(page).toHaveTitle('Inkquisitor');
+    await expect(page.locator('#home-sign-in')).toHaveAttribute('href', '/login');
+    await expect(page.locator('#home-sign-up')).toHaveAttribute('href', '/signup');
 });
 
 test('/api/health answers ok', async ({ request }) => {

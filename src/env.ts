@@ -2,6 +2,7 @@ import { createEnv } from '@t3-oss/env-nextjs';
 import { z } from 'zod';
 import { isNextProductionBuild } from '@/lib/build-phase';
 import { DEV_FALLBACK_DATA_ENCRYPTION_KEY, MIN_DATA_ENCRYPTION_KEY_LENGTH } from '@/lib/security/encryption-constants';
+import { DEV_FALLBACK_AUTH_SECRET, MIN_AUTH_SECRET_LENGTH } from '@/lib/auth/auth-constants';
 
 /**
  * A secret production cannot run without. Optional elsewhere (development and
@@ -70,7 +71,7 @@ export const env = createEnv({
 
         // ── Authentication (Phase 0.3) ──
         // Signs and encrypts the session JWT (next-auth). REQUIRED in production.
-        AUTH_SECRET: productionSecret('AUTH_SECRET', 32),
+        AUTH_SECRET: productionSecret('AUTH_SECRET', MIN_AUTH_SECRET_LENGTH, DEV_FALLBACK_AUTH_SECRET),
         // The canonical origin next-auth builds its callback URLs on. REQUIRED
         // in production (startup-checks); next-auth also reads it itself.
         NEXTAUTH_URL: z.string().url().optional(),

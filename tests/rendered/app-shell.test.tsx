@@ -1,16 +1,16 @@
 /**
  * `<AppShell>` over `WorkspaceContext`.
  *
- * The shell is what 0.3 drops a real workspace into, so both of its states
- * are held here: signed out (`value={null}`, today's stub) it renders the
- * navigation and a theme toggle and names nobody; inside a workspace it names
- * the person, the workspace and the role. Sign-out controls appear only when
- * a handler is supplied — there is no authentication to call yet.
+ * Both of the shell's states are held here: signed out (`value={null}`, the
+ * dev kitchen sink) it offers no destinations, keeps the theme toggle and
+ * names nobody; inside a workspace it links to that workspace's pages under
+ * `/w/<slug>/` and names the person, the workspace and the role. Sign-out
+ * controls appear only when a handler is supplied (`WorkspaceAppShell`).
  */
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import * as React from 'react';
 
-const navigationMock = { pathname: '/books' };
+const navigationMock = { pathname: '/w/ada/books' };
 jest.mock('next/navigation', () => ({
     usePathname: () => navigationMock.pathname,
     useRouter: () => ({ push: jest.fn(), replace: jest.fn(), back: jest.fn(), forward: jest.fn(), refresh: jest.fn(), prefetch: jest.fn() }),
@@ -53,7 +53,7 @@ function sidebarNav() {
 }
 
 beforeEach(() => {
-    navigationMock.pathname = '/books';
+    navigationMock.pathname = '/w/ada/books';
     window.localStorage.clear();
 });
 
@@ -63,26 +63,31 @@ describe('AppShell — navigation', () => {
         expect(screen.getByTestId('page-content')).toBeInTheDocument();
     });
 
-    it('the sidebar offers exactly Books and Settings, pointing at their pages', () => {
-        mount(null);
+    it("the sidebar offers exactly Books and Settings, under the workspace's slug", () => {
+        mount(WORKSPACE);
         const links = within(sidebarNav()).getAllByRole('link');
         expect(links.map((a) => [a.textContent?.trim(), a.getAttribute('href')])).toEqual([
-            ['Books', '/books'],
-            ['Settings', '/settings'],
+            ['Books', '/w/ada/books'],
+            ['Settings', '/w/ada/settings'],
         ]);
     });
 
-    it('marks the current page active, and only it', () => {
-        navigationMock.pathname = '/settings';
+    it('signed out, the sidebar offers no destination: every page belongs to a workspace', () => {
         mount(null);
+        expect(within(sidebarNav()).queryAllByRole('link')).toEqual([]);
+    });
+
+    it('marks the current page active, and only it', () => {
+        navigationMock.pathname = '/w/ada/settings';
+        mount(WORKSPACE);
         const nav = sidebarNav();
         expect(within(nav).getByRole('link', { name: /Settings/ })).toHaveAttribute('aria-current', 'page');
         expect(within(nav).getByRole('link', { name: /Books/ })).not.toHaveAttribute('aria-current');
     });
 
     it('a path that merely shares a prefix is not active', () => {
-        navigationMock.pathname = '/bookshelf';
-        mount(null);
+        navigationMock.pathname = '/w/ada/bookshelf';
+        mount(WORKSPACE);
         expect(within(sidebarNav()).getByRole('link', { name: /Books/ })).not.toHaveAttribute('aria-current');
     });
 
@@ -126,6 +131,7 @@ describe('AppShell — inside a workspace', () => {
     it('shows the workspace pill and the user menu in the top chrome', () => {
         mount(WORKSPACE);
         expect(screen.getByTestId('top-chrome-workspace-pill').textContent).toContain("Ada's books");
+        expect(screen.getByTestId('top-chrome-workspace-pill')).toHaveAttribute('href', '/w/ada/settings');
         expect(screen.getByTestId('top-chrome-user-menu')).toHaveAttribute('aria-label', 'Account menu for Ada Quill');
     });
 

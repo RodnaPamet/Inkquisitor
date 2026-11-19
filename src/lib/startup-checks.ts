@@ -23,9 +23,9 @@
 
 import { isNextProductionBuild } from './build-phase';
 import { DEV_FALLBACK_DATA_ENCRYPTION_KEY, MIN_DATA_ENCRYPTION_KEY_LENGTH } from './security/encryption-constants';
+import { DEV_FALLBACK_AUTH_SECRET, MIN_AUTH_SECRET_LENGTH } from './auth/auth-constants';
 
-/** The shortest AUTH_SECRET production accepts (next-auth signs and encrypts the session with it). */
-export const MIN_AUTH_SECRET_LENGTH = 32;
+export { MIN_AUTH_SECRET_LENGTH };
 
 /** The environment as a plain record (`process.env`, or a test's object). */
 export type EnvRecord = Readonly<Record<string, string | undefined>>;
@@ -78,6 +78,8 @@ export function productionConfigProblems(e: EnvRecord): string[] {
             `AUTH_SECRET is required, at least ${MIN_AUTH_SECRET_LENGTH} characters: it signs every session. ` +
                 'Generate one with: openssl rand -base64 48',
         );
+    } else if (e.AUTH_SECRET === DEV_FALLBACK_AUTH_SECRET) {
+        problems.push('AUTH_SECRET is the documented development fallback; production needs its own secret.');
     }
     if (!present(e.NEXTAUTH_URL)) {
         problems.push('NEXTAUTH_URL is required: sign-in callbacks are built on it (https://your.host).');

@@ -18,6 +18,13 @@
  * credentials callback. No spelling may therefore turn such a request into a
  * probe, a mutation, or another workspace's read.
  */
+// These suites measure the rate-limit tiers, not the workspace gate (its own
+// suite is tests/unit/auth/middleware-workspace-gate.test.ts): every request
+// carries a session whose capped claim list defers any slug to the server.
+jest.mock('next-auth/jwt', () => ({
+    getToken: jest.fn(async () => ({ userId: 'user_rl', memberships: [{ slug: '_', workspaceId: 'ws_', role: 'OWNER' }], membershipsTruncated: true })),
+}));
+
 import { NextRequest } from 'next/server';
 import { middleware } from '@/middleware';
 import { _clearAuthRateLimitMemory, AUTH_TIER_POLICIES } from '@/lib/rate-limit/authRateLimit';

@@ -5,11 +5,10 @@
  * docs/carve-manifest.md). Verifies the two curated buckets:
  *
  *   - Navigation (Go to Books / Settings) — one row per sidebar destination,
- *     each with its route; selecting one calls `router.push()` and closes
- *     the palette. One workspace per author (D4), so the routes carry no
- *     slug and the rows render with or without a workspace.
- *   - Actions — only the universally safe ones (Toggle theme today). Sign-out
- *     returns with authentication (0.3).
+ *     each with its route under the current workspace's slug (`APP_ROUTES`);
+ *     selecting one calls `router.push()` and closes the palette. Outside a
+ *     workspace there is nowhere to go and no navigation row renders.
+ *   - Actions — only the universally safe ones (Toggle theme today).
  *   - Typing filters on label, English name and keywords; keywords match but
  *     never render.
  */
@@ -20,7 +19,7 @@ import React from 'react';
 import { render, renderHook, fireEvent, act, waitFor } from '@testing-library/react';
 
 const navigationMock = {
-    pathname: '/books',
+    pathname: '/w/ada/books',
     push: jest.fn(),
 };
 const toggleThemeMock = jest.fn();
@@ -56,9 +55,19 @@ import {
     type PaletteCommand,
 } from '@/components/command-palette/use-palette-commands';
 import { APP_ROUTES } from '@/components/layout/SidebarNav';
+import { WorkspaceProvider, type WorkspaceContextValue } from '@/lib/workspace/workspace-context';
+
+const WORKSPACE: WorkspaceContextValue = {
+    workspaceId: 'ws_1',
+    workspaceSlug: 'ada',
+    workspaceName: "Ada's books",
+    role: 'OWNER',
+    userId: 'user_1',
+    userName: 'Ada Quill',
+};
 
 // Render an auto-opened palette for each test.
-function Shell({ children }: { children?: React.ReactNode }) {
+function Shell({ children, workspace = WORKSPACE }: { children?: React.ReactNode; workspace?: WorkspaceContextValue | null }) {
     // Test-only inner component: opens the palette imperatively
     // after the provider mounts. Defined inline so it can call
     // useCommandPalette() under the just-mounted provider.
@@ -71,19 +80,21 @@ function Shell({ children }: { children?: React.ReactNode }) {
         return null;
     }
     return (
-        <KeyboardShortcutProvider>
-            <CommandPaletteProvider>
-                {/* eslint-disable-next-line react-hooks/static-components */}
-                <OpenOnMount />
-                {children}
-                <CommandPalette />
-            </CommandPaletteProvider>
-        </KeyboardShortcutProvider>
+        <WorkspaceProvider value={workspace}>
+            <KeyboardShortcutProvider>
+                <CommandPaletteProvider>
+                    {/* eslint-disable-next-line react-hooks/static-components */}
+                    <OpenOnMount />
+                    {children}
+                    <CommandPalette />
+                </CommandPaletteProvider>
+            </KeyboardShortcutProvider>
+        </WorkspaceProvider>
     );
 }
 
 beforeEach(() => {
-    navigationMock.pathname = '/books';
+    navigationMock.pathname = '/w/ada/books';
     navigationMock.push.mockReset();
     toggleThemeMock.mockReset();
 });
@@ -101,23 +112,38 @@ describe('Command Palette — navigation commands', () => {
 
     it('each navigation row points at the route the sidebar uses', () => {
         render(<Shell />);
-        expect(row('nav:books')?.getAttribute('data-href')).toBe(APP_ROUTES.books);
-        expect(row('nav:settings')?.getAttribute('data-href')).toBe(APP_ROUTES.settings);
+        expect(row('nav:books')?.getAttribute('data-href')).toBe(APP_ROUTES.books('ada'));
+        expect(row('nav:settings')?.getAttribute('data-href')).toBe(APP_ROUTES.settings('ada'));
+        expect(APP_ROUTES.books('ada')).toBe('/w/ada/books');
     });
 
     it('selecting a navigation command calls router.push and closes the palette', async () => {
         const { queryByTestId } = render(<Shell />);
         fireEvent.click(row('nav:books')!);
-        expect(navigationMock.push).toHaveBeenCalledWith('/books');
+        expect(navigationMock.push).toHaveBeenCalledWith('/w/ada/books');
         await waitFor(() => {
             expect(queryByTestId('command-palette-input')).toBeNull();
         });
     });
 
-    it('renders on any route — the commands need no workspace slug', () => {
+    it('builds every route from the current workspace slug', () => {
+        render(<Shell workspace={{ ...WORKSPACE, workspaceSlug: 'other-desk' }} />);
+        expect(row('nav:books')?.getAttribute('data-href')).toBe('/w/other-desk/books');
+        expect(row('nav:settings')?.getAttribute('data-href')).toBe('/w/other-desk/settings');
+    });
+
+    it('outside a workspace offers no navigation, only the actions', () => {
         navigationMock.pathname = '/';
-        render(<Shell />);
-        expect(row('nav:books')).not.toBeNull();
+        render(<Shell workspace={null} />);
+        expect(row('nav:books')).toBeNull();
+        expect(row('nav:settings')).toBeNull();
+        expect(row('action:toggle-theme')).not.toBeNull();
+    });
+
+    it('mounted above the workspace provider (as in the app), reads the slug from the URL', () => {
+        navigationMock.pathname = '/w/from-url/settings';
+        render(<Shell workspace={null} />);
+        expect(row('nav:books')?.getAttribute('data-href')).toBe('/w/from-url/books');
     });
 
     it('filters commands by label when the user types', async () => {
@@ -156,7 +182,9 @@ describe('Command Palette — action commands', () => {
 
 describe('Command Palette — vocabulary', () => {
     function paletteCommands(): PaletteCommand[] {
-        const { result } = renderHook(() => usePaletteCommands());
+        const { result } = renderHook(() => usePaletteCommands(), {
+            wrapper: ({ children }) => <WorkspaceProvider value={WORKSPACE}>{children}</WorkspaceProvider>,
+        });
         return result.current;
     }
     const idsMatching = (query: string) => filterPaletteCommands(paletteCommands(), query).map((c) => c.id);
