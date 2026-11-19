@@ -12,9 +12,10 @@
  *            `TRUST_BOUNDARY` paragraph. Both are code. NOTHING per call goes
  *            here: `buildModelRequest` takes no argument that could reach it,
  *            a template is frozen when it is defined (`definePrompt`), and the
- *            builder refuses (`AiPromptError`) a system prompt that contains
- *            the text of any block it was handed. The system block is marked
- *            for prompt caching, so it must not vary per call anyway.
+ *            builder refuses (`AiPromptError`) a system prompt, a task or an
+ *            output schema that contains the text of any block it was handed.
+ *            The system block is marked for prompt caching, so it must not
+ *            vary per call anyway.
  *   user     the template's `task` (code), the fence line naming this
  *            request's nonce, then every per-call input as a fenced, labelled
  *            data block built by `fenceData`:
@@ -31,7 +32,9 @@
  *
  *   1. `neutralizeAuthorText` replaces ANY spelling of this layer's tag stem
  *      (`<author_data`, `</ AUTHOR-DATA`, `< author data`, …), nonce or not,
- *      with `(removed)`, and the chat-template control tokens inflect's
+ *      look-alikes included (full-width and other angle brackets, Cyrillic
+ *      letters, a zero-width character or soft hyphen inside it), with
+ *      `(removed)`, and the chat-template control tokens inflect's
  *      builder neutralises (`<|…|>`, `[INST]`, `<<SYS>>`, `<s>`, a line that
  *      opens with a role name). After it, no block contains the stem at all.
  *   2. `newFenceNonce` draws again if the nonce occurs in any block's text
@@ -64,8 +67,10 @@
 import { randomBytes } from 'node:crypto';
 import type Anthropic from '@anthropic-ai/sdk';
 
+import { hasInvisible } from '@/lib/text/invisible-chars';
 import { AiPromptError } from './errors';
 import { DEFAULT_GUARD_MODE, type GuardMode } from './guard';
+import { foldHomoglyphs } from './guard/normalize';
 import { modelCapabilitiesFor, type ModelCapabilities } from './model-capabilities';
 import { modelForTier, TIER_DEFAULTS, type ModelTier } from './tiers';
 
@@ -128,10 +133,85 @@ const RESERVED_TOKEN_PATTERNS: readonly RegExp[] = [
 ];
 
 // Any spelling of the fence stem, open or close: `<author_data`,
-// `</ AUTHOR_DATA_x`, `< author-data`, `<author data` …
-const FENCE_STEM = /<\s*\/?\s*author[\s_-]*data/gi;
+// `</ AUTHOR_DATA_x`, `< author-data`, `<author data`, `<author‐data` …
+// Matched over `foldedForStem`'s view of the text, so look-alikes count too.
+const FENCE_STEM = /<\s*\/?\s*author[\s_\-\u2010-\u2015\u2212]*data/gi;
 /** The same pattern, not global, for a yes/no test (a global regex's `test` moves `lastIndex`). */
 const FENCE_STEM_ANY = new RegExp(FENCE_STEM.source, 'i');
+
+/**
+ * Look-alikes of the stem's punctuation that NFKC does not fold (it already
+ * folds the full-width and small forms, `＜` `﹤` `／`): angle brackets and
+ * slashes from other blocks.
+ */
+const STEM_PUNCTUATION_CONFUSABLES: Readonly<Record<string, string>> = {
+    '\u02C2': '<',
+    '\u1438': '<',
+    '\u2039': '<',
+    '\u2329': '<',
+    '\u27E8': '<',
+    '\u3008': '<',
+    '\u2044': '/',
+    '\u2215': '/',
+    '\u29F8': '/',
+};
+
+/**
+ * The text as the fence-stem match sees it, and where each of its UTF-16 units
+ * came from in the original. Per code point: invisible characters dropped
+ * (`stripInvisible`'s class: a zero-width space or soft hyphen inside
+ * `author_data` hides it from a literal match, not from a reader), then NFKC,
+ * the guard's homoglyph fold (Cyrillic `а`, `о`, …) and the punctuation
+ * look-alikes above. The original text is what is sent; only the matched
+ * stretches are replaced.
+ */
+function foldedForStem(value: string): { folded: string; from: number[]; to: number[] } {
+    let folded = '';
+    const from: number[] = [];
+    const to: number[] = [];
+    let i = 0;
+    for (const ch of value) {
+        const end = i + ch.length;
+        let f = '';
+        if (!hasInvisible(ch)) {
+            f = foldHomoglyphs(ch.normalize('NFKC'));
+            f = Array.from(f, (c) => STEM_PUNCTUATION_CONFUSABLES[c] ?? c).join('');
+        }
+        for (let k = 0; k < f.length; k++) {
+            from.push(i);
+            to.push(end);
+        }
+        folded += f;
+        i = end;
+    }
+    return { folded, from, to };
+}
+
+/** Replace every spelling of the fence stem, look-alikes included, with `(removed)`. */
+function removeFenceStem(value: string): string {
+    const { folded, from, to } = foldedForStem(value);
+    const spans: Array<[number, number]> = [];
+    for (const m of folded.matchAll(FENCE_STEM)) {
+        const a = m.index;
+        const b = a + m[0].length;
+        if (b === a) continue;
+        spans.push([from[a], to[b - 1]]);
+    }
+    if (spans.length === 0) return value;
+    let out = '';
+    let at = 0;
+    for (const [start, end] of spans) {
+        if (start < at) continue;
+        out += `${value.slice(at, start)}(removed)`;
+        at = end;
+    }
+    return out + value.slice(at);
+}
+
+/** Whether a text spells the fence stem in any way `removeFenceStem` removes. */
+function spellsFenceStem(value: string): boolean {
+    return FENCE_STEM_ANY.test(foldedForStem(value).folded);
+}
 
 /**
  * Neutralise author text before it is fenced. Adapted from inflect's
@@ -139,7 +219,7 @@ const FENCE_STEM_ANY = new RegExp(FENCE_STEM.source, 'i');
  * matched, so the text's line structure survives.
  */
 export function neutralizeAuthorText(value: string): string {
-    let out = value.replace(FENCE_STEM, '(removed)');
+    let out = removeFenceStem(value);
     for (const re of RESERVED_TOKEN_PATTERNS) {
         out = out.replace(re, (match: string, lead?: string) =>
             typeof lead === 'string' && match.startsWith(lead) ? `${lead}(removed)` : '(removed)',
@@ -188,7 +268,7 @@ export function definePrompt(template: PromptTemplate): Readonly<PromptTemplate>
     if (!VERSION_PATTERN.test(template.version)) throw new AiPromptError(`prompt ${template.id} has a malformed version`);
     if (!ID_PATTERN.test(template.purpose)) throw new AiPromptError(`prompt ${template.id} has a malformed purpose`);
     if (!template.system.trim() || !template.task.trim()) throw new AiPromptError(`prompt ${template.id} has empty text`);
-    if (FENCE_STEM_ANY.test(template.system) || FENCE_STEM_ANY.test(template.task)) {
+    if (spellsFenceStem(template.system) || spellsFenceStem(template.task)) {
         throw new AiPromptError(`prompt ${template.id} spells the fence tag`);
     }
     if (template.maxOutputTokens !== undefined && !(Number.isInteger(template.maxOutputTokens) && template.maxOutputTokens > 0)) {
@@ -242,12 +322,43 @@ const AUTHOR_TEXT_PROBE_MIN = 24;
  * text — the mistake rule 4 forbids.
  */
 export function assertSystemCarriesNoAuthorText(system: string, blocks: readonly AuthorDataBlock[]): void {
+    assertCarriesNoAuthorText(system, blocks, 'the system prompt contains author text');
+}
+
+function assertCarriesNoAuthorText(code: string, blocks: readonly AuthorDataBlock[], problem: string): void {
     for (const block of blocks) {
         const probe = block.text.trim();
-        if (probe.length >= AUTHOR_TEXT_PROBE_MIN && system.includes(probe)) {
-            throw new AiPromptError('the system prompt contains author text');
+        if (probe.length >= AUTHOR_TEXT_PROBE_MIN && code.includes(probe)) throw new AiPromptError(problem);
+    }
+}
+
+/** Every string a JSON value holds, member names included, one per line. */
+function stringsOf(value: unknown, out: string[] = []): string[] {
+    if (typeof value === 'string') out.push(value);
+    else if (Array.isArray(value)) value.forEach((v) => stringsOf(v, out));
+    else if (value !== null && typeof value === 'object') {
+        for (const [k, v] of Object.entries(value)) {
+            out.push(k);
+            stringsOf(v, out);
         }
     }
+    return out;
+}
+
+/**
+ * The same refusal for the rest of what a call sends as code: the `task`,
+ * which opens the user turn OUTSIDE the fence (in the instruction's place, and
+ * unscanned), and the output schema, which the API caches outside zero
+ * retention (an enum or a description built from an author's text).
+ */
+export function assertTemplateCarriesNoAuthorText(
+    template: Pick<PromptTemplate, 'system' | 'task'>,
+    outputSchema: Record<string, unknown>,
+    blocks: readonly AuthorDataBlock[],
+): void {
+    assertSystemCarriesNoAuthorText(systemPromptFor(template as PromptTemplate), blocks);
+    assertCarriesNoAuthorText(template.task, blocks, 'the task contains author text');
+    assertCarriesNoAuthorText(stringsOf(outputSchema).join('\n'), blocks, 'the output schema contains author text');
 }
 
 /** The user turn: the task, the single-tool instruction where needed, the fence line, the blocks. */
@@ -277,7 +388,7 @@ export function buildModelRequest(
     nonce: string,
 ): ModelRequest {
     const system = systemPromptFor(template);
-    assertSystemCarriesNoAuthorText(system, data);
+    assertTemplateCarriesNoAuthorText(template, outputSchema, data);
     const effort = resolved.capabilities.effort ? TIER_DEFAULTS[template.tier].effort : null;
     const request: ModelRequest = {
         model: resolved.model,
@@ -332,19 +443,23 @@ export function repairInstruction(issues: readonly RepairIssue[]): string {
  * The repair request: the first request's turns, the model's own answer, and
  * one user turn naming the validation problems. It re-sends no author text the
  * first request did not carry (the fenced user turn is the first request's,
- * unchanged), and the system prompt and the nonce stay the same.
+ * unchanged), and the system prompt and the nonce stay the same. An answer
+ * with nothing to pass back (`assistantContent` null: the API refuses an empty
+ * assistant turn) leaves only the problems' turn after the first request's.
  */
 export function buildRepairRequest(
     first: ModelRequest,
-    assistantContent: Anthropic.ContentBlockParam[],
+    assistantContent: Anthropic.ContentBlockParam[] | null,
     issues: readonly RepairIssue[],
     toolUseId: string | null,
 ): ModelRequest {
     const instruction = repairInstruction(issues);
-    const reply: Anthropic.MessageParam = toolUseId
-        ? { role: 'user', content: [{ type: 'tool_result', tool_use_id: toolUseId, is_error: true, content: instruction }] }
-        : { role: 'user', content: instruction };
-    return { ...first, messages: [...first.messages, { role: 'assistant', content: assistantContent }, reply] };
+    const reply: Anthropic.MessageParam =
+        toolUseId && assistantContent
+            ? { role: 'user', content: [{ type: 'tool_result', tool_use_id: toolUseId, is_error: true, content: instruction }] }
+            : { role: 'user', content: instruction };
+    const answer: Anthropic.MessageParam[] = assistantContent ? [{ role: 'assistant', content: assistantContent }] : [];
+    return { ...first, messages: [...first.messages, ...answer, reply] };
 }
 
 /**

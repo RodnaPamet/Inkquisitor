@@ -36,7 +36,8 @@ import { stripInvisible } from '@/lib/text/invisible-chars';
 // decoders (which APPEND to the text). `tests/unit/ai/guard-scanners.test.ts`
 // pins that the two agree.
 
-// Homoglyph fold table — the common Cyrillic / Greek look-alikes used to
+// Homoglyph fold table (exported through `foldHomoglyphs` for the prompt
+// fence, `../prompt.ts`) — the common Cyrillic / Greek look-alikes used to
 // smuggle Latin keywords past a literal match. Deliberately small: only the
 // letters that appear in the injection/egress keyword set. Full-width ASCII
 // is handled generically in foldHomoglyphs().
@@ -50,7 +51,7 @@ const HOMOGLYPHS: Record<string, string> = {
     'ν': 'v', 'ι': 'i', 'κ': 'k', 'υ': 'u',
 };
 
-function foldHomoglyphs(input: string): string {
+export function foldHomoglyphs(input: string): string {
     let out = '';
     for (const ch of input) {
         const code = ch.codePointAt(0) ?? 0;

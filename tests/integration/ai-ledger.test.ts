@@ -148,6 +148,54 @@ describe('append-only, with the cascades', () => {
         });
     });
 
+    it('the requestedById exception clears that column ONLY: any other change in the same UPDATE is refused', async () => {
+        // Leave a record pointing at a person who no longer exists, the state the
+        // ON DELETE SET NULL action meets (replica mode skips the FK action and
+        // the append-only trigger alike, for this setup step only).
+        const ghost = await createBareUser();
+        await addMember(a.workspaceId, ghost.id, 'EDITOR');
+        const callId = await seedAiCall({ ...workspaceCtx(a, 'EDITOR'), userId: ghost.id }, null, 'ghost');
+        await prisma.$transaction(async (tx) => {
+            await tx.$executeRawUnsafe(`SET LOCAL session_replication_role = replica`);
+            await tx.$executeRaw`DELETE FROM "WorkspaceMembership" WHERE "userId" = ${ghost.id}`;
+            await tx.$executeRaw`DELETE FROM "User" WHERE "id" = ${ghost.id}`;
+        });
+        const sneak = await errorOf(
+            prisma.$executeRaw`UPDATE "AiCallLog" SET "requestedById" = NULL, "costMicroUsd" = 0 WHERE "id" = ${callId}`,
+        );
+        expect(sneak.message).toMatch(/AI_CALL_LOG_APPEND_ONLY/);
+        expect(await prisma.$executeRaw`UPDATE "AiCallLog" SET "requestedById" = NULL WHERE "id" = ${callId}`).toBe(1);
+        const row = await prisma.aiCallLog.findUnique({ where: { id: callId }, select: { requestedById: true, costMicroUsd: true } });
+        expect(row?.requestedById).toBeNull();
+        expect(row?.costMicroUsd).toBeGreaterThan(0);
+        // And a person who still exists is never unlinked.
+        const kept = await seedAiCall(workspaceCtx(a), null, 'kept');
+        expect((await errorOf(prisma.$executeRaw`UPDATE "AiCallLog" SET "requestedById" = NULL WHERE "id" = ${kept}`)).message).toMatch(
+            /AI_CALL_LOG_APPEND_ONLY/,
+        );
+    });
+
+    it('a settlement repeated for the same call charges the month once', async () => {
+        const fresh = await createAccount({ workspaceName: 'Ledger Twice' });
+        const ctx = workspaceCtx(fresh);
+        const callId = await seedAiCall(ctx, null, 'twice');
+        const record = await prisma.aiCallLog.findUniqueOrThrow({ where: { id: callId } });
+        const month = () =>
+            prisma.aiSpendMonth.findUniqueOrThrow({ where: { workspaceId_periodStart: { workspaceId: fresh.workspaceId, periodStart: periodStartOf(record.startedAt) } } });
+        const before = (await month()).spentMicroUsd;
+        await expect(
+            workspaceAiLedger(ctx).settle({
+                ...record,
+                tier: 'fast',
+                outputMode: 'json_schema',
+                outcome: 'OK',
+                errorCode: null,
+            }),
+        ).rejects.toThrow();
+        expect((await month()).spentMicroUsd).toBe(before);
+        expect(await prisma.aiCallLog.count({ where: { id: callId } })).toBe(1);
+    });
+
     it('the workspace’s cascade deletes its call records, spend and reservations', async () => {
         const gone = await createAccount({ workspaceName: 'Ledger Gone' });
         await seedAiCall(workspaceCtx(gone), null, 'gone');

@@ -32,6 +32,10 @@ const PLANT_SITES = [
     'src/app-layer/usecases/planted-anthropic-client.ts',
     'src/app/api/planted/route.ts',
     'src/components/PlantedClient.tsx',
+    // `allowJs`: a JavaScript module under src/ is bundled like any other.
+    'src/lib/ai/planted-second-client.js',
+    'src/lib/ai/planted-second-client.mjs',
+    'scripts/planted-anthropic-client.mjs',
 ];
 
 describe('the ESLint config allows one Anthropic construction site', () => {

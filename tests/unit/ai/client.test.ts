@@ -10,7 +10,16 @@
  * that asks Anthropic to hold nothing and run nothing. No test reaches a
  * network: `fetch` is a fake.
  */
-import { classifySdkError, clientForRun, inspectRequest, jsonSchemaFor, PERMITTED_SERVER_TOOL_TYPES } from '@/lib/ai/client';
+import {
+    classifySdkError,
+    clientForRun,
+    inspectRequest,
+    jsonSchemaFor,
+    MAX_OPTIONAL_PARAMETERS,
+    MAX_UNION_PARAMETERS,
+    PERMITTED_SERVER_TOOL_TYPES,
+} from '@/lib/ai/client';
+import { AiPromptError } from '@/lib/ai/errors';
 import { z } from 'zod';
 import { FAKE_API_KEY_VALUE, fakeAnthropic, setFakeApiKey } from '../../helpers/fake-anthropic';
 
@@ -41,6 +50,46 @@ describe('inspectRequest (pure)', () => {
         ['web search (a server tool)', { method: 'POST', url: URL_MESSAGES, body: body({ tools: [{ type: 'web_search_20260209', name: 'web_search' }] }) }, 'SERVER_TOOL'],
         ['code execution', { method: 'POST', url: URL_MESSAGES, body: body({ tools: [{ type: 'code_execution_20260521', name: 'code_execution' }] }) }, 'SERVER_TOOL'],
         ['a malformed tool', { method: 'POST', url: URL_MESSAGES, body: body({ tools: [null] }) }, 'SERVER_TOOL'],
+        // Deny by default: what the allowlists do not name is refused unnamed.
+        ['the beta endpoint (?beta=true)', { method: 'POST', url: `${URL_MESSAGES}?beta=true`, body: body({}) }, 'NOT_A_MESSAGES_CALL'],
+        ['context management (an unlisted member)', { method: 'POST', url: URL_MESSAGES, body: body({ context_management: { edits: [] } }) }, 'SERVER_HELD_STATE'],
+        ['metadata (an identifier sent to the provider)', { method: 'POST', url: URL_MESSAGES, body: body({ metadata: { user_id: 'u' } }) }, 'SERVER_HELD_STATE'],
+        ['a thread set to null', { method: 'POST', url: URL_MESSAGES, body: body({ thread: null }) }, 'SERVER_HELD_STATE'],
+        ['an output_config member besides format and effort', { method: 'POST', url: URL_MESSAGES, body: body({ output_config: { task_budget: { type: 'tokens', total: 1 } } }) }, 'SERVER_HELD_STATE'],
+        [
+            'a document Anthropic would fetch from a URL',
+            { method: 'POST', url: URL_MESSAGES, body: body({ messages: [{ role: 'user', content: [{ type: 'document', source: { type: 'url', url: 'https://x.example/a.pdf' } }] }] }) },
+            'CONTENT_BLOCK',
+        ],
+        [
+            'an image read from the Files API',
+            { method: 'POST', url: URL_MESSAGES, body: body({ messages: [{ role: 'user', content: [{ type: 'image', source: { type: 'file', file_id: 'file_1' } }] }] }) },
+            'CONTENT_BLOCK',
+        ],
+        [
+            'a container upload',
+            { method: 'POST', url: URL_MESSAGES, body: body({ messages: [{ role: 'user', content: [{ type: 'container_upload', file_id: 'file_1' }] }] }) },
+            'CONTENT_BLOCK',
+        ],
+        [
+            'a document inside a tool result',
+            {
+                method: 'POST',
+                url: URL_MESSAGES,
+                body: body({
+                    messages: [
+                        { role: 'user', content: [{ type: 'tool_result', tool_use_id: 't', content: [{ type: 'document', source: { type: 'url', url: 'https://x.example' } }] }] },
+                    ],
+                }),
+            },
+            'CONTENT_BLOCK',
+        ],
+        [
+            'a server-tool block in the history',
+            { method: 'POST', url: URL_MESSAGES, body: body({ messages: [{ role: 'assistant', content: [{ type: 'server_tool_use', id: 's', name: 'web_search', input: {} }] }] }) },
+            'CONTENT_BLOCK',
+        ],
+        ['a system prompt carrying a document', { method: 'POST', url: URL_MESSAGES, body: body({ system: [{ type: 'document', source: { type: 'url', url: 'https://x.example' } }] }) }, 'CONTENT_BLOCK'],
     ] as const)('refuses %s', (_name, request, refusal) => {
         expect(inspectRequest(request).refusal).toBe(refusal);
     });
@@ -145,5 +194,52 @@ describe('jsonSchemaFor', () => {
         expect(schema.required).toEqual(['q', 'n', 'tags']);
         expect(JSON.stringify(schema)).not.toContain('"minLength"');
         expect(JSON.stringify(schema)).not.toContain('"maximum"');
+    });
+
+    // What the structured-output feature refuses is refused HERE, at build,
+    // rather than as a 400 on every call or a schema the transform empties.
+    type Tree = { name: string; kids: Tree[] };
+    const Tree: z.ZodType<Tree> = z.object({
+        name: z.string(),
+        get kids() {
+            return z.array(Tree);
+        },
+    });
+    const many = (n: number, make: () => z.ZodType) => z.object(Object.fromEntries(Array.from({ length: n }, (_, i) => [`p${i}`, make()])));
+
+    it.each([
+        ['a recursive schema (the API refuses recursion)', z.object({ root: Tree }), /recursive/],
+        ['a record (the transform would make it an empty object)', z.object({ counts: z.record(z.string(), z.number()) }), /arbitrary keys/],
+        ['a record keyed by an enum', z.object({ counts: z.record(z.enum(['a', 'b']), z.number()) }), /arbitrary keys/],
+        ['an array at the root (the single-tool path needs an object)', z.array(z.string()), /object at its root/],
+        ['more optional parameters than the API compiles', many(MAX_OPTIONAL_PARAMETERS + 1, () => z.string().optional()), /optional parameters/],
+        ['more union parameters than the API compiles', many(MAX_UNION_PARAMETERS + 1, () => z.string().nullable()), /union parameters/],
+    ] as const)('refuses %s', (_name, schema, problem) => {
+        const err = (() => {
+            try {
+                jsonSchemaFor(schema);
+                return null;
+            } catch (e) {
+                return e;
+            }
+        })();
+        expect(err).toBeInstanceOf(AiPromptError);
+        expect(JSON.stringify((err as AiPromptError).details)).toMatch(problem);
+    });
+
+    it('accepts what the feature takes: optional, nullable, unions, a reused (non-recursive) definition', () => {
+        const Person = z.object({ name: z.string() });
+        const schema = jsonSchemaFor(
+            z.object({
+                a: z.string().optional(),
+                b: z.string().nullable(),
+                c: z.union([z.object({ k: z.literal('x') }), z.object({ k: z.literal('y'), v: z.string() })]),
+                lead: Person,
+                others: z.array(Person),
+                limit: many(MAX_OPTIONAL_PARAMETERS - 1, () => z.number().optional()),
+            }),
+        );
+        expect(schema.type).toBe('object');
+        expect(schema.required).toEqual(['b', 'c', 'lead', 'others', 'limit']);
     });
 });

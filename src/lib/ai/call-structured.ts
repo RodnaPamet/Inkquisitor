@@ -15,7 +15,8 @@
  *    3. kill switch                AI_DISABLED=1 → KILLED, nothing sent
  *    4. guard the author text      a block → REFUSED_GUARD, nothing sent; a
  *                                  flag → the call proceeds, fenced, and the
- *                                  result says `reviewRequired`
+ *                                  result says `reviewRequired`; a scanner that
+ *                                  throws → REFUSED_GUARD GUARD_UNAVAILABLE
  *    5. a client                   `clientForRun`; none → PROVIDER_ERROR with
  *                                  the configuration's reason, nothing sent
  *    6. reserve the worst case     max input (UTF-8 bytes) and max_tokens at the
@@ -24,7 +25,11 @@
  *    7. send, streamed             one deadline (the tier's `timeoutMs`) over
  *                                  the whole call and the SDK's retries; the
  *                                  caller's `signal` cancels it
- *    8. validate                   JSON, then the Zod schema. On failure, ONE
+ *    8. validate                   a refusal → MODEL_REFUSED; cut off
+ *                                  (`max_tokens`, the context window) →
+ *                                  TRUNCATED; any other stop but an answer's →
+ *                                  NO_OUTPUT; none repaired. Then JSON, then
+ *                                  the Zod schema. On failure, ONE
  *                                  repair: the validation problems go back as a
  *                                  new turn (no new author text), after the
  *                                  repair's worst case is re-reserved. A second
@@ -184,10 +189,22 @@ function candidateOf(message: Anthropic.Message, singleTool: boolean): { candida
     }
 }
 
-/** The SDK's response content, as the next request's assistant turn (blocks passed back unchanged). */
-function asAssistantTurn(message: Anthropic.Message): Anthropic.ContentBlockParam[] {
-    return message.content as unknown as Anthropic.ContentBlockParam[];
+/**
+ * The SDK's response content, as the next request's assistant turn: blocks
+ * passed back unchanged, except an EMPTY text block, which the API refuses in
+ * a turn that is not the last. An answer with no text and no tool call left
+ * (nothing, or thinking alone) is no turn at all (`null`): the repair then
+ * asks again after the first request's own turns, as a fresh answer.
+ */
+function asAssistantTurn(message: Anthropic.Message): Anthropic.ContentBlockParam[] | null {
+    const content = (message.content as unknown as Anthropic.ContentBlockParam[]).filter(
+        (b) => !(b.type === 'text' && b.text === ''),
+    );
+    return content.some((b) => b.type === 'text' || b.type === 'tool_use') ? content : null;
 }
+
+/** The candidate failures that mean the model gave no answer at all, rather than a wrong one. */
+const NO_ANSWER_CODES: ReadonlySet<string> = new Set(['missing_answer', 'missing_tool_call']);
 
 /** The ending of an SDK error, given which signal (if any) aborted the call. */
 function endingOfSdkError(err: unknown, deadlineHit: boolean, callerAborted: boolean): CallEnd {
@@ -301,8 +318,13 @@ export async function callStructured<S extends z.ZodType>(
         return end(new CallEnd('KILLED', 'AI_DISABLED', (id) => new AiUnavailableError('AI_DISABLED', id)));
     }
 
-    // 4. Author text, guard-scanned on the way in.
-    checks.push(...guardAuthorText(data, resolved.guardMode));
+    // 4. Author text, guard-scanned on the way in. A scanner that throws
+    //    fails closed: nothing is sent.
+    try {
+        checks.push(...guardAuthorText(data, resolved.guardMode));
+    } catch {
+        return end(new CallEnd('REFUSED_GUARD', 'GUARD_UNAVAILABLE', (id) => new AiGuardBlockedError('input', [], id, true)));
+    }
     const inbound = summariseChecks(checks);
     if (inbound.blocked) {
         const ruleIds = inbound.ruleIds;
@@ -351,6 +373,10 @@ export async function callStructured<S extends z.ZodType>(
     const signal = input.signal ? AbortSignal.any([input.signal, deadline.signal]) : deadline.signal;
 
     const send = async (request: ModelRequest): Promise<Anthropic.Message> => {
+        // Cancelled or past the deadline before this attempt left (while its
+        // reservation was being written, say): nothing is sent, so nothing
+        // more is charged.
+        if (signal.aborted) throw endingOfSdkError(null, deadline.signal.aborted, input.signal?.aborted === true);
         attempts += 1;
         const stream = client.messages.stream(request, { signal });
         try {
@@ -398,12 +424,21 @@ export async function callStructured<S extends z.ZodType>(
             await reserve(request);
             const message = await send(request);
 
-            if (message.stop_reason === 'refusal') {
+            const stop = message.stop_reason;
+            if (stop === 'refusal') {
                 const category = message.stop_details?.category ?? null;
                 throw new CallEnd('PROVIDER_ERROR', 'MODEL_REFUSED', (id) => new AiProviderError('MODEL_REFUSED', id, { category }));
             }
-            if (message.stop_reason === 'max_tokens') {
+            // Cut off: by `max_tokens`, or by the context window. A repair
+            // would only resend a longer request, so neither is repaired.
+            if (stop === 'max_tokens' || stop === 'model_context_window_exceeded') {
                 throw new CallEnd('INVALID_OUTPUT', 'TRUNCATED', (id) => new AiOutputInvalidError('TRUNCATED', [], id));
+            }
+            // An answer ends `end_turn` (or `tool_use` on the single-tool
+            // path). Anything else (`pause_turn`, `stop_sequence`, a stop this
+            // layer does not know) did not end in an answer: not repaired.
+            if (!(stop === 'end_turn' || (singleTool && stop === 'tool_use'))) {
+                throw new CallEnd('INVALID_OUTPUT', 'NO_OUTPUT', (id) => new AiOutputInvalidError('NO_OUTPUT', [], id));
             }
 
             const { candidate, toolUseId } = candidateOf(message, singleTool);
@@ -411,8 +446,18 @@ export async function callStructured<S extends z.ZodType>(
             if (candidate.ok) {
                 const parsed = schema.safeParse(candidate.value);
                 if (parsed.success) {
-                    // 9. The answer, guard-scanned on the way out.
-                    const outbound = guardModelOutput(parsed.data, resolved.guardMode);
+                    // 9. The answer, guard-scanned on the way out. A scanner
+                    //    that throws fails closed: the answer is withheld.
+                    let outbound: GuardCheck;
+                    try {
+                        outbound = guardModelOutput(parsed.data, resolved.guardMode);
+                    } catch {
+                        throw new CallEnd(
+                            'REFUSED_GUARD',
+                            'GUARD_UNAVAILABLE',
+                            (id) => new AiGuardBlockedError('egress', [], id, true),
+                        );
+                    }
                     checks.push(outbound);
                     if (outbound.action === 'block') {
                         const ruleIds = [...outbound.ruleIds];
@@ -444,13 +489,15 @@ export async function callStructured<S extends z.ZodType>(
             request = buildRepairRequest(firstRequest, asAssistantTurn(message), failure.repair, toolUseId);
         }
         const issues = lastIssues;
-        throw new CallEnd('INVALID_OUTPUT', 'INVALID_AFTER_REPAIR', (id) => new AiOutputInvalidError('INVALID_AFTER_REPAIR', issues, id));
+        // Twice no answer at all is NO_OUTPUT; anything else is a wrong answer.
+        const reason = issues.length > 0 && issues.every((i) => NO_ANSWER_CODES.has(i.code)) ? 'NO_OUTPUT' : 'INVALID_AFTER_REPAIR';
+        throw new CallEnd('INVALID_OUTPUT', reason, (id) => new AiOutputInvalidError(reason, issues, id));
     } catch (err) {
         if (err instanceof CallEnd) return end(err);
         // Not ours and not the SDK's (a ledger failure, a bug): record what is
         // known, then let the original error through.
         logger.error('ai: call failed unexpectedly', { component: 'ai', callId, errorName: err instanceof Error ? err.name : 'unknown' });
-        await settle('PROVIDER_ERROR', 'PROVIDER_CONNECTION').catch(() => undefined);
+        await settle('PROVIDER_ERROR', 'INTERNAL_ERROR').catch(() => undefined);
         throw err;
     } finally {
         clearTimeout(timer);

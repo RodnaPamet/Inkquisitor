@@ -475,9 +475,16 @@ only under zero-retention terms (D5).
   workspace's monthly ceiling (`AI_MONTHLY_CEILING_USD_DEFAULT`, $25) is
   checked against the call's worst case BEFORE it is sent, under a
   per-workspace advisory lock plus a reservation row; `AI_DISABLED=1` refuses
-  everything. Only `src/lib/ai/client.ts` loads the SDK, and its middleware
-  sends Messages calls only: a new server tool type is added to
-  `PERMITTED_SERVER_TOOL_TYPES` (empty until 2.6) and nowhere else. Production
+  everything. Only `src/lib/ai/client.ts` loads the SDK or names the
+  provider's host (`model-provider-host-single-seam`), and its middleware
+  sends Messages calls only, by allowlist: body members
+  (`PERMITTED_BODY_MEMBERS`), `output_config` members and content block types
+  (`PERMITTED_CONTENT_BLOCK_TYPES`: no `url` or `file` sources) are each a
+  reviewed line; a new server tool type is added to
+  `PERMITTED_SERVER_TOOL_TYPES` (empty until 2.6) and nowhere else. An output
+  schema the structured-output feature cannot take (a record, recursion, a
+  non-object root, past the optional / union limits) is refused when the
+  request is built. Production
   refuses `ANTHROPIC_API_KEY` without `ANTHROPIC_ZDR_CONFIRMED=1` (ZDR is an
   organization arrangement with Anthropic, not a request option; D5). Tests
   hand the SDK `tests/helpers/fake-anthropic.ts` as its fetch; no test reaches

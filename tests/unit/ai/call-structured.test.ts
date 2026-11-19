@@ -158,6 +158,58 @@ describe('the repair', () => {
         expect(ledger.records[0]).toMatchObject({ outcome: 'INVALID_OUTPUT', errorCode: 'TRUNCATED' });
     });
 
+    it('an answer cut off by the context window is not repaired either', async () => {
+        const { api, ledger, promise } = run([{ kind: 'text', text: '{"questions": [', stopReason: 'model_context_window_exceeded' }, { kind: 'text', text: GOOD }]);
+        await expect(promise).rejects.toMatchObject({ reason: 'TRUNCATED' });
+        expect(api.requests).toHaveLength(1);
+        expect(ledger.records[0]).toMatchObject({ outcome: 'INVALID_OUTPUT', errorCode: 'TRUNCATED' });
+    });
+
+    it('a stop that is not an answer’s (pause_turn) is NO_OUTPUT, not repaired', async () => {
+        const { api, ledger, promise } = run([{ kind: 'text', text: GOOD, stopReason: 'pause_turn' }, { kind: 'text', text: GOOD }]);
+        await expect(promise).rejects.toMatchObject({ reason: 'NO_OUTPUT' });
+        expect(api.requests).toHaveLength(1);
+        expect(ledger.records[0]).toMatchObject({ outcome: 'INVALID_OUTPUT', errorCode: 'NO_OUTPUT', attempts: 1 });
+    });
+
+    it('an empty answer is repaired WITHOUT an empty assistant turn (the API refuses one)', async () => {
+        const { api, promise } = run([{ kind: 'text', text: '' }, { kind: 'text', text: GOOD }]);
+        await expect(promise).resolves.toMatchObject({ outcome: 'REPAIRED' });
+        const messages = api.requests[1].messages as Array<{ role: string; content: unknown }>;
+        expect(messages.map((m) => m.role)).toEqual(['user', 'user']);
+        expect(messages[0]).toEqual((api.requests[0].messages as unknown[])[0]);
+        expect(JSON.stringify(messages[1].content)).toContain('missing_answer');
+    });
+
+    it('twice no answer at all is NO_OUTPUT', async () => {
+        const { ledger, promise } = run([{ kind: 'text', text: '' }, { kind: 'text', text: ' ' }]);
+        await expect(promise).rejects.toMatchObject({ reason: 'NO_OUTPUT' });
+        expect(ledger.records[0]).toMatchObject({ outcome: 'INVALID_OUTPUT', errorCode: 'NO_OUTPUT', attempts: 2 });
+    });
+
+    it('a cancel that lands while the repair is being reserved sends nothing more and charges nothing more', async () => {
+        const controller = new AbortController();
+        const ledger = memoryLedger();
+        const reserve = ledger.reserve.bind(ledger);
+        // The repair's reservation: the author leaves while it is written.
+        ledger.reserve = async (request) => {
+            if (ledger.reserveRequests.length === 1) controller.abort();
+            return reserve(request);
+        };
+        const { api, promise } = run(
+            [
+                { kind: 'text', text: SHORT, usage: { input_tokens: 1_000, output_tokens: 100 } },
+                { kind: 'text', text: GOOD },
+            ],
+            { ledger, signal: controller.signal },
+        );
+        await expect(promise).rejects.toBeInstanceOf(AiCallAbortedError);
+        expect(api.requests).toHaveLength(1);
+        expect(ledger.records[0]).toMatchObject({ outcome: 'ABORTED', errorCode: 'CALLER_ABORT', attempts: 1, costEstimated: false });
+        // The first attempt's cost, and not a micro-dollar more.
+        expect(ledger.records[0].costMicroUsd).toBe(1_000 * 2 + 100 * 10);
+    });
+
     it('a repair that would pass the ceiling is refused before it is sent', async () => {
         // Room for the first attempt's worst case, read off a dry run, and not a micro-dollar more.
         const dry = run([{ kind: 'text', text: GOOD }]);
@@ -306,6 +358,19 @@ describe('provider failures', () => {
         expect(err).toBeInstanceOf(AiProviderError);
         expect(ledger.records[0]).toMatchObject({ outcome: 'PROVIDER_ERROR', errorCode: 'PROVIDER_CONNECTION', costEstimated: true });
         expect(ledger.records[0].costMicroUsd).toBeGreaterThan(0);
+    });
+
+    it('a failure inside this process (a schema refinement that throws) is recorded INTERNAL_ERROR, not as the provider', async () => {
+        const api = fakeAnthropic([{ kind: 'text', text: GOOD }]);
+        const ledger = memoryLedger();
+        const throwing = SCHEMA.refine(() => {
+            throw new Error('a bug in a refinement');
+        });
+        await expect(
+            callStructured({ template: TEMPLATE, data: DATA, schema: throwing }, { ledger, fetch: api.fetch, env: {} }),
+        ).rejects.toThrow('a bug in a refinement');
+        expect(ledger.records).toHaveLength(1);
+        expect(ledger.records[0]).toMatchObject({ outcome: 'PROVIDER_ERROR', errorCode: 'INTERNAL_ERROR', attempts: 1 });
     });
 
     it('a ledger that cannot settle fails the call: no result goes unrecorded', async () => {

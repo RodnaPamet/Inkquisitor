@@ -59,17 +59,28 @@ export interface GuardInput {
     readonly text: string;
 }
 
-/** Scan every block of author text before it is placed in a prompt. One check per block. */
+const VERDICT_RANK: Readonly<Record<GuardVerdict, number>> = { clean: 0, suspicious: 1, malicious: 2 };
+
+/**
+ * Scan every block of author text before it is placed in a prompt. One check
+ * per block, over its text AND its label: a label is code-shaped
+ * (`LABEL_PATTERN`) but is sent outside the fence, in the block's opening tag,
+ * and a caller may build one from author-chosen words (an element's slug, say:
+ * `ignore-previous-instructions` passes the pattern). Its separators are read
+ * as spaces, so the rules' word boundaries see its words.
+ */
 export function guardAuthorText(blocks: readonly GuardInput[], mode: GuardMode = DEFAULT_GUARD_MODE): GuardCheck[] {
     return blocks.map((block) => {
-        const scan = scanInjection(block.text);
+        const text = scanInjection(block.text);
+        const label = scanInjection(block.label.replace(/[._-]+/g, ' '));
+        const verdict = VERDICT_RANK[label.verdict] > VERDICT_RANK[text.verdict] ? label.verdict : text.verdict;
         return {
             direction: 'input',
             source: block.label,
-            verdict: scan.verdict,
-            action: resolveEnforcement(mode, scan.verdict, 'input'),
+            verdict,
+            action: resolveEnforcement(mode, verdict, 'input'),
             mode,
-            ruleIds: [...scan.ruleIds],
+            ruleIds: [...new Set([...text.ruleIds, ...label.ruleIds])],
         };
     });
 }

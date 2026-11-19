@@ -71,6 +71,13 @@ const config = [
         rules: { '@typescript-eslint/no-require-imports': 'off' },
     },
     {
+        // Roadmap rule 3 holds for every module under `src/` and `scripts/`,
+        // not only TypeScript: `allowJs` lets a `.js` / `.mjs` / `.cjs` file
+        // under `src/` be imported, bundled and so load the SDK.
+        files: ['src/**/*.{js,jsx,mjs,cjs,mts,cts}', 'scripts/**/*.{js,mjs,cjs,mts,cts}'],
+        rules: { 'local/anthropic-client-single-seam': 'error' },
+    },
+    {
         // The seam itself (Phase 2.1).
         files: ['src/lib/ai/client.ts'],
         rules: { 'local/anthropic-client-single-seam': 'off' },

@@ -56,13 +56,22 @@
  * here carries `messagesOnlyFor`'s middleware, which runs before each request
  * leaves the process (retries included) and refuses anything that is not:
  *
- *   • a POST to `/v1/messages` on the pinned origin, with no `anthropic-beta`
- *     header; and
+ *   • a POST to `/v1/messages` on the pinned origin, with no query string
+ *     (`?beta=true` is the beta endpoint) and no `anthropic-beta` header; and
  *   • a body that asks Anthropic to hold nothing and call nothing on the
- *     call's behalf: no `thread`, `container` or `mcp_servers`, and no tool
- *     whose `type` is not `custom` — unless that server tool's type is one the
- *     CLIENT was built to allow, and every type a client may be built to allow
- *     is in `PERMITTED_SERVER_TOOL_TYPES`.
+ *     call's behalf. That is an ALLOWLIST, not a list of known dangers:
+ *       - top-level members from `PERMITTED_BODY_MEMBERS` only (so no `thread`,
+ *         `container`, `mcp_servers`, `context_management`, `metadata` or any
+ *         member a later API version adds), and `output_config` members from
+ *         `PERMITTED_OUTPUT_CONFIG_MEMBERS` only;
+ *       - system and message content blocks of the types in
+ *         `PERMITTED_CONTENT_BLOCK_TYPES` only, a `tool_result`'s content
+ *         included: no `document` or `image` (a `url` source is a fetch
+ *         Anthropic makes, a `file` source reads the Files API's storage), no
+ *         `container_upload`, `search_result` or server-tool blocks;
+ *       - no tool whose `type` is not `custom` — unless that server tool's
+ *         type is one the CLIENT was built to allow, and every type a client
+ *         may be built to allow is in `PERMITTED_SERVER_TOOL_TYPES`.
  *
  * `PERMITTED_SERVER_TOOL_TYPES` is EMPTY in 2.1, typed so that no caller can
  * name a server tool at all. Subphase 2.6 (decision D9) adds exactly the web
@@ -83,7 +92,7 @@ import { z } from 'zod';
 import { env } from '@/env';
 import { logger } from '@/lib/observability/logger';
 import { aiDisabled, zdrConfirmed } from './config';
-import { AiRequestRefusedError, type AiUnavailableReason } from './errors';
+import { AiPromptError, AiRequestRefusedError, type AiUnavailableReason } from './errors';
 
 /** The Messages API's origin. Pinned, so the environment cannot move the traffic. */
 export const ANTHROPIC_API_BASE_URL = 'https://api.anthropic.com';
@@ -112,8 +121,42 @@ const sdkLogger = {
     debug: (msg: string) => logger.debug(msg, { component: 'anthropic-sdk' }),
 };
 
-/** Body members that ask Anthropic to hold state or call out on the call's behalf. */
-const REFUSED_BODY_MEMBERS = ['thread', 'container', 'mcp_servers'] as const;
+/**
+ * The top-level body members a request may carry: what `callStructured`'s
+ * builders write (and `stream`, which the SDK adds). Everything else is
+ * refused, so a member that asks Anthropic to hold state or call out
+ * (`thread`, `container`, `mcp_servers`, `context_management`, …) is refused
+ * without being named, and so is one a later API version adds.
+ */
+export const PERMITTED_BODY_MEMBERS: ReadonlySet<string> = new Set([
+    'model',
+    'max_tokens',
+    'messages',
+    'system',
+    'stream',
+    'output_config',
+    'tools',
+    'tool_choice',
+]);
+
+/** The members of `output_config` a request may carry. */
+export const PERMITTED_OUTPUT_CONFIG_MEMBERS: ReadonlySet<string> = new Set(['format', 'effort']);
+
+/**
+ * The content block types a system prompt or a message may carry (a
+ * `tool_result`'s own content: `text` only). Text, the model's own thinking
+ * passed back, and the single-tool path's call and result. No `document`,
+ * `image`, `container_upload`, `search_result` or server-tool block: a `url`
+ * source is a fetch Anthropic makes on the call's behalf, and a `file` source
+ * reads data the Files API stores.
+ */
+export const PERMITTED_CONTENT_BLOCK_TYPES: ReadonlySet<string> = new Set([
+    'text',
+    'thinking',
+    'redacted_thinking',
+    'tool_use',
+    'tool_result',
+]);
 
 /** Why `messagesOnlyFor`'s middleware refused a request. */
 export type RequestRefusal =
@@ -122,6 +165,7 @@ export type RequestRefusal =
     | 'BETA_HEADER'
     | 'BODY_UNREADABLE'
     | 'SERVER_HELD_STATE'
+    | 'CONTENT_BLOCK'
     | 'SERVER_TOOL';
 
 /**
@@ -183,11 +227,18 @@ function refusalOf(
     allowedServerTools: readonly string[],
 ): RequestRefusal | null {
     if (url.origin !== ANTHROPIC_API_BASE_URL) return 'NOT_THE_PINNED_ORIGIN';
-    if (method !== 'POST' || url.pathname !== MESSAGES_PATH) return 'NOT_A_MESSAGES_CALL';
+    // `?beta=true` is the SDK's beta endpoint: no query string at all.
+    if (method !== 'POST' || url.pathname !== MESSAGES_PATH || url.search !== '') return 'NOT_A_MESSAGES_CALL';
     if (beta !== null && beta.trim() !== '') return 'BETA_HEADER';
     if (!members) return 'BODY_UNREADABLE';
-    // `null` is the explicit "none", the same as leaving the member out.
-    if (REFUSED_BODY_MEMBERS.some((name) => members[name] != null)) return 'SERVER_HELD_STATE';
+    if (Object.keys(members).some((name) => !PERMITTED_BODY_MEMBERS.has(name))) return 'SERVER_HELD_STATE';
+    const outputConfig = members.output_config;
+    if (outputConfig !== undefined) {
+        if (outputConfig === null || typeof outputConfig !== 'object' || Array.isArray(outputConfig)) return 'BODY_UNREADABLE';
+        if (Object.keys(outputConfig).some((name) => !PERMITTED_OUTPUT_CONFIG_MEMBERS.has(name))) return 'SERVER_HELD_STATE';
+    }
+    const contentRefusal = contentRefusalOf(members.system, members.messages);
+    if (contentRefusal) return contentRefusal;
     const tools = members.tools;
     if (tools !== undefined) {
         if (!Array.isArray(tools)) return 'BODY_UNREADABLE';
@@ -198,6 +249,43 @@ function refusalOf(
             return typeof type !== 'string' || !allowedServerTools.includes(type);
         });
         if (refused) return 'SERVER_TOOL';
+    }
+    return null;
+}
+
+/** A block list (or a string) whose every block is of a permitted type; `nested` for a tool result's content. */
+function blocksRefusal(content: unknown, nested: boolean): RequestRefusal | null {
+    if (typeof content === 'string') return null;
+    if (!Array.isArray(content)) return 'BODY_UNREADABLE';
+    for (const block of content) {
+        if (block === null || typeof block !== 'object' || Array.isArray(block)) return 'BODY_UNREADABLE';
+        const type = (block as { type?: unknown }).type;
+        if (typeof type !== 'string') return 'BODY_UNREADABLE';
+        if (nested ? type !== 'text' : !PERMITTED_CONTENT_BLOCK_TYPES.has(type)) return 'CONTENT_BLOCK';
+        if (type === 'tool_result') {
+            const inner = (block as { content?: unknown }).content;
+            if (inner !== undefined) {
+                const refusal = blocksRefusal(inner, true);
+                if (refusal) return refusal;
+            }
+        }
+    }
+    return null;
+}
+
+/** The system prompt's and every message's content, against `PERMITTED_CONTENT_BLOCK_TYPES`. */
+function contentRefusalOf(system: unknown, messages: unknown): RequestRefusal | null {
+    if (system !== undefined) {
+        const refusal = blocksRefusal(system, false);
+        if (refusal) return refusal;
+    }
+    if (!Array.isArray(messages)) return 'BODY_UNREADABLE';
+    for (const message of messages) {
+        if (message === null || typeof message !== 'object' || Array.isArray(message)) return 'BODY_UNREADABLE';
+        const role = (message as { role?: unknown }).role;
+        if (role !== 'user' && role !== 'assistant') return 'BODY_UNREADABLE';
+        const refusal = blocksRefusal((message as { content?: unknown }).content, false);
+        if (refusal) return refusal;
     }
     return null;
 }
@@ -263,19 +351,124 @@ export function clientForRun(opts: ClientOptions = {}): ClientChoice {
 }
 
 /**
+ * The structured-output feature's explicit complexity limits (Anthropic's
+ * "Structured outputs" documentation, "Schema complexity limits", read
+ * 2026-11-19): parameters not in `required`, and parameters using `anyOf` or
+ * a type array, across the request's schemas. Past either the API answers 400.
+ */
+export const MAX_OPTIONAL_PARAMETERS = 24;
+export const MAX_UNION_PARAMETERS = 16;
+
+type SchemaNode = Record<string, unknown>;
+
+const isNode = (v: unknown): v is SchemaNode => v !== null && typeof v === 'object' && !Array.isArray(v);
+
+/** Every sub-schema of `node` (not `node` itself), by the keywords that hold schemas. */
+function childSchemas(node: SchemaNode): SchemaNode[] {
+    const out: SchemaNode[] = [];
+    const take = (v: unknown) => {
+        if (isNode(v)) out.push(v);
+    };
+    if (isNode(node.properties)) Object.values(node.properties).forEach(take);
+    if (isNode(node.$defs)) Object.values(node.$defs).forEach(take);
+    if (isNode(node.definitions)) Object.values(node.definitions).forEach(take);
+    take(node.items);
+    take(node.additionalProperties);
+    for (const key of ['anyOf', 'allOf', 'oneOf', 'prefixItems'] as const) {
+        const list = node[key];
+        if (Array.isArray(list)) list.forEach(take);
+    }
+    return out;
+}
+
+function walkSchema(node: SchemaNode, visit: (n: SchemaNode) => void): void {
+    visit(node);
+    for (const child of childSchemas(node)) walkSchema(child, visit);
+}
+
+/** The `$ref`s a schema node and its sub-schemas make, not following them. */
+function refsOf(node: SchemaNode): string[] {
+    const refs: string[] = [];
+    walkSchema(node, (n) => {
+        if (typeof n.$ref === 'string') refs.push(n.$ref);
+    });
+    return refs;
+}
+
+/**
+ * Refuse a schema the structured-output feature cannot take, as a
+ * programming error at build (`AiPromptError`) rather than a 400 on every
+ * call, or worse, a schema the transform quietly changes:
+ *
+ *   • the root is not an object (the single-tool path makes the schema a
+ *     tool's `input_schema`, which must be one, and the path a call takes
+ *     depends on the deployment's model, so the rule is the same for both);
+ *   • an object with arbitrary keys (`z.record`, `propertyNames`,
+ *     `patternProperties`): the API requires `additionalProperties: false`,
+ *     so the transform turns a record into `{}` and the model can only ever
+ *     answer an empty one;
+ *   • a recursive schema, or a `$ref` outside the schema: not supported;
+ *   • more optional or union parameters than the documented limits.
+ */
+export function assertStructuredOutputSchema(raw: SchemaNode, transformed: SchemaNode): void {
+    if (transformed.type !== 'object') throw new AiPromptError('an output schema must be an object at its root');
+    walkSchema(raw, (n) => {
+        if ('propertyNames' in n || 'patternProperties' in n) {
+            throw new AiPromptError('an output schema may not hold an object with arbitrary keys (a record)');
+        }
+    });
+    const defs: Record<string, SchemaNode> = isNode(transformed.$defs) ? (transformed.$defs as Record<string, SchemaNode>) : {};
+    const target = (ref: string): string => {
+        if (ref === '#') return '#';
+        const m = /^#\/\$defs\/([^/]+)$/.exec(ref);
+        if (!m || !(m[1] in defs)) throw new AiPromptError('an output schema may only refer to its own definitions');
+        return m[1];
+    };
+    const rootBody: SchemaNode = { ...transformed };
+    delete rootBody.$defs;
+    const edges = (name: string): string[] => refsOf(name === '#' ? rootBody : defs[name]).map(target);
+    const onPath = new Set<string>();
+    const done = new Set<string>();
+    const visit = (name: string): void => {
+        if (onPath.has(name)) throw new AiPromptError('an output schema may not be recursive');
+        if (done.has(name)) return;
+        onPath.add(name);
+        for (const next of edges(name)) visit(next);
+        onPath.delete(name);
+        done.add(name);
+    };
+    visit('#');
+    let optional = 0;
+    let unions = 0;
+    walkSchema(transformed, (n) => {
+        if (Array.isArray(n.anyOf) || Array.isArray(n.type)) unions += 1;
+        if (isNode(n.properties)) {
+            const required = new Set(Array.isArray(n.required) ? n.required : []);
+            optional += Object.keys(n.properties).filter((k) => !required.has(k)).length;
+        }
+    });
+    if (optional > MAX_OPTIONAL_PARAMETERS) throw new AiPromptError(`an output schema has more than ${MAX_OPTIONAL_PARAMETERS} optional parameters`);
+    if (unions > MAX_UNION_PARAMETERS) throw new AiPromptError(`an output schema has more than ${MAX_UNION_PARAMETERS} union parameters`);
+}
+
+/**
  * The JSON schema the API is given for `schema`, in the form its
  * structured-output feature accepts. This is what the SDK's `zodOutputFormat`
  * helper does (Zod's JSON schema, then the SDK's `transformJSONSchema`, which
  * moves constraints the API does not enforce — lengths, numeric bounds — into
  * descriptions and sets `additionalProperties: false`), with Zod's `$schema`
  * dialect member dropped first, so it is not folded into the root's
- * description. Zod enforces every constraint on the answer. The same schema
- * is the single tool's `input_schema` on the tool path.
+ * description, and the result checked against what the feature takes
+ * (`assertStructuredOutputSchema`). Zod enforces every constraint on the
+ * answer. The same schema is the single tool's `input_schema` on the tool
+ * path.
  */
 export function jsonSchemaFor(schema: z.ZodType): Record<string, unknown> {
     const raw: Record<string, unknown> = { ...z.toJSONSchema(schema, { reused: 'ref' }) };
     delete raw.$schema;
-    return transformJSONSchema(raw) as Record<string, unknown>;
+    const transformed = transformJSONSchema(raw) as Record<string, unknown>;
+    assertStructuredOutputSchema(raw, transformed);
+    return transformed;
 }
 
 /** What an error thrown by an SDK call was, without reading its message (which may quote the request). */

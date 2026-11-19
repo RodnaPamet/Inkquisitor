@@ -45,6 +45,8 @@ export const AI_ERROR_CODES = [
     'PROVIDER_CONNECTION',
     'REQUEST_REFUSED',
     'MODEL_REFUSED',
+    // PROVIDER_ERROR, inside this process: a ledger failure or a bug, not the provider
+    'INTERNAL_ERROR',
     // INVALID_OUTPUT
     'INVALID_AFTER_REPAIR',
     'TRUNCATED',
@@ -52,6 +54,8 @@ export const AI_ERROR_CODES = [
     // REFUSED_GUARD
     'GUARD_BLOCKED_INPUT',
     'GUARD_BLOCKED_OUTPUT',
+    // a scanner threw: the guard fails closed (nothing sent, or the answer withheld)
+    'GUARD_UNAVAILABLE',
     // CEILING
     'SPEND_CEILING',
     // TIMEOUT / ABORTED
@@ -89,16 +93,20 @@ export class AiUnavailableError extends AiCallError {
     }
 }
 
-/** The guard refused: author text on the way in, or the model's answer on the way out. 422. */
+/**
+ * The guard refused: author text on the way in, or the model's answer on the
+ * way out. 422. `unavailable`: a scanner threw, and the guard failed closed
+ * (reason GUARD_UNAVAILABLE, no rule ids).
+ */
 export class AiGuardBlockedError extends AiCallError {
     public readonly direction: GuardDirection;
     public readonly ruleIds: readonly string[];
-    constructor(direction: GuardDirection, ruleIds: readonly string[], callId: string | null) {
+    constructor(direction: GuardDirection, ruleIds: readonly string[], callId: string | null, unavailable = false) {
         super(
             direction === 'input' ? 'The text could not be sent to the model.' : 'The model answer was withheld by the output guard.',
             'AI_GUARD_BLOCKED',
             422,
-            direction === 'input' ? 'GUARD_BLOCKED_INPUT' : 'GUARD_BLOCKED_OUTPUT',
+            unavailable ? 'GUARD_UNAVAILABLE' : direction === 'input' ? 'GUARD_BLOCKED_INPUT' : 'GUARD_BLOCKED_OUTPUT',
             callId,
             { ruleIds: [...ruleIds] },
         );
