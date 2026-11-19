@@ -239,3 +239,67 @@ jobs:
           # deadline exceeded` and exit 1, a red indistinguishable from a CVE
           # (inflect-compliance hit it twice on this action and base image).
           timeout: '15m'
+
+  e2e:
+    name: E2E
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    # The same services as Test: the specs drive the production build, which
+    # reads and writes the database once sign-up lands (Phase 0.3).
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: inkquisitor_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d inkquisitor_test"
+          --health-interval 3s
+          --health-timeout 3s
+          --health-retries 20
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/inkquisitor_test?schema=public
+      DIRECT_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/inkquisitor_test?schema=public
+      # No REDIS_URL here: the specs run the PRODUCTION build, whose start-up
+      # check refuses a Redis URL without a password. playwright.config.ts
+      # supplies redis://:e2e@localhost:6379, and the step below starts a
+      # Redis that requires exactly that (a service container cannot pass
+      # --requirepass).
+      SKIP_ENV_VALIDATION: '1'
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      # The headless-shell build that matches the pinned @playwright/test
+      # (what headless Chromium runs). No --with-deps: that apt-installs
+      # fonts from Ubuntu's mirrors, which the runner image does not need
+      # (it ships Chrome's system libraries) and whose timeouts failed the
+      # job's first run before a single spec ran.
+      - run: npx playwright install --only-shell chromium
+      - name: Start Redis with a password
+        run: |
+          docker run -d --name e2e-redis -p 6379:6379 redis:7-alpine redis-server --requirepass e2e
+          for i in $(seq 1 30); do docker exec e2e-redis redis-cli -a e2e --no-auth-warning ping | grep -q PONG && exit 0; sleep 1; done
+          echo "Redis did not come up"; exit 1
+      - name: Apply migrations
+        run: npm run migrate:deploy
+      - run: npm run build
+      # playwright.config.ts starts `next start` on :3100 and waits for
+      # /api/health before the specs run.
+      - name: End-to-end tests
+        run: npm run test:e2e
+      - name: Keep the report on failure
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-report
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
