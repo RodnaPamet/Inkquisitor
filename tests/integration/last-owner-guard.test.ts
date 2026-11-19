@@ -98,6 +98,61 @@ it('two transactions demoting each other at once cannot both commit (the lock is
     expect(await prisma.workspaceMembership.count({ where: { workspaceId: a.workspaceId, role: 'OWNER' } })).toBe(1);
 });
 
+describe.each([['RepeatableRead'], ['Serializable']] as const)('under %s isolation', (isolationLevel) => {
+    // The snapshot is taken by each transaction's first statement, BEFORE
+    // either takes the trigger's lock, so a plain count in the second still
+    // sees the first's owner as an owner after the first commits. Both
+    // demotions committed until the trigger locked the rows it counts.
+    it('two transactions demoting each other at once cannot both commit', async () => {
+        const a = await createAccount();
+        const second = await createBareUser();
+        const secondId = (await addMember(a.workspaceId, second.id, 'OWNER')).id;
+        const firstId = await ownerMembershipId(a.workspaceId, a.userId);
+
+        let releaseFirst!: () => void;
+        const firstMayCommit = new Promise<void>((r) => (releaseFirst = r));
+        let snapshotsTaken = 0;
+        let bothHaveSnapshots!: () => void;
+        const snapshots = new Promise<void>((r) => (bothHaveSnapshots = r));
+        const tookSnapshot = () => {
+            snapshotsTaken += 1;
+            if (snapshotsTaken === 2) bothHaveSnapshots();
+        };
+        let firstDemoted!: () => void;
+        const firstHasDemoted = new Promise<void>((r) => (firstDemoted = r));
+
+        const first = prisma.$transaction(
+            async (tx) => {
+                await tx.$queryRaw`SELECT count(*) FROM "WorkspaceMembership" WHERE "workspaceId" = ${a.workspaceId}`;
+                tookSnapshot();
+                await snapshots;
+                await tx.$executeRaw`UPDATE "WorkspaceMembership" SET "role" = 'EDITOR' WHERE "id" = ${firstId}`;
+                firstDemoted();
+                await firstMayCommit;
+            },
+            { isolationLevel, timeout: 15_000 },
+        );
+        const secondTx = prisma.$transaction(
+            async (tx) => {
+                await tx.$queryRaw`SELECT count(*) FROM "WorkspaceMembership" WHERE "workspaceId" = ${a.workspaceId}`;
+                tookSnapshot();
+                await firstHasDemoted;
+                await tx.$executeRaw`UPDATE "WorkspaceMembership" SET "role" = 'EDITOR' WHERE "id" = ${secondId}`;
+            },
+            { isolationLevel, timeout: 15_000 },
+        );
+        await firstHasDemoted;
+        // The second is now queued on the advisory lock the first holds.
+        await new Promise((r) => setTimeout(r, 300));
+        releaseFirst();
+        const outcomes = await Promise.allSettled([first, secondTx]);
+        expect(outcomes.map((o) => o.status).sort()).toEqual(['fulfilled', 'rejected']);
+        const refusal = String((outcomes.find((o) => o.status === 'rejected') as PromiseRejectedResult).reason);
+        expect(refusal).toMatch(/40001|could not serialize|LAST_OWNER_GUARD/);
+        expect(await prisma.workspaceMembership.count({ where: { workspaceId: a.workspaceId, role: 'OWNER' } })).toBe(1);
+    });
+});
+
 it('a workspace’s own deletion cascades past the guard', async () => {
     const a = await createAccount();
     expect(await prisma.workspaceMembership.count({ where: { workspaceId: a.workspaceId } })).toBe(1);

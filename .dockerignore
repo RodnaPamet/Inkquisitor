@@ -17,6 +17,10 @@ out
 
 # Tests
 tests/
+# Co-located test folders (eslint-rules/__tests__, src/**/__tests__, packages/ui/**/__tests__)
+# import tests/helpers, which is not in the context; next build type-checks every
+# file tsconfig includes, so one of them here fails the image build.
+**/__tests__/
 test-results/
 playwright-report/
 coverage/

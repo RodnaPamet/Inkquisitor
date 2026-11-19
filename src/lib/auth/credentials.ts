@@ -4,7 +4,8 @@
  * delegates here and nothing else verifies a password.
  *
  *   authenticateWithPassword
- *     ├─ progressive lockout gate     (LOGIN_PROGRESSIVE_POLICY, per email)
+ *     ├─ progressive lockout gate     (LOGIN_PROGRESSIVE_POLICY, per email; the
+ *     │                                attempt is reserved atomically first)
  *     ├─ user lookup                  (plain client: User is not workspace-scoped)
  *     ├─ password verify              (./passwords)
  *     ├─ silent rehash on verify      (when BCRYPT_COST moved)
@@ -38,8 +39,10 @@
  * it to 1). The failures are counted in a store every process shares — Upstash
  * when configured, Redis in production, memory only in development and test
  * (`src/lib/security/progressive-lockout.ts`, issue #10) — so N processes are
- * one lockout budget, not N. The edge auth tier and the route's LOGIN_LIMIT
- * bound the rest.
+ * one lockout budget, not N. Each attempt is counted BEFORE its verify, in one
+ * atomic reservation whose count gates it, so concurrent guesses cannot all
+ * read the same count (Phase 0.H review). The edge auth tier and the route's
+ * LOGIN_LIMIT bound the rest.
  *
  * Lifted from inflect-compliance's `src/lib/auth/credentials.ts` (see
  * docs/carve-manifest.md). Not carried: the email-verification gate (no verification flow yet) and the email-hash
@@ -119,8 +122,13 @@ export async function authenticateWithPassword(input: AuthenticateInput, options
         return { ok: false, reason: 'credentials_invalid' };
     }
 
+    // The attempt is counted BEFORE the verify, atomically, and its own count
+    // gates it: concurrent guesses at nine failures get nine, ten, eleven…,
+    // so at most one of them verifies (src/lib/security/progressive-lockout.ts).
+    // A failure therefore has nothing left to record; a success clears it.
+    let failureCount: number | undefined;
     if (lockoutOn) {
-        const decision = await lockout.evaluate(key);
+        const decision = await lockout.attempt(key);
         if (!decision.allowed) {
             // The same compare a real verify costs, so a locked-out answer is not faster.
             await dummyVerify(password);
@@ -131,19 +139,18 @@ export async function authenticateWithPassword(input: AuthenticateInput, options
             return { ok: false, reason: 'rate_limited', retryAfterSeconds: decision.retryAfterSeconds };
         }
         if (decision.delayMs > 0) await sleepImpl(decision.delayMs);
+        failureCount = decision.failureCount;
     }
 
     if (!user || !user.passwordHash) {
         await dummyVerify(password);
-        const after = lockoutOn ? await lockout.recordFailure(key) : null;
-        recordFailure(user?.id ?? null, user ? 'no_password' : 'unknown_email', after?.failureCount, input.requestId);
+        recordFailure(user?.id ?? null, user ? 'no_password' : 'unknown_email', failureCount, input.requestId);
         return { ok: false, reason: 'credentials_invalid' };
     }
 
     const valid = await verifyPassword(password, user.passwordHash);
     if (!valid) {
-        const after = lockoutOn ? await lockout.recordFailure(key) : null;
-        recordFailure(user.id, 'credentials_invalid', after?.failureCount, input.requestId);
+        recordFailure(user.id, 'credentials_invalid', failureCount, input.requestId);
         return { ok: false, reason: 'credentials_invalid' };
     }
 

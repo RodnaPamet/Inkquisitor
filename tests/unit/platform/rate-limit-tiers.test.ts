@@ -1,7 +1,7 @@
 /**
  * The three rate-limit tiers and their storage.
  *
- *   auth tier   /api/auth/**  at the edge, keyed (IP, UA hash), 10/30/60 per min
+ *   auth tier   /api/auth/**  at the edge, keyed on the client address alone, 10/30/60 per min
  *   read tier   GET/HEAD/…    at the edge, keyed (workspace, IP, user), 120/min
  *               (crafted spellings of both: edge-rate-limit-crafted-paths.test.ts)
  *   mutation    in the route  (covered in api-error-handling.test.ts)

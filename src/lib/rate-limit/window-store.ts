@@ -33,7 +33,7 @@ import { Ratelimit } from '@upstash/ratelimit';
 // and the build's Edge Runtime warning (issue #8). This one uses `fetch` alone.
 import { Redis } from '@upstash/redis/cloudflare';
 import { env } from '@/env';
-import { clientIpFrom } from '@/lib/http/client-ip';
+import { clientRateLimitKeyFrom } from '@/lib/http/client-ip';
 
 export interface WindowCheck {
     ok: boolean;
@@ -148,12 +148,13 @@ export async function checkWindow(
 }
 
 /**
- * The client address an edge request is charged to: the X-Forwarded-For entry
- * `TRUSTED_PROXY_HOPS` from the right, never the client-supplied leftmost one
+ * The client key an edge request is charged to: the X-Forwarded-For entry
+ * `TRUSTED_PROXY_HOPS` from the right, never the client-supplied leftmost one,
+ * canonicalised, an IPv6 address masked to its /64
  * (src/lib/http/client-ip.ts, the one place the rule lives).
  */
 export function edgeClientIp(headers: Headers): string {
-    return clientIpFrom(headers);
+    return clientRateLimitKeyFrom(headers);
 }
 
 /** True when the edge tiers are switched off for this process. */

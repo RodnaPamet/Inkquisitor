@@ -27,6 +27,13 @@
  * meaning: failures are counted over `windowMs`; at `lockoutAtFailures` the
  * identifier is refused until `lockoutMs` after the last failure; the first
  * attempt after that finds the count reset to zero.
+ *
+ * THE ATTEMPT IS COUNTED BEFORE THE VERIFY, IN ONE ATOMIC STEP. inflect (and
+ * this module until the 0.H review) read the count, verified, and recorded a
+ * failure afterwards: N concurrent guesses at nine failures all read nine and
+ * all verified. `ProgressiveLockout.attempt` reserves the attempt in the
+ * store's single atomic `reserve` (a Lua script on Redis and Upstash) and the
+ * count that reservation returns gates the verify; a success clears it.
  */
 import type Redis from 'ioredis';
 import { env } from '@/env';
@@ -42,21 +49,39 @@ export interface ProgressiveDecision {
     delayMs: number;
     /** Seconds until the lockout ends (at least 1) when refused, else 0. */
     retryAfterSeconds: number;
-    /** Failures currently counted against the identifier. */
+    /**
+     * Failures counted against the identifier: when allowed, INCLUDING the
+     * attempt just reserved (it counts as a failure until a success clears
+     * it); when refused, the count that locks it.
+     */
     failureCount: number;
 }
 
+/** What one atomic reservation found. */
+export interface Reservation {
+    /** True when the attempt was recorded and may verify; false when locked out (nothing recorded). */
+    allowed: boolean;
+    /** Attempts counted in the window BEFORE this one (after a lapsed lockout's reset). */
+    priorCount: number;
+    /** The newest counted attempt before this one (Unix ms), or null. */
+    lastAt: number | null;
+}
+
 /**
- * Where failures are counted. Every method takes the policy window so a
- * store can expire what falls out of it; timestamps are Unix milliseconds.
+ * Where attempts are counted. `reserve` is ONE atomic step — a Lua script on
+ * Redis and Upstash, a synchronous body in memory — so two concurrent
+ * attempts can never read the same count:
+ *
+ *   drop what fell out of `windowMs`;
+ *   at `lockoutAtFailures` or more: refuse while `now` is inside `lockoutMs`
+ *     of the newest attempt, recording nothing; once that has passed, forget
+ *     them all;
+ *   otherwise record this attempt and report how many came before it.
  */
 export interface FailureWindowStore {
     readonly kind: 'memory' | 'redis' | 'upstash';
-    /** The failure timestamps inside the window ending at `now`, oldest first. */
-    read(key: string, windowMs: number, now: number): Promise<number[]>;
-    /** Record one failure at `at`. */
-    append(key: string, at: number, windowMs: number): Promise<void>;
-    /** Forget every failure for `key`. */
+    reserve(key: string, now: number, policy: ProgressiveRateLimitPolicy): Promise<Reservation>;
+    /** Forget every attempt for `key`. */
     clear(key: string): Promise<void>;
 }
 
@@ -65,26 +90,35 @@ export interface FailureWindowStore {
 /** Swept on a caller's turn, never on a timer (tests/guards/no-module-scope-timers.test.ts). */
 const SWEEP_INTERVAL_MS = 5 * 60 * 1000;
 
+/** At most this many attempts are kept per key; the policy never needs more than its lockout count. */
+const MAX_KEPT = 100;
+const KEY_PREFIX = 'inkq:lockout:';
+
+/** How long a key may live: long enough for its window AND for a lockout it carries. */
+const ttlMsOf = (policy: ProgressiveRateLimitPolicy) => Math.max(policy.windowMs, policy.lockoutMs);
+
 export class MemoryFailureStore implements FailureWindowStore {
     readonly kind = 'memory' as const;
-    private readonly entries = new Map<string, { at: number[]; windowMs: number }>();
+    private readonly entries = new Map<string, { at: number[]; ttlMs: number }>();
     private lastSweepAt = 0;
 
-    async read(key: string, windowMs: number, now: number): Promise<number[]> {
+    /** Atomic because nothing in it awaits: the read and the write happen in one turn. */
+    async reserve(key: string, now: number, policy: ProgressiveRateLimitPolicy): Promise<Reservation> {
         this.sweep(now);
-        const entry = this.entries.get(key);
-        if (!entry) return [];
-        entry.at = entry.at.filter((t) => t > now - windowMs);
-        return [...entry.at];
-    }
-
-    async append(key: string, at: number, windowMs: number): Promise<void> {
-        this.sweep(at);
-        const entry = this.entries.get(key) ?? { at: [], windowMs };
-        entry.windowMs = Math.max(entry.windowMs, windowMs);
-        entry.at = entry.at.filter((t) => t > at - windowMs);
-        entry.at.push(at);
-        this.entries.set(key, entry);
+        let at = (this.entries.get(key)?.at ?? []).filter((t) => t > now - policy.windowMs);
+        let lastAt = at.length > 0 ? Math.max(...at) : null;
+        if (at.length >= policy.lockoutAtFailures && lastAt !== null) {
+            if (now < lastAt + policy.lockoutMs) {
+                this.entries.set(key, { at, ttlMs: ttlMsOf(policy) });
+                return { allowed: false, priorCount: at.length, lastAt };
+            }
+            at = [];
+            lastAt = null;
+        }
+        const priorCount = at.length;
+        at.push(now);
+        this.entries.set(key, { at: at.slice(-MAX_KEPT), ttlMs: ttlMsOf(policy) });
+        return { allowed: true, priorCount, lastAt };
     }
 
     async clear(key: string): Promise<void> {
@@ -100,42 +134,72 @@ export class MemoryFailureStore implements FailureWindowStore {
         if (now - this.lastSweepAt < SWEEP_INTERVAL_MS) return;
         this.lastSweepAt = now;
         for (const [key, entry] of this.entries) {
-            if (!entry.at.some((t) => t > now - entry.windowMs)) this.entries.delete(key);
+            if (!entry.at.some((t) => t > now - entry.ttlMs)) this.entries.delete(key);
         }
     }
 }
 
-/** At most this many failures are kept per key; the policy never needs more than its lockout count. */
-const MAX_KEPT = 100;
-const KEY_PREFIX = 'inkq:lockout:';
+/**
+ * The reservation as one Redis script: a sorted set per key (score = the
+ * attempt's time, member = time plus a nonce). Redis runs a script with no
+ * other command interleaved, which is the atomicity the count needs.
+ *
+ *   KEYS[1] the key; ARGV: now, window cutoff, lockoutAtFailures, lockoutMs,
+ *   member, MAX_KEPT, ttl ms. Returns { allowed (1/0), priorCount, lastAt or -1 }.
+ */
+export const RESERVE_SCRIPT = `
+local k = KEYS[1]
+local now = tonumber(ARGV[1])
+redis.call('ZREMRANGEBYSCORE', k, '-inf', ARGV[2])
+local count = redis.call('ZCARD', k)
+local last = -1
+if count > 0 then
+  last = tonumber(redis.call('ZRANGE', k, -1, -1, 'WITHSCORES')[2])
+end
+if count >= tonumber(ARGV[3]) then
+  if now < last + tonumber(ARGV[4]) then
+    return {0, count, last}
+  end
+  redis.call('DEL', k)
+  count = 0
+  last = -1
+end
+redis.call('ZADD', k, now, ARGV[5])
+redis.call('ZREMRANGEBYRANK', k, 0, -(tonumber(ARGV[6]) + 1))
+redis.call('PEXPIRE', k, ARGV[7])
+return {1, count, last}
+`;
 
-/** A sorted set per key (score = member = the failure's time, plus a nonce). */
 function member(at: number): string {
     return `${at}:${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function reserveArgs(now: number, policy: ProgressiveRateLimitPolicy): string[] {
+    return [
+        String(now),
+        String(now - policy.windowMs),
+        String(policy.lockoutAtFailures),
+        String(policy.lockoutMs),
+        member(now),
+        String(MAX_KEPT),
+        String(ttlMsOf(policy)),
+    ];
+}
+
+/** `{ allowed, priorCount, lastAt }` from the script's reply. */
+function reservationOf(reply: unknown): Reservation {
+    if (!Array.isArray(reply) || reply.length !== 3) throw new Error('lockout script: unexpected reply');
+    const [allowed, priorCount, lastAt] = reply.map(Number);
+    if (![allowed, priorCount, lastAt].every(Number.isFinite)) throw new Error('lockout script: unexpected reply');
+    return { allowed: allowed === 1, priorCount, lastAt: lastAt < 0 ? null : lastAt };
 }
 
 export class RedisFailureStore implements FailureWindowStore {
     readonly kind = 'redis' as const;
     constructor(private readonly redis: Redis) {}
 
-    async read(key: string, windowMs: number, now: number): Promise<number[]> {
-        const k = KEY_PREFIX + key;
-        const [, scores] = await Promise.all([
-            this.redis.zremrangebyscore(k, '-inf', now - windowMs),
-            this.redis.zrangebyscore(k, `(${now - windowMs}`, '+inf', 'WITHSCORES'),
-        ]);
-        return scoresOf(scores);
-    }
-
-    async append(key: string, at: number, windowMs: number): Promise<void> {
-        const k = KEY_PREFIX + key;
-        await this.redis
-            .multi()
-            .zadd(k, at, member(at))
-            .zremrangebyscore(k, '-inf', at - windowMs)
-            .zremrangebyrank(k, 0, -(MAX_KEPT + 1))
-            .pexpire(k, windowMs)
-            .exec();
+    async reserve(key: string, now: number, policy: ProgressiveRateLimitPolicy): Promise<Reservation> {
+        return reservationOf(await this.redis.eval(RESERVE_SCRIPT, 1, KEY_PREFIX + key, ...reserveArgs(now, policy)));
     }
 
     async clear(key: string): Promise<void> {
@@ -143,13 +207,9 @@ export class RedisFailureStore implements FailureWindowStore {
     }
 }
 
-/** The subset of the Upstash client this store uses. */
+/** The subset of the Upstash client this store uses: the same script, over REST. */
 export interface UpstashLike {
-    zadd(key: string, entry: { score: number; member: string }): Promise<unknown>;
-    zremrangebyscore(key: string, min: number | string, max: number | string): Promise<unknown>;
-    zremrangebyrank(key: string, start: number, stop: number): Promise<unknown>;
-    zrange(key: string, min: number | string, max: number | string, opts: { byScore: true; withScores: true }): Promise<unknown[]>;
-    pexpire(key: string, ms: number): Promise<unknown>;
+    eval(script: string, keys: string[], args: string[]): Promise<unknown>;
     del(key: string): Promise<unknown>;
 }
 
@@ -157,33 +217,13 @@ export class UpstashFailureStore implements FailureWindowStore {
     readonly kind = 'upstash' as const;
     constructor(private readonly redis: UpstashLike) {}
 
-    async read(key: string, windowMs: number, now: number): Promise<number[]> {
-        const k = KEY_PREFIX + key;
-        await this.redis.zremrangebyscore(k, '-inf', now - windowMs);
-        return scoresOf(await this.redis.zrange(k, `(${now - windowMs}`, '+inf', { byScore: true, withScores: true }));
-    }
-
-    async append(key: string, at: number, windowMs: number): Promise<void> {
-        const k = KEY_PREFIX + key;
-        await this.redis.zadd(k, { score: at, member: member(at) });
-        await this.redis.zremrangebyscore(k, '-inf', at - windowMs);
-        await this.redis.zremrangebyrank(k, 0, -(MAX_KEPT + 1));
-        await this.redis.pexpire(k, windowMs);
+    async reserve(key: string, now: number, policy: ProgressiveRateLimitPolicy): Promise<Reservation> {
+        return reservationOf(await this.redis.eval(RESERVE_SCRIPT, [KEY_PREFIX + key], reserveArgs(now, policy)));
     }
 
     async clear(key: string): Promise<void> {
         await this.redis.del(KEY_PREFIX + key);
     }
-}
-
-/** `[member, score, member, score, …]` → the scores, ascending. */
-function scoresOf(flat: readonly unknown[]): number[] {
-    const out: number[] = [];
-    for (let i = 1; i < flat.length; i += 2) {
-        const n = Number(flat[i]);
-        if (Number.isFinite(n)) out.push(n);
-    }
-    return out.sort((a, b) => a - b);
 }
 
 // ─── The lockout ─────────────────────────────────────────────────────
@@ -207,36 +247,30 @@ export class ProgressiveLockout {
         return this.store.kind;
     }
 
-    /** The decision for the next attempt, recording nothing. Call BEFORE verifying. */
-    async evaluate(key: string): Promise<ProgressiveDecision> {
+    /**
+     * Reserve one attempt, BEFORE verifying: it is counted as a failure now,
+     * atomically, and the count it was given decides whether it may verify
+     * and how long it waits first. A success then `reset`s the count; a
+     * failure has nothing left to record. Checking first and recording after
+     * the verify let N concurrent attempts at nine failures all read nine and
+     * all verify (Phase 0.H review).
+     */
+    async attempt(key: string): Promise<ProgressiveDecision> {
         const now = this.now();
-        const failures = await this.use((s) => s.read(key, this.policy.windowMs, now));
-        const failureCount = failures.length;
-        if (failureCount >= this.policy.lockoutAtFailures) {
-            const lockoutEnd = failures[failures.length - 1] + this.policy.lockoutMs;
-            if (now < lockoutEnd) {
-                return {
-                    allowed: false,
-                    delayMs: 0,
-                    retryAfterSeconds: Math.max(1, Math.ceil((lockoutEnd - now) / 1000)),
-                    failureCount,
-                };
-            }
-            // The lockout is over: the count resets, and the attempt is free.
-            await this.use((s) => s.clear(key));
-            return { allowed: true, delayMs: 0, retryAfterSeconds: 0, failureCount: 0 };
+        const r = await this.use((s) => s.reserve(key, now, this.policy));
+        if (!r.allowed) {
+            const lockoutEnd = (r.lastAt ?? now) + this.policy.lockoutMs;
+            return {
+                allowed: false,
+                delayMs: 0,
+                retryAfterSeconds: Math.max(1, Math.ceil((lockoutEnd - now) / 1000)),
+                failureCount: r.priorCount,
+            };
         }
-        return { allowed: true, delayMs: pickDelayMs(failureCount, this.policy.tiers), retryAfterSeconds: 0, failureCount };
+        return { allowed: true, delayMs: pickDelayMs(r.priorCount, this.policy.tiers), retryAfterSeconds: 0, failureCount: r.priorCount + 1 };
     }
 
-    /** Record a failure (AFTER a verify said no); returns the decision that now stands. */
-    async recordFailure(key: string): Promise<ProgressiveDecision> {
-        const now = this.now();
-        await this.use((s) => s.append(key, now, this.policy.windowMs));
-        return this.evaluate(key);
-    }
-
-    /** Forget the failures (after a successful verify). */
+    /** Forget the attempts (after a successful verify). */
     async reset(key: string): Promise<void> {
         await this.use((s) => s.clear(key));
     }

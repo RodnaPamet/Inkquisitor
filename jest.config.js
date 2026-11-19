@@ -7,7 +7,9 @@
  *                 packages/ui/src. jsdom: real React renders of the UI
  *                 platform with Testing Library, jest-dom and jest-axe.
  *   `integration` tests/integration. Node environment against a real
- *                 PostgreSQL named by DATABASE_URL, run in band.
+ *                 PostgreSQL named by DATABASE_URL, run in band. Its
+ *                 environment fails a file that leaves an open handle
+ *                 (tests/helpers/open-handle-environment.ts).
  *
  * `npm test` runs `unit` and `rendered`; `npm run test:integration` runs
  * `integration`.
@@ -124,6 +126,10 @@ module.exports = {
         {
             ...shared,
             displayName: 'integration',
+            // Node's environment plus an open-handle check: a file that leaves
+            // a socket, pool, server or timer holding the process fails, named
+            // (tests/helpers/open-handle-environment.ts).
+            testEnvironment: '<rootDir>/tests/helpers/open-handle-environment.ts',
             testMatch: ['<rootDir>/tests/integration/**/*.test.ts?(x)'],
         },
     ],

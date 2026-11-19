@@ -74,6 +74,25 @@ test('every kind of response carries the headers and a policy', async ({ request
     expectHeaders(asset, 'static', 'static chunk');
     const missing = await request.get('/_next/static/chunks/does-not-exist.js');
     expectHeaders(missing, 'static', 'missing static chunk');
+    // The image optimiser's own path (no `url` query: refused), which the proxy skips.
+    expectHeaders(await request.get('/_next/image'), 'static', 'image optimiser');
+});
+
+test('the neighbours of the static paths are the proxy’s: the 404 page with a policy, never with none', async ({ request }) => {
+    // The matcher's exclusion used to be a bare prefix, so these skipped the
+    // proxy, matched no header source and rendered the 404 page with no
+    // policy and no security headers (tests/unit/platform/proxy-matcher.test.ts).
+    for (const p of ['/_next/imagefoo', '/_next/image_', '/_next/static-x', '/_next/staticx/a', '/_next/static', '/_next/image/x']) {
+        const res = await request.get(p, { maxRedirects: 0 });
+        expect([p, res.status()]).toEqual([p, 404]);
+        const csp = expectHeaders(res, 'document', p);
+        // Every script the 404 page emits carries this request's nonce.
+        const nonce = nonceOf(csp);
+        const tags = [...(await res.text()).matchAll(/<script\b[^>]*>/gi)].map((m) => m[0]);
+        expect([p, tags.length > 0]).toEqual([p, true]);
+        const executable = tags.filter((t) => !/type="application\/(?:ld\+)?json"/i.test(t));
+        expect([p, executable.filter((t) => !t.includes(`nonce="${nonce}"`))]).toEqual([p, []]);
+    }
 });
 
 test('every script the server emits carries this request’s nonce, and the nonce is fresh per request', async ({ request }) => {

@@ -5,16 +5,18 @@
  * a store each (the pre-0.H per-process Map), they do not — which is the
  * defect, shown here so the first half is not vacuous.
  *
- * The Redis store is exercised against a real Redis in
- * tests/integration/progressive-lockout-redis.test.ts.
+ * Each attempt is RESERVED before its verify, in one atomic step whose count
+ * gates it (Phase 0.H review): concurrent attempts at nine failures cannot all
+ * read nine.
+ *
+ * The Redis and Upstash stores run the same Lua script; both are exercised
+ * against a real Redis in tests/integration/progressive-lockout-redis.test.ts.
  */
 import {
     MemoryFailureStore,
     ProgressiveLockout,
-    UpstashFailureStore,
     lockoutStoreKind,
     type FailureWindowStore,
-    type UpstashLike,
 } from '@/lib/security/progressive-lockout';
 import { LOGIN_PROGRESSIVE_POLICY } from '@/lib/security/rate-limit';
 
@@ -26,8 +28,9 @@ function clock(start = 1_000_000_000) {
     return { now: () => t, advance: (ms: number) => void (t += ms) };
 }
 
+/** `n` attempts that each fail (an attempt is a failure until a success resets it). */
 async function failTimes(lockout: ProgressiveLockout, n: number) {
-    for (let i = 0; i < n; i++) await lockout.recordFailure(KEY);
+    for (let i = 0; i < n; i++) await lockout.attempt(KEY);
 }
 
 describe('two processes over one store', () => {
@@ -39,7 +42,7 @@ describe('two processes over one store', () => {
         await failTimes(a, LOCK_AT / 2);
         await failTimes(b, LOCK_AT / 2);
         for (const process of [a, b]) {
-            const d = await process.evaluate(KEY);
+            const d = await process.attempt(KEY);
             expect(d).toMatchObject({ allowed: false, failureCount: LOCK_AT });
             expect(d.retryAfterSeconds).toBeGreaterThan(14 * 60);
         }
@@ -51,9 +54,9 @@ describe('two processes over one store', () => {
         const a = new ProgressiveLockout(store, LOGIN_PROGRESSIVE_POLICY, c.now);
         const b = new ProgressiveLockout(store, LOGIN_PROGRESSIVE_POLICY, c.now);
         await failTimes(a, 4);
-        expect((await b.evaluate(KEY)).delayMs).toBe(5_000);
+        expect((await b.attempt(KEY)).delayMs).toBe(5_000);
         await b.reset(KEY);
-        expect(await a.evaluate(KEY)).toMatchObject({ allowed: true, delayMs: 0, failureCount: 0 });
+        expect(await a.attempt(KEY)).toMatchObject({ allowed: true, delayMs: 0, failureCount: 1 });
     });
 
     it('a store per process (the old per-process Map) gives each its own budget', async () => {
@@ -61,8 +64,8 @@ describe('two processes over one store', () => {
         const a = new ProgressiveLockout(new MemoryFailureStore(), LOGIN_PROGRESSIVE_POLICY, c.now);
         const b = new ProgressiveLockout(new MemoryFailureStore(), LOGIN_PROGRESSIVE_POLICY, c.now);
         await failTimes(a, LOCK_AT);
-        expect((await a.evaluate(KEY)).allowed).toBe(false);
-        expect((await b.evaluate(KEY)).allowed).toBe(true);
+        expect((await a.attempt(KEY)).allowed).toBe(false);
+        expect((await b.attempt(KEY)).allowed).toBe(true);
     });
 });
 
@@ -71,17 +74,14 @@ describe('the policy over a shared store', () => {
         const c = clock();
         const lockout = new ProgressiveLockout(new MemoryFailureStore(), LOGIN_PROGRESSIVE_POLICY, c.now);
         const delays: number[] = [];
-        for (let i = 0; i < LOCK_AT; i++) {
-            delays.push((await lockout.evaluate(KEY)).delayMs);
-            await lockout.recordFailure(KEY);
-        }
+        for (let i = 0; i < LOCK_AT; i++) delays.push((await lockout.attempt(KEY)).delayMs);
         expect(delays).toEqual([0, 0, 0, 5_000, 5_000, 30_000, 30_000, 30_000, 30_000, 30_000]);
         c.advance(LOGIN_PROGRESSIVE_POLICY.lockoutMs - 1_000);
-        expect((await lockout.evaluate(KEY)).allowed).toBe(false);
+        expect((await lockout.attempt(KEY)).allowed).toBe(false);
+        // A refusal records nothing, so it does not extend the lockout.
         c.advance(1_000);
-        expect(await lockout.evaluate(KEY)).toMatchObject({ allowed: true, delayMs: 0, failureCount: 0 });
-        // The reset is real: one more failure is the first again.
-        expect((await lockout.recordFailure(KEY)).failureCount).toBe(1);
+        // The reset is real: this attempt is the first again.
+        expect(await lockout.attempt(KEY)).toMatchObject({ allowed: true, delayMs: 0, failureCount: 1 });
     });
 
     it('failures older than the window stop counting', async () => {
@@ -89,17 +89,37 @@ describe('the policy over a shared store', () => {
         const lockout = new ProgressiveLockout(new MemoryFailureStore(), LOGIN_PROGRESSIVE_POLICY, c.now);
         await failTimes(lockout, 4);
         c.advance(LOGIN_PROGRESSIVE_POLICY.windowMs + 1);
-        expect((await lockout.evaluate(KEY)).failureCount).toBe(0);
+        expect((await lockout.attempt(KEY)).failureCount).toBe(1);
+    });
+});
+
+describe('concurrent attempts are each counted before any verifies', () => {
+    it('at nine failures, twenty concurrent attempts let exactly one through', async () => {
+        const c = clock();
+        const lockout = new ProgressiveLockout(new MemoryFailureStore(), LOGIN_PROGRESSIVE_POLICY, c.now);
+        await failTimes(lockout, LOCK_AT - 1);
+        const decisions = await Promise.all(Array.from({ length: 20 }, () => lockout.attempt(KEY)));
+        expect(decisions.filter((d) => d.allowed)).toHaveLength(1);
+    });
+
+    it('from zero, forty concurrent attempts let exactly the lockout count through', async () => {
+        const c = clock();
+        const store = new MemoryFailureStore();
+        const a = new ProgressiveLockout(store, LOGIN_PROGRESSIVE_POLICY, c.now);
+        const b = new ProgressiveLockout(store, LOGIN_PROGRESSIVE_POLICY, c.now);
+        const decisions = await Promise.all(Array.from({ length: 40 }, (_, i) => (i % 2 ? a : b).attempt(KEY)));
+        expect(decisions.filter((d) => d.allowed)).toHaveLength(LOCK_AT);
+        // Each was given its own count: 1..LOCK_AT, never the same one twice.
+        expect(decisions.filter((d) => d.allowed).map((d) => d.failureCount).sort((x, y) => x - y)).toEqual(
+            Array.from({ length: LOCK_AT }, (_, i) => i + 1),
+        );
     });
 });
 
 describe('a shared store that fails', () => {
     const broken: FailureWindowStore = {
         kind: 'redis',
-        read: async () => {
-            throw new Error('ECONNREFUSED');
-        },
-        append: async () => {
+        reserve: async () => {
             throw new Error('ECONNREFUSED');
         },
         clear: async () => {
@@ -110,69 +130,9 @@ describe('a shared store that fails', () => {
     it('degrades to this process’s memory: sign-in keeps working and the lockout still applies', async () => {
         const c = clock();
         const lockout = new ProgressiveLockout(broken, LOGIN_PROGRESSIVE_POLICY, c.now);
-        expect((await lockout.evaluate(KEY)).allowed).toBe(true);
-        await failTimes(lockout, LOCK_AT);
-        expect((await lockout.evaluate(KEY)).allowed).toBe(false);
-    });
-});
-
-/** A small in-memory stand-in for the Upstash REST client's sorted-set commands. */
-function fakeUpstash(): UpstashLike {
-    const sets = new Map<string, Array<{ score: number; member: string }>>();
-    const bound = (v: number | string, open: boolean) => {
-        if (v === '-inf') return -Infinity;
-        if (v === '+inf') return Infinity;
-        const s = String(v);
-        return s.startsWith('(') ? { v: Number(s.slice(1)), open: true } : { v: Number(s), open };
-    };
-    const within = (score: number, lo: ReturnType<typeof bound>, hi: ReturnType<typeof bound>) => {
-        const lower = typeof lo === 'number' ? score >= lo : lo.open ? score > lo.v : score >= lo.v;
-        const upper = typeof hi === 'number' ? score <= hi : hi.open ? score < hi.v : score <= hi.v;
-        return lower && upper;
-    };
-    return {
-        async zadd(key, entry) {
-            const set = sets.get(key) ?? [];
-            set.push(entry);
-            set.sort((x, y) => x.score - y.score);
-            sets.set(key, set);
-        },
-        async zremrangebyscore(key, min, max) {
-            const lo = bound(min, false);
-            const hi = bound(max, false);
-            sets.set(key, (sets.get(key) ?? []).filter((e) => !within(e.score, lo, hi)));
-        },
-        async zremrangebyrank(key, start, stop) {
-            const set = sets.get(key) ?? [];
-            const n = set.length;
-            const from = start < 0 ? n + start : start;
-            const to = stop < 0 ? n + stop : stop;
-            sets.set(key, set.filter((_, i) => i < from || i > to));
-        },
-        async zrange(key, min, max) {
-            const lo = bound(min, false);
-            const hi = bound(max, false);
-            return (sets.get(key) ?? []).filter((e) => within(e.score, lo, hi)).flatMap((e) => [e.member, e.score]);
-        },
-        async pexpire() {},
-        async del(key) {
-            sets.delete(key);
-        },
-    };
-}
-
-describe('the Upstash store', () => {
-    it('two processes over one Upstash database share the lockout', async () => {
-        const c = clock();
-        const upstash = fakeUpstash();
-        const a = new ProgressiveLockout(new UpstashFailureStore(upstash), LOGIN_PROGRESSIVE_POLICY, c.now);
-        const b = new ProgressiveLockout(new UpstashFailureStore(upstash), LOGIN_PROGRESSIVE_POLICY, c.now);
-        for (let i = 0; i < LOCK_AT; i++) {
-            await (i % 2 ? a : b).recordFailure(KEY);
-            c.advance(1);
-        }
-        expect((await a.evaluate(KEY)).allowed).toBe(false);
-        expect((await b.evaluate(KEY)).allowed).toBe(false);
+        expect((await lockout.attempt(KEY)).allowed).toBe(true);
+        await failTimes(lockout, LOCK_AT - 1);
+        expect((await lockout.attempt(KEY)).allowed).toBe(false);
     });
 });
 
