@@ -9,8 +9,8 @@
  * from the environment, and sends Messages calls only — under the
  * zero-retention terms of decision D5. A client constructed anywhere else
  * skips all of that, and nothing about the construction would look wrong in
- * review. The seam file does not exist yet; the rule is on now so the first
- * model call cannot be written anywhere else.
+ * review. The rule was turned on in Phase 0.4, before the seam existed, so
+ * the first model call could not be written anywhere else.
  *
  * Lifted from inflect-compliance's `eslint-rules/rules/anthropic-client-single-seam.js`
  * (the seam moved from `src/lib/agentic/tool-runner/client.ts`).

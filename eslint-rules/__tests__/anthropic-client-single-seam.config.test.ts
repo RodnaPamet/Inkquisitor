@@ -6,8 +6,9 @@
  * loading the SDK. This proves the CONFIG applies it: a planted
  * `new Anthropic(...)` is linted with `eslint.config.mjs` at ordinary paths
  * under `src/` (it must be refused) and at the seam, `src/lib/ai/client.ts`
- * (the one exemption, where it must not be). The seam file arrives in Phase
- * 2.1, so the seam is planted rather than linted on disk.
+ * (the one exemption, where it must not be). The planted text is linted AS
+ * the seam's path, so the verdict does not depend on what the real seam file
+ * (Phase 2.1) holds; the real tree is linted by `npm run lint`.
  *
  * Adapted from inflect-compliance's
  * `eslint-rules/__tests__/anthropic-client-single-seam.config.test.ts`.
@@ -25,6 +26,9 @@ const PLANTED = [
 
 const PLANT_SITES = [
     'src/lib/ai/planted-second-client.ts',
+    // The structured-call engine sits beside the seam and must still get its
+    // client from clientForRun.
+    'src/lib/ai/call-structured.ts',
     'src/app-layer/usecases/planted-anthropic-client.ts',
     'src/app/api/planted/route.ts',
     'src/components/PlantedClient.tsx',

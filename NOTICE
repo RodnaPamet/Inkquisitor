@@ -68,6 +68,21 @@ Apache License, Version 2.0
   The project is distributed under the Apache License, Version 2.0:
   https://www.apache.org/licenses/LICENSE-2.0
 
+  pipelock (AI guard rule taxonomy)
+  https://github.com/luckyPipewrench/pipelock
+
+  The prompt-injection and secret/exfil (DLP) rule TAXONOMY of the model
+  layer's guard under src/lib/ai/guard/ (Phase 2.1) — the rule categories
+  (ignore-previous / system-role-injection / instruction-override /
+  tool-poisoning / exfil-directive; API key / bearer-or-JWT / private-key /
+  seed-phrase / high-entropy-secret) and several of the pattern shapes in
+  src/lib/ai/guard/patterns.ts — are ADAPTED from the pipelock project, used
+  under the Apache License, Version 2.0, by way of inflect-compliance's guard
+  (see docs/carve-manifest.md). pipelock is a taxonomy blueprint only: no
+  pipelock code is imported, linked or redistributed, and it is not a
+  dependency of this project. The project is distributed under the Apache
+  License, Version 2.0: https://www.apache.org/licenses/LICENSE-2.0
+
 PostgreSQL License
 
   pgvector/pgvector (v0.8.7, commit f37c13f68b57d2c3472b2214fbcff699d6d34876)

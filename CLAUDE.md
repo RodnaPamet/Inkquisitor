@@ -183,6 +183,18 @@ src/app/w/[workspaceSlug]/deleted-books/ → the OWNER's Recently deleted page
 tests/guards/schema-index-coverage, find-many-bounded; tests/helpers/prisma-schema-models, bible-load
 ```
 
+Phase 2.1 (the model layer) added:
+
+```
+src/lib/ai/client.ts         → clientForRun: the ONE file that loads @anthropic-ai/sdk; the messages-only middleware
+src/lib/ai/call-structured.ts → callStructured: one streamed, Zod-validated call (guard, ceiling, one repair, one record)
+src/lib/ai/prompt.ts         → definePrompt, the nonce fence (fenceData), the request and repair builders
+src/lib/ai/{tiers,model-capabilities,pricing,config,errors,call-record}.ts, src/lib/ai/guard/ (lifted scanners + thin wrapper)
+src/app-layer/usecases/model-calls.ts → callStructured(ctx, …) bound to the workspace's ledger
+src/app-layer/repositories/ai-call.repository.ts, prisma/schema/ai.prisma → AiCallLog, AiSpendMonth, AiSpendReservation
+tests/helpers/fake-anthropic.ts → the fake Messages API the SDK is handed as its fetch
+```
+
 ## Rules every change obeys
 
 These are `docs/ROADMAP.md` section 3, restated. The roadmap is authoritative
@@ -450,6 +462,26 @@ only under zero-retention terms (D5).
   `bible.transfer.reasons` (`tests/unit/bible/import-reasons.test.ts`).
   `pdfkit` is a server external package (its font metrics load from
   node_modules); PDF text goes through `toWinAnsi` and `breakLongRuns`.
+- **Model calls (Phase 2.1).** A feature calls a model only through
+  `callStructured(ctx, { template, data, schema, bookId, signal })`
+  (`src/app-layer/usecases/model-calls.ts`), from its own usecase after its own
+  permission check, with a template from `definePrompt` (static `system` and
+  `task`, a version, a tier — `fast` / `balanced` / `deep`, never a model id).
+  Author text goes ONLY in `data` blocks, which `fenceData` wraps in
+  nonce-tagged fences after neutralising any spelling of the tag; never put
+  author text in a template, a system prompt or an output schema (the API
+  caches schemas outside zero retention). Every exit records one `AiCallLog`
+  row (numbers and names, never text; append-only) and settles its cost; the
+  workspace's monthly ceiling (`AI_MONTHLY_CEILING_USD_DEFAULT`, $25) is
+  checked against the call's worst case BEFORE it is sent, under a
+  per-workspace advisory lock plus a reservation row; `AI_DISABLED=1` refuses
+  everything. Only `src/lib/ai/client.ts` loads the SDK, and its middleware
+  sends Messages calls only: a new server tool type is added to
+  `PERMITTED_SERVER_TOOL_TYPES` (empty until 2.6) and nowhere else. Production
+  refuses `ANTHROPIC_API_KEY` without `ANTHROPIC_ZDR_CONFIRMED=1` (ZDR is an
+  organization arrangement with Anthropic, not a request option; D5). Tests
+  hand the SDK `tests/helpers/fake-anthropic.ts` as its fetch; no test reaches
+  a provider.
 - **Hardening the bible (Phase 1.H).** CONCURRENT EDITS: every element
   change, fields save and restore MUST name `baseVersion` (an omitted one is a
   400, so no request skips the check); under the element's

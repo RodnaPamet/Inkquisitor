@@ -57,3 +57,24 @@ enum BibleVersionSource {
   INTERVIEW
   IMPORT
 }
+
+/// How a model call ended (Phase 2.1); one per `AiCallLog` row. Mirrored by
+/// `AI_CALL_OUTCOMES` in src/lib/ai/errors.ts.
+enum AiCallOutcome {
+  OK
+  REPAIRED
+  INVALID_OUTPUT
+  REFUSED_GUARD
+  CEILING
+  KILLED
+  PROVIDER_ERROR
+  TIMEOUT
+  ABORTED
+}
+
+/// The model tier a call named (Phase 2.1, src/lib/ai/tiers.ts).
+enum AiModelTier {
+  FAST
+  BALANCED
+  DEEP
+}

@@ -135,6 +135,9 @@ it('reads a schema with models in it (zero models is never full coverage)', () =
             'BibleRelation',
             'BibleEntryVersion',
             'VectorEmbedding',
+            'AiCallLog',
+            'AiSpendMonth',
+            'AiSpendReservation',
         ]),
     );
 });

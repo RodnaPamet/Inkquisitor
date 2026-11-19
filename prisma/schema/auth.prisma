@@ -33,12 +33,15 @@ model User {
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
-  accounts    Account[]
-  sessions    UserSession[]
-  memberships WorkspaceMembership[]
+  accounts      Account[]
+  sessions      UserSession[]
+  memberships   WorkspaceMembership[]
   /// Bible versions this person saved; the link is cleared (and the version
   /// kept) when the person is deleted.
   bibleVersions BibleEntryVersion[]
+  /// Model calls this person's requests made; the link is cleared (and the
+  /// record kept) when the person is deleted.
+  aiCalls       AiCallLog[]
 }
 
 /// An OAuth identity linked to a user (Google). No provider token is
