@@ -214,7 +214,10 @@ export function VersionDiff({
 
     const chunks = useMemo(() => {
         if (!fromV || !toV || fromV.id === toV.id) return [];
-        return diffLines(asPlainText(fromV), asPlainText(toV));
+        // `ignoreNewlineAtEof`: each side is trimmed, so its last line has no
+        // newline; without it a last line that is no longer last reads as
+        // removed and added again (Phase 1.2).
+        return diffLines(asPlainText(fromV), asPlainText(toV), { ignoreNewlineAtEof: true });
     }, [fromV, toV]);
 
     if (sorted.length < 2) {

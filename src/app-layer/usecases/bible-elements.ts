@@ -24,7 +24,7 @@ import type { BibleElementKind } from '@prisma/client';
 import type { WorkspaceRequestContext } from '@/app-layer/types';
 import { logEvent } from '@/app-layer/events/audit';
 import { assertPermission } from '@/app-layer/policies/permission.policy';
-import { BibleElementRepository, BibleRelationRepository, BibleVersionRepository, type ElementWrite } from '@/app-layer/repositories/bible.repository';
+import { BibleElementRepository, BibleFieldRepository, BibleRelationRepository, BibleVersionRepository, type ElementWrite } from '@/app-layer/repositories/bible.repository';
 import {
     CUSTOM_LABEL_MAX,
     ELEMENT_NAME_MAX,
@@ -37,7 +37,7 @@ import {
 import { runInWorkspaceContext, type PrismaTx } from '@/lib/db/rls-middleware';
 import { NotFoundError, ValidationError } from '@/lib/errors/types';
 import { slugCandidates, slugify } from '@/lib/bible/slug';
-import { getRelationType } from '@/lib/bible/templates';
+import { getFieldDef, getRelationType } from '@/lib/bible/templates';
 import {
     fieldViews,
     isUniqueViolation,
@@ -81,6 +81,18 @@ function summaryView(e: ElementRow): ElementSummaryView {
         updatedAt: e.updatedAt.toISOString(),
     };
 }
+
+export interface ElementListItemView extends ElementSummaryView {
+    /**
+     * How many of the kind's template fields hold a value (the book board's
+     * completeness, Phase 1.2). A stored key the template no longer has is
+     * not counted.
+     */
+    filledFieldCount: number;
+}
+
+/** Stored field rows read per element when counting (a template has at most a few dozen fields). */
+const FIELD_KEYS_PER_ELEMENT = 200;
 
 export interface RelationView {
     id: string;
@@ -126,13 +138,25 @@ async function elementView(db: PrismaTx, ctx: WorkspaceRequestContext, bookId: s
 
 // ─── Reads ──────────────────────────────────────────────────────────
 
-export async function listElements(ctx: WorkspaceRequestContext, bookId: string, query: unknown = {}): Promise<ElementSummaryView[]> {
+export async function listElements(ctx: WorkspaceRequestContext, bookId: string, query: unknown = {}): Promise<ElementListItemView[]> {
     await assertPermission(ctx, 'bible.view');
     const { kind } = ElementListQuery.parse(query);
     return runInWorkspaceContext(ctx, async (db) => {
         await requireBook(db, ctx, bookId);
         const rows = await BibleElementRepository.list(db, ctx.workspaceId, bookId, { kind });
-        return rows.map(summaryView);
+        const keys = await BibleFieldRepository.keysForElements(
+            db,
+            ctx.workspaceId,
+            rows.map((r) => r.id),
+            FIELD_KEYS_PER_ELEMENT,
+        );
+        const kindOf = new Map(rows.map((r) => [r.id, r.kind] as const));
+        const filled = new Map<string, number>();
+        for (const { elementId, key } of keys) {
+            const elementKind = kindOf.get(elementId);
+            if (elementKind && getFieldDef(elementKind, key)) filled.set(elementId, (filled.get(elementId) ?? 0) + 1);
+        }
+        return rows.map((r) => ({ ...summaryView(r), filledFieldCount: filled.get(r.id) ?? 0 }));
     });
 }
 
