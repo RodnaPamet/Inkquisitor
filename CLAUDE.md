@@ -40,8 +40,9 @@ against postgres:16 and Redis) and **Build** (app and worker bundle), plus
 **Security** (`npm audit --omit=dev --audit-level=moderate` and the secret
 scan), **CodeQL** (javascript-typescript; the SARIF is kept as an artifact and
 `scripts/sarif-gate.js` fails the check on a high-severity security result)
-and **Docker** (image build, Trivy
-CRITICAL,HIGH, ignore-unfixed). The job names are the check names, so never
+**Docker** (image build, Trivy
+CRITICAL,HIGH, ignore-unfixed) and **E2E** (Playwright against the production
+build, with Postgres and Redis; the report is kept as an artifact on failure). The job names are the check names, so never
 rename one, and never lower a gate to get a change through
 (`tests/unit/ci-workflow.test.ts`). `release.yml` tags and publishes a GitHub
 Release from conventional commits with GITHUB_TOKEN alone; `docs-site.yml`

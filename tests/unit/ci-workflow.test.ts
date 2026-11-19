@@ -29,9 +29,9 @@ function jobs(): Record<string, string> {
 describe('.github/workflows/ci.yml', () => {
     const all = jobs();
 
-    it('has exactly the jobs Lint, Typecheck, Test, Build, Security, CodeQL and Docker', () => {
+    it('has exactly the jobs Lint, Typecheck, Test, Build, Security, CodeQL, Docker and E2E', () => {
         const names = Object.values(all).map((b) => /^ {4}name: (.+)$/m.exec(b)?.[1]);
-        expect(names).toEqual(['Lint', 'Typecheck', 'Test', 'Build', 'Security', 'CodeQL', 'Docker']);
+        expect(names).toEqual(['Lint', 'Typecheck', 'Test', 'Build', 'Security', 'CodeQL', 'Docker', 'E2E']);
     });
 
     it('is read-only by default; only CodeQL may write, and only security events', () => {
@@ -97,7 +97,7 @@ describe('.github/workflows/ci.yml', () => {
     it('installs with npm ci on Node 24, cached, in every Node job', () => {
         expect(ci).toMatch(/^ {2}NODE_VERSION: '24'$/m);
         const nodeJobs = Object.entries(all).filter(([id]) => !['codeql', 'docker'].includes(id));
-        expect(nodeJobs.map(([id]) => id)).toEqual(['lint', 'typecheck', 'test', 'build', 'security']);
+        expect(nodeJobs.map(([id]) => id)).toEqual(['lint', 'typecheck', 'test', 'build', 'security', 'e2e']);
         for (const [id, block] of nodeJobs) {
             expect([id, /node-version: \$\{\{ env\.NODE_VERSION \}\}/.test(block)]).toEqual([id, true]);
             expect([id, /cache: npm/.test(block)]).toEqual([id, true]);
