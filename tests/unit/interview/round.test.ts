@@ -143,3 +143,38 @@ describe('gap filling and order', () => {
         expect(ordered.map((q) => q.targetsFieldKeys[0])).toEqual([first.fieldKey, second.fieldKey, 'role']);
     });
 });
+
+it('asks each field once a round: a second, differently worded question on it is dropped, so the cap holds', async () => {
+    const input = setup('CHARACTER', 2, 3, { role: 'A night-shift paramedic.' });
+    // The model words two unrelated questions per field (no lexical or shape signal links them).
+    const gen = fakeGenerator({ mutate: (q) => [q, { ...q, text: `Whom would ${q.targetsFieldKeys[0].replace(/_/g, ' ')} betray first, if pressed hard?` }] });
+    const out = await produceRound(input, { generator: gen });
+    const targets = out.questions.flatMap((q) => q.targetsFieldKeys);
+    expect(new Set(targets).size).toBe(targets.length);
+    expect(out.questions.length).toBeLessThanOrEqual(input.plan.cap);
+    expect(out.metrics.dropped).toMatchObject({ TARGET_ALREADY_ASKED: input.plan.targets.length });
+});
+
+it('asks the book’s index for exact repeats of its candidates and of the pack examples it may fall back on', async () => {
+    const input = setup('CHARACTER', 1, 2);
+    const probed: string[][] = [];
+    // The index holds every probe: an exact repeat beyond the bounded read of `asked`.
+    const out = await produceRound(input, {
+        generator: fakeGenerator(),
+        findExactRepeats: async (probes) => {
+            probed.push(probes.map((p) => p.elementId));
+            return new Set(probes.map((p) => `${p.elementId}\u0000${p.dedupeKey}`));
+        },
+    });
+    expect(probed).toHaveLength(1);
+    expect(out.questions).toEqual([]);
+    expect(out.metrics.duplicates).toMatchObject({ EXACT: input.plan.targets.length });
+    expect(out.metrics.noQuestion.map((r) => r.fieldKey)).toEqual(input.plan.targets.map((t) => t.fieldKey));
+});
+
+it('adds up the tokens every call reports (clamped), for the session’s budget', async () => {
+    const input = setup('CHARACTER', 2, 3, { role: 'A paramedic.' }, ['socratic', 'gentle-mentor']);
+    expect((await produceRound(input, { generator: fakeGenerator({ tokensPerCall: 1_234 }) })).metrics.tokensUsed).toBe(2_468);
+    expect((await produceRound(input, { generator: fakeGenerator({ tokensPerCall: Number.NaN }) })).metrics.tokensUsed).toBe(0);
+    expect((await produceRound(input, { generator: fakeGenerator({ tokensPerCall: 1e12 }) })).metrics.tokensUsed).toBe(2_000_000);
+});

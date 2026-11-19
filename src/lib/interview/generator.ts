@@ -31,9 +31,27 @@ export interface GenerationRequest {
     schema: typeof GeneratedQuestionsSchema;
 }
 
+/**
+ * What one call returns: the raw output and what it cost. The cost travels
+ * with the output so the session's token budget (`InterviewSession.tokensUsed`,
+ * checked by `decideStop` before every round) is charged by the engine from
+ * the seam alone; the wiring needs no edit outside `model-seam.ts`.
+ */
+export interface GenerationResult {
+    /** The raw structured output, parsed again by the engine (null: the call spent tokens and produced nothing usable). */
+    output: unknown;
+    /** Input and output tokens the call used, as the provider reported them (0 when none were spent). */
+    tokensUsed: number;
+}
+
 export interface QuestionGenerator {
     /** False until a model is wired (2.1); a usecase refuses 503 MODEL_NOT_WIRED before writing anything. */
     readonly wired: boolean;
-    /** The raw structured output, parsed again by the engine. May throw (a provider failure). */
-    generateCandidates(request: GenerationRequest, signal?: AbortSignal): Promise<unknown>;
+    /**
+     * One call. May throw (a provider failure that spent nothing); a call that
+     * spent tokens and then failed (output that would not validate after the
+     * repair attempt) returns `{ output: null, tokensUsed }` instead, so its
+     * cost is charged.
+     */
+    generateCandidates(request: GenerationRequest, signal?: AbortSignal): Promise<GenerationResult>;
 }

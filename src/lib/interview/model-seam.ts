@@ -28,8 +28,14 @@
  *              workspaceId: request.workspaceId,      // the spend ceiling's
  *          })
  *
- *      with `wired: true`. Its result is parsed again by the engine
- *      (`parseGeneratedQuestions`), item by item, whatever the seam returns.
+ *      with `wired: true`, returning `{ output, tokensUsed }`: the object and
+ *      the call's input plus output tokens (a call that spent tokens and still
+ *      failed validation after its repair attempt returns `{ output: null,
+ *      tokensUsed }` rather than throwing, so it is charged). The output is
+ *      parsed again by the engine (`parseGeneratedQuestions`), item by item,
+ *      whatever the seam returns; the tokens are added to the session's
+ *      `tokensUsed` with the round (`generateClaimedRound`), which is what
+ *      `decideStop`'s TOKEN_BUDGET reads.
  *
  *   3. `modelBudgetSignals` — return 2.1's global kill switch and whether the
  *      workspace's monthly spend ceiling would be passed by another round.

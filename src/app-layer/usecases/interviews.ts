@@ -38,6 +38,7 @@ import { CloseRoundInput, InterviewStartInput, RoundNumberParam } from '@/app-la
 import { runInWorkspaceContext, type PrismaTx } from '@/lib/db/rls-middleware';
 import { ConflictError, NotFoundError, ValidationError } from '@/lib/errors/types';
 import { DEFAULT_DIALS, roundBudgetFor, tokenBudgetFor } from '@/lib/interview/dials';
+import { getPacks } from '@/lib/interview/packs';
 import { requireBook, requireElement } from './bible-common';
 import {
     claimRound,
@@ -56,6 +57,7 @@ import {
     sessionSummaryView,
     SESSION_ANSWERS_MAX,
     SESSION_QUESTIONS_MAX,
+    SESSION_ROUNDS_READ,
     type InterviewView,
     type SessionSummaryView,
 } from './interview-state';
@@ -81,6 +83,9 @@ export async function startInterview(ctx: WorkspaceRequestContext, bookId: strin
     await assertPermission(ctx, 'bible.edit');
     const parsed = InterviewStartInput.parse(input);
     const generator = generatorOf(deps);
+    // Before anything is written: a pack that will not load fails the request
+    // here, not after a round has been claimed and left generating.
+    deps = { ...deps, packs: deps.packs ?? getPacks() };
     const depth = parsed.depth ?? DEFAULT_DIALS.depth;
     const detail = parsed.detail ?? DEFAULT_DIALS.detail;
     const personaKeys = parsed.persona ? [parsed.persona] : [];
@@ -143,6 +148,7 @@ export async function getInterview(ctx: WorkspaceRequestContext, bookId: string,
 export async function nextRound(ctx: WorkspaceRequestContext, bookId: string, sessionId: string, deps: InterviewDeps = {}): Promise<InterviewView> {
     await assertPermission(ctx, 'bible.edit');
     const generator = generatorOf(deps);
+    deps = { ...deps, packs: deps.packs ?? getPacks() };
     const claimed = await runInWorkspaceContext(ctx, async (db) => {
         await requireBook(db, ctx, bookId);
         await InterviewSessionRepository.lock(db, sessionId);
@@ -170,8 +176,7 @@ export async function closeRound(ctx: WorkspaceRequestContext, bookId: string, s
         await InterviewSessionRepository.lock(db, sessionId);
         const session = await requireSession(db, ctx, bookId, sessionId);
         assertNotEnded(session);
-        const rounds = await InterviewRoundRepository.listForSession(db, ctx.workspaceId, sessionId, 50);
-        const round = rounds.find((r) => r.number === roundNumber);
+        const round = await InterviewRoundRepository.findByNumber(db, ctx.workspaceId, sessionId, roundNumber);
         if (!round) throw new NotFoundError('Round not found.');
         if (round.status !== 'OPEN') throw new ConflictError('That round is not open.', { reason: 'ROUND_NOT_OPEN', status: round.status });
 
@@ -211,7 +216,8 @@ export async function stopInterview(ctx: WorkspaceRequestContext, bookId: string
         await InterviewSessionRepository.lock(db, sessionId);
         const session = await requireSession(db, ctx, bookId, sessionId);
         assertNotEnded(session);
-        const rounds = await InterviewRoundRepository.listForSession(db, ctx.workspaceId, sessionId, 50);
+        // The open or generating round, if any, is the newest: the latest rounds hold it.
+        const rounds = await InterviewRoundRepository.listForSession(db, ctx.workspaceId, sessionId, SESSION_ROUNDS_READ);
         let roundsRun = session.roundsRun;
         for (const r of rounds) {
             if (r.status === 'OPEN') {

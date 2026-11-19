@@ -26,14 +26,16 @@
  *   recommendation  (stripped when it fails) CHOICE / EITHER_OR: an option
  *                verbatim; SCALE: an integer 1..5; OPEN / SCENARIO: grounded
  *                in the stored values and answers its basis names, every one
- *                of which exists; none at all when the toggle is off
+ *                of which exists; none at all when the toggle is off. A basis
+ *                goes with its recommendation: none is kept without one
+ *   rationale    at most 400 characters, or dropped (the question kept)
  *
  * The behaviour codes these enforce (content formats 1.11) are named with
  * each drop reason, so the round's metrics read in the evaluation sets' terms.
  */
 import { z } from 'zod';
 import { IDENTIFIER_MAX, IDENTIFIER_PATTERN } from '@/lib/bible/kinds';
-import { PAIR_TARGETS_FROM_DETAIL, kindsAllowed } from './dials';
+import { PAIR_TARGETS_FROM_DETAIL, answerTextMax, kindsAllowed } from './dials';
 import { refKey, type FieldRef } from './frontier';
 import { grounded, normaliseText, words } from './text';
 import { QUESTION_KINDS, type QuestionKind, type QuestionMode } from './vocabulary';
@@ -174,11 +176,13 @@ export const DROP_REASONS = {
     COMPOUND_QUESTION: 'COMPOUND_QUESTION',
     BAD_CHALLENGE: 'ASKS_ANSWERED_FIELD',
     DUPLICATE: 'REPEATS_PRIOR_QUESTION',
+    /** A second question of the round on a field another already asks (one question per field a round). */
+    TARGET_ALREADY_ASKED: 'REPEATS_PRIOR_QUESTION',
 } as const;
 export type DropReason = keyof typeof DROP_REASONS;
 
 /** Why a recommendation was stripped (the question kept). */
-export type RecommendationStrip = 'TOGGLE_OFF' | 'NOT_AN_OPTION' | 'NOT_A_SCALE_VALUE' | 'BASIS_UNKNOWN' | 'UNGROUNDED' | 'WRONG_TYPE';
+export type RecommendationStrip = 'TOGGLE_OFF' | 'NOT_AN_OPTION' | 'NOT_A_SCALE_VALUE' | 'BASIS_UNKNOWN' | 'UNGROUNDED' | 'WRONG_TYPE' | 'TOO_LONG';
 
 /** One element of the round, as validation reads it. */
 export interface ValidationElement {
@@ -284,7 +288,9 @@ function recommendationProblem(c: Candidate, ctx: ValidationContext): Recommenda
             return typeof rec === 'number' && Number.isInteger(rec) && rec >= 1 && rec <= 5 ? null : 'NOT_A_SCALE_VALUE';
         case 'OPEN':
         case 'SCENARIO': {
-            if (typeof rec !== 'string' || rec.length > RECOMMENDATION_TEXT_MAX) return 'WRONG_TYPE';
+            if (typeof rec !== 'string') return 'WRONG_TYPE';
+            // Taking it must be an answer the session accepts (`answerTextMax`): one click cannot store more than typing could.
+            if (rec.length > Math.min(RECOMMENDATION_TEXT_MAX, answerTextMax(ctx.detail))) return 'TOO_LONG';
             const sources = [...basis.fieldKeys.map((k) => element.storedText.get(k)!), ...basis.answerIds.map((id) => ctx.answerText.get(id)!)];
             return sources.length > 0 && grounded(rec, sources) ? null : 'UNGROUNDED';
         }
@@ -293,7 +299,16 @@ function recommendationProblem(c: Candidate, ctx: ValidationContext): Recommenda
 
 /** Hold one candidate to the rules (module header). Pure. */
 export function validateCandidate(candidate: Candidate, ctx: ValidationContext): Verdict {
-    const c: Candidate = { ...candidate, text: candidate.text.trim() };
+    const c: Candidate = {
+        ...candidate,
+        text: candidate.text.trim(),
+        // A basis exists only for a recommendation, and is checked with it: a
+        // basis left without one would store model-chosen strings, unchecked and
+        // in a column that is not encrypted.
+        recommendationBasis: candidate.recommendedAnswer === null ? null : candidate.recommendationBasis,
+        // The rationale is held to its bound (dropped beyond it, the question kept).
+        rationale: candidate.rationale !== null && candidate.rationale.length > RATIONALE_MAX ? null : candidate.rationale,
+    };
     const target = targetsProblem(c, ctx);
     if (target) return { ok: false, reason: target };
     if (!kindsAllowed(ctx.detail).includes(c.kind)) return { ok: false, reason: 'KIND_NOT_ALLOWED' };

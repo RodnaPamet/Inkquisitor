@@ -6,7 +6,7 @@
  * engine does with a generator that behaves. `mutate` bends its output to
  * test what the engine does with one that does not.
  */
-import type { GenerationRequest, QuestionGenerator } from '@/lib/interview/generator';
+import type { GenerationRequest, GenerationResult, QuestionGenerator } from '@/lib/interview/generator';
 import type { GeneratedQuestion } from '@/lib/interview/candidates';
 import type { QuestionKind } from '@/lib/interview/vocabulary';
 
@@ -17,6 +17,8 @@ export interface FakeGeneratorOptions {
     raw?: (request: GenerationRequest) => unknown;
     /** Every call throws (a provider failure). */
     fail?: boolean;
+    /** The tokens each call reports (default 0). */
+    tokensPerCall?: number;
 }
 
 export interface FakeGenerator extends QuestionGenerator {
@@ -59,10 +61,11 @@ export function fakeGenerator(options: FakeGeneratorOptions = {}): FakeGenerator
     return {
         wired: true,
         calls,
-        async generateCandidates(request) {
+        async generateCandidates(request): Promise<GenerationResult> {
             calls.push(request);
             if (options.fail) throw new Error('provider unavailable');
-            if (options.raw) return options.raw(request);
+            const tokensUsed = options.tokensPerCall ?? 0;
+            if (options.raw) return { output: options.raw(request), tokensUsed };
             const kinds = kindsInPrompt(request);
             const questions = allowedTargets(request).flatMap((t) =>
                 t.allowed_targets.flatMap((key) => {
@@ -71,7 +74,7 @@ export function fakeGenerator(options: FakeGeneratorOptions = {}): FakeGenerator
                     return Array.isArray(out) ? out : [out];
                 }),
             );
-            return { questions, declined: [] };
+            return { output: { questions, declined: [] }, tokensUsed };
         },
     };
 }

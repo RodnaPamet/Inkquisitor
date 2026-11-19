@@ -399,15 +399,28 @@ CREATE TRIGGER "Question_vector_embedding_delete"
 --
 --      * the row is there: the lock holds until commit, so a concurrent delete
 --        waits for the vector to commit and its trigger (1) then deletes it;
---      * the row is gone (deleted and committed first): a rebuild's write
+--      * the row is gone (deleted and committed first), OR a delete of it is
+--        in flight (the row is locked against KEY SHARE): a rebuild's write
 --        (`rebuildGeneration` set) skips the vector silently — the source no
 --        longer yields it — and any other write is refused
 --        (P0001 VECTOR_SOURCE_MISSING), because writing a vector for a row it
 --        cannot see is a caller's bug.
 --
+--    The lock is taken SKIP LOCKED, never waited for. A vector write that
+--    waited on a deleting transaction could deadlock with it: a multi-row
+--    write locks question 1, a cascade delete holds question 2 and waits on
+--    question 1, the write then waits on question 2 (40P01, and one of the two
+--    is rolled back — a book purge or an element delete among them). Skipping
+--    means the inserting side never waits on a source row, so no cycle can
+--    form; the price is that a vector whose delete is later ROLLED BACK is
+--    missing until the question is written or rebuilt again, which only
+--    degrades deduplication to its lexical signals.
+--
 --    The function is generic: a source table attaches it with its model and
---    table names, as `Question` does here. Dynamic SQL names the table by
---    `format('%I')` from the trigger's own argument, never from the row.
+--    table names, as `Question` does here; a source model with no guard
+--    attached is not checked (only a source table that attaches it is). Dynamic
+--    SQL names the table by `format('%I.%I')` from the trigger's own schema and
+--    argument, never from the row and never through the caller's search_path.
 --    As SECURITY INVOKER it reads as the inserting role, so under app_user the
 --    source row must be visible in the vector's own workspace (the second
 --    predicate says so for every role). FOR KEY SHARE needs UPDATE on some
@@ -425,7 +438,7 @@ BEGIN
     IF NEW."sourceModel" <> TG_ARGV[0] THEN
         RETURN NEW;
     END IF;
-    EXECUTE format('SELECT 1 FROM %I WHERE "id" = $1 AND "workspaceId" = $2 FOR KEY SHARE', TG_ARGV[1])
+    EXECUTE format('SELECT 1 FROM %I.%I WHERE "id" = $1 AND "workspaceId" = $2 FOR KEY SHARE SKIP LOCKED', TG_TABLE_SCHEMA, TG_ARGV[1])
         USING NEW."sourceId", NEW."workspaceId";
     GET DIAGNOSTICS found_rows = ROW_COUNT;
     IF found_rows > 0 THEN

@@ -216,9 +216,8 @@ export function createPgvectorStore(): VectorStoreBackend {
         workspaceId: string,
         records: readonly VectorRecord[],
         generation: string | null,
-        outcome: UpsertOutcome,
-    ): Promise<void> {
-        if (records.length === 0) return;
+    ): Promise<UpsertOutcome> {
+        if (records.length === 0) return { inserted: 0, updated: 0, unchanged: 0 };
         // The repository admits one revision and one dimension count per call.
         const { embeddingRevision, embedding } = records[0];
         // Shared with every other write; a rebuild's start takes it exclusively,
@@ -253,12 +252,6 @@ export function createPgvectorStore(): VectorStoreBackend {
                   AND "sourceId" = ANY(${sourceIds}::text[])`,
         );
         const byKey = new Map(prior.map((p) => [keyOf({ ...p, chunkIndex: Number(p.chunkIndex), embeddingRevision }), p]));
-        for (const r of records) {
-            const p = byKey.get(keyOf(r));
-            if (!p) outcome.inserted++;
-            else if (p.contentHash === r.contentHash && p.bookId === r.bookId) outcome.unchanged++;
-            else outcome.updated++;
-        }
 
         const values = records.map(
             (r) => Prisma.sql`(
@@ -268,7 +261,11 @@ export function createPgvectorStore(): VectorStoreBackend {
         );
         // Same hash: the stored vector already describes this text, so it is
         // kept (and `updatedAt` with it); a moved scope is still rewritten.
-        await db.$executeRaw(Prisma.sql`
+        // RETURNING names every row the statement wrote: a row a source guard
+        // skipped (`vector_embedding_require_source` returns NULL for a
+        // rebuild's vector whose source is gone) is not among them, so it is
+        // counted as nothing, never as inserted.
+        const written = await db.$queryRaw<Array<{ sourceModel: string; sourceId: string; chunkIndex: number }>>(Prisma.sql`
             INSERT INTO ${TABLE} (
                 "id", "workspaceId", "bookId", "sourceModel", "sourceId", "chunkIndex",
                 "embeddingRevision", "dimensions", "contentHash", "embedding",
@@ -285,17 +282,29 @@ export function createPgvectorStore(): VectorStoreBackend {
                 "writeSeq" = EXCLUDED."writeSeq",
                 "updatedAt" = CASE WHEN ${TABLE}."contentHash" = EXCLUDED."contentHash"
                                     AND ${TABLE}."bookId" IS NOT DISTINCT FROM EXCLUDED."bookId"
-                                   THEN ${TABLE}."updatedAt" ELSE now() END`);
+                                   THEN ${TABLE}."updatedAt" ELSE now() END
+            RETURNING "sourceModel", "sourceId", "chunkIndex"`);
+
+        const counted: UpsertOutcome = { inserted: 0, updated: 0, unchanged: 0 };
+        const recordByKey = new Map(records.map((r) => [keyOf(r), r]));
+        for (const w of written) {
+            const key = keyOf({ ...w, chunkIndex: Number(w.chunkIndex), embeddingRevision });
+            const r = recordByKey.get(key);
+            if (!r) continue;
+            const p = byKey.get(key);
+            if (!p) counted.inserted++;
+            else if (p.contentHash === r.contentHash && p.bookId === r.bookId) counted.unchanged++;
+            else counted.updated++;
+        }
+        return counted;
     }
 
     return {
         kind: 'pgvector',
 
         async upsert(db, workspaceId, records) {
-            const outcome: UpsertOutcome = { inserted: 0, updated: 0, unchanged: 0 };
             await assertReady(db, workspaceId);
-            await writeBatch(db, workspaceId, records, null, outcome);
-            return outcome;
+            return writeBatch(db, workspaceId, records, null);
         },
 
         async search(db, workspaceId, query): Promise<VectorMatch[]> {
@@ -380,10 +389,16 @@ export function createPgvectorStore(): VectorStoreBackend {
             const outcome: RebuildOutcome = { inserted: 0, updated: 0, unchanged: 0, deleted: 0 };
             let seen = 0;
             for await (const batch of batches) {
-                await inWorkspace(async (db) => {
+                // Counted once the batch's transaction has committed, from the
+                // rows its statement wrote: a rolled-back batch counts nothing,
+                // and a vector the source guard skipped is not "inserted".
+                const counted = await inWorkspace(async (db) => {
                     await assertReady(db, workspaceId);
-                    await writeBatch(db, workspaceId, batch, generation, outcome);
+                    return writeBatch(db, workspaceId, batch, generation);
                 });
+                outcome.inserted += counted.inserted;
+                outcome.updated += counted.updated;
+                outcome.unchanged += counted.unchanged;
                 seen += batch.length;
             }
             outcome.deleted = await inWorkspace(async (db) => {

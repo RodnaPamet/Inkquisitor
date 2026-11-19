@@ -506,13 +506,21 @@ only under zero-retention terms (D5).
   candidate (`validateCandidate`: targets, kind by detail, options, text,
   challenge quote; a bad recommendation is stripped, never fatal),
   deduplicates (`dedupe`: lexical signals, a keyed `dedupeKey`, and the 2.0
-  vector store's neighbours; a question about another element is never a
-  repeat), fills gaps from the craft pack's examples, orders and numbers.
+  vector store's neighbours, and the book's index asked for the round's own
+  candidates; a question about another element is never a repeat), asks each
+  field once a round (so a round never passes its cap), fills gaps from the
+  craft pack's examples, orders and numbers.
   `produceRound` is that whole step, run by the usecase AND the coverage
   evaluation. The model call is OUTSIDE every transaction: claim the round
-  (GENERATING, under the session's advisory lock), generate, persist. Every
+  (GENERATING, under the session's advisory lock), generate, persist — and
+  persist re-reads the book, dropping a question whose field was filled or
+  whose element was deleted meanwhile (rule 5). A call returns
+  `{ output, tokensUsed }`, and the tokens are charged to the session's
+  budget whatever becomes of the round. Every
   stop records a reason (`InterviewStopReason`; FRONTIER_EMPTY vs
-  NOTHING_AT_DEPTH vs ROUND_BUDGET, and `stopDetail` in ids and keys); a
+  NOTHING_AT_DEPTH vs ROUND_BUDGET, and `stopDetail` in ids and keys), in one
+  precedence (`stopNow`: kill switch, ceiling, the frontier, then the token and
+  round budgets); a
   session that asked nothing is NOT_ASSESSED, and a scope with no element is
   refused (`SCOPE_EMPTY`). Until 2.1 wires `src/lib/interview/model-seam.ts`
   (`fenceData`, `defaultQuestionGenerator`, `modelBudgetSignals`; nothing
@@ -520,14 +528,19 @@ only under zero-retention terms (D5).
   before writing; nothing fakes model output. Author text goes in fenced data,
   never the system prompt (`buildGenerationRequest`). `bible.edit` runs an
   interview, `bible.view` reads one. Answers are append-only (a re-answer is
-  the next revision, while the round is open). Question and answer text are
+  the next revision, while the round is open, at most `ANSWER_REVISIONS_MAX`;
+  a session's bounded reads must hold every question and revision it can
+  have, `session-bounds.test.ts`). Question and answer text are
   in the encrypted manifest; a question passes `sanitiseQuestionForStorage`
   before it is judged and again as it is written. `Question` is the vector
   store's first source table: its vectors go with it, and
   `vector_embedding_require_source` refuses (or, in a rebuild, skips) a vector
-  whose question is gone (issue #23 item 1). Packs (`src/lib/interview/packs/`,
-  original content) are validated with Zod at load and read from disk at
-  `process.cwd()` (the Dockerfile copies the directory); 2.3 mounts them.
+  whose question is gone or being deleted, taking its lock SKIP LOCKED so a
+  vector write never waits on (and so never deadlocks with) a delete (issue
+  #23 item 1). Packs (`src/lib/interview/packs/`, original content) are
+  validated with Zod at load and read from disk at `process.cwd()` (the
+  Dockerfile copies the directory); a production server loads them at boot
+  and exits 1 when they do not; 2.3 mounts them.
 - **Sanitising author text.** Every author-text write sanitises at the
   usecase layer before it is stored: plain text through `plainLine` /
   `plainBlock` (`src/lib/bible/text.ts`, over `sanitizePlainText`), rich text

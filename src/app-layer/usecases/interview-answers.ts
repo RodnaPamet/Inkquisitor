@@ -33,6 +33,17 @@ import { decodeOptions, decodeRecommendation } from '@/lib/interview/storage';
 import { requireBook } from './bible-common';
 import { questionView, requireSession, type QuestionView } from './interview-state';
 
+/**
+ * Revisions a question's answer may have at most. A session's state reads
+ * every answer row of every question (`SESSION_ANSWERS_MAX`); unbounded
+ * re-answers would push later questions' answers past that read, and the
+ * session would then see answered questions as unanswered (closing would
+ * skip them, the frontier would ask their fields again).
+ * tests/unit/interview/session-bounds.test.ts holds the product of the
+ * bounds under the read.
+ */
+export const ANSWER_REVISIONS_MAX = 20;
+
 interface AnswerValue {
     status: AnswerStatus;
     text: string | null;
@@ -50,6 +61,9 @@ const SKIP: Omit<AnswerValue, 'status'> = { text: null, choice: null, scale: nul
  */
 export async function recordAnswer(db: PrismaTx, ctx: WorkspaceRequestContext, sessionId: string, questionId: string, value: AnswerValue) {
     const revision = (await AnswerRepository.latestRevision(db, ctx.workspaceId, sessionId, questionId)) + 1;
+    if (revision > ANSWER_REVISIONS_MAX) {
+        throw new ConflictError('This question has been answered as many times as it can be.', { reason: 'ANSWER_REVISIONS_EXHAUSTED', max: ANSWER_REVISIONS_MAX });
+    }
     return AnswerRepository.create(db, ctx.workspaceId, {
         sessionId,
         questionId,
@@ -120,7 +134,7 @@ async function requireAnswerable(db: PrismaTx, ctx: WorkspaceRequestContext, boo
     const question = await QuestionRepository.find(db, ctx.workspaceId, sessionId, questionId);
     if (!question) throw new NotFoundError('Question not found.');
     if (session.status !== 'ACTIVE') throw new ConflictError('This interview is not running.', { reason: 'INTERVIEW_NOT_ACTIVE', status: session.status });
-    const round = (await InterviewRoundRepository.listForSession(db, ctx.workspaceId, sessionId, 50)).find((r) => r.id === question.roundId);
+    const round = await InterviewRoundRepository.find(db, ctx.workspaceId, sessionId, question.roundId);
     if (round?.status !== 'OPEN') throw new ConflictError('That round is closed; its answers stand.', { reason: 'ROUND_NOT_OPEN' });
     return { session, question };
 }

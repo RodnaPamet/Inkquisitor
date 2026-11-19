@@ -122,7 +122,7 @@ describe('a session runs its rounds', () => {
             { key: 'role', value: 'Plays at the chapel.' },
             { key: 'prominence', value: option },
         ]);
-        const notWired = { wired: false, generateCandidates: async () => ({}) };
+        const notWired = { wired: false, generateCandidates: async () => ({ output: {}, tokensUsed: 0 }) };
         // Depth 1: only `role` and `prominence` are in reach, and both are stored; everything else is deeper.
         const view = await startInterview(ctx, bookId, { scope: 'ELEMENT', elementId: el.id, depth: 1, detail: 1 }, { generator: notWired, embedder });
         expect(view.session).toMatchObject({ status: 'COMPLETED', stopReason: 'NOTHING_AT_DEPTH' });
@@ -370,7 +370,8 @@ describe('question vectors live and die with the question (issue #23, item 1)', 
         const rec = questionRecord(`gone-${randomBytes(4).toString('hex')}`, bookId, 'A question nobody asked?', [1, 0, 0], 'guard-test:d3:p00000000');
         await expect(runInWorkspaceContext(ctx, (db) => getVectorRepository().upsert(db, ctx.workspaceId, [rec]))).rejects.toThrow(/VECTOR_SOURCE_MISSING/);
         const outcome = await getVectorRepository().rebuildRevision((fn) => runInWorkspaceContext(ctx, fn), ctx.workspaceId, 'guard-test:d3:p00000000', [[rec]], { allowEmpty: true });
-        expect(outcome.seen).toBe(1);
+        // Seen, but nothing written — and nothing counted as written.
+        expect(outcome).toEqual({ inserted: 0, updated: 0, unchanged: 0, deleted: 0, seen: 1 });
         expect(await prisma.vectorEmbedding.count({ where: { sourceId: rec.sourceId } })).toBe(0);
     });
 
@@ -387,7 +388,8 @@ describe('question vectors live and die with the question (issue #23, item 1)', 
         const revision = 'rebuild-guard:d64:p00000000';
         const late = doomedQuestions.map((q) => questionRecord(q.id, ibook, 'stale text', new Array(64).fill(0).map((_, i) => (i === 0 ? 1 : 0)), revision));
         await deleteElement(ictx, ibook, doomed.id);
-        await getVectorRepository().rebuildRevision((fn) => runInWorkspaceContext(ictx, fn), ictx.workspaceId, revision, [late], { allowEmpty: true });
+        const skipped = await getVectorRepository().rebuildRevision((fn) => runInWorkspaceContext(ictx, fn), ictx.workspaceId, revision, [late], { allowEmpty: true });
+        expect(skipped).toMatchObject({ inserted: 0, updated: 0, unchanged: 0, seen: late.length });
         expect(await prisma.vectorEmbedding.count({ where: { embeddingRevision: revision } })).toBe(0);
 
         const result = await rebuildQuestionEmbeddings(ictx, { embedder });

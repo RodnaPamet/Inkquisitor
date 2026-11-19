@@ -36,7 +36,7 @@ import {
     type ValidationElement,
 } from './candidates';
 import { kindsAllowed, type Dials } from './dials';
-import { dedupe, type AskedQuestion, type DedupeTextContext, type DuplicateSignal, type EmbeddingNeighbour } from './dedupe';
+import { dedupe, dedupeTokens, exactKey, questionDedupeKey, type AskedQuestion, type DedupeTextContext, type DuplicateSignal, type EmbeddingNeighbour } from './dedupe';
 import { refKey, type FieldRef } from './frontier';
 import type { QuestionGenerator } from './generator';
 import type { CraftPack, PackRegistry } from './packs';
@@ -69,7 +69,7 @@ export interface RoundInput {
     sessionAnswers: readonly PromptAnswer[];
     /** What was asked already: this session's questions and earlier sessions' about the same elements. */
     asked: readonly AskedQuestion[];
-    /** Exact-repeat keys from the book's index (`exactKey`), beyond the bounded read. */
+    /** Exact-repeat keys (`exactKey`) already known to the caller; `findExactRepeats` adds the book's own. */
     askedKeys?: ReadonlySet<string>;
     packs: Pick<PackRegistry, 'craft' | 'personas'>;
 }
@@ -83,6 +83,13 @@ export interface RoundDeps {
         neighbours: ReadonlyMap<number, readonly EmbeddingNeighbour[]>;
         neighbourTargets: ReadonlyMap<string, { elementId: string; targetsFieldKeys: readonly string[] }>;
     }>;
+    /**
+     * Which of these (element, dedupe key) pairs a question of the book
+     * already holds, as `exactKey`s: the index lookup that finds an exact
+     * repeat beyond the bounded read of `asked`. Asked for the round's own
+     * candidates and the pack examples that could fill its gaps.
+     */
+    findExactRepeats?: (probes: ReadonlyArray<{ elementId: string; dedupeKey: string }>) => Promise<ReadonlySet<string>>;
 }
 
 export interface PlannedQuestion extends Candidate {
@@ -109,6 +116,15 @@ export interface RoundMetrics {
     noQuestion: FieldRef[];
     /** Questions the embedder gave no vector (stored without one; lexical deduplication only). */
     unembedded: number;
+    /** Tokens the round's generation calls reported (charged to the session's token budget). */
+    tokensUsed: number;
+}
+
+/** One call's reported tokens are clamped to this, so a bad report cannot overflow the session's counter. */
+export const TOKENS_PER_CALL_REPORT_MAX = 1_000_000;
+
+function reportedTokens(value: unknown): number {
+    return typeof value === 'number' && Number.isFinite(value) && value > 0 ? Math.min(Math.floor(value), TOKENS_PER_CALL_REPORT_MAX) : 0;
 }
 
 export interface RoundOutput {
@@ -190,6 +206,7 @@ export async function produceRound(input: RoundInput, deps: RoundDeps): Promise<
         packFallbacks: 0,
         noQuestion: [],
         unembedded: 0,
+        tokensUsed: 0,
     };
     const elements = new Map(input.elements.map((e) => [e.elementId, e] as const));
     const validationElements = new Map<string, ValidationElement>(
@@ -239,7 +256,9 @@ export async function produceRound(input: RoundInput, deps: RoundDeps): Promise<
         metrics.generationCalls++;
         let raw: unknown;
         try {
-            raw = await deps.generator.generateCandidates(request);
+            const result = await deps.generator.generateCandidates(request);
+            metrics.tokensUsed += reportedTokens((result as { tokensUsed?: unknown } | null)?.tokensUsed);
+            raw = (result as { output?: unknown } | null)?.output;
         } catch {
             // A failed call costs only its persona's share: those fields go to the pack fallback.
             metrics.generationFailures++;
@@ -272,13 +291,27 @@ export async function produceRound(input: RoundInput, deps: RoundDeps): Promise<
         vectors.forEach((v, i) => v && candidateVectors.set(i, v));
     }
     const found = deps.findNeighbours && candidateVectors.size > 0 ? await deps.findNeighbours(candidateVectors) : undefined;
+    // The book's index, asked for exactly the questions this round might ask:
+    // its candidates and the pack examples that could fill a gap.
+    const askedKeys = new Set(input.askedKeys ?? []);
+    if (deps.findExactRepeats) {
+        const fallbackProbes = input.plan.targets.flatMap((t) => {
+            const element = elements.get(t.elementId);
+            const pack = element ? input.packs.craft[element.kind] : undefined;
+            const allowed = kindsAllowed(input.dials.detail);
+            return (pack?.examples ?? []).filter((e) => e.keys.length === 1 && e.keys[0] === t.fieldKey && allowed.includes(e.kind)).map((e) => asCandidate(t, e));
+        });
+        const probes = [...ordered, ...fallbackProbes].map((c) => ({ elementId: c.elementId, dedupeKey: questionDedupeKey(dedupeTokens(c, textCtx)) }));
+        const unique = [...new Map(probes.map((p) => [exactKey(p.elementId, p.dedupeKey), p])).values()];
+        if (unique.length > 0) for (const k of await deps.findExactRepeats(unique)) askedKeys.add(k);
+    }
     const deduped = dedupe({
         candidates: ordered,
         asked: input.asked,
         ctx: textCtx,
         neighbours: found?.neighbours,
         neighbourTargets: found?.neighbourTargets,
-        askedKeys: input.askedKeys,
+        askedKeys,
         vectors: candidateVectors,
     });
     for (const d of deduped.dropped) {
@@ -286,7 +319,24 @@ export async function produceRound(input: RoundInput, deps: RoundDeps): Promise<
         bump(metrics.preventedBehaviours, DROP_REASONS.DUPLICATE);
         bump(metrics.duplicates, d.signal);
     }
-    const kept = deduped.keptIndexes.map((i) => ordered[i]);
+    // One question per field per round (design 4.2: each field is asked once a
+    // round): a later question on a field an earlier one already asks is
+    // dropped, so a round never holds more questions than its cap (and its one
+    // challenge), however many the model words.
+    const askedThisRound = new Set<string>();
+    const keptIndexes: number[] = [];
+    for (const i of deduped.keptIndexes) {
+        const c = ordered[i];
+        const refs = c.targetsFieldKeys.map((k) => `${c.mode}\u0000${refKey({ elementId: c.elementId, fieldKey: k })}`);
+        if (refs.some((r) => askedThisRound.has(r))) {
+            bump(metrics.dropped, 'TARGET_ALREADY_ASKED');
+            bump(metrics.preventedBehaviours, DROP_REASONS.TARGET_ALREADY_ASKED);
+            continue;
+        }
+        refs.forEach((r) => askedThisRound.add(r));
+        keptIndexes.push(i);
+    }
+    const kept = keptIndexes.map((i) => ordered[i]);
     metrics.accepted = kept.length;
 
     // 5. Pack fallback for every target nothing kept covers.
@@ -294,7 +344,7 @@ export async function produceRound(input: RoundInput, deps: RoundDeps): Promise<
     const gaps = input.plan.targets.filter((t) => !covered.has(refKey(t)));
     const { filled, noQuestion } = fillGapsFromPack(gaps, elements, input.packs.craft, input.dials.detail, (q, filledSoFar) => {
         const before = [...kept, ...filledSoFar];
-        const check = dedupe({ candidates: [...before, q], asked: input.asked, ctx: textCtx, askedKeys: input.askedKeys });
+        const check = dedupe({ candidates: [...before, q], asked: input.asked, ctx: textCtx, askedKeys });
         return !check.keptIndexes.includes(before.length);
     });
     metrics.packFallbacks = filled.length;
@@ -307,7 +357,7 @@ export async function produceRound(input: RoundInput, deps: RoundDeps): Promise<
         input.plan,
     );
     const vectorOf = new Map<Candidate, readonly number[]>();
-    deduped.keptIndexes.forEach((i) => {
+    keptIndexes.forEach((i) => {
         const v = candidateVectors.get(i);
         if (v) vectorOf.set(ordered[i], v);
     });

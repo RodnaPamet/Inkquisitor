@@ -18,6 +18,7 @@ import {
     type DedupeQuestion,
 } from '@/lib/interview/dedupe';
 import { GROUNDING_THRESHOLD, contentTokens, groundSentence, grounded, normaliseText, sentences, stem } from '@/lib/interview/text';
+import { isCatchAllOption } from '@/lib/interview/candidates';
 
 const EL = 'el-1';
 const ctx = { elementNames: new Map([[EL, 'Dov Hartigan']]) };
@@ -37,6 +38,14 @@ describe('normalisation and tokens', () => {
         expect(normaliseText('ＷＨＡＴ​ dоes  Dov⁠ want?')).toBe('what does dov want?');
         expect(contentTokens('What does Dov want, wanting it?')).toEqual(['dov', 'want', 'want']);
         expect(['stories', 'boxes', 'wanted', 'running', 'quickly', 'grass'].map(stem)).toEqual(['story', 'box', 'want', 'runn', 'quick', 'grass']);
+    });
+
+    it('drops every invisible character, the astral TAG characters and variation selectors included', () => {
+        // Tag characters spell hidden text; a variation selector or a filler renders as nothing.
+        expect(normaliseText('Wh\u{E0061}at does Dov\u{E0020} want\u{E007F}?')).toBe('what does dov want?');
+        expect(normaliseText('Oth\u{E0065}er\u{E0100}\uFE0F\u3164')).toBe('other');
+        expect(isCatchAllOption('O\u{E0074}ther')).toBe(true);
+        expect(dedupeTokens(q('What does D\u{E0041}ov want?'), ctx)).toEqual(dedupeTokens(q('What does Dov want?'), ctx));
     });
 
     it('drops the element’s name and role phrases, so how a question addresses it does not matter', () => {

@@ -37,6 +37,8 @@ import { runInWorkspaceContext, type PrismaTx } from '@/lib/db/rls-middleware';
 import { ConflictError, ServiceUnavailableError } from '@/lib/errors/types';
 import { getTemplate } from '@/lib/bible/templates';
 import { TOKENS_PER_GENERATION_CALL } from '@/lib/interview/dials';
+import { BibleElementRepository } from '@/app-layer/repositories/bible.repository';
+import { isVerbatimQuote } from '@/lib/interview/candidates';
 import { dedupeTokens, exactKey, questionDedupeKey } from '@/lib/interview/dedupe';
 import type { FrontierResult } from '@/lib/interview/frontier';
 import type { QuestionGenerator } from '@/lib/interview/generator';
@@ -50,7 +52,7 @@ import type { VectorRecord } from '@/app-layer/repositories/vector.repository';
 import { decideStop } from '@/lib/interview/stop';
 import { encodeJson, sanitiseQuestionForStorage } from '@/lib/interview/storage';
 import { STATUS_AFTER_STOP, type StopReason } from '@/lib/interview/vocabulary';
-import { challengeableOf, frontierOf, frontierStop, loadInterviewState, stopDetailFor, type InterviewState } from './interview-state';
+import { challengeableOf, frontierOf, frontierStop, loadInterviewState, nextRoundNumber, stopDetailFor, storedTextOf, type InterviewState } from './interview-state';
 import { defaultQuestionEmbedder, findQuestionNeighbours, questionRecord, upsertQuestionVectors, type QuestionEmbedder } from './question-embeddings';
 
 /** What a usecase may be handed instead of the deployment's own (tests; the evaluation). */
@@ -105,12 +107,12 @@ function planOf(state: InterviewState, session: SessionRow): { frontier: Frontie
         depth: session.depth,
         detail: session.detail,
         personaKeys: session.personaKeys,
-        roundNumber: state.rounds.length + 1,
+        roundNumber: nextRoundNumber(state),
     });
     return { frontier, plan };
 }
 
-/** Would the session stop now, and why (design 4.1, the order of the module header)? Pure over a loaded state. */
+/** Would the session stop now, and why (the precedence below)? Pure over a loaded state. */
 export function stopNow(
     session: SessionRow,
     state: InterviewState,
@@ -127,7 +129,13 @@ export function stopNow(
         roundBudget: session.roundBudget,
         roundsRun: session.roundsRun,
     });
-    if (budget && budget !== 'ROUND_BUDGET') return { reason: budget, detail: stopDetailFor(budget, frontier) };
+    // The precedence (implementation note, "Stop precedence"): 2.1's kill
+    // switch and spend ceiling first; then the frontier's own reasons; then
+    // the session's token and round budgets. A session with nothing left to
+    // ask COMPLETES saying so, even when a budget is spent too: a spent token
+    // budget would only PAUSE it, and it could never resume (its tokens only
+    // grow), so it would stay paused with nothing left to ask.
+    if (budget === 'KILL_SWITCH' || budget === 'WORKSPACE_CEILING') return { reason: budget, detail: stopDetailFor(budget, frontier) };
     if (fromFrontier) return { reason: fromFrontier, detail: stopDetailFor(fromFrontier, frontier, { scopeElements: state.elements.length }) };
     if (budget) return { reason: budget, detail: stopDetailFor(budget, frontier) };
     return null;
@@ -150,7 +158,7 @@ export async function claimRound(db: PrismaTx, ctx: WorkspaceRequestContext, ses
     }
     assertGeneratorWired(generator);
     const { frontier, plan } = planOf(state, session);
-    const roundNumber = state.rounds.length + 1;
+    const roundNumber = nextRoundNumber(state);
     const round = await InterviewRoundRepository.create(db, ctx.workspaceId, {
         sessionId: session.id,
         number: roundNumber,
@@ -197,12 +205,6 @@ export async function generateClaimedRound(
 
     let output: RoundOutput;
     try {
-        const textCtx = { elementNames: new Map(state.elements.map((e) => [e.elementId, e.name])) };
-        const askedKeys = await runInWorkspaceContext(ctx, async (db) => {
-            const keys = state.asked.map((q) => questionDedupeKey(dedupeTokens(q, textCtx)));
-            const rows = await QuestionRepository.findDedupeKeys(db, ctx.workspaceId, session.bookId, state.elements.map((e) => e.elementId), [...new Set(keys)]);
-            return new Set(rows.map((r) => exactKey(r.elementId, r.dedupeKey)));
-        });
         output = await produceRound(
             {
                 workspaceId: ctx.workspaceId,
@@ -215,13 +217,13 @@ export async function generateClaimedRound(
                 related: state.related,
                 sessionAnswers: state.promptAnswers,
                 asked: state.asked,
-                askedKeys,
                 packs,
             },
             {
                 generator,
                 embed: embedder ? (texts) => embedder.embed(texts) : undefined,
                 findNeighbours: embedder ? (vectors) => neighboursOrNone(ctx, session.bookId, embedder.revision, vectors, known) : undefined,
+                findExactRepeats: (probes) => exactRepeatsOrNone(ctx, session.bookId, probes),
             },
         );
     } catch (err) {
@@ -237,13 +239,30 @@ export async function generateClaimedRound(
     const records = await runInWorkspaceContext(ctx, async (db): Promise<VectorRecord[]> => {
         await InterviewSessionRepository.lock(db, session.id);
         const current = await InterviewSessionRepository.find(db, ctx.workspaceId, session.bookId, session.id);
-        const round = (await InterviewRoundRepository.listForSession(db, ctx.workspaceId, session.id, 50)).find((r) => r.id === claim.roundId);
+        // What the calls cost is charged whatever becomes of the round (rule 9; the token budget reads it).
+        if (current) await InterviewSessionRepository.addTokens(db, ctx.workspaceId, session.id, output.metrics.tokensUsed);
+        const round = await InterviewRoundRepository.find(db, ctx.workspaceId, session.id, claim.roundId);
         // Stopped while it generated: the author's stop stands, and the questions are not asked.
         if (!current || current.status !== 'ACTIVE' || round?.status !== 'GENERATING') return [];
-        const metrics = output.metrics as unknown as Prisma.InputJsonValue;
 
-        if (output.questions.length === 0) {
+        // The book may have moved while the model worded the round (no lock is
+        // held then): a field the author filled in the meantime is answered,
+        // and is not asked (rule 5); an element deleted in the meantime is not
+        // asked about; a challenge whose quote is no longer in the stored value
+        // is not asked. Read again here, under the lock, and drop those.
+        const askable = await stillAskable(db, ctx, session.bookId, output.questions);
+        const questions = askable.map((q, i) => ({ ...q, position: i + 1 }));
+        const metrics = { ...output.metrics, staleAtPersist: output.questions.length - questions.length } as unknown as Prisma.InputJsonValue;
+
+        if (questions.length === 0) {
             await InterviewRoundRepository.update(db, ctx.workspaceId, claim.roundId, { status: 'FAILED', metrics });
+            if (output.questions.length > 0) {
+                // Everything it worded was overtaken by the book: say what the book now says.
+                const after = await InterviewSessionRepository.find(db, ctx.workspaceId, session.bookId, session.id);
+                const stop = after ? stopNow(after, await loadInterviewState(db, ctx, after)) : null;
+                await endSession(db, ctx, after ?? current, stop?.reason ?? 'NO_ACCEPTABLE_QUESTION', stop?.detail ?? { roundNumber: claim.roundNumber, staleAtPersist: output.questions.length });
+                return [];
+            }
             const allFailed = output.metrics.generationCalls > 0 && output.metrics.generationFailures === output.metrics.generationCalls;
             await endSession(db, ctx, current, allFailed ? 'PROVIDER_FAILURE' : 'NO_ACCEPTABLE_QUESTION', { roundNumber: claim.roundNumber, noQuestion: output.metrics.noQuestion.length });
             return [];
@@ -251,7 +270,7 @@ export async function generateClaimedRound(
 
         const textCtx = { elementNames: new Map(state.elements.map((e) => [e.elementId, e.name])) };
         const records: VectorRecord[] = [];
-        for (const planned of output.questions) {
+        for (const planned of questions) {
             const q = sanitiseQuestionForStorage(planned);
             const created = await QuestionRepository.create(db, ctx.workspaceId, {
                 bookId: session.bookId,
@@ -274,7 +293,7 @@ export async function generateClaimedRound(
                 dependsOnQuestionIds: dependsOnQuestionIds(planned, state),
                 dedupeKey: questionDedupeKey(dedupeTokens(q, textCtx)),
             });
-            const vector = output.vectors.get(planned.position);
+            const vector = output.vectors.get(askable[planned.position - 1].position);
             if (vector && embedder) records.push(questionRecord(created.id, session.bookId, created.text, vector, embedder.revision));
         }
         await InterviewRoundRepository.update(db, ctx.workspaceId, claim.roundId, { status: 'OPEN', openedAt: new Date(), metrics });
@@ -287,7 +306,7 @@ export async function generateClaimedRound(
                 details: {
                     sessionId: session.id,
                     roundNumber: claim.roundNumber,
-                    questionCount: output.questions.length,
+                    questionCount: questions.length,
                     packFallbacks: output.metrics.packFallbacks,
                     promptVersion: QUESTION_PROMPT_VERSION,
                 },
@@ -308,6 +327,37 @@ export async function generateClaimedRound(
         } catch (err) {
             logger.warn('interview.question_vectors_not_stored', { component: 'interview', sessionId: session.id, count: records.length, error: err instanceof Error ? err.name : 'unknown' });
         }
+    }
+}
+
+/**
+ * The produced questions the book still lets this round ask, in order: the
+ * element still exists, a FRONTIER question's fields are all still empty (rule
+ * 5), and a CHALLENGE's quote is still a verbatim run of its stored value.
+ */
+async function stillAskable(db: PrismaTx, ctx: WorkspaceRequestContext, bookId: string, questions: readonly PlannedQuestion[]): Promise<PlannedQuestion[]> {
+    const ids = [...new Set(questions.map((q) => q.elementId))];
+    const live = new Set((await BibleElementRepository.listByIds(db, ctx.workspaceId, bookId, ids)).map((e) => e.id));
+    const stored = await storedTextOf(db, ctx, [...live]);
+    return questions.filter((q) => {
+        if (!live.has(q.elementId)) return false;
+        const values = stored.get(q.elementId) ?? new Map<string, string>();
+        if (q.mode === 'CHALLENGE') {
+            const value = values.get(q.targetsFieldKeys[0]);
+            return value !== undefined && q.challengeQuote !== null && isVerbatimQuote(q.challengeQuote, value);
+        }
+        return q.targetsFieldKeys.every((k) => !values.has(k));
+    });
+}
+
+/** The book's exact repeats among these probes, or none when the read fails (deduplication keeps its other signals). */
+async function exactRepeatsOrNone(ctx: WorkspaceRequestContext, bookId: string, probes: ReadonlyArray<{ elementId: string; dedupeKey: string }>): Promise<Set<string>> {
+    try {
+        const rows = await runInWorkspaceContext(ctx, (db) => QuestionRepository.findExactRepeats(db, ctx.workspaceId, bookId, probes));
+        return new Set(rows.map((r) => exactKey(r.elementId, r.dedupeKey)));
+    } catch (err) {
+        logger.warn('interview.question_exact_repeats_unavailable', { component: 'interview', error: err instanceof Error ? err.name : 'unknown' });
+        return new Set();
     }
 }
 

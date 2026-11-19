@@ -21,7 +21,16 @@
 /** A sentence is supported when at least this share of its content tokens occur in its sources (design 4.5). */
 export const GROUNDING_THRESHOLD = 0.7;
 
-const FORMAT_CHARS = /[­͏؜ᅟᅠ឴឵᠋-᠏​-‏‪-‮⁠-⁯ㅤ︀-️﻿ﾠ]/g;
+/**
+ * Invisible characters dropped before comparison: every FORMAT character
+ * (`\p{Cf}`: zero-width spaces and joiners, bidirectional controls, the soft
+ * hyphen, word joiners, the byte-order mark, and the astral TAG characters
+ * U+E0000-E007F that can spell hidden text), every variation selector (both
+ * blocks), and the fillers and invisible marks that are not `Cf` but render
+ * as nothing (combining grapheme joiner, Hangul fillers, Mongolian free
+ * variation selectors, Khmer inherent vowels).
+ */
+const FORMAT_CHARS = /[\p{Cf}\u034F\u115F\u1160\u17B4\u17B5\u180B-\u180F\u3164\uFE00-\uFE0F\uFFA0\u{E0100}-\u{E01EF}]/gu;
 
 const LOOK_ALIKES: Readonly<Record<string, string>> = {
     // Cyrillic

@@ -174,6 +174,27 @@ describe('recommendations: stripped, never fatal', () => {
         expect(validateCandidate({ ...choice, recommendedAnswer: 'towards rank' }, ctx())).toMatchObject({ ok: true, stripped: null });
     });
 
+    it('a basis never outlives its recommendation: none is kept without one (model strings, unchecked, unencrypted)', () => {
+        const smuggled = { ...good, recommendationBasis: { fieldKeys: ['role'], answerIds: ['the author said her name is Mara'] } };
+        const v = validateCandidate(smuggled, ctx());
+        expect(v).toMatchObject({ ok: true, stripped: null });
+        expect(v.ok && v.candidate.recommendationBasis).toBeNull();
+    });
+
+    it('a recommendation longer than the session accepts as an answer is stripped (accepting it could store more than typing)', () => {
+        // Detail 2 takes written answers of at most 300 characters.
+        const long = `To be made crew chief before his colleague. ${'He wants to be made crew chief before his colleague. '.repeat(6)}`.trim();
+        expect(long.length).toBeGreaterThan(300);
+        const c = { ...good, recommendedAnswer: long, recommendationBasis: { fieldKeys: [], answerIds: ['a1'] } };
+        expect(validateCandidate(c, ctx({ detail: 2 }))).toMatchObject({ ok: true, stripped: 'TOO_LONG', candidate: { recommendedAnswer: null } });
+    });
+
+    it('a rationale beyond its bound is dropped and the question kept', () => {
+        const v = validateCandidate({ ...good, rationale: 'x'.repeat(401) }, ctx());
+        expect(v).toMatchObject({ ok: true, candidate: { rationale: null } });
+        expect(validateCandidate({ ...good, rationale: 'x'.repeat(400) }, ctx())).toMatchObject({ ok: true, candidate: { rationale: 'x'.repeat(400) } });
+    });
+
     it('with the toggle off, every recommendation is stripped', () => {
         expect(validateCandidate({ ...choice, recommendedAnswer: 'towards rank' }, ctx({ offerRecommended: false }))).toMatchObject({ ok: true, stripped: 'TOGGLE_OFF' });
     });

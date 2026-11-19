@@ -154,6 +154,13 @@ export const InterviewSessionRepository = {
         const res = await db.interviewSession.updateMany({ where: { id: sessionId, workspaceId }, data });
         return res.count;
     },
+
+    /** Charge tokens a round's generation calls reported to the session's budget (`decideStop` reads it). */
+    async addTokens(db: Db, workspaceId: string, sessionId: string, tokens: number) {
+        if (tokens <= 0) return 0;
+        const res = await db.interviewSession.updateMany({ where: { id: sessionId, workspaceId }, data: { tokensUsed: { increment: tokens } } });
+        return res.count;
+    },
 };
 
 export const InterviewRoundRepository = {
@@ -161,9 +168,25 @@ export const InterviewRoundRepository = {
         return db.interviewRound.create({ data: { ...data, workspaceId }, select: ROUND_SELECT });
     },
 
-    /** The session's rounds, by number (`take` of them). */
-    listForSession(db: Db, workspaceId: string, sessionId: string, take: number) {
-        return db.interviewRound.findMany({ where: { workspaceId, sessionId }, orderBy: { number: 'asc' }, take, select: ROUND_SELECT });
+    /**
+     * The session's LATEST `take` rounds, by number ascending. Newest first in
+     * the query: a session whose rounds keep failing grows past any bound, and
+     * the round a request needs (the open or generating one, the next number)
+     * is always among the newest, never among the first.
+     */
+    async listForSession(db: Db, workspaceId: string, sessionId: string, take: number) {
+        const rows = await db.interviewRound.findMany({ where: { workspaceId, sessionId }, orderBy: { number: 'desc' }, take, select: ROUND_SELECT });
+        return rows.reverse();
+    },
+
+    /** One round of the session, by id. */
+    find(db: Db, workspaceId: string, sessionId: string, roundId: string) {
+        return db.interviewRound.findFirst({ where: { id: roundId, workspaceId, sessionId }, select: ROUND_SELECT });
+    },
+
+    /** One round of the session, by number. */
+    findByNumber(db: Db, workspaceId: string, sessionId: string, number: number) {
+        return db.interviewRound.findFirst({ where: { number, workspaceId, sessionId }, select: ROUND_SELECT });
     },
 
     async update(
@@ -229,14 +252,18 @@ export const QuestionRepository = {
         });
     },
 
-    /** Which of these dedupe keys questions of the book about these elements already hold (no text is read). */
-    findDedupeKeys(db: Db, workspaceId: string, bookId: string, elementIds: readonly string[], keys: readonly string[]) {
-        if (elementIds.length === 0 || keys.length === 0) return Promise.resolve([]);
-        return db.question.findMany({
-            where: { workspaceId, bookId, elementId: { in: [...elementIds] }, dedupeKey: { in: [...keys] } },
-            select: { elementId: true, dedupeKey: true },
-            take: keys.length * elementIds.length,
+    /**
+     * Which of these (element, dedupe key) pairs a question of the book already
+     * holds, each pair once however many questions hold it (no text is read):
+     * the exact-repeat lookup beyond the bounded read of earlier questions.
+     */
+    async findExactRepeats(db: Db, workspaceId: string, bookId: string, probes: ReadonlyArray<{ elementId: string; dedupeKey: string }>) {
+        if (probes.length === 0) return [];
+        const rows = await db.question.groupBy({
+            by: ['elementId', 'dedupeKey'],
+            where: { workspaceId, bookId, OR: probes.map((p) => ({ elementId: p.elementId, dedupeKey: p.dedupeKey })) },
         });
+        return rows.map((r) => ({ elementId: r.elementId, dedupeKey: r.dedupeKey }));
     },
 
     /** The targets of some questions (no encrypted column): what a vector neighbour asked about. */

@@ -54,6 +54,8 @@ export const SESSION_QUESTIONS_MAX = 60;
 export const SESSION_ANSWERS_MAX = 2_000;
 /** Earlier sessions' questions about the scope's elements read for deduplication. */
 export const BOOK_QUESTIONS_MAX = 500;
+/** A session's latest rounds read (the open or generating one is always the newest). */
+export const SESSION_ROUNDS_READ = 50;
 /** Related elements an element session's prompt carries. */
 export const RELATED_MAX = 20;
 const FIELDS_PER_ELEMENT = 50;
@@ -63,6 +65,17 @@ export function fieldText(value: FieldValue): string {
     if (Array.isArray(value)) return value.join('; ');
     if (typeof value === 'number') return String(value);
     return plainBlock(value);
+}
+
+/** The stored values of these elements as text, filled fields only, by element then key. */
+export async function storedTextOf(db: PrismaTx, ctx: WorkspaceRequestContext, elementIds: readonly string[]): Promise<Map<string, Map<string, string>>> {
+    const fields = await BibleFieldRepository.listForElements(db, ctx.workspaceId, elementIds, FIELDS_PER_ELEMENT);
+    const stored = new Map<string, Map<string, string>>(elementIds.map((id) => [id, new Map()]));
+    for (const f of fields) {
+        const text = fieldText(decodeFieldValue(f.value));
+        if (text.length > 0) stored.get(f.elementId)?.set(f.key, text);
+    }
+    return stored;
 }
 
 export interface InterviewState {
@@ -131,12 +144,7 @@ async function scopeElements(db: PrismaTx, ctx: WorkspaceRequestContext, session
 export async function loadInterviewState(db: PrismaTx, ctx: WorkspaceRequestContext, session: SessionRow): Promise<InterviewState> {
     const scope = await scopeElements(db, ctx, session);
     const ids = scope.rows.map((e) => e.id);
-    const fields = await BibleFieldRepository.listForElements(db, ctx.workspaceId, ids, FIELDS_PER_ELEMENT);
-    const stored = new Map<string, Map<string, string>>(ids.map((id) => [id, new Map()]));
-    for (const f of fields) {
-        const text = fieldText(decodeFieldValue(f.value));
-        if (text.length > 0) stored.get(f.elementId)?.set(f.key, text);
-    }
+    const stored = await storedTextOf(db, ctx, ids);
     const elements: RoundElement[] = scope.rows.map((e) => ({
         elementId: e.id,
         kind: e.kind,
@@ -175,11 +183,16 @@ export async function loadInterviewState(db: PrismaTx, ctx: WorkspaceRequestCont
         related = others.map((o) => ({ kind: o.kind, name: o.name, summary: o.summary }));
     }
 
-    const rounds = await InterviewRoundRepository.listForSession(db, ctx.workspaceId, session.id, 50);
+    const rounds = await InterviewRoundRepository.listForSession(db, ctx.workspaceId, session.id, SESSION_ROUNDS_READ);
     const challenged = questions.filter((q) => q.mode === 'CHALLENGE').map((q) => ({ elementId: q.elementId, fieldKey: q.targetsFieldKeys[0] }));
     const challengesPlanned = rounds.filter((r) => (r.plan as { challenge?: unknown } | null)?.challenge).length;
 
     return { elements, scopeTruncated: scope.truncated, questions, latest, answerFacts, promptAnswers, asked, related, rounds, challenged, challengesPlanned };
+}
+
+/** The number the session's next round takes: one past the newest (never a count of the rounds read, which are bounded). */
+export function nextRoundNumber(state: Pick<InterviewState, 'rounds'>): number {
+    return state.rounds.reduce((max, r) => Math.max(max, r.number), 0) + 1;
 }
 
 /** The frontier over a loaded state. */

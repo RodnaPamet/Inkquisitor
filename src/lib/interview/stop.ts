@@ -7,7 +7,11 @@
  * author's stop, the round budget. The first three are 2.1's signals (its
  * kill switch and ceiling; its token counts on the session), passed in so the
  * order is fixed here once. The frontier's own stops (FRONTIER_EMPTY,
- * NOTHING_AT_DEPTH) need the computed frontier and follow in the round step.
+ * NOTHING_AT_DEPTH) need the computed frontier; `stopNow`
+ * (`src/app-layer/usecases/interview-rounds.ts`) puts them after the kill
+ * switch and the ceiling and BEFORE the token and round budgets, so a session
+ * with nothing left to ask completes saying so rather than pausing on a spent
+ * budget it could never resume from.
  *
  * `sessionProgress` is the session's figure, and rule 6 holds it: a session
  * that asked nothing is NOT ASSESSED, never 0 % and never 100 %.

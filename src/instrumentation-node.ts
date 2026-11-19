@@ -4,6 +4,10 @@
  *      something production requires (`src/lib/startup-checks.ts`);
  *   1b. the encryption sentinel: the master key must round-trip a value
  *      (`src/lib/security/encryption-sentinel.ts`, Phase 0.3);
+ *   1c. the question packs load and validate (`src/lib/interview/packs.ts`,
+ *      Phase 2.2): they are read from disk, so an image that lost them, or a
+ *      pack an edit broke, is refused at boot rather than at an author's
+ *      first interview;
  *   2. OpenTelemetry (no-op unless OTEL_ENABLED=true) and Sentry (no-op
  *      unless SENTRY_DSN is set);
  *   3. the mailer's SMTP transport (console sink when SMTP_HOST is unset);
@@ -34,8 +38,9 @@ export interface RegisterNodeSeams {
 }
 
 async function loadServices() {
-    const [sentinel, telemetry, sentry, mailer, shutdown] = await Promise.all([
+    const [sentinel, packs, telemetry, sentry, mailer, shutdown] = await Promise.all([
         import('@/lib/security/encryption-sentinel'),
+        import('@/lib/interview/packs'),
         import('@/lib/observability/instrumentation'),
         import('@/lib/observability/sentry'),
         import('@/lib/mailer'),
@@ -43,6 +48,7 @@ async function loadServices() {
     ]);
     return {
         runEncryptionSentinel: sentinel.runEncryptionSentinel,
+        loadQuestionPacks: packs.getPacks,
         initTelemetry: telemetry.initTelemetry,
         initSentry: sentry.initSentry,
         initMailerFromEnv: mailer.initMailerFromEnv,
@@ -81,6 +87,15 @@ export async function registerNode(seams: RegisterNodeSeams = {}): Promise<void>
     } catch (err) {
         if (!isProductionServer(process.env)) throw err;
         report(`[startup] FATAL: ${err instanceof Error ? err.message : String(err)}`);
+        exit(1);
+        return;
+    }
+
+    try {
+        services.loadQuestionPacks();
+    } catch (err) {
+        if (!isProductionServer(process.env)) throw err;
+        report(`[startup] FATAL: the question packs failed to load: ${err instanceof Error ? err.message.split('\n')[0] : String(err)}`);
         exit(1);
         return;
     }
