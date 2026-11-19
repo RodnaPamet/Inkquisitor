@@ -24,8 +24,9 @@ model User {
   emailVerified  DateTime?
   name           String?
   image          String?
-  /// bcrypt over sha256(password), `src/lib/auth/passwords.ts`. NULL for
-  /// a Google-only account.
+  /// bcrypt over the password itself, which is refused past 72 UTF-8 bytes
+  /// rather than truncated (`src/lib/auth/passwords.ts`). NULL for a
+  /// Google-only account.
   passwordHash   String?
   /// Bumped to sign out every session of the user at once; a JWT minted
   /// under a lower value is refused (`SessionRevokedError`).
@@ -33,12 +34,15 @@ model User {
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
-  accounts    Account[]
-  sessions    UserSession[]
-  memberships WorkspaceMembership[]
+  accounts      Account[]
+  sessions      UserSession[]
+  memberships   WorkspaceMembership[]
   /// Bible versions this person saved; the link is cleared (and the version
   /// kept) when the person is deleted.
   bibleVersions BibleEntryVersion[]
+  /// Model calls this person's requests made; the link is cleared (and the
+  /// record kept) when the person is deleted.
+  aiCalls       AiCallLog[]
 }
 
 /// An OAuth identity linked to a user (Google). No provider token is

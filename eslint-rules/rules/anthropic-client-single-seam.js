@@ -9,8 +9,8 @@
  * from the environment, and sends Messages calls only — under the
  * zero-retention terms of decision D5. A client constructed anywhere else
  * skips all of that, and nothing about the construction would look wrong in
- * review. The seam file does not exist yet; the rule is on now so the first
- * model call cannot be written anywhere else.
+ * review. The rule was turned on in Phase 0.4, before the seam existed, so
+ * the first model call could not be written anywhere else.
  *
  * Lifted from inflect-compliance's `eslint-rules/rules/anthropic-client-single-seam.js`
  * (the seam moved from `src/lib/agentic/tool-runner/client.ts`).
@@ -25,7 +25,8 @@
  *   • `import X = require('@anthropic-ai/…')`;
  *   • `export … from '@anthropic-ai/…'` and `export * from …`, so no module
  *     can hand the class on;
- *   • `import('@anthropic-ai/…')` and `require('@anthropic-ai/…')`.
+ *   • `import('@anthropic-ai/…')` and `require('@anthropic-ai/…')`, also as
+ *     `module.require(…)` and `createRequire(…)('…')`.
  *
  * With the class importable in one file only, a second construction site
  * cannot be written: there is no `Anthropic` to `new`. That is why the rule
@@ -64,6 +65,28 @@ function literalSource(node) {
         return node.quasis.map((q) => q.value.cooked).join('');
     }
     return null;
+}
+
+/** Node's module objects, whose `require` is the loader (`module.require(…)`). */
+const LOADER_OWNERS = new Set(['module', 'global', 'globalThis']);
+
+/**
+ * Whether a call's callee is a CommonJS loader: `require`, `module.require`
+ * (or `global.` / `globalThis.require`), or the function `createRequire(…)`
+ * returns, called at once (`createRequire(import.meta.url)('…')`). Any other
+ * method named `require` is not the loader (a registry's, say).
+ */
+function isLoader(callee) {
+    if (callee.type === 'Identifier') return callee.name === 'require';
+    if (callee.type === 'MemberExpression' && !callee.computed && callee.property.type === 'Identifier') {
+        return callee.property.name === 'require' && callee.object.type === 'Identifier' && LOADER_OWNERS.has(callee.object.name);
+    }
+    if (callee.type === 'CallExpression') {
+        const inner = callee.callee;
+        if (inner.type === 'Identifier') return inner.name === 'createRequire';
+        return inner.type === 'MemberExpression' && !inner.computed && inner.property.type === 'Identifier' && inner.property.name === 'createRequire';
+    }
+    return false;
 }
 
 function isAnthropicPackage(source) {
@@ -141,7 +164,7 @@ module.exports = {
             },
 
             CallExpression(node) {
-                if (node.callee.type !== 'Identifier' || node.callee.name !== 'require') return;
+                if (!isLoader(node.callee)) return;
                 const source = literalSource(node.arguments[0]);
                 if (isAnthropicPackage(source)) report(node, 'dynamicLoad', source);
             },

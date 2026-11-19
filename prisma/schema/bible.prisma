@@ -57,6 +57,7 @@ model Book {
   relations        BibleRelation[]
   versions         BibleEntryVersion[]
   vectorEmbeddings VectorEmbedding[]
+  aiCalls          AiCallLog[]
 
   @@unique([workspaceId, id])
   /// The books list: a workspace's live books, most recently updated first.

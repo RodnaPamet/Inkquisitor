@@ -1,0 +1,80 @@
+/**
+ * AI Guard — policy + enforcement contract.
+ *
+ * Lifted from inflect-compliance's `src/app-layer/ai/guard/policy.ts` (see
+ * docs/carve-manifest.md). Inflect stores a guard mode per tenant
+ * (`TenantSecuritySettings.aiGuardMode`). Inkquisitor has no such column: the
+ * mode is a property of the PROMPT TEMPLATE (`PromptTemplate.guardMode` in
+ * `../prompt.ts`, default `DEFAULT_GUARD_MODE`), so it is code a reviewer
+ * reads, never a value a request or an author can choose. `resolveGuardMode`
+ * is kept for a per-workspace setting a later phase may add. The contract
+ * table is unchanged.
+ *
+ * Enforcement contract (the resolved `action` the compose helpers apply):
+ *
+ *   ┌────────────┬───────────────────────────┬───────────────────────────┐
+ *   │  mode      │  input direction          │  egress direction         │
+ *   ├────────────┼───────────────────────────┼───────────────────────────┤
+ *   │  strict    │ malicious → BLOCK         │ secret(malicious) → BLOCK │
+ *   │            │ suspicious → FLAG         │ suspicious → FLAG         │
+ *   │  balanced  │ malicious → FLAG          │ secret(malicious) → BLOCK │
+ *   │  (default) │ suspicious → FLAG         │ suspicious → FLAG         │
+ *   │  audit     │ log only → ALLOW          │ log only → ALLOW          │
+ *   └────────────┴───────────────────────────┴───────────────────────────┘
+ *
+ *   - BLOCK — strict: refuse the model call / drop the proposed action.
+ *   - FLAG  — balanced: allow, but force human review; NEVER auto-commit.
+ *   - ALLOW — clean, or audit-mode (recorded, not enforced).
+ *
+ * A leaked secret in OUTBOUND content is blocked in both strict AND balanced
+ * (a secret must never leave the boundary or be committed); audit mode is the
+ * only escape hatch and is a deliberate opt-in for triage.
+ *
+ * Pure — takes the settings row (or null) and a scan verdict, returns an
+ * action. `./index.ts` applies it.
+ */
+import type { GuardVerdict } from './injection-scanner';
+
+export type GuardMode = 'strict' | 'balanced' | 'audit';
+export type GuardAction = 'allow' | 'flag' | 'block';
+export type GuardDirection = 'input' | 'egress';
+
+export const DEFAULT_GUARD_MODE: GuardMode = 'balanced';
+
+/** Resolve the domain guard mode from a settings row's `aiGuardMode` value. */
+export function resolveGuardMode(
+    settings: { aiGuardMode?: string | null } | null | undefined,
+): GuardMode {
+    switch ((settings?.aiGuardMode ?? '').toUpperCase()) {
+        case 'STRICT':
+            return 'strict';
+        case 'AUDIT':
+            return 'audit';
+        case 'BALANCED':
+            return 'balanced';
+        default:
+            return DEFAULT_GUARD_MODE;
+    }
+}
+
+/**
+ * Resolve the enforcement action for a verdict under a mode + direction.
+ * See the contract table above.
+ */
+export function resolveEnforcement(
+    mode: GuardMode,
+    verdict: GuardVerdict,
+    direction: GuardDirection,
+): GuardAction {
+    if (verdict === 'clean') return 'allow';
+    // Audit mode never enforces — it records only.
+    if (mode === 'audit') return 'allow';
+
+    if (verdict === 'malicious') {
+        if (direction === 'egress') return 'block'; // secrets never leave / commit
+        return mode === 'strict' ? 'block' : 'flag';
+    }
+
+    // suspicious → flag under strict + balanced.
+    return 'flag';
+}

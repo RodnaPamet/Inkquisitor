@@ -75,6 +75,21 @@ describe('local/anthropic-client-single-seam', () => {
         ],
         invalid: [
             {
+                name: 'module.require is the loader too',
+                code: `const sdk = module.require('@anthropic-ai/sdk');`,
+                errors: [{ messageId: 'dynamicLoad' }],
+            },
+            {
+                name: 'a require made by createRequire, called at once',
+                code: `import { createRequire } from 'node:module';\nconst sdk = createRequire(import.meta.url)('@anthropic-ai/sdk');`,
+                errors: [{ messageId: 'dynamicLoad' }],
+            },
+            {
+                name: 'module.createRequire, called at once',
+                code: `const sdk = mod.createRequire(here)('@anthropic-ai/sdk');`,
+                errors: [{ messageId: 'dynamicLoad' }],
+            },
+            {
                 name: 'the default import a second construction site would start from',
                 code: `import Anthropic from '@anthropic-ai/sdk';\nconst c = new Anthropic({ apiKey });`,
                 errors: [{ messageId: 'valueImport' }],

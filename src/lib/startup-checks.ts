@@ -25,6 +25,7 @@ import { isNextProductionBuild } from './build-phase';
 import { DEV_FALLBACK_DATA_ENCRYPTION_KEY, MIN_DATA_ENCRYPTION_KEY_LENGTH } from './security/encryption-constants';
 import { DEV_FALLBACK_AUTH_SECRET, MIN_AUTH_SECRET_LENGTH } from './auth/auth-constants';
 import { embeddingConfigProblems } from './ai/embeddings/config';
+import { aiConfigProblems } from './ai/config';
 
 export { MIN_AUTH_SECRET_LENGTH };
 
@@ -101,6 +102,11 @@ export function productionConfigProblems(e: EnvRecord): string[] {
     // whole and inside the deployment. src/lib/ai/embeddings/config.ts is the
     // one reading of these variables; the factory asks it too.
     problems.push(...embeddingConfigProblems(e));
+
+    // ── The model layer (Phase 2.1): a provider key only with the operator's
+    // zero-retention statement (D5), no ambient SDK headers, a well-formed
+    // ceiling and kill switch. src/lib/ai/config.ts is the one reading.
+    problems.push(...aiConfigProblems(e));
 
     if (present(e.UPSTASH_REDIS_REST_URL) !== present(e.UPSTASH_REDIS_REST_TOKEN)) {
         problems.push(

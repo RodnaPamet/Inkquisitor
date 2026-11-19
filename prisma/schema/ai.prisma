@@ -1,0 +1,113 @@
+// ─────────────────────────────────────────────────────────────────
+//  The model layer's ledger (Phase 2.1).
+//
+//  NUMBERS AND NAMES, NEVER TEXT. No table here holds a prompt, author
+//  text, a model's answer or a provider message (roadmap rule 4): every
+//  string column is code-supplied and a CHECK bounds its shape, so a
+//  sentence cannot be stored in one by mistake.
+//
+//    AiCallLog           one row per `callStructured` call, however it
+//                        ended (OK, REPAIRED, … KILLED). Append-only: a
+//                        trigger refuses UPDATE and DELETE for every role,
+//                        except the deletes the workspace's and the book's
+//                        cascades make and the clearing of `requestedById`
+//                        when that person's account is deleted.
+//    AiSpendMonth        a workspace's settled spend per UTC calendar
+//                        month: what the spend ceiling counts. Kept apart
+//                        from the call log so that a book's purge, which
+//                        deletes the book's calls, never lowers a month.
+//    AiSpendReservation  a call's worst case, reserved before it is sent
+//                        and removed when it settles, so two concurrent
+//                        calls cannot both pass a ceiling only one fits
+//                        under. A reservation expires (`expiresAt`) if its
+//                        process dies, and is then no longer counted.
+//
+//  All three are workspace-scoped, under the workspace's row-level
+//  security (migration 20261119500000_ai_model_layer), written only by
+//  src/app-layer/repositories/ai-call.repository.ts.
+// ─────────────────────────────────────────────────────────────────
+
+/// One model call: what it was for, what it ran on, what it cost, how it ended.
+model AiCallLog {
+  /// The call's id, drawn by the model layer before anything is sent.
+  id                  String        @id
+  workspaceId         String
+  /// The book the call was about, when it was about one.
+  bookId              String?
+  /// The person whose request made the call; NULL once their account is deleted.
+  requestedById       String?
+  /// The feature the call served (`question-generation`).
+  purpose             String
+  /// The prompt template's id and version (roadmap rule 9).
+  promptId            String
+  promptVersion       String
+  tier                AiModelTier
+  /// The model id the tier resolved to.
+  model               String
+  /// `json_schema` or `single_tool`; NULL when the call ended before a request was built.
+  outputMode          String?
+  /// Requests sent: 0 (refused before any), 1, or 2 (one repair).
+  attempts            Int
+  inputTokens         Int
+  outputTokens        Int
+  cacheReadTokens     Int
+  cacheWriteTokens    Int
+  /// What the call cost, micro-US-dollars, rounded up (src/lib/ai/pricing.ts).
+  costMicroUsd        Int
+  /// True when the provider never reported usage for a request that left
+  /// (an abort or a timeout mid-stream) and the input's worst case was charged.
+  costEstimated       Boolean
+  /// The worst case the spend ceiling was asked about.
+  worstCaseMicroUsd   Int
+  durationMs          Int
+  outcome             AiCallOutcome
+  /// Why a call that did not end OK ended as it did (`AI_ERROR_CODES`).
+  errorCode           String?
+  /// The guard's rule ids that fired, in and out. Ids, never text.
+  guardRuleIds        String[]
+  /// True when the guard flagged the call: its answer needs a person.
+  guardReviewRequired Boolean
+  startedAt           DateTime
+  createdAt           DateTime      @default(now())
+
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  book        Book?     @relation(fields: [workspaceId, bookId], references: [workspaceId, id], onDelete: Cascade)
+  requestedBy User?     @relation(fields: [requestedById], references: [id], onDelete: SetNull)
+
+  /// A workspace's calls by time (a month's calls, a usage page).
+  @@index([workspaceId, startedAt])
+  /// A book's calls, and the book's cascade.
+  @@index([workspaceId, bookId])
+  /// A person's calls, and the clearing of the link when they are deleted.
+  @@index([requestedById])
+}
+
+/// A workspace's settled model spend in one UTC calendar month.
+model AiSpendMonth {
+  workspaceId   String
+  /// The first day of the month (UTC).
+  periodStart   DateTime @db.Date
+  spentMicroUsd BigInt   @default(0)
+  updatedAt     DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@id([workspaceId, periodStart])
+}
+
+/// A call's worst-case cost, held against the month's ceiling while it runs.
+model AiSpendReservation {
+  /// The call's id (`AiCallLog.id` once it settles).
+  id             String   @id
+  workspaceId    String
+  periodStart    DateTime @db.Date
+  amountMicroUsd Int
+  /// Past this instant the reservation is no longer counted (its process died).
+  expiresAt      DateTime
+  createdAt      DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  /// The live reservations of a workspace's month.
+  @@index([workspaceId, periodStart, expiresAt])
+}
