@@ -188,6 +188,23 @@ export function fieldViews(kind: BibleElementKind, values: ReadonlyMap<string, F
 
 // ─── Versions ───────────────────────────────────────────────────────
 
+/**
+ * The optimistic check (Phase 1.H): a save names the version its edit is
+ * based on, and is refused when the element has moved past it — someone else
+ * saved in between, and applying this edit would overwrite theirs unseen.
+ * Called UNDER the element's lock (`BibleElementRepository.lock`), so the
+ * latest number cannot move between this check and the save's own version.
+ * Answered 409 `VERSION_CONFLICT` with the version the element is now at;
+ * nothing is written. Every request that saves an element names its base
+ * (`BaseVersionInput` is required), so there is no unchecked path.
+ */
+export async function assertBaseVersion(db: PrismaTx, ctx: WorkspaceRequestContext, elementId: string, baseVersion: number): Promise<void> {
+    const currentVersion = await BibleVersionRepository.latestNumber(db, ctx.workspaceId, elementId);
+    if (currentVersion !== baseVersion) {
+        throw new ConflictError('This element was saved by someone else since your edit began.', { reason: 'VERSION_CONFLICT', currentVersion, baseVersion });
+    }
+}
+
 export interface VersionMeta {
     source: BibleVersionSource;
     /** The author's words, sanitised here; or the product's own (a restore). */

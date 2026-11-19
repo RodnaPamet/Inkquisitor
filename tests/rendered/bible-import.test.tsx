@@ -7,6 +7,7 @@
  */
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { axe } from 'jest-axe';
+import { Toaster } from 'sonner';
 
 const refresh = jest.fn();
 jest.mock('next/navigation', () => ({
@@ -18,7 +19,7 @@ jest.mock('next/navigation', () => ({
 import { BookBoard } from '@/components/bible/BookBoard';
 import type { BookView, BundleImportReport, ConceptNoteReport } from '@/lib/bible/api-client';
 import { kindSummaries } from '@/lib/bible/ui-model';
-import { API, mockFetch, SLUG } from '../helpers/bible-ui';
+import { API, boardOf, mockFetch, SLUG } from '../helpers/bible-ui';
 
 const BOOK: BookView = {
     id: 'book_1',
@@ -48,7 +49,7 @@ const REPORT: BundleImportReport = {
 beforeEach(() => refresh.mockClear());
 
 function board(canEdit = true) {
-    return render(<BookBoard workspaceSlug={SLUG} book={BOOK} kinds={kindSummaries()} elements={[]} canEdit={canEdit} />);
+    return render(<BookBoard workspaceSlug={SLUG} book={BOOK} kinds={kindSummaries()} board={boardOf([])} canEdit={canEdit} />);
 }
 
 function openImport() {
@@ -63,12 +64,68 @@ function chooseBundle(dialog: HTMLElement, name = 'salt-roads-bible.zip') {
 }
 
 describe('export', () => {
+    // A fetch answering as the export routes do: the file with its name, or a JSON refusal.
+    function exportFetch(answer: { status: number; body: BlobPart; type: string; disposition?: string }) {
+        const calls: string[] = [];
+        global.fetch = jest.fn(async (input: RequestInfo | URL) => {
+            calls.push(String(input));
+            return {
+                ok: answer.status < 300,
+                status: answer.status,
+                headers: { get: (h: string) => (h.toLowerCase() === 'content-disposition' ? (answer.disposition ?? null) : answer.type) },
+                blob: async () => new Blob([answer.body], { type: answer.type }),
+                json: async () => JSON.parse(String(answer.body)),
+            };
+        }) as unknown as typeof fetch;
+        return calls;
+    }
+    let clicked: Array<{ href: string; download: string }>;
+    beforeEach(() => {
+        clicked = [];
+        URL.createObjectURL = jest.fn(() => 'blob:export');
+        URL.revokeObjectURL = jest.fn();
+        jest.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) {
+            clicked.push({ href: this.getAttribute('href') ?? '', download: this.download });
+        });
+    });
+    afterEach(() => jest.restoreAllMocks());
+
     it('offers both downloads to a reader, and no import', () => {
         board(false);
-        expect(screen.getByRole('link', { name: 'Export Markdown' })).toHaveAttribute('href', `${API}/export/bundle`);
-        expect(screen.getByRole('link', { name: 'Export PDF' })).toHaveAttribute('href', `${API}/export/pdf`);
-        expect(screen.getByRole('link', { name: 'Export PDF' })).toHaveAttribute('download');
+        expect(screen.getByRole('button', { name: 'Export Markdown' })).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Export PDF' })).toBeInTheDocument();
         expect(screen.queryByRole('button', { name: 'Import' })).toBeNull();
+    });
+
+    it('saves the file the API answers, under the name it gives', async () => {
+        const calls = exportFetch({ status: 200, body: 'PK', type: 'application/zip', disposition: 'attachment; filename="the-salt-roads-bible.zip"' });
+        render(
+            <>
+                <BookBoard workspaceSlug={SLUG} book={BOOK} kinds={kindSummaries()} board={boardOf([])} canEdit={false} />
+                <Toaster />
+            </>,
+        );
+        fireEvent.click(screen.getByRole('button', { name: 'Export Markdown' }));
+        await waitFor(() => expect(clicked).toEqual([{ href: 'blob:export', download: 'the-salt-roads-bible.zip' }]));
+        expect(calls).toEqual([`${API}/export/bundle`]);
+    });
+
+    it('shows a refusal instead of saving the JSON error as the export (#27)', async () => {
+        exportFetch({
+            status: 413,
+            body: JSON.stringify({ error: { code: 'PAYLOAD_TOO_LARGE', message: 'x', details: { reason: 'EXPORT_TOO_LARGE' } } }),
+            type: 'application/json',
+        });
+        render(
+            <>
+                <BookBoard workspaceSlug={SLUG} book={BOOK} kinds={kindSummaries()} board={boardOf([])} canEdit={false} />
+                <Toaster />
+            </>,
+        );
+        fireEvent.click(screen.getByRole('button', { name: 'Export PDF' }));
+        expect(await screen.findByText('This bible is too large to export as one file.')).toBeInTheDocument();
+        expect(clicked).toEqual([]);
+        expect(URL.createObjectURL).not.toHaveBeenCalled();
     });
 });
 

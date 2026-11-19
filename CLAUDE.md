@@ -28,6 +28,7 @@ npm run lint              # eslint . (flat config, eslint.config.mjs)
 npm run typecheck         # tsc --noEmit, then packages/ui alone (no `@/` imports there)
 npm test                  # Jest, unit (tests/unit, tests/guards, eslint-rules/__tests__) + rendered projects — no DB, no network
 npm run test:integration  # Jest, integration project (tests/integration) — real PostgreSQL and Redis
+npm run test:load         # the bible load test at full size (2,000 elements, 20,000 versions; CI runs 400 / 4,000)
 npm run test:e2e          # Playwright against `next start` on :3100 (E2E_PORT moves it; build first)
 npm run db:generate       # prisma generate (also the postinstall step)
 npm run db:migrate        # prisma migrate dev
@@ -168,6 +169,18 @@ src/app-layer/usecases/      → bible-export (bundle, PDF), bible-import (bundl
 src/app/api/w/[workspaceSlug]/books/[bookId]/export/{bundle,pdf}, import/{bundle,concept-note}
 src/lib/http/bounded-body.ts → readBoundedBytes: the bounded body read readJsonBody shares
 src/components/bible/        → ImportModal, import-messages; export links on BookBoard
+```
+
+Phase 1.H (hardening Phase 1) added:
+
+```
+prisma/migrations/…_bible_hardening → Book.deletedAt, the list indexes, the purge-window trigger
+src/lib/bible/book-retention.ts    → the 30-day restore window (client-safe)
+src/app-layer/usecases/            → book-purge (the daily job's work), bible-pages (what each page reads)
+src/app/api/w/[workspaceSlug]/deleted-books/** → the recently deleted list, restore
+src/components/bible/              → DeleteBookModal, DeletedBooksList, use-export-download
+src/app/w/[workspaceSlug]/deleted-books/ → the OWNER's Recently deleted page
+tests/guards/schema-index-coverage, find-many-bounded; tests/helpers/prisma-schema-models, bible-load
 ```
 
 ## Rules every change obeys
@@ -362,7 +375,8 @@ only under zero-retention terms (D5).
   version table is append-only by trigger (P0001 `BIBLE_VERSION_APPEND_ONLY`):
   only its book's cascade deletes a version, and only an author's deletion
   clears `authorId`; an element's own deletion leaves its history with the
-  book. Permissions are `bible.view` (all) and `bible.edit` (OWNER, EDITOR).
+  book. Permissions are `bible.view` (all), `bible.edit` (OWNER, EDITOR) and
+  `books.delete` (OWNER: delete, list deleted, restore; Phase 1.H).
 - **The bible UI (Phase 1.2).** A bible page is a server component that
   reads through the usecases (`getWorkspacePageCtx`, `orNotFound` for a 404)
   and hands plain data to one client component in `src/components/bible/`;
@@ -424,13 +438,51 @@ only under zero-retention terms (D5).
   matched by slug and saved through the versioned save with source `IMPORT`,
   so a repeat import writes nothing; the file is the element's whole state
   over the template keys its writer knew (the manifest's `templateFields`);
-  nothing is deleted. Export refuses (`EXPORT_TOO_LARGE`) a bundle `readZip`
+  nothing is deleted. Duplicate YAML keys are found by a set per mapping, never
+  the library's quadratic `uniqueKeys`; the parse yields to the event loop
+  after every file, and the bounds are 2 MiB a file and 24 MiB a bundle,
+  inflated (Phase 1.H); `readZip` refuses a local header that disagrees with
+  the central directory; `book.md` is read only when its details are applied.
+  Export refuses (`EXPORT_TOO_LARGE`) a bundle `readZip`
   would refuse under the import's limits, so every export imports back. A
   concept note is a RESEARCH element's `notes`. Uploads are never stored as
   files. A new refusal code goes in `IMPORT_REASONS` and
   `bible.transfer.reasons` (`tests/unit/bible/import-reasons.test.ts`).
   `pdfkit` is a server external package (its font metrics load from
   node_modules); PDF text goes through `toWinAnsi` and `breakLongRuns`.
+- **Hardening the bible (Phase 1.H).** CONCURRENT EDITS: every element
+  change, fields save and restore MUST name `baseVersion` (an omitted one is a
+  400, so no request skips the check); under the element's
+  lock a newer version refuses it 409 `VERSION_CONFLICT` with
+  `currentVersion`, writing nothing (`assertBaseVersion`). The imports save
+  over whatever stands (a file is its element's whole state), but compare
+  with the element read UNDER its lock, never the row looked up before it. The UI
+  (`useElementAutosave`) holds a refused batch and sends nothing more
+  until the author reloads or keeps their edits; never retry a save over a
+  newer version unasked, and re-base after a restore or reload
+  (`setBaseVersion`). Held edits are never sent on the way out: an in-app link
+  asks first, and any other navigation keeps them in memory for the tab until
+  the element's page is opened again. DELETING A BOOK is soft and `books.delete` (OWNER):
+  `deletedAt` hides it from every list and route (`BookRepository.find` and
+  `BibleElementRepository.find` read live books only; a usecase reaches a
+  book's rows through `requireBook`/`requireElement`), the OWNER restores it
+  for `BOOK_RESTORE_DAYS` (30), and only the daily `book-purge` job deletes
+  it — the trigger `book_delete_only_when_purge_due` refuses any earlier
+  delete for every role except the workspace's cascade (comparing `deletedAt`,
+  UTC without a zone, with `now() AT TIME ZONE 'UTC'`, never the session's
+  zone). LISTS are bounded and
+  honest: every `findMany` has a `take` (`find-many-bounded` guard); a capped
+  read asks one more and says it was cut (`truncated`, `relationsTruncated`,
+  `nextCursor`); the board reads counts and filled fields by aggregate and the
+  first 25 entries a kind in one query (the filled fields per element through
+  a `LATERAL … OFFSET 0` index probe: as a plain join, a book the planner's
+  statistics did not know yet got a quadratic nested loop); the element list is a keyset page by
+  name (`listElements`: `kind`/`kinds`, `q`, `after`), which the relation
+  picker searches; list rows carry no encrypted column. Every model a list
+  query reads has its index curated in `schema-index-coverage` (workspace-led
+  indexes, indexed foreign keys). A page's reads live in `bible-pages.ts`, and
+  the load test (`bible-load.test.ts`) holds them to 300 ms at p95.
+  EXPORT downloads go through `bibleDownload` (a refusal is shown, never saved).
 - **Sanitising author text.** Every author-text write sanitises at the
   usecase layer before it is stored: plain text through `plainLine` /
   `plainBlock` (`src/lib/bible/text.ts`, over `sanitizePlainText`), rich text
@@ -444,7 +496,9 @@ only under zero-retention terms (D5).
   An encrypted-manifest field must be classified in
   `tests/guards/encrypted-field-sanitiser-coverage.test.ts` with the sanitiser
   its writers call; that guard fails for a field, or a new caller of its
-  repository's write method, without one, and for a second Prisma write path.
+  repository's write method, without one, for a second Prisma write path, and
+  for any other write method of the repository whose `data` names the field
+  or cannot be read (Phase 1.H).
   `sanitize-html` and its parser are ESM: the unit and integration Jest
   projects transform them (`NODE_ESM_ALLOW_LIST` in `jest.config.js`).
 - **Request bodies.** A route reads its body with `readJsonBody(req)`
@@ -530,6 +584,12 @@ has the design. Reach for the primitives, never hand-roll a replacement:
   components read `useOptionalWorkspace()` and render a signed-out state for
   `null` (the dev kitchen sink). The command palette is mounted above that
   provider and reads the slug from the URL.
+- **`<RichTextEditor>`** reports edits through `onChange` and a mode switch
+  through `onModeChange` (never an edit); `disabled` disables every toolbar
+  button. The detail layout's tabs are one tab stop with arrow keys (WAI-ARIA
+  tabs). `<InitialsAvatar>` paints its initials from `data-initials`, so a
+  control holding one is named by its label alone (axe label-in-name).
+  Muted, not subtle, text on cards (contrast; the E2E axe pass checks it).
 - **UI strings** go through next-intl (`useTranslations`), from
   `messages/en.json`; the locale is a cookie (`inkquisitor_locale`), no URL
   routing. Add only keys something reads.
@@ -555,6 +615,11 @@ has the design. Reach for the primitives, never hand-roll a replacement:
 - **Integration fixtures**: `tests/helpers/workspaces.ts` creates accounts
   through the real provisioning path, with unique emails; never clean
   `AuditLog` (it is append-only by trigger).
+- **Accessibility** (`tests/e2e/bible-a11y.spec.ts`): axe (WCAG 2.1 A/AA,
+  `@axe-core/playwright`, after entrance animations finish) on every bible page
+  and dialog, and a keyboard-only walk (create, edit, relate, restore) that
+  moves focus with Tab and acts with keys alone. A new bible page or dialog
+  joins the axe list.
 - **E2E** (`tests/e2e`): Playwright against a production build, against the
   database `DATABASE_URL` names (migrations applied), on `E2E_PORT` (3100).
   `production-refusal.spec.ts` starts a second server on port 0 without the

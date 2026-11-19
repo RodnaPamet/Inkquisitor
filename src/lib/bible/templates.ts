@@ -64,6 +64,30 @@ export const RAW_TEMPLATES: Readonly<Record<BibleKind, unknown>> = Object.freeze
     CUSTOM: custom,
 });
 
+/**
+ * Pairs of relation declarations a lookup by `(the two elements, type key)`
+ * could not tell apart (Phase 1.H, #27): two kinds K1 and K2 that each declare
+ * the key, where K1's declaration reaches K2 and K2's reaches K1. An element
+ * of each could then be related "by that key" under either declaration, and a
+ * symmetric lookup over the unordered pair (`findPair`, the
+ * `BibleRelation_symmetric_pair_key` index) would take one for the other.
+ * The schema's rule that a template targets no EARLIER kind already makes
+ * this impossible; this check says so where the lookup depends on it, and
+ * holds if that rule is ever relaxed.
+ */
+export function relationLookupCollisions(templates: Readonly<Record<BibleKind, { relationTypes: readonly RelationTypeDef[] }>>): string[] {
+    const out: string[] = [];
+    for (const [i, k1] of BIBLE_KINDS.entries()) {
+        for (const k2 of BIBLE_KINDS.slice(i + 1)) {
+            for (const d1 of templates[k1].relationTypes) {
+                const d2 = templates[k2].relationTypes.find((r) => r.key === d1.key);
+                if (d2 && d1.targetKinds.includes(k2) && d2.targetKinds.includes(k1)) out.push(`${d1.key}: ${k1} and ${k2}`);
+            }
+        }
+    }
+    return out;
+}
+
 /** Parse every raw template, refusing one whose `kind` is not the slot it is filed under. */
 export function loadTemplates(raw: Readonly<Record<BibleKind, unknown>>): Readonly<Record<BibleKind, BibleTemplate>> {
     const out = {} as Record<BibleKind, BibleTemplate>;
@@ -77,6 +101,8 @@ export function loadTemplates(raw: Readonly<Record<BibleKind, unknown>>): Readon
         const sorted = [...parsed.data.fields].sort((a, b) => a.order - b.order);
         out[kind] = deepFreeze({ ...parsed.data, kind, fields: sorted });
     }
+    const collisions = relationLookupCollisions(out);
+    if (collisions.length > 0) throw new Error(`bible templates declare a relation key two kinds could each hold between the same two elements: ${collisions.join('; ')}`);
     return Object.freeze(out);
 }
 

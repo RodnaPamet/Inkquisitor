@@ -83,10 +83,10 @@ it('an OWNER walks the whole bible through the routes, and the audit trail holds
     const elementId = str(char.json, 'element.id');
     const guild = str((await call(elements.POST, 'POST', { bookId }, { kind: 'FACTION', name: 'Guild' })).json, 'element.id');
 
-    const saved = await call(fields.PUT, 'PUT', { bookId, elementId }, { fields: [{ key: 'want', value: `want ${MARK}` }] });
+    const saved = await call(fields.PUT, 'PUT', { bookId, elementId }, { fields: [{ key: 'want', value: `want ${MARK}` }], baseVersion: 1 });
     expect(saved.status).toBe(200);
     expect(at(saved.json, 'element.versionNumber')).toBe(2);
-    expect(at((await call(element.PATCH, 'PATCH', { bookId, elementId }, { status: 'SETTLED' })).json, 'element.status')).toBe('SETTLED');
+    expect(at((await call(element.PATCH, 'PATCH', { bookId, elementId }, { status: 'SETTLED', baseVersion: 2 })).json, 'element.status')).toBe('SETTLED');
 
     const rel = await call(relations.POST, 'POST', { bookId }, { fromElementId: elementId, toElementId: guild, type: 'member_of', note: `note ${MARK}` });
     expect(rel.status).toBe(201);
@@ -99,7 +99,7 @@ it('an OWNER walks the whole bible through the routes, and the audit trail holds
     expect(at((await call(version.GET, 'GET', { bookId, elementId, versionNumber: '1' })).json, 'version.snapshot.fields')).toEqual([
         { key: 'role', order: 1, value: `role ${MARK}` },
     ]);
-    const restored = await call(restore.POST, 'POST', { bookId, elementId, versionNumber: '1' });
+    const restored = await call(restore.POST, 'POST', { bookId, elementId, versionNumber: '1' }, { baseVersion: 3 });
     expect(restored.status).toBe(201);
     expect(at(restored.json, 'restore.version')).toMatchObject({ versionNumber: 4, restoredFromVersion: 1 });
 
@@ -127,7 +127,7 @@ it('an OWNER walks the whole bible through the routes, and the audit trail holds
     }
     expect(JSON.stringify(rows)).not.toContain(MARK);
     const deleted = rows.find((r) => r.action === 'BOOK_DELETED')?.detailsJson;
-    expect(deleted).toEqual({ elements: 1, relations: 0, versions: 5 });
+    expect(deleted).toEqual({ elements: 1, relations: 0, versions: 5, restorableUntil: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/) });
 });
 
 it('an EDITOR writes the bible', async () => {
@@ -165,10 +165,10 @@ describe('a READER', () => {
         const writes = [
             () => createBook(rctx, { title: 'x' }),
             () => createElement(rctx, seeded.bookId, { kind: 'PLOT', name: 'x' }),
-            () => updateElementFields(rctx, seeded.bookId, seeded.characterId, { fields: [{ key: 'want', value: 'x' }] }),
+            () => updateElementFields(rctx, seeded.bookId, seeded.characterId, { fields: [{ key: 'want', value: 'x' }], baseVersion: 1 }),
             () => addRelation(rctx, seeded.bookId, { fromElementId: seeded.characterId, toElementId: seeded.factionId, type: 'related_to' }),
             () => removeRelation(rctx, seeded.bookId, seeded.relationId),
-            () => restoreVersion(rctx, seeded.bookId, seeded.characterId, 1),
+            () => restoreVersion(rctx, seeded.bookId, seeded.characterId, 1, { baseVersion: 1 }),
         ];
         for (const w of writes) await expect(w()).rejects.toBeInstanceOf(ForbiddenError);
         expect(await denied()).toBe(before + writes.length);
@@ -213,7 +213,7 @@ describe('malformed requests', () => {
         const tooBig = await call(fields.PUT, 'PUT', { bookId, elementId: el.id }, huge);
         expect(tooBig.status).toBe(413);
         expect(at(tooBig.json, 'error.details')).toMatchObject({ reason: 'BODY_TOO_LARGE' });
-        const oversizedValue = { fields: [{ key: 'wound', value: 'x'.repeat(rawStringMax() + 1) }] };
+        const oversizedValue = { fields: [{ key: 'wound', value: 'x'.repeat(rawStringMax() + 1) }], baseVersion: 1 };
         expect((await call(fields.PUT, 'PUT', { bookId, elementId: el.id }, oversizedValue)).status).toBe(400);
         expect(await prisma.bibleEntryVersion.count({ where: { elementId: el.id } })).toBe(1);
     });
@@ -221,7 +221,7 @@ describe('malformed requests', () => {
     it('a refused field batch names every refusal', async () => {
         session.userId = owner.userId;
         const el = await createElement(workspaceCtx(owner), bookId, { kind: 'MOOD', name: 'Dread' });
-        const res = await call(fields.PUT, 'PUT', { bookId, elementId: el.id }, { fields: [{ key: 'intensity', value: 9 }] });
+        const res = await call(fields.PUT, 'PUT', { bookId, elementId: el.id }, { fields: [{ key: 'intensity', value: 9 }], baseVersion: 1 });
         expect(res.status).toBe(400);
         expect(at(res.json, 'error.details')).toEqual({ reason: 'FIELD_VALUES_REFUSED', fields: [{ key: 'intensity', reason: 'OUT_OF_RANGE' }] });
     });

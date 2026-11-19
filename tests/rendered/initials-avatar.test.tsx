@@ -44,14 +44,20 @@ describe('getInitials', () => {
 });
 
 describe('<InitialsAvatar>', () => {
-    it('renders the derived initials (name mode)', () => {
-        render(<InitialsAvatar value="Ada Lovelace" />);
-        expect(screen.getByText('AL')).toBeInTheDocument();
+    // The glyphs are painted from `data-initials` by a `::before`, never
+    // written as text: text in a named control's subtree reads as a visible
+    // label its name must contain (axe label-content-name-mismatch, 1.H).
+    it('renders the derived initials (name mode), painted rather than written as text', () => {
+        const { container } = render(<InitialsAvatar value="Ada Lovelace" />);
+        const avatar = container.firstChild as HTMLElement;
+        expect(avatar).toHaveAttribute('data-initials', 'AL');
+        expect(avatar.className).toContain('before:content-[attr(data-initials)]');
+        expect(avatar.textContent).toBe('');
     });
 
     it('renders slug initials in slug mode', () => {
-        render(<InitialsAvatar value="acme-corp" mode="slug" />);
-        expect(screen.getByText('AC')).toBeInTheDocument();
+        const { container } = render(<InitialsAvatar value="acme-corp" mode="slug" />);
+        expect(container.firstChild).toHaveAttribute('data-initials', 'AC');
     });
 
     it('is decorative — aria-hidden, so the parent control owns the label', () => {
@@ -92,13 +98,13 @@ describe('<InitialsAvatar>', () => {
 
 describe('<InitialsAvatar> — image-backed (avatar roadmap P2)', () => {
     it('renders no <img> when imageUrl is absent — initials only', () => {
-        render(<InitialsAvatar value="Ada Lovelace" />);
+        const { container } = render(<InitialsAvatar value="Ada Lovelace" />);
         expect(screen.queryByTestId('initials-avatar-image')).toBeNull();
-        expect(screen.getByText('AL')).toBeInTheDocument();
+        expect(container.firstChild).toHaveAttribute('data-initials', 'AL');
     });
 
     it('renders the image at the supplied URL when imageUrl is given', () => {
-        render(
+        const { container } = render(
             <InitialsAvatar
                 value="Ada Lovelace"
                 imageUrl="https://cdn.example.com/ada.jpg"
@@ -106,12 +112,12 @@ describe('<InitialsAvatar> — image-backed (avatar roadmap P2)', () => {
         );
         const img = screen.getByTestId('initials-avatar-image');
         expect(img).toHaveAttribute('src', 'https://cdn.example.com/ada.jpg');
-        // Initials stay in the DOM underneath as the fallback layer.
-        expect(screen.getByText('AL')).toBeInTheDocument();
+        // Initials stay underneath as the fallback layer.
+        expect(container.firstChild).toHaveAttribute('data-initials', 'AL');
     });
 
     it('falls back to initials when the image fails to load', () => {
-        render(
+        const { container } = render(
             <InitialsAvatar
                 value="Ada Lovelace"
                 imageUrl="https://cdn.example.com/broken.jpg"
@@ -122,12 +128,12 @@ describe('<InitialsAvatar> — image-backed (avatar roadmap P2)', () => {
         // broken-image glyph; the initials beneath carry through.
         fireEvent.error(img);
         expect(screen.queryByTestId('initials-avatar-image')).toBeNull();
-        expect(screen.getByText('AL')).toBeInTheDocument();
+        expect(container.firstChild).toHaveAttribute('data-initials', 'AL');
     });
 
     it('a null imageUrl is treated as initials-only', () => {
-        render(<InitialsAvatar value="Cher" imageUrl={null} />);
+        const { container } = render(<InitialsAvatar value="Cher" imageUrl={null} />);
         expect(screen.queryByTestId('initials-avatar-image')).toBeNull();
-        expect(screen.getByText('C')).toBeInTheDocument();
+        expect(container.firstChild).toHaveAttribute('data-initials', 'C');
     });
 });

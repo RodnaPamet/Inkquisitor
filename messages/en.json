@@ -147,7 +147,10 @@
         "inlineCode": "Inline code",
         "pageBreak": "Page break",
         "linkUrlPrompt": "Link URL (https://… or mailto:…)",
-        "insertLink": "Insert link"
+        "insertLink": "Insert link",
+        "modeWysiwyg": "WYSIWYG",
+        "modeMarkdown": "Markdown",
+        "markdownAria": "Text (Markdown)"
     },
     "ui": {
         "combobox": {
@@ -275,7 +278,8 @@
         "meta": {
             "books": "Books — Inkquisitor",
             "book": "Book — Inkquisitor",
-            "element": "Bible entry — Inkquisitor"
+            "element": "Bible entry — Inkquisitor",
+            "deletedBooks": "Recently deleted books"
         },
         "stage": {
             "CONCEPT": "Concept",
@@ -309,7 +313,9 @@
                 "stage": "Stage",
                 "genre": "Genre",
                 "updated": "Updated"
-            }
+            },
+            "recentlyDeleted": "Recently deleted",
+            "truncated": "Showing the {count} most recently updated books"
         },
         "createBook": {
             "title": "New book",
@@ -331,7 +337,11 @@
             "addOfKind": "Add {kind}",
             "completenessOf": "{kind} completeness",
             "fieldsFraction": "{filled}/{total}",
-            "notAssessed": "Not assessed"
+            "notAssessed": "Not assessed",
+            "moreFailed": "More entries could not be loaded. Try again.",
+            "entriesOf": "{kind} entries",
+            "showing": "Showing {shown} of {count}",
+            "showMore": "Show more"
         },
         "completeness": {
             "notStarted": "Not started",
@@ -366,7 +376,14 @@
             "deleteFailed": "The entry could not be deleted.",
             "undo": "Undo",
             "restored": "Restored version {from} as version {to}",
-            "restoreBlocked": "Save your changes before restoring a version."
+            "restoreBlocked": "Save your changes before restoring a version.",
+            "conflictTitle": "Someone else saved this entry",
+            "conflictBody": "It is now at version {version}, saved after you opened it. Your latest edits are not saved yet. Reload to see their version and lose your unsaved edits, or keep your edits and save them over it.",
+            "conflictReload": "Reload their version",
+            "conflictKeep": "Keep my edits",
+            "conflictReloadFailed": "The entry could not be reloaded. Try again.",
+            "conflictLeave": "Someone else saved this entry after your edits began, and your edits are not saved. Leave this page and discard them?",
+            "relationsTruncated": "Showing the first 1,000 relations"
         },
         "details": {
             "title": "Entry",
@@ -397,7 +414,8 @@
             "saving": "Saving…",
             "saved": "All changes saved",
             "error": "Not saved: {reason}",
-            "retry": "Retry"
+            "retry": "Retry",
+            "conflict": "Not saved: someone else saved first"
         },
         "relations": {
             "title": "Relations",
@@ -414,7 +432,9 @@
             "remove": "Remove \"{label} {name}\"",
             "removed": "Removed \"{label} {name}\"",
             "removeFailed": "The relation could not be removed.",
-            "undo": "Undo"
+            "undo": "Undo",
+            "addedNotShown": "The relation was added, but the list could not be refreshed. Reload the page to see it.",
+            "searchFailed": "The search failed. Type again to retry."
         },
         "history": {
             "compareTitle": "Compare versions",
@@ -439,7 +459,9 @@
             "FIELD_VALUES_REFUSED": "Some values were not accepted.",
             "EMPTY": "A required value is empty.",
             "TOO_LONG": "A value is too long.",
-            "KIND_MISMATCH": "That version belongs to an entry of another kind."
+            "KIND_MISMATCH": "That version belongs to an entry of another kind.",
+            "VERSION_CONFLICT": "Someone else saved this entry since you opened it. Reload it first.",
+            "CURSOR_INVALID": "That list could not be continued. Reload the page."
         },
         "transfer": {
             "exportBundle": "Export Markdown",
@@ -544,6 +566,39 @@
                 "NOT_AN_OPTION": "This value is not one of the field's choices.",
                 "NOT_A_WHOLE_NUMBER": "This field takes a whole number.",
                 "OUT_OF_RANGE": "This number is outside the field's scale of 1 to 5."
+            },
+            "exportTooLarge": "This bible is too large to export as one file.",
+            "exportFailed": "The export could not be downloaded. Try again."
+        },
+        "deleteBook": {
+            "open": "Delete book",
+            "title": "Delete “{title}”?",
+            "description": "The book leaves your books at once. You can restore it from Recently deleted for {days} days, until {date}; after that it and its whole history are deleted for good.",
+            "exportFirst": "Export it first",
+            "exportFirstHelp": "Keep a copy before you delete: the Markdown bundle imports back into any book; the PDF is for reading.",
+            "confirmLabel": "Type the book’s title to confirm: {title}",
+            "confirmHelp": "Delete stays unavailable until the title matches exactly.",
+            "cancel": "Cancel",
+            "submit": "Delete book",
+            "deleted": "“{title}” was deleted. You can restore it from Recently deleted until {date}."
+        },
+        "deletedBooks": {
+            "title": "Recently deleted",
+            "breadcrumbBooks": "Books",
+            "description": "Books deleted in the last {days} days. Restore one to bring it back whole; after its date it is deleted for good.",
+            "truncated": "Showing the {count} most recently deleted books from the last {days} days",
+            "empty": "No recently deleted books",
+            "emptyHint": "A deleted book stays here for {days} days.",
+            "restore": "Restore",
+            "restoreAria": "Restore {title}",
+            "restored": "“{title}” was restored.",
+            "resourceSingular": "deleted book",
+            "resourcePlural": "deleted books",
+            "columns": {
+                "title": "Title",
+                "deleted": "Deleted",
+                "until": "Restorable until",
+                "action": "Restore"
             }
         }
     }

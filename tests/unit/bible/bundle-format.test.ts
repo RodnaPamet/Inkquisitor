@@ -133,7 +133,23 @@ describe('reading frontmatter', () => {
 
     it('refuses a duplicate key and broken YAML', () => {
         expect(refusal(() => parseYamlFrontmatter('a: 1\na: 2\n'))).toBe('YAML_INVALID');
+        expect(refusal(() => parseYamlFrontmatter('a:\n  b: 1\n  c: 2\n  b: 3\n'))).toBe('YAML_INVALID');
+        expect(refusal(() => parseYamlFrontmatter('a: [{x: 1, x: 2}]\n'))).toBe('YAML_INVALID');
+        expect(refusal(() => parseYamlFrontmatter('? [1]\n: 2\n'))).toBe('YAML_INVALID');
         expect(refusal(() => parseYamlFrontmatter('a: [1, 2\n'))).toBe('YAML_INVALID');
+        // A number and a string that print alike are one key of the object they become: refused, never collapsed.
+        expect(refusal(() => parseYamlFrontmatter('1: a\n"1": b\n'))).toBe('YAML_INVALID');
+    });
+
+    it('reads a huge mapping in linear time, a duplicate at its end still refused (1.H: the library check was quadratic)', () => {
+        // 60,000 keys: the library's own uniqueness check took ~4.9 s for 20,000 and grows with the square.
+        const keys = Array.from({ length: 60_000 }, (_, i) => `k${i}: [a, {x: 1}]`);
+        let started = Date.now();
+        expect(Object.keys(parseYamlFrontmatter(keys.join('\n')) as object)).toHaveLength(60_000);
+        expect(Date.now() - started).toBeLessThan(4_000);
+        started = Date.now();
+        expect(refusal(() => parseYamlFrontmatter([...keys, 'k7: again'].join('\n')))).toBe('YAML_INVALID');
+        expect(Date.now() - started).toBeLessThan(4_000);
     });
 
     it('reads plain values with the core schema: no YAML 1.1 surprises', () => {

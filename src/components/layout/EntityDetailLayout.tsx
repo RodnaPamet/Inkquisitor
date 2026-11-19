@@ -328,6 +328,29 @@ export function EntityDetailLayout<TKey extends string = string>({
                                 aria-selected={isActive}
                                 aria-controls={`tabpanel-${t.key}`}
                                 disabled={t.disabled}
+                                // One tab stop for the whole tablist (WAI-ARIA
+                                // tabs): the active tab; the arrow keys, Home
+                                // and End move between tabs and select them
+                                // (Phase 1.H, the keyboard-only walk).
+                                tabIndex={isActive ? 0 : -1}
+                                onKeyDown={(e) => {
+                                    const enabled = tabs.filter((x) => !x.disabled);
+                                    const at = enabled.findIndex((x) => x.key === t.key);
+                                    const to =
+                                        e.key === 'ArrowRight'
+                                            ? enabled[(at + 1) % enabled.length]
+                                            : e.key === 'ArrowLeft'
+                                              ? enabled[(at - 1 + enabled.length) % enabled.length]
+                                              : e.key === 'Home'
+                                                ? enabled[0]
+                                                : e.key === 'End'
+                                                  ? enabled[enabled.length - 1]
+                                                  : undefined;
+                                    if (!to || at < 0) return;
+                                    e.preventDefault();
+                                    onTabChange?.(to.key);
+                                    document.getElementById(`tab-${to.key}`)?.focus();
+                                }}
                                 className={cn(
                                     'px-4 py-2 text-sm font-medium transition border-b-2 whitespace-nowrap',
                                     isActive

@@ -304,8 +304,17 @@ interface ParsedBundle {
     elements: PreparedElement[];
 }
 
-/** Every entry of the archive classified, parsed and checked; every problem collected. */
-function parseBundle(entries: ReadonlyMap<string, Uint8Array>, wantBook: boolean, problems: Problems): ParsedBundle {
+/** Let the event loop serve other requests between two files' parses (Phase 1.H, #27). */
+const yieldToEventLoop = () => new Promise<void>((resolve) => setImmediate(resolve));
+
+/**
+ * Every entry of the archive classified, parsed and checked; every problem
+ * collected. Parsing is CPU-bound (about 1.5 µs a character of dense YAML), so
+ * it yields to the event loop after every file: one request's import holds
+ * the process for one file's parse at most (`BUNDLE_ZIP_LIMITS.maxEntryBytes`),
+ * never for the whole bundle.
+ */
+async function parseBundle(entries: ReadonlyMap<string, Uint8Array>, wantBook: boolean, problems: Problems): Promise<ParsedBundle> {
     let book: BundleBookFrontmatter | null = null;
     let templateFields: BundleManifest['templateFields'];
     const manifest = entries.get(MANIFEST_FILE);
@@ -330,7 +339,11 @@ function parseBundle(entries: ReadonlyMap<string, Uint8Array>, wantBook: boolean
     let elementFiles = 0;
     for (const [path, bytes] of [...entries].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) {
         if (path === MANIFEST_FILE || isDesktopLitter(path)) continue;
+        await yieldToEventLoop();
         if (path === BOOK_FILE) {
+            // Read only when it will be applied: book details not asked for are
+            // never parsed, so a book.md the import ignores cannot refuse it.
+            if (!wantBook) continue;
             const value = frontmatterValue(path, bytes, problems);
             if (value === undefined) continue;
             const parsed = BundleBookFrontmatter.safeParse(value);
@@ -437,18 +450,25 @@ async function applyElement(db: PrismaTx, ctx: WorkspaceRequestContext, bookId: 
         return { ...base, id: element.id, outcome: 'created', versionNumber: version.versionNumber };
     }
     await BibleElementRepository.lock(db, existing.id);
+    // Compared with the element as it stands UNDER its lock, never with the
+    // row read before it (Phase 1.H): a save that landed in between would
+    // otherwise make a column look already equal to the file, and the import
+    // would leave that save's value and report the element unchanged. Deleted
+    // in between, the file creates it again.
+    const current = await BibleElementRepository.find(db, ctx.workspaceId, bookId, existing.id);
+    if (!current) return applyElement(db, ctx, bookId, p, undefined);
     const wanted: ElementWrite = { name: p.name, status: p.status, summary: p.summary, customLabel: p.customLabel };
     const data: ElementWrite = {};
     for (const k of Object.keys(wanted) as Array<keyof ElementWrite>) {
-        if (wanted[k] !== existing[k]) Object.assign(data, { [k]: wanted[k] });
+        if (wanted[k] !== current[k]) Object.assign(data, { [k]: wanted[k] });
     }
     const columnsChanged = Object.keys(data).length > 0;
-    if (columnsChanged) await BibleElementRepository.update(db, ctx.workspaceId, bookId, existing.id, data);
-    const changedKeys = await writeFieldValues(db, ctx, existing, p.fields);
-    if (!columnsChanged && changedKeys.length === 0) return { ...base, id: existing.id, outcome: 'unchanged', versionNumber: null };
-    if (!columnsChanged) await BibleElementRepository.touch(db, ctx.workspaceId, bookId, existing.id);
-    const version = await recordVersion(db, ctx, bookId, existing.id, { source: 'IMPORT' });
-    return { ...base, id: existing.id, outcome: 'updated', versionNumber: version.versionNumber };
+    if (columnsChanged) await BibleElementRepository.update(db, ctx.workspaceId, bookId, current.id, data);
+    const changedKeys = await writeFieldValues(db, ctx, current, p.fields);
+    if (!columnsChanged && changedKeys.length === 0) return { ...base, id: current.id, outcome: 'unchanged', versionNumber: null };
+    if (!columnsChanged) await BibleElementRepository.touch(db, ctx.workspaceId, bookId, current.id);
+    const version = await recordVersion(db, ctx, bookId, current.id, { source: 'IMPORT' });
+    return { ...base, id: current.id, outcome: 'updated', versionNumber: version.versionNumber };
 }
 
 /** The bundle's book details as the book's write, sanitised by `bookWrite`, keeping only what differs. */
@@ -481,6 +501,8 @@ export async function importBibleBundle(
     deps: ImportDeps = {},
 ): Promise<BundleImportReport> {
     await assertPermission(ctx, 'bible.edit');
+    // A book that is not there (or deleted) is a 404 before the upload is read or scanned.
+    await runInWorkspaceContext(ctx, (db) => requireBook(db, ctx, bookId));
     const opts = BundleImportOptions.parse(options);
     if (bytes.byteLength === 0) throw new ValidationError('A bundle is required.', { reason: 'BODY_REQUIRED' });
     await assertUploadClean(ctx, bytes, deps, 'bundle');
@@ -495,7 +517,7 @@ export async function importBibleBundle(
         throw problems.refusal();
     }
     const wantBook = opts.bookDetails === 'apply';
-    const bundle = parseBundle(entries, wantBook, problems);
+    const bundle = await parseBundle(entries, wantBook, problems);
     if (problems.any) throw problems.refusal();
 
     try {
@@ -651,6 +673,8 @@ export function conceptNoteName(text: string): string {
 
 export async function importConceptNote(ctx: WorkspaceRequestContext, bookId: string, input: unknown, deps: ImportDeps = {}): Promise<ConceptNoteReport> {
     await assertPermission(ctx, 'bible.edit');
+    // A book that is not there (or deleted) is a 404 before the note is read or scanned.
+    await runInWorkspaceContext(ctx, (db) => requireBook(db, ctx, bookId));
     const parsed = ConceptNoteInput.parse(input);
     await assertUploadClean(ctx, new TextEncoder().encode(parsed.text), deps, 'concept-note');
 
@@ -678,9 +702,16 @@ export async function importConceptNote(ctx: WorkspaceRequestContext, bookId: st
     try {
         return await runInWorkspaceContext(ctx, async (db) => {
             await requireBook(db, ctx, bookId);
-            const [held] = await BibleElementRepository.findBySlugs(db, ctx.workspaceId, bookId, [slug]);
-            if (held && held.kind !== 'RESEARCH') {
+            const [found] = await BibleElementRepository.findBySlugs(db, ctx.workspaceId, bookId, [slug]);
+            if (found && found.kind !== 'RESEARCH') {
                 throw new ConflictError('Another kind of element of this book already uses that slug.', { reason: 'KIND_CONFLICT' });
+            }
+            // Compared under the element's lock, as the bundle's elements are
+            // (a save in between must not make the name look already equal).
+            let held: typeof found | undefined = found;
+            if (found) {
+                await BibleElementRepository.lock(db, found.id);
+                held = (await BibleElementRepository.find(db, ctx.workspaceId, bookId, found.id)) ?? undefined;
             }
             let report: ConceptNoteReport;
             if (!held) {
@@ -690,7 +721,6 @@ export async function importConceptNote(ctx: WorkspaceRequestContext, bookId: st
                 const version = await recordVersion(db, ctx, bookId, element.id, { source: 'IMPORT' });
                 report = { element: { id: element.id, kind: 'RESEARCH', slug, name }, outcome: 'created', versionNumber: version.versionNumber };
             } else {
-                await BibleElementRepository.lock(db, held.id);
                 const renamed = held.name !== name;
                 if (renamed) await BibleElementRepository.update(db, ctx.workspaceId, bookId, held.id, { name });
                 const changed = await writeFieldValues(db, ctx, held, fields);

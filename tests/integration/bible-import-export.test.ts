@@ -244,7 +244,7 @@ describe('idempotent per slug', () => {
         const target = await createBook(ctx, { title: 'Merge target' });
         const own = await createElement(ctx, target.id, { kind: 'THEME', name: 'Debt' });
         await importBibleBundle(ctx, target.id, bundle.bytes, {}, clean);
-        const slugs = (await listElements(ctx, target.id)).map((e) => e.slug);
+        const slugs = (await listElements(ctx, target.id)).elements.map((e) => e.slug);
         expect(slugs).toContain(own.slug);
         expect(slugs).toHaveLength(6);
     });
@@ -319,6 +319,19 @@ describe('a bundle with a problem is refused whole, and writes nothing', () => {
             path: 'book.md',
             reason: 'BOOK_FILE_MISSING',
         });
+    });
+
+    it('reads book.md only when its details will be applied (#27): a broken one refuses only an import that applies it', async () => {
+        const files = {
+            'book.md': '---\ntitle: T\nstage: NOT_A_STAGE\nunknown: 1\n---\n',
+            'theme/broken-book-md.md': '---\nkind: THEME\nname: Broken book file\nslug: broken-book-md\nstatus: DRAFT\n---\n',
+        };
+        const applied = await refusalOf(importBibleBundle(ctx, bookId, bundleOf(files), { bookDetails: 'apply' }, clean));
+        expect(applied.problems.map((p) => p.path)).toContain('book.md');
+        expect(await prisma.bibleElement.count({ where: { bookId, slug: 'broken-book-md' } })).toBe(0);
+        const ignored = await importBibleBundle(ctx, bookId, bundleOf(files), {}, clean);
+        expect(ignored.elements.created).toBe(1);
+        expect(ignored.bookDetailsApplied).toBe(false);
     });
 
     it('refuses a relation the bundle states twice: one type to one target twice, or a symmetric one from both ends', async () => {
@@ -452,7 +465,7 @@ describe('isolation and permission', () => {
         // The same slug in my own book is mine alone.
         const mine = await createBook(ctx, { title: 'Mine' });
         expect((await importBibleBundle(ctx, mine.id, zip, {}, clean)).elements.created).toBe(1);
-        const theirs = await listElements(octx, theirBook.id);
+        const { elements: theirs } = await listElements(octx, theirBook.id);
         expect(theirs.map((e) => e.name)).toEqual(['Same slug']);
     });
 
@@ -538,7 +551,7 @@ describe('updateElementFields still versions MANUAL after an import', () => {
         const book = await createBook(ctx, { title: 'Sources' });
         const report = await importBibleBundle(ctx, book.id, bundleOf({ 'theme/a.md': '---\nkind: THEME\nname: A\nslug: a\nstatus: DRAFT\n---\n' }), {}, clean);
         const id = report.items[0].id;
-        const saved = await updateElementFields(ctx, book.id, id, { fields: [{ key: 'subject', value: 'Debts compound' }] });
+        const saved = await updateElementFields(ctx, book.id, id, { fields: [{ key: 'subject', value: 'Debts compound' }], baseVersion: report.items[0].versionNumber! });
         expect((await getVersion(ctx, book.id, id, saved.versionNumber)).source).toBe('MANUAL');
     });
 });

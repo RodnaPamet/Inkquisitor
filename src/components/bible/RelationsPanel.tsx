@@ -10,11 +10,19 @@
  * The picker is two `<Combobox>`es: the relation (only the types valid for
  * this element's kind, from either end — `relationOptionsFor`), then the
  * other element (only the book's elements of a kind that relation allows,
- * never this element). A relation another kind declares towards this one is
+ * never this element). The other element is SEARCHED on the server as the
+ * author types (Phase 1.H, #18: `listElements` with `kinds` and `q`, a page of
+ * `PICKER_PAGE`), so a book of any size is reachable and the page never reads
+ * every element. A relation another kind declares towards this one is
  * stored from the other element, so its request names the other element as
  * `from`.
+ *
+ * An add whose re-read fails is still an add (#20): the relation exists, so
+ * the re-read is tried again, and if that fails too the panel says the list
+ * may be stale — never that the add failed, which a retry would answer
+ * RELATION_EXISTS.
  */
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
@@ -30,33 +38,37 @@ import type { BibleKind } from '@/lib/bible/kinds';
 import type { RelationOption } from '@/lib/bible/ui-model';
 import { useApiErrorMessage } from './error-messages';
 
-export interface BookElementOption {
-    id: string;
-    name: string;
-    kind: BibleKind;
-}
+/** Matches the picker shows at most per search. */
+export const PICKER_PAGE = 20;
+/** The pause after a keystroke before the picker searches. */
+const SEARCH_DEBOUNCE_MS = 200;
 
 export interface RelationsPanelProps {
     workspaceSlug: string;
     bookId: string;
     element: Pick<ElementView, 'id' | 'kind' | 'relations'>;
     options: RelationOption[];
-    bookElements: BookElementOption[];
     kindLabels: Record<BibleKind, string>;
     canEdit: boolean;
     /** Re-read the element (its relations) after a change. */
     onChanged: () => Promise<void>;
 }
 
-export function RelationsPanel({ workspaceSlug, bookId, element, options, bookElements, kindLabels, canEdit, onChanged }: RelationsPanelProps) {
+export function RelationsPanel({ workspaceSlug, bookId, element, options, kindLabels, canEdit, onChanged }: RelationsPanelProps) {
     const t = useTranslations('bible.relations');
     const errorMessage = useApiErrorMessage();
     const triggerUndo = useToastWithUndo();
     const [hidden, setHidden] = useState<ReadonlySet<string>>(new Set());
     const [typeId, setTypeId] = useState<string | null>(null);
-    const [otherId, setOtherId] = useState<string | null>(null);
+    const [other, setOther] = useState<ComboboxOption | null>(null);
     const [adding, setAdding] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [notice, setNotice] = useState<string | null>(null);
+    const [query, setQuery] = useState('');
+    const [candidates, setCandidates] = useState<ComboboxOption[]>([]);
+    const [searching, setSearching] = useState(false);
+    const [searchFailed, setSearchFailed] = useState(false);
+    const searchSeq = useRef(0);
 
     const relationOptions: ComboboxOption[] = options.map((o) => ({
         value: o.id,
@@ -77,16 +89,36 @@ export function RelationsPanel({ workspaceSlug, bookId, element, options, bookEl
         return opt && sharedLabels.has(opt.label) ? opt.otherKinds.map((k) => kindLabels[k]).join(', ') : undefined;
     };
     const option = options.find((o) => o.id === typeId) ?? null;
-    const candidates: ComboboxOption[] = useMemo(
-        () =>
-            option
-                ? bookElements
-                      .filter((e) => e.id !== element.id && option.otherKinds.includes(e.kind))
-                      .map((e) => ({ value: e.id, label: e.name, meta: e.kind }))
-                : [],
-        [option, bookElements, element.id],
-    );
-    const other = candidates.find((c) => c.value === otherId) ?? null;
+    const kindsKey = option ? option.otherKinds.join(',') : '';
+
+    // Search the book for elements the chosen relation can reach, as the author types.
+    useEffect(() => {
+        if (!kindsKey) return;
+        const seq = ++searchSeq.current;
+        const timer = setTimeout(() => {
+            setSearching(true);
+            bibleFetch<{ elements: Array<{ id: string; name: string; kind: BibleKind }> }>(
+                BIBLE_API.elements(workspaceSlug, bookId, { kinds: kindsKey.split(','), q: query.trim() || undefined, take: PICKER_PAGE + 1 }),
+            )
+                .then(({ elements }) => {
+                    if (seq !== searchSeq.current) return;
+                    setCandidates(
+                        elements
+                            .filter((e) => e.id !== element.id)
+                            .slice(0, PICKER_PAGE)
+                            .map((e) => ({ value: e.id, label: e.name, meta: e.kind })),
+                    );
+                    setSearchFailed(false);
+                })
+                .catch(() => {
+                    if (seq === searchSeq.current) setSearchFailed(true);
+                })
+                .finally(() => {
+                    if (seq === searchSeq.current) setSearching(false);
+                });
+        }, SEARCH_DEBOUNCE_MS);
+        return () => clearTimeout(timer);
+    }, [kindsKey, query, workspaceSlug, bookId, element.id]);
 
     const visible = element.relations.filter((r) => !hidden.has(r.id));
 
@@ -94,13 +126,25 @@ export function RelationsPanel({ workspaceSlug, bookId, element, options, bookEl
         if (!option || !other) return;
         setAdding(true);
         setError(null);
+        setNotice(null);
         const [fromElementId, toElementId] = option.direction === 'outgoing' ? [element.id, other.value] : [other.value, element.id];
         try {
             await bibleFetch(BIBLE_API.relations(workspaceSlug, bookId), { method: 'POST', body: { fromElementId, toElementId, type: option.type } });
-            await onChanged();
-            setOtherId(null);
         } catch (err) {
             setError(errorMessage(reasonOf(err)));
+            setAdding(false);
+            return;
+        }
+        // The relation exists now, whatever the re-read does.
+        setOther(null);
+        try {
+            await onChanged();
+        } catch {
+            try {
+                await onChanged();
+            } catch {
+                setNotice(t('addedNotShown'));
+            }
         } finally {
             setAdding(false);
         }
@@ -136,7 +180,7 @@ export function RelationsPanel({ workspaceSlug, bookId, element, options, bookEl
         <Card className="space-y-default p-5" data-testid="relations-panel">
             <h2 className="text-base font-semibold text-content-emphasis">{t('title')}</h2>
             {visible.length === 0 ? (
-                <p className="text-sm text-content-subtle">{t('none')}</p>
+                <p className="text-sm text-content-muted">{t('none')}</p>
             ) : (
                 <ul className="divide-y divide-[var(--border-subtle)]" aria-label={t('title')}>
                     {visible.map((r) => (
@@ -146,7 +190,7 @@ export function RelationsPanel({ workspaceSlug, bookId, element, options, bookEl
                                 <Link href={APP_ROUTES.bibleElement(workspaceSlug, bookId, r.other.id)} className="font-medium text-content-emphasis hover:underline">
                                     {r.other.name}
                                 </Link>{' '}
-                                <span className="text-xs text-content-subtle">({kindLabels[r.other.kind]})</span>
+                                <span className="text-xs text-content-muted">({kindLabels[r.other.kind]})</span>
                             </p>
                             {canEdit ? (
                                 <Button
@@ -170,7 +214,9 @@ export function RelationsPanel({ workspaceSlug, bookId, element, options, bookEl
                             selected={relationOptions.find((o) => o.value === typeId) ?? null}
                             setSelected={(o) => {
                                 setTypeId(o ? o.value : null);
-                                setOtherId(null);
+                                setOther(null);
+                                setCandidates([]);
+                                setQuery('');
                             }}
                             placeholder={t('typePlaceholder')}
                             searchPlaceholder={t('typeSearch')}
@@ -183,10 +229,13 @@ export function RelationsPanel({ workspaceSlug, bookId, element, options, bookEl
                             id="relation-other"
                             options={candidates}
                             selected={other}
-                            setSelected={(o) => setOtherId(o ? o.value : null)}
+                            setSelected={(o) => setOther(o)}
+                            onSearchChange={setQuery}
+                            shouldFilter={false}
+                            loading={searching}
                             placeholder={option ? t('otherPlaceholder') : t('otherNeedsType')}
                             searchPlaceholder={t('otherSearch')}
-                            emptyState={t('noCandidates')}
+                            emptyState={searchFailed ? t('searchFailed') : t('noCandidates')}
                             optionDescription={(o) => kindLabels[o.meta as BibleKind]}
                             disabled={!option}
                             matchTriggerWidth
@@ -195,6 +244,11 @@ export function RelationsPanel({ workspaceSlug, bookId, element, options, bookEl
                     {error ? (
                         <p className="text-sm text-content-error" role="alert">
                             {error}
+                        </p>
+                    ) : null}
+                    {notice ? (
+                        <p className="text-sm text-content-muted" role="status">
+                            {notice}
                         </p>
                     ) : null}
                     <Button

@@ -106,6 +106,48 @@ describe('signUpWithPassword', () => {
         expect(await prisma.user.count({ where: { email } })).toBe(1);
     });
 
+    it('strips control characters from the name and the workspace name (#17: a raw NUL was a 500)', async () => {
+        const email = uniqueEmail('nul');
+        const created = await signUpWithPassword(
+            { email, password: PASSWORD, name: 'Ada\u0000 Love\u0007lace\n', workspaceName: '\u0000Night\tDesk\u007f' },
+            { breachCheck: clean },
+        );
+        const user = await everythingFor(email);
+        expect(user!.name).toBe('Ada Lovelace');
+        expect(user!.memberships[0].workspace.name).toBe('Night Desk');
+        expect(created.workspaceSlug).toMatch(/^night-desk/);
+        // A workspace name of nothing but controls falls back to the default.
+        const other = uniqueEmail('nul2');
+        await signUpWithPassword({ email: other, password: PASSWORD, name: '\u0000', workspaceName: '\u0001\u0002' }, { breachCheck: clean });
+        const second = await everythingFor(other);
+        expect(second!.name).toBeNull();
+        expect(second!.memberships[0].workspace.name).toBe(`${other.split('@')[0]}'s workspace`.slice(0, 80));
+    });
+
+    it('the register route answers a NUL in either name with an account, never a 500 (#17)', async () => {
+        const { POST } = await import('@/app/api/auth/register/route');
+        const { NextRequest } = await import('next/server');
+        const email = uniqueEmail('nul-route');
+        const before = process.env.PASSWORD_BREACH_CHECK;
+        process.env.PASSWORD_BREACH_CHECK = 'off'; // no network: the route takes the real check otherwise
+        let res: Response;
+        try {
+            res = await POST(
+                new NextRequest('http://localhost/api/auth/register', {
+                    method: 'POST',
+                    headers: { 'content-type': 'application/json', 'x-forwarded-for': '198.51.100.71' },
+                    body: JSON.stringify({ email, password: PASSWORD, name: 'Nul\u0000Name', workspaceName: 'Nul\u0000Desk' }),
+                }),
+                { params: Promise.resolve({}) },
+            );
+        } finally {
+            if (before === undefined) delete process.env.PASSWORD_BREACH_CHECK;
+            else process.env.PASSWORD_BREACH_CHECK = before;
+        }
+        expect(res.status).toBe(201);
+        expect((await everythingFor(email))!.name).toBe('NulName');
+    });
+
     it('gives a second workspace with the same name its own slug', async () => {
         const name = `Same Name ${Date.now()}`;
         const first = await createAccount({ workspaceName: name });

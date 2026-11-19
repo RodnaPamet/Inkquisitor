@@ -16,7 +16,12 @@
  *      the field's sanitiser — so a new usecase that writes the model without
  *      it fails here;
  *   4. each sanitiser reaches a primitive of `src/lib/security/sanitize.ts`
- *      (a wrapper that stopped calling one would pass rule 3 vacuously).
+ *      (a wrapper that stopped calling one would pass rule 3 vacuously);
+ *   5. every OTHER method of the repository that writes the model (Phase
+ *      1.H: `softDelete`, `touch`, …) writes a `data` object the guard can
+ *      read and that does not name the field — so a write method added to a
+ *      repository is not a way around rule 3 for being missing from
+ *      `writeMethods`.
  *
  * File-grained on purpose: it proves the call is THERE, not that every value
  * flows through it. The behaviour — a `<script>` written through each path is
@@ -115,6 +120,47 @@ function definitionOf(sf: ts.SourceFile, name: string): ts.Node | null {
 
 const delegateOf = (model: string) => model[0].toLowerCase() + model.slice(1);
 
+/**
+ * Every method of `export const <repository> = { … }` that calls a Prisma
+ * write on `<delegate>`, with the keys of the `data` object it writes (null
+ * when the guard cannot read them: a spread, a variable, no literal).
+ */
+export function repositoryWrites(sf: ts.SourceFile, repository: string, delegate: string): Array<{ method: string; dataKeys: string[] | null }> {
+    const out: Array<{ method: string; dataKeys: string[] | null }> = [];
+    const decl = definitionOf(sf, repository);
+    const init = decl && ts.isVariableDeclaration(decl) ? decl.initializer : undefined;
+    if (!init || !ts.isObjectLiteralExpression(init)) return out;
+    for (const prop of init.properties) {
+        const method = prop.name && ts.isIdentifier(prop.name) ? prop.name.text : null;
+        if (!method) continue;
+        const visit = (n: ts.Node): void => {
+            if (
+                ts.isCallExpression(n) &&
+                ts.isPropertyAccessExpression(n.expression) &&
+                WRITE_OPS.includes(n.expression.name.text) &&
+                ts.isPropertyAccessExpression(n.expression.expression) &&
+                n.expression.expression.name.text === delegate
+            ) {
+                const [arg] = n.arguments;
+                let dataKeys: string[] | null = null;
+                if (arg && ts.isObjectLiteralExpression(arg)) {
+                    const data = arg.properties.find((p) => ts.isPropertyAssignment(p) && ts.isIdentifier(p.name) && p.name.text === 'data');
+                    if (data && ts.isPropertyAssignment(data) && ts.isObjectLiteralExpression(data.initializer)) {
+                        const props = data.initializer.properties;
+                        dataKeys = props.every((p) => (ts.isPropertyAssignment(p) || ts.isShorthandPropertyAssignment(p)) && ts.isIdentifier(p.name))
+                            ? props.map((p) => (p.name as ts.Identifier).text)
+                            : null;
+                    }
+                }
+                out.push({ method, dataKeys });
+            }
+            n.forEachChild(visit);
+        };
+        visit(prop);
+    }
+    return out;
+}
+
 export function coverageProblems(
     sources: Readonly<Record<string, string>>,
     manifest: Readonly<Record<string, readonly string[]>>,
@@ -150,6 +196,16 @@ export function coverageProblems(
         for (const [file, found] of callers) {
             if (!found.names.has(c.sanitiser)) problems.push(`${field}: ${file} calls ${c.repository}.${c.writeMethods.join('/')} without calling ${c.sanitiser}`);
         }
+        // 5. Every other write method of the repository leaves the field alone, readably.
+        const repoSf = parsed[repo.file];
+        if (repoSf) {
+            const column = field.split('.')[1];
+            for (const w of repositoryWrites(repoSf, c.repository, delegate)) {
+                if (c.writeMethods.includes(w.method)) continue;
+                if (w.dataKeys === null) problems.push(`${field}: ${c.repository}.${w.method} writes ${repo.model} with data the guard cannot read (list it in writeMethods, or write a literal)`);
+                else if (w.dataKeys.includes(column)) problems.push(`${field}: ${c.repository}.${w.method} writes ${column} but is not in writeMethods`);
+            }
+        }
         // 4. The sanitiser reaches a primitive.
         if (!c.derived) {
             const seen = new Set<string>();
@@ -182,6 +238,12 @@ it('reads the source tree and a non-empty manifest (zero fields is never full co
 
 it('every encrypted author-text field is sanitised on every write path', () => {
     expect(coverageProblems(sources, ENCRYPTED_FIELDS, COVERAGE)).toEqual([]);
+});
+
+it('reads the repositories’ other write methods (rule 5 over none would prove nothing)', () => {
+    const book = parse('book.repository.ts', sources['src/app-layer/repositories/book.repository.ts']);
+    expect(repositoryWrites(book, 'BookRepository', 'book').map((w) => w.method)).toEqual(expect.arrayContaining(['create', 'update', 'softDelete', 'restore']));
+    expect(repositoryWrites(book, 'BookRepository', 'book').find((w) => w.method === 'softDelete')?.dataKeys).toEqual(['deletedAt']);
 });
 
 it('the primitives themselves call sanitize-html', () => {
@@ -240,6 +302,19 @@ describe('negative controls', () => {
             'BibleRelation.secret: encrypted but not classified with a sanitiser',
         );
         expect(coverageProblems(base, {}, coverage)).toContain('BibleRelation.note: classified but not in the manifest (stale)');
+    });
+
+    it('flags another write method that writes the field, or writes data it cannot read (rule 5, Phase 1.H)', () => {
+        const usecase = { 'src/app-layer/usecases/x.ts': `const n = optionalBlock(i.note); BibleRelationRepository.create(db, { note: n });` };
+        const repo = (methods: string) => ({ ...base, ...usecase, [repoFile]: `export const BibleRelationRepository = { create(db, d) { return db.bibleRelation.create({ data: d }); }, ${methods} };` });
+        // A method that writes only other columns passes.
+        expect(coverageProblems(repo(`touch(db, id) { return db.bibleRelation.updateMany({ where: { id }, data: { updatedAt: new Date() } }); }`), manifest, coverage)).toEqual([]);
+        expect(coverageProblems(repo(`setNote(db, id, note) { return db.bibleRelation.updateMany({ where: { id }, data: { note } }); }`), manifest, coverage)).toEqual([
+            'BibleRelation.note: BibleRelationRepository.setNote writes note but is not in writeMethods',
+        ]);
+        expect(coverageProblems(repo(`patch(db, id, d) { return db.bibleRelation.update({ where: { id }, data: d }); }`), manifest, coverage)).toEqual([
+            'BibleRelation.note: BibleRelationRepository.patch writes BibleRelation with data the guard cannot read (list it in writeMethods, or write a literal)',
+        ]);
     });
 
     it('flags a classified write path nobody calls', () => {

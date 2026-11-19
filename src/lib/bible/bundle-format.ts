@@ -65,7 +65,7 @@
  * Server-only (it reaches the plain-text sanitiser to reduce rich text to its
  * text for the body).
  */
-import { isAlias, isNode, parseDocument, stringify, visit } from 'yaml';
+import { isAlias, isMap, isNode, isScalar, parseDocument, stringify, visit } from 'yaml';
 import { sanitizePlainText } from '@/lib/security/sanitize';
 import type { FieldValue } from './field-values';
 import { BIBLE_KINDS, kindRank, type BibleElementStatus, type BibleKind, type BookStage } from './kinds';
@@ -342,11 +342,17 @@ export function frontmatterOf(text: string): string {
 /**
  * The YAML as plain JavaScript values: YAML 1.2 core schema, no alias, no
  * explicit tag, no duplicate key, no error or warning — each refused by name.
+ *
+ * Duplicate keys are found HERE, with a set per mapping, not by the library's
+ * `uniqueKeys`: that compares each key with every key before it, quadratic in
+ * a mapping's size (Phase 1.H measured a 500 KB mapping of 20,000 keys at 4.9 s,
+ * and one of 100,000 keys at two minutes). Read this way the parse is linear,
+ * about 1.5 µs a character for the densest structure.
  */
 export function parseYamlFrontmatter(source: string): unknown {
     let doc: ReturnType<typeof parseDocument>;
     try {
-        doc = parseDocument(source, { version: '1.2', schema: 'core', uniqueKeys: true, merge: false, prettyErrors: false });
+        doc = parseDocument(source, { version: '1.2', schema: 'core', uniqueKeys: false, merge: false, prettyErrors: false });
     } catch {
         throw new FrontmatterError('YAML_INVALID');
     }
@@ -369,6 +375,19 @@ export function parseYamlFrontmatter(source: string): unknown {
         if (isNode(node) && node.tag !== undefined) {
             refusal = 'YAML_TAG';
             return visit.BREAK;
+        }
+        if (isMap(node)) {
+            // Every key a scalar, and each once as the object it becomes will
+            // hold it (`1` and `"1"` are one key there): a set per mapping keeps it linear.
+            const seen = new Set<string>();
+            for (const pair of node.items) {
+                const key = isScalar(pair.key) ? String(pair.key.value) : null;
+                if (key === null || seen.has(key)) {
+                    refusal = 'YAML_INVALID';
+                    return visit.BREAK;
+                }
+                seen.add(key);
+            }
         }
         return undefined;
     });

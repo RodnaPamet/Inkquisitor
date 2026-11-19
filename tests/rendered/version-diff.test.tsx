@@ -21,6 +21,7 @@ import * as React from 'react';
 import {
     VersionDiff,
     htmlToLines,
+    stripTagsSteps,
 } from '@/components/ui/VersionDiff';
 
 const v1 = {
@@ -173,19 +174,26 @@ describe('htmlToLines', () => {
     it('strips 100 KB of crafted nesting in linear time (issue #6)', () => {
         // Each '<' is joined to an 's' only once the tag before it is gone:
         // a strip-until-stable loop needed one pass per level (quadratic;
-        // 60 KB took about five seconds).
-        const k = 34_000;
-        const crafted = '<'.repeat(k) + '<b>' + 's>'.repeat(k);
-        expect(crafted.length).toBeGreaterThan(100_000);
-        const started = performance.now();
-        const out = htmlToLines(crafted);
-        expect(performance.now() - started).toBeLessThan(100);
-        expect(out).not.toMatch(/<[A-Za-z/!?]/);
-        // A 100 KB run of unterminated tags and stray '<' is linear too.
-        const ragged = '<a <<b'.repeat(20_000);
-        const t2 = performance.now();
-        expect(htmlToLines(ragged)).not.toMatch(/<[A-Za-z/!?]/);
-        expect(performance.now() - t2).toBeLessThan(100);
+        // 60 KB took about five seconds). Measured by COUNTING the strip's
+        // steps (`stripTagsSteps`), not by the clock: a bound of a few steps a
+        // character at every size, so a quadratic strip (k passes over the
+        // string) fails at any machine's speed.
+        const crafted = (k: number) => '<'.repeat(k) + '<b>' + 's>'.repeat(k);
+        const ragged = (k: number) => '<a <<b'.repeat(k);
+        expect(crafted(34_000).length).toBeGreaterThan(100_000);
+        expect(ragged(20_000).length).toBeGreaterThan(100_000);
+        for (const [shape, k] of [
+            [crafted, 34_000],
+            [ragged, 20_000],
+        ] as const) {
+            const small = shape(k / 4);
+            const large = shape(k);
+            expect(htmlToLines(large)).not.toMatch(/<[A-Za-z/!?]/);
+            const perChar = (s: string) => stripTagsSteps(s) / s.length;
+            expect(perChar(large)).toBeLessThanOrEqual(4);
+            // Four times the input, about four times the work (a quadratic strip would do sixteen).
+            expect(stripTagsSteps(large) / stripTagsSteps(small)).toBeLessThan(5);
+        }
     });
     it('never leaves a tag-starting "<" on any input built from tag fragments', () => {
         const pieces = ['<', '>', 'b', 's', '/', '<b>', '</p>', 'x', ' ', '<br>', '!', '?'];

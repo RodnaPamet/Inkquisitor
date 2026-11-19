@@ -31,6 +31,20 @@ const raw = (max: number) => z.string().max(max * RAW_INPUT_FACTOR);
 const id = z.string().min(1).max(64);
 const identifier = z.string().max(IDENTIFIER_MAX).regex(IDENTIFIER_PATTERN);
 
+/**
+ * The version the writer's edit is based on (Phase 1.H): the element's latest
+ * version number when the writer last read or saved it. A save that names one
+ * and finds a newer version is refused 409 `VERSION_CONFLICT` (the optimistic
+ * check, `assertBaseVersion`). REQUIRED on every request that saves an
+ * element (a change, a fields save, a restore): the API's only writer is a
+ * client, and a base it could leave out is a check it could skip, so an
+ * omitted one is a 400, never an unchecked save. Writers inside the server
+ * that do not take a request (the bundle and concept-note imports) do not go
+ * through these inputs; they take the element's lock and save over whatever
+ * stands, by design (an import is the file's whole state).
+ */
+export const BaseVersionInput = z.number().int().min(1).max(2_147_483_647);
+
 const hasSomeKey =
     (...keys: string[]) =>
     (o: Record<string, unknown>) =>
@@ -95,20 +109,40 @@ export const ElementUpdateInput = z
         summary: raw(ELEMENT_SUMMARY_MAX).nullable().optional(),
         customLabel: raw(CUSTOM_LABEL_MAX).optional(),
         changeSummary: raw(CHANGE_SUMMARY_MAX).nullish(),
+        baseVersion: BaseVersionInput,
     })
     .strict()
-    .refine(hasSomeKey('changeSummary'), { message: 'Nothing to change.' });
+    .refine(hasSomeKey('changeSummary', 'baseVersion'), { message: 'Nothing to change.' });
 export type ElementUpdateInput = z.infer<typeof ElementUpdateInput>;
 
 export const FieldsUpdateInput = z
     .object({
         fields: z.array(FieldEntryInput).min(1).max(FIELDS_PER_SAVE_MAX),
         changeSummary: raw(CHANGE_SUMMARY_MAX).nullish(),
+        baseVersion: BaseVersionInput,
     })
     .strict();
 export type FieldsUpdateInput = z.infer<typeof FieldsUpdateInput>;
 
-export const ElementListQuery = z.object({ kind: z.enum(BIBLE_KINDS).optional() }).strict();
+/** Elements a page of the element list holds by default, and at most (Phase 1.H). */
+export const ELEMENT_PAGE_DEFAULT = 100;
+export const ELEMENT_PAGE_MAX = 200;
+
+/**
+ * One page of a book's elements, by name (Phase 1.H, #18): of one kind or of
+ * several (the relation picker), whose name contains `q`, after the cursor
+ * the previous page answered.
+ */
+export const ElementListQuery = z
+    .object({
+        kind: z.enum(BIBLE_KINDS).optional(),
+        kinds: z.array(z.enum(BIBLE_KINDS)).min(1).max(BIBLE_KINDS.length).optional(),
+        q: z.string().max(ELEMENT_NAME_MAX).optional(),
+        after: z.string().max(1_000).optional(),
+        take: z.coerce.number().int().min(1).max(ELEMENT_PAGE_MAX).optional(),
+    })
+    .strict();
+export type ElementListQuery = z.infer<typeof ElementListQuery>;
 
 // ─── Relations ──────────────────────────────────────────────────────
 
@@ -126,5 +160,5 @@ export type RelationCreateInput = z.infer<typeof RelationCreateInput>;
 
 export const VersionNumberParam = z.coerce.number().int().min(1).max(2_147_483_647);
 
-export const RestoreInput = z.object({ changeSummary: raw(CHANGE_SUMMARY_MAX).nullish() }).strict();
+export const RestoreInput = z.object({ changeSummary: raw(CHANGE_SUMMARY_MAX).nullish(), baseVersion: BaseVersionInput }).strict();
 export type RestoreInput = z.infer<typeof RestoreInput>;

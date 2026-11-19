@@ -10,6 +10,7 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { z } from 'zod';
 import { withApiErrorHandling } from '@/lib/errors/api';
+import { readJsonBody } from '@/lib/http/json-body';
 import { WORKSPACE_CREATE_LIMIT } from '@/lib/security/rate-limit';
 import { MAX_PASSWORD_LENGTH } from '@/lib/auth/password-limits';
 import { signUpWithPassword } from '@/app-layer/usecases/sign-up';
@@ -26,7 +27,7 @@ const SignUpBody = z
 
 export const POST = withApiErrorHandling(
     async (req: NextRequest) => {
-        const body = SignUpBody.parse(await req.json());
+        const body = SignUpBody.parse(await readJsonBody(req));
         const created = await signUpWithPassword(body, { requestId: req.headers.get('x-request-id') ?? undefined });
         return NextResponse.json({ workspaceSlug: created.workspaceSlug }, { status: 201 });
     },

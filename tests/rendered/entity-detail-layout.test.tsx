@@ -153,6 +153,44 @@ describe('EntityDetailLayout — tabs', () => {
         expect(onTabChange).not.toHaveBeenCalled();
     });
 
+    it('is one tab stop, and the arrow keys, Home and End move between the tabs and select them (1.H)', () => {
+        function Stateful() {
+            const [tab, setTab] = React.useState('overview');
+            return (
+                <EntityDetailLayout
+                    title="Keys"
+                    tabs={[
+                        { key: 'overview', label: 'Overview' },
+                        { key: 'off', label: 'Off', disabled: true },
+                        { key: 'tasks', label: 'Tasks' },
+                        { key: 'history', label: 'History' },
+                    ]}
+                    activeTab={tab}
+                    onTabChange={setTab}
+                >
+                    <div>{tab}</div>
+                </EntityDetailLayout>
+            );
+        }
+        render(<Stateful />);
+        const tab = (name: string) => screen.getByRole('tab', { name });
+        expect([tab('Overview'), tab('Tasks'), tab('History')].map((t) => t.tabIndex)).toEqual([0, -1, -1]);
+        tab('Overview').focus();
+        fireEvent.keyDown(tab('Overview'), { key: 'ArrowRight' });
+        // The disabled tab is skipped.
+        expect(tab('Tasks')).toHaveFocus();
+        expect(tab('Tasks')).toHaveAttribute('aria-selected', 'true');
+        expect(tab('Tasks').tabIndex).toBe(0);
+        fireEvent.keyDown(tab('Tasks'), { key: 'End' });
+        expect(tab('History')).toHaveFocus();
+        fireEvent.keyDown(tab('History'), { key: 'ArrowRight' });
+        expect(tab('Overview')).toHaveFocus();
+        fireEvent.keyDown(tab('Overview'), { key: 'ArrowLeft' });
+        expect(tab('History')).toHaveAttribute('aria-selected', 'true');
+        fireEvent.keyDown(tab('History'), { key: 'Home' });
+        expect(tab('Overview')).toHaveAttribute('aria-selected', 'true');
+    });
+
     it('omits the tab bar entirely when tabs prop is undefined', () => {
         render(
             <EntityDetailLayout title="No tabs">

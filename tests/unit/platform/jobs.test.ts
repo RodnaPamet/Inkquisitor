@@ -20,8 +20,8 @@ import { OTEL_CARRIER_KEY, readTraceCarrier, stripTraceCarrier } from '@/lib/obs
 afterEach(() => executorRegistry._reset());
 
 describe('executor registry', () => {
-    it('ships empty of product jobs: the heartbeat is its only registration', () => {
-        expect(executorRegistry.listRegistered()).toEqual(['heartbeat']);
+    it('registers the heartbeat and the book purge (Phase 1.H), nothing else', () => {
+        expect(executorRegistry.listRegistered()).toEqual(['heartbeat', 'book-purge']);
     });
 
     it('the heartbeat is a no-op that succeeds', async () => {
@@ -52,6 +52,11 @@ describe('schedules', () => {
     it('every scheduled job has an executor and defaults', () => {
         expect(scheduler.validateRegistrations()).toEqual({ valid: true, missing: [] });
         for (const s of SCHEDULED_JOBS) expect(JOB_DEFAULTS[s.name]).toBeDefined();
+    });
+
+    it('the book purge runs once a day, off the hour', () => {
+        const purge = SCHEDULED_JOBS.find((s) => s.name === 'book-purge');
+        expect(purge?.pattern).toMatch(/^([1-9]|[1-5]\d) \d{1,2} \* \* \*$/);
     });
 
     it('the heartbeat TTL survives at least three missed beats of its cron', () => {

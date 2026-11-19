@@ -118,6 +118,12 @@ export type RlsBypassReason =
     | 'workspace-creation'
     /** Reading a workspace's whole audit chain to verify it. */
     | 'audit-verification'
+    /**
+     * The daily book purge (Phase 1.H) finding books deleted more than 30 days
+     * ago, in every workspace: ids only; each is then purged inside its own
+     * workspace's context.
+     */
+    | 'book-purge-discovery'
     /** Tests exercising the bypass path or seeding rows. */
     | 'test';
 
@@ -126,6 +132,7 @@ const KNOWN_REASONS: ReadonlySet<RlsBypassReason> = new Set<RlsBypassReason>([
     'workspace-discovery',
     'workspace-creation',
     'audit-verification',
+    'book-purge-discovery',
     'test',
 ]);
 

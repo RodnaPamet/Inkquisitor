@@ -27,7 +27,7 @@ beforeEach(() => {
 });
 
 describe('the request schema', () => {
-    const save = (value: unknown) => FieldsUpdateInput.safeParse({ fields: [{ key: 'wound', value }] });
+    const save = (value: unknown) => FieldsUpdateInput.safeParse({ fields: [{ key: 'wound', value }], baseVersion: 1 });
 
     it('refuses a string past the largest raw bound, and a list past its item count or item bound', () => {
         expect(save('x'.repeat(RICHTEXT_MAX * RAW_INPUT_FACTOR)).success).toBe(true);

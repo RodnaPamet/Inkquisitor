@@ -176,6 +176,16 @@ describe('readZip refuses', () => {
         expect(refusal(craftZip([{ name: 'a.md', data: 'hello', localName: 'b.md' }]))).toMatchObject({ reason: 'ENTRY_CORRUPT' });
     });
 
+    it('a local header that disagrees with the central directory: the method, the CRC, either size, or the data-descriptor flag (#27)', () => {
+        // A scanner reads the local headers; this reader the directory. They must say the same thing.
+        expect(readZip(craftZip([{ name: 'a.md', data: 'hello hello hello' }]), LIMITS).get('a.md')).toBeDefined();
+        for (const local of [{ method: 0 }, { crc: 7 }, { size: 3 }, { compressedSize: 2 }, { flags: 0x0808 }]) {
+            expect(refusal(craftZip([{ name: 'a.md', data: 'hello hello hello', local }]))).toEqual({ reason: 'ENTRY_CORRUPT', entry: 'a.md' });
+        }
+        // With a data descriptor on both sides, the local CRC and sizes may be zero.
+        expect(readZip(craftZip([{ name: 'a.md', data: 'hello', flags: 0x0808, local: { crc: 0, size: 0, compressedSize: 0 } }]), LIMITS).has('a.md')).toBe(true);
+    });
+
     it('skips directory entries and accepts a stored entry', () => {
         const back = readZip(craftZip([{ name: 'character/', data: '', method: 0 }, { name: 'character/a.md', data: 'hi', method: 0 }]), LIMITS);
         expect([...back.keys()]).toEqual(['character/a.md']);

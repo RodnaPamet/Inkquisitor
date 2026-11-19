@@ -1,6 +1,7 @@
 /**
  * GET    …/books/:bookId/elements/:elementId — the element, every template field, its relations from both ends (`bible.view`)
- * PATCH  …/books/:bookId/elements/:elementId — change name, slug, status, summary or custom label; writes a version (`bible.edit`)
+ * PATCH  …/books/:bookId/elements/:elementId — change name, slug, status, summary or custom label; writes a version (`bible.edit`).
+ *        `baseVersion` (required): a newer version refuses it 409 `VERSION_CONFLICT`
  * DELETE …/books/:bookId/elements/:elementId — delete it and its relations; its version history stays with the book (`bible.edit`)
  */
 import { NextResponse } from 'next/server';

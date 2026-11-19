@@ -22,6 +22,7 @@
     "typecheck": "tsc --noEmit && tsc --noEmit -p packages/ui/tsconfig.json",
     "test": "jest --selectProjects unit rendered",
     "test:integration": "jest --selectProjects integration --runInBand",
+    "test:load": "BIBLE_LOAD_ELEMENTS=2000 BIBLE_LOAD_VERSIONS=20000 jest --selectProjects integration --runInBand tests/integration/bible-load.test.ts",
     "test:e2e": "playwright test",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
@@ -105,6 +106,7 @@
     "zod": "^4.6.7"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.14.0",
     "@playwright/test": "^1.65.0",
     "@tailwindcss/postcss": "^4.3.5",
     "@testing-library/dom": "^10.4.2",

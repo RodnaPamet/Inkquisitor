@@ -14,7 +14,7 @@
  *     buttons.
  */
 
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import * as React from 'react';
 
 import {
@@ -36,11 +36,15 @@ interface HarnessProps {
     initial?: string;
     initialType?: RichTextContentType;
     onChange?: jest.Mock;
+    onModeChange?: jest.Mock;
+    disabled?: boolean;
 }
 function Harness({
     initial = '',
     initialType = 'MARKDOWN',
     onChange,
+    onModeChange,
+    disabled,
 }: HarnessProps) {
     const [value, setValue] = React.useState(initial);
     const [type, setType] = React.useState<RichTextContentType>(initialType);
@@ -48,10 +52,16 @@ function Harness({
         <RichTextEditor
             value={value}
             contentType={type}
+            disabled={disabled}
             onChange={(v, t) => {
                 setValue(v);
                 setType(t);
                 onChange?.(v, t);
+            }}
+            onModeChange={(t, v) => {
+                setValue(v);
+                setType(t);
+                onModeChange?.(t, v);
             }}
         />
     );
@@ -116,29 +126,91 @@ describe('<RichTextEditor>', () => {
         ).not.toBeNull();
     });
 
-    it('toggle dispatches onChange with the new contentType', () => {
+    it('a toggle is not an edit: it reports onModeChange with the converted payload and never onChange (#19)', () => {
         const onChange = jest.fn();
-        render(<Harness initial="hello" onChange={onChange} />);
+        const onModeChange = jest.fn();
+        render(<Harness initial="hello" onChange={onChange} onModeChange={onModeChange} />);
         fireEvent.click(screen.getByTestId('rich-text-editor-toggle'));
-        // Last call should be the post-toggle synthesisation: an HTML
-        // payload + 'HTML'.
-        const last = onChange.mock.calls.at(-1);
-        expect(last?.[1]).toBe('HTML');
-        expect(typeof last?.[0]).toBe('string');
         // The seeded HTML wraps the markdown in <p>…</p> blocks.
-        expect(last?.[0]).toMatch(/<p>hello<\/p>/);
+        expect(onModeChange).toHaveBeenLastCalledWith('HTML', '<p>hello</p>');
+        fireEvent.click(screen.getByTestId('rich-text-editor-toggle'));
+        expect(onModeChange).toHaveBeenLastCalledWith('MARKDOWN', 'hello');
+        expect(onChange).not.toHaveBeenCalled();
     });
 
-    it('toggle back from HTML → MARKDOWN extracts the plain text', () => {
+    it('toggle back from HTML → MARKDOWN extracts the plain text, and emits no update with it', () => {
         const onChange = jest.fn();
-        render(<Harness initial="alpha" onChange={onChange} />);
-        // Two toggles: MARKDOWN → HTML → MARKDOWN.
+        const onModeChange = jest.fn();
+        render(<Harness initialType="HTML" initial="<p><strong>alpha</strong> beta</p>" onChange={onChange} onModeChange={onModeChange} />);
         fireEvent.click(screen.getByTestId('rich-text-editor-toggle'));
+        expect(onModeChange).toHaveBeenLastCalledWith('MARKDOWN', 'alpha beta');
+        // The formatting-stripped text was never reported as an edit.
+        expect(onChange).not.toHaveBeenCalled();
+    });
+
+    it('disabled: every toolbar button is disabled and pressing one changes nothing (#19)', () => {
+        const onChange = jest.fn();
+        render(<Harness initialType="HTML" initial="<p>keep</p>" onChange={onChange} disabled />);
+        const wrapper = screen.getByTestId('rich-text-editor');
+        const buttons = within(wrapper).getAllByRole('button');
+        expect(buttons.length).toBeGreaterThan(5);
+        for (const b of buttons) expect(b).toBeDisabled();
+        fireEvent.click(within(wrapper).getByLabelText(/^Bold$/i));
+        fireEvent.click(within(wrapper).getByLabelText(/^Page break$/i));
+        expect(screen.getByTestId('rich-text-editor-content').querySelector('hr, strong')).toBeNull();
+        expect(screen.getByTestId('rich-text-editor-content').getAttribute('contenteditable')).toBe('false');
+        expect(onChange).not.toHaveBeenCalled();
+    });
+
+    it('turns editing off in an editor already mounted when disabled arrives later', () => {
+        const { rerender } = render(<RichTextEditor value="<p>x</p>" contentType="HTML" onChange={() => undefined} />);
+        expect(screen.getByTestId('rich-text-editor-content').getAttribute('contenteditable')).toBe('true');
+        rerender(<RichTextEditor value="<p>x</p>" contentType="HTML" onChange={() => undefined} disabled />);
+        expect(screen.getByTestId('rich-text-editor-content').getAttribute('contenteditable')).toBe('false');
+    });
+
+    it('labels its mode toggle and its markdown textarea from messages/en.json (#19)', () => {
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        const messages = require('../../messages/en.json') as { richtext: Record<string, string> };
+        render(<Harness initial="x" />);
+        expect(screen.getByTestId('rich-text-editor-toggle')).toHaveTextContent(messages.richtext.modeWysiwyg);
+        expect(screen.getByRole('textbox', { name: messages.richtext.markdownAria })).toBe(screen.getByTestId('rich-text-editor-textarea'));
         fireEvent.click(screen.getByTestId('rich-text-editor-toggle'));
-        const last = onChange.mock.calls.at(-1);
-        expect(last?.[1]).toBe('MARKDOWN');
-        // Plain text recovered (formatting is lost but text persists).
-        expect(last?.[0]).toContain('alpha');
+        expect(screen.getByTestId('rich-text-editor-toggle')).toHaveTextContent(messages.richtext.modeMarkdown);
+    });
+
+    it('colours its content from the theme tokens, never an inverted prose class (#19)', () => {
+        render(<Harness initialType="HTML" initial="<p>x</p>" />);
+        const content = screen.getByTestId('rich-text-editor-content');
+        expect(content.className).not.toMatch(/prose-invert|\bprose\b/);
+        expect(content.className).toContain('text-content-default');
+    });
+
+    it('applies a parent reset that arrives in the same tick as an edit (#19)', async () => {
+        function Resetting() {
+            const [value, setValue] = React.useState('<p>start</p>');
+            return (
+                <>
+                    <RichTextEditor
+                        value={value}
+                        contentType="HTML"
+                        onChange={(v) => {
+                            // The parent takes the edit, then resets in the same tick.
+                            setValue(v);
+                            setValue('<p>reset</p>');
+                        }}
+                    />
+                    <span data-testid="value">{value}</span>
+                </>
+            );
+        }
+        render(<Resetting />);
+        const wrapper = screen.getByTestId('rich-text-editor');
+        await act(async () => {
+            fireEvent.click(within(wrapper).getByLabelText(/^Page break$/i));
+        });
+        expect(screen.getByTestId('value')).toHaveTextContent('<p>reset</p>');
+        expect(screen.getByTestId('rich-text-editor-content').textContent).toBe('reset');
     });
 
     it.each([
@@ -151,10 +223,10 @@ describe('<RichTextEditor>', () => {
             // Markdown text containing markup must NOT mount as executable
             // HTML inside Tiptap. The editor's seed step escapes it via its
             // internal escapeHtml helper.
-            const onChange = jest.fn();
-            render(<Harness initial={payload} onChange={onChange} />);
+            const onModeChange = jest.fn();
+            render(<Harness initial={payload} onModeChange={onModeChange} />);
             fireEvent.click(screen.getByTestId('rich-text-editor-toggle'));
-            const seeded = onChange.mock.calls.at(-1)?.[0] as string;
+            const seeded = onModeChange.mock.calls.at(-1)?.[1] as string;
 
             // Judge the output by what a parser makes of it, not by a
             // pattern over the string: a regex for a tag misses case,

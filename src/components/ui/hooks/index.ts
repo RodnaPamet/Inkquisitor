@@ -123,11 +123,3 @@ export {
 export { useIsBelowMd } from "@inkquisitor/ui/components/ui/hooks/use-is-below-md";
 export { useCreateQueryParam } from '@inkquisitor/ui/components/ui/hooks/use-create-query-param';
 export { useSsrFallback } from '@inkquisitor/ui/components/ui/hooks/use-ssr-fallback';
-
-// ─── Debounced field autosave (P3.5) ──────────────────────────────────
-export {
-    useAutosaveFields,
-    type AutosaveState,
-    type UseAutosaveFieldsOptions,
-    type UseAutosaveFieldsResult,
-} from "@inkquisitor/ui/components/ui/hooks/use-autosave-fields";

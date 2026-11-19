@@ -17,6 +17,7 @@ import { runInWorkspaceContext } from '@/lib/db/rls-middleware';
 import { createElement, deleteElement, getElement, updateElement, updateElementFields } from '@/app-layer/usecases/bible-elements';
 import { getVersion, listVersions, restoreVersion } from '@/app-layer/usecases/bible-versions';
 import { createBook, deleteBook } from '@/app-layer/usecases/books';
+import { purgeDeletedBooks } from '@/app-layer/usecases/book-purge';
 import { ValidationError } from '@/lib/errors/types';
 import { addMember, createAccount, createBareUser, workspaceCtx } from '../helpers/workspaces';
 
@@ -51,16 +52,16 @@ describe('one version per save', () => {
 
     it('each changing save adds exactly one; a save that changes nothing adds none', async () => {
         const el = await newCharacter();
-        await updateElement(ctx, bookId, el.id, { summary: 'A ferrywoman' });
+        await updateElement(ctx, bookId, el.id, { summary: 'A ferrywoman', baseVersion: 1 });
         expect(await versionCount(el.id)).toBe(2);
-        const saved = await updateElementFields(ctx, bookId, el.id, { fields: [{ key: 'want', value: 'To cross' }, { key: 'agency', value: 4 }] });
+        const saved = await updateElementFields(ctx, bookId, el.id, { fields: [{ key: 'want', value: 'To cross' }, { key: 'agency', value: 4 }], baseVersion: 2 });
         expect(saved.changedKeys.sort()).toEqual(['agency', 'want']);
         expect(saved.versionNumber).toBe(3);
         expect(await versionCount(el.id)).toBe(3);
 
-        const again = await updateElementFields(ctx, bookId, el.id, { fields: [{ key: 'want', value: 'To cross' }] });
+        const again = await updateElementFields(ctx, bookId, el.id, { fields: [{ key: 'want', value: 'To cross' }], baseVersion: 3 });
         expect(again.changedKeys).toEqual([]);
-        await updateElement(ctx, bookId, el.id, { summary: 'A ferrywoman' });
+        await updateElement(ctx, bookId, el.id, { summary: 'A ferrywoman', baseVersion: 3 });
         expect(await versionCount(el.id)).toBe(3);
 
         const v3 = await getVersion(ctx, bookId, el.id, 3);
@@ -74,7 +75,7 @@ describe('one version per save', () => {
 
     it('clearing a field is a save: its row goes and the next snapshot omits it', async () => {
         const el = await newCharacter();
-        await updateElementFields(ctx, bookId, el.id, { fields: [{ key: 'role', value: null }] });
+        await updateElementFields(ctx, bookId, el.id, { fields: [{ key: 'role', value: null }], baseVersion: 1 });
         expect(await prisma.bibleField.count({ where: { elementId: el.id } })).toBe(0);
         expect((await getVersion(ctx, bookId, el.id, 2)).snapshot.fields).toEqual([]);
     });
@@ -82,7 +83,7 @@ describe('one version per save', () => {
     it('a refused save writes nothing at all, version included', async () => {
         const el = await newCharacter();
         await expect(
-            updateElementFields(ctx, bookId, el.id, { fields: [{ key: 'want', value: 'fine' }, { key: 'agency', value: 9 }] }),
+            updateElementFields(ctx, bookId, el.id, { fields: [{ key: 'want', value: 'fine' }, { key: 'agency', value: 9 }], baseVersion: 1 }),
         ).rejects.toBeInstanceOf(ValidationError);
         expect(await versionCount(el.id)).toBe(1);
         expect((await getElement(ctx, bookId, el.id)).fields.find((f) => f.key === 'want')?.value).toBeNull();
@@ -93,9 +94,18 @@ describe('concurrent saves', () => {
     it('get distinct, consecutive numbers, each snapshot holding the state its own save left', async () => {
         const el = await newCharacter('Racer');
         const N = 6;
-        const results = await Promise.all(
-            Array.from({ length: N }, (_v, i) => updateElementFields(ctx, bookId, el.id, { fields: [{ key: 'want', value: `want ${i}` }] })),
-        );
+        // Every writer starts from version 1 and, refused for a newer one, re-bases on the version
+        // the refusal names and sends again (the UI's "keep my edits"): all N land, one at a time.
+        const save = async (i: number, base: number): Promise<Awaited<ReturnType<typeof updateElementFields>>> => {
+            try {
+                return await updateElementFields(ctx, bookId, el.id, { fields: [{ key: 'want', value: `want ${i}` }], baseVersion: base });
+            } catch (err) {
+                const current = (err as { details?: { reason?: string; currentVersion?: number } }).details;
+                if (current?.reason !== 'VERSION_CONFLICT' || current.currentVersion === undefined) throw err;
+                return save(i, current.currentVersion);
+            }
+        };
+        const results = await Promise.all(Array.from({ length: N }, (_v, i) => save(i, 1)));
         const numbers = results.map((r) => r.versionNumber).sort((a, b) => a - b);
         expect(numbers).toEqual(Array.from({ length: N }, (_v, i) => i + 2));
         const rows = await prisma.bibleEntryVersion.findMany({ where: { elementId: el.id }, select: { versionNumber: true } });
@@ -126,14 +136,16 @@ describe('concurrent saves', () => {
 describe('restore', () => {
     it('creates a new version equal to the old snapshot and leaves the history before it untouched', async () => {
         const el = await newCharacter('Orla');
-        await updateElementFields(ctx, bookId, el.id, { fields: [{ key: 'want', value: 'v2 want' }, { key: 'defining_traits', value: ['wry'] }] });
-        await updateElement(ctx, bookId, el.id, { name: 'Orla Vane', status: 'SETTLED', summary: 'later' });
+        await updateElementFields(ctx, bookId, el.id, { fields: [{ key: 'want', value: 'v2 want' }, { key: 'defining_traits', value: ['wry'] }], baseVersion: 1 });
+        await updateElement(ctx, bookId, el.id, { name: 'Orla Vane', status: 'SETTLED', summary: 'later', baseVersion: 2 });
         const before = await prisma.bibleEntryVersion.findMany({ where: { elementId: el.id }, orderBy: { versionNumber: 'asc' } });
         expect(before).toHaveLength(3);
 
-        const result = await restoreVersion(ctx, bookId, el.id, 1);
+        const result = await restoreVersion(ctx, bookId, el.id, 1, { baseVersion: 3 });
         expect(result.version.versionNumber).toBe(4);
         expect(result.version.restoredFromVersion).toBe(1);
+        // No product English in author data (#20): the UI words the restore from restoredFromVersion.
+        expect(result.version.changeSummary).toBeNull();
         expect(result.skippedFieldKeys).toEqual([]);
 
         const v1 = await getVersion(ctx, bookId, el.id, 1);
@@ -152,23 +164,23 @@ describe('restore', () => {
     it('keeps the current slug when another element has taken the old one since', async () => {
         const el = await newCharacter('Pell');
         const oldSlug = el.slug;
-        await updateElement(ctx, bookId, el.id, { slug: 'pell-renamed' });
+        await updateElement(ctx, bookId, el.id, { slug: 'pell-renamed', baseVersion: 1 });
         await createElement(ctx, bookId, { kind: 'SETTING', name: 'Usurper', slug: oldSlug });
-        const result = await restoreVersion(ctx, bookId, el.id, 1);
+        const result = await restoreVersion(ctx, bookId, el.id, 1, { baseVersion: 2 });
         expect(result.slugKept).toBe(true);
         expect((await getElement(ctx, bookId, el.id)).slug).toBe('pell-renamed');
     });
 
     it('refuses a version number the element does not have', async () => {
         const el = await newCharacter();
-        await expect(restoreVersion(ctx, bookId, el.id, 7)).rejects.toThrow(/Version not found/);
+        await expect(restoreVersion(ctx, bookId, el.id, 7, { baseVersion: 1 })).rejects.toThrow(/Version not found/);
     });
 });
 
 describe('listing', () => {
     it('is newest first, without snapshots, and pages with `before`', async () => {
         const el = await newCharacter();
-        for (const v of ['a', 'b', 'c']) await updateElementFields(ctx, bookId, el.id, { fields: [{ key: 'want', value: v }] });
+        for (const [i, v] of ['a', 'b', 'c'].entries()) await updateElementFields(ctx, bookId, el.id, { fields: [{ key: 'want', value: v }], baseVersion: i + 1 });
         const page = await listVersions(ctx, bookId, el.id, { take: 2 });
         expect(page.map((v) => v.versionNumber)).toEqual([4, 3]);
         expect(page[0]).not.toHaveProperty('snapshot');
@@ -201,13 +213,18 @@ describe('append-only in the database', () => {
         expect(await versionCount(el.id)).toBe(1);
     });
 
-    it("an element's deletion keeps its history; its book's deletion (by app_user) takes the history with it", async () => {
+    it("an element's deletion keeps its history; its book's deletion keeps it too, and the purge (as app_user) takes it", async () => {
         const book = await createBook(ctx, { title: 'Doomed' });
         const el = await createElement(ctx, book.id, { kind: 'THEME', name: 'Loss' });
-        await updateElement(ctx, book.id, el.id, { summary: 'grief' });
+        await updateElement(ctx, book.id, el.id, { summary: 'grief', baseVersion: 1 });
         await deleteElement(ctx, book.id, el.id);
         expect(await versionCount(el.id)).toBe(2);
+        // Deleting a book is soft (1.H): its history stays until the purge.
         await deleteBook(ctx, book.id);
+        expect(await versionCount(el.id)).toBe(2);
+        // 31 days on (the row's deletion back-dated as the superuser; the database refuses an earlier purge).
+        await prisma.book.update({ where: { id: book.id }, data: { deletedAt: new Date(Date.now() - 31 * 24 * 60 * 60 * 1000) } });
+        await purgeDeletedBooks();
         expect(await versionCount(el.id)).toBe(0);
         expect(await prisma.book.findUnique({ where: { id: book.id } })).toBeNull();
     });

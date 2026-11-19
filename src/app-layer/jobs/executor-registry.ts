@@ -6,10 +6,10 @@
  * throws: a failing executor becomes a `success: false` result, logged and
  * counted, so one job can never take the worker or the other jobs down.
  *
- * The registry ships EMPTY of product jobs. Its one registration is
- * `heartbeat`, a no-op that exists to prove the wiring (see `types.ts`).
- * A product job registers here, below it, with a dynamic import so its
- * dependencies load only when it first runs.
+ * `heartbeat` is a no-op that exists to prove the wiring (see `types.ts`);
+ * `book-purge` (Phase 1.H) is the first product job. A product job registers
+ * here, below them, with a dynamic import so its dependencies load only when
+ * it first runs.
  *
  * Adapted from inflect-compliance's `src/app-layer/jobs/executor-registry.ts`
  * (its ~60 compliance registrations and the integration retry-bypass are not
@@ -122,6 +122,25 @@ function registerDefaultExecutors(): void {
         const startedAt = new Date().toISOString();
         const startMs = performance.now();
         return runJob('heartbeat', async () => emptyResult('heartbeat', startedAt, startMs));
+    });
+
+    // Phase 1.H: books deleted more than 30 days ago, deleted for good.
+    executorRegistry.register('book-purge', async () => {
+        const startedAt = new Date().toISOString();
+        const startMs = performance.now();
+        return runJob('book-purge', async () => {
+            const { purgeDeletedBooks } = await import('@/app-layer/usecases/book-purge');
+            const r = await purgeDeletedBooks();
+            return {
+                ...emptyResult('book-purge', startedAt, startMs),
+                success: r.failed === 0,
+                itemsScanned: r.due,
+                itemsActioned: r.purged,
+                itemsSkipped: r.skipped,
+                ...(r.failed > 0 ? { errorMessage: `${r.failed} book(s) could not be purged` } : {}),
+                details: { failed: r.failed, more: r.more },
+            };
+        });
     });
 }
 

@@ -26,7 +26,7 @@ test('an author keeps a versioned bible through the API, and nobody else can rea
     const factionId = (await faction.json()).element.id as string;
 
     const saved = await api.put(`${base}/${bookId}/elements/${elementId}/fields`, {
-        data: { fields: [{ key: 'want', value: 'To reach <b>the far shore</b><script>x()</script>' }, { key: 'agency', value: 4 }] },
+        data: { fields: [{ key: 'want', value: 'To reach <b>the far shore</b><script>x()</script>' }, { key: 'agency', value: 4 }], baseVersion: 1 },
     });
     expect(saved.status()).toBe(200);
     const after = (await saved.json()).element;
@@ -40,7 +40,7 @@ test('an author keeps a versioned bible through the API, and nobody else can rea
 
     const history = (await (await api.get(`${base}/${bookId}/elements/${elementId}/versions`)).json()).versions;
     expect(history.map((v: { versionNumber: number }) => v.versionNumber)).toEqual([2, 1]);
-    const restored = await api.post(`${base}/${bookId}/elements/${elementId}/versions/1/restore`);
+    const restored = await api.post(`${base}/${bookId}/elements/${elementId}/versions/1/restore`, { data: { baseVersion: 2 } });
     expect(restored.status()).toBe(201);
     expect((await restored.json()).restore.version.versionNumber).toBe(3);
 

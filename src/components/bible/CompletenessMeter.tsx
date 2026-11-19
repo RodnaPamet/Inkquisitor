@@ -16,7 +16,7 @@ export function CompletenessMeter({ value, label }: { value: Completeness; label
     const t = useTranslations('bible.completeness');
     if (value.state !== 'measured') {
         return (
-            <p className="text-xs font-medium text-content-subtle" data-completeness={value.state}>
+            <p className="text-xs font-medium text-content-muted" data-completeness={value.state}>
                 {value.state === 'not-started' ? t('notStarted') : t('notAssessed')}
             </p>
         );

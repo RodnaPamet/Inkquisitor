@@ -54,6 +54,7 @@ describe('field values', () => {
                     { key: 'wound', value: 5 },
                     { key: 'want', value: 'twice' },
                 ],
+                baseVersion: el.versionNumber,
             }),
         );
         expect(error).toBeInstanceOf(ValidationError);
@@ -70,7 +71,7 @@ describe('field values', () => {
 
     it('a key of another kind is unknown here', async () => {
         const place = await createElement(ctx, bookId, { kind: 'SETTING', name: 'Harbour' });
-        const { details } = await refusal(updateElementFields(ctx, bookId, place.id, { fields: [{ key: 'want', value: 'x' }] }));
+        const { details } = await refusal(updateElementFields(ctx, bookId, place.id, { fields: [{ key: 'want', value: 'x' }], baseVersion: place.versionNumber }));
         expect(details.fields).toEqual([{ key: 'want', reason: 'UNKNOWN_FIELD' }]);
     });
 
@@ -126,7 +127,7 @@ describe('elements', () => {
         const { error, details } = await refusal(createElement(ctx, bookId, { kind: 'SETTING', name: 'Other', slug: 'the-quay' }));
         expect(error).toBeInstanceOf(ConflictError);
         expect(details.reason).toBe('SLUG_TAKEN');
-        expect((await refusal(updateElement(ctx, bookId, second.id, { slug: 'the-quay' }))).details.reason).toBe('SLUG_TAKEN');
+        expect((await refusal(updateElement(ctx, bookId, second.id, { slug: 'the-quay', baseVersion: second.versionNumber }))).details.reason).toBe('SLUG_TAKEN');
         // Another book may use the same slug.
         const otherBook = await createBook(ctx, { title: 'Other book' });
         expect((await createElement(ctx, otherBook.id, { kind: 'SETTING', name: 'The Quay' })).slug).toBe('the-quay');
@@ -272,7 +273,7 @@ describe('sanitising on every author-text write path', () => {
         expect(el).toMatchObject({ name: 'Relic', customLabel: 'Artefact', summary: 'Summary' });
         const values = Object.fromEntries(el.fields.map((f) => [f.key, f.value]));
         expect(values).toMatchObject({ purpose: 'Purpose', key_details: ['detail'] });
-        const renamed = await updateElement(ctx, bookId, el.id, { name: '\u0000Relic two&#0;' });
+        const renamed = await updateElement(ctx, bookId, el.id, { name: '\u0000Relic two&#0;', baseVersion: el.versionNumber });
         expect(renamed.name).toBe('Relic two');
         const raw = await prisma.bibleElement.findUniqueOrThrow({ where: { id: el.id }, select: { name: true, customLabel: true } });
         expect(raw).toEqual({ name: 'Relic two', customLabel: 'Artefact' });

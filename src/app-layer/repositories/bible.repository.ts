@@ -27,6 +27,20 @@ export const ELEMENT_SELECT = {
     updatedAt: true,
 } as const satisfies Prisma.BibleElementSelect;
 
+/** An element as a list shows it: no encrypted column, so a page of a thousand decrypts nothing. */
+export const ELEMENT_LIST_SELECT = {
+    id: true,
+    bookId: true,
+    kind: true,
+    name: true,
+    slug: true,
+    status: true,
+    customLabel: true,
+    updatedAt: true,
+} as const satisfies Prisma.BibleElementSelect;
+
+export type ElementListRow = Prisma.BibleElementGetPayload<{ select: typeof ELEMENT_LIST_SELECT }>;
+
 const FIELD_SELECT = { key: true, value: true, order: true, updatedAt: true } as const satisfies Prisma.BibleFieldSelect;
 
 const RELATION_SELECT = {
@@ -67,17 +81,67 @@ export const BibleElementRepository = {
         await db.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${'bible-element:' + elementId}))`;
     },
 
-    list(db: Db, workspaceId: string, bookId: string, options: { kind?: BibleElementKind; take?: number } = {}) {
+    /**
+     * One page of a book's elements, by name then id (keyset: `after` is the
+     * last row of the previous page), optionally of some kinds and whose name
+     * contains `q` (case-insensitive, literally: `%`, `_` and backslash are escaped). `take` bounds it; ask one more than you
+     * show to know whether another page follows. Served by
+     * (workspaceId, bookId, kind, name) when kinds are given.
+     */
+    page(
+        db: Db,
+        workspaceId: string,
+        bookId: string,
+        options: { kinds?: readonly BibleElementKind[]; q?: string; after?: { name: string; id: string }; take: number },
+    ) {
+        const { kinds, q, after, take } = options;
         return db.bibleElement.findMany({
-            where: { workspaceId, bookId, ...(options.kind ? { kind: options.kind } : {}) },
-            orderBy: [{ kind: 'asc' }, { name: 'asc' }, { id: 'asc' }],
-            take: options.take ?? 500,
-            select: ELEMENT_SELECT,
+            where: {
+                workspaceId,
+                bookId,
+                ...(kinds ? { kind: { in: [...kinds] } } : {}),
+                // `contains` is an ILIKE whose pattern Prisma does not escape: a
+                // `%` or `_` the author types is a character to find, not a wildcard.
+                ...(q ? { name: { contains: q.replace(/[\\%_]/g, '\\$&'), mode: 'insensitive' as const } } : {}),
+                ...(after ? { OR: [{ name: { gt: after.name } }, { name: after.name, id: { gt: after.id } }] } : {}),
+            },
+            orderBy: [{ name: 'asc' }, { id: 'asc' }],
+            take,
+            select: ELEMENT_LIST_SELECT,
         });
     },
 
+    /**
+     * The first `perKind` elements of EACH kind, by name then id, in one
+     * query (a window over the book's elements; the board, Phase 1.H). List
+     * columns only: nothing is decrypted.
+     */
+    firstPerKind(db: Db, workspaceId: string, bookId: string, perKind: number): Promise<ElementListRow[]> {
+        return db.$queryRaw<ElementListRow[]>`
+            SELECT "id", "bookId", "kind", "name", "slug", "status", "customLabel", "updatedAt"
+            FROM (
+                SELECT e.*, row_number() OVER (PARTITION BY e."kind" ORDER BY e."name", e."id") AS rn
+                FROM "BibleElement" e
+                WHERE e."workspaceId" = ${workspaceId} AND e."bookId" = ${bookId}
+            ) ranked
+            WHERE rn <= ${perKind}
+            ORDER BY "kind", "name", "id"`;
+    },
+
+    /** Every element of the book with its summary, by name then id (the export's read); `take` bounds it. */
+    listForExport(db: Db, workspaceId: string, bookId: string, take: number) {
+        return db.bibleElement.findMany({ where: { workspaceId, bookId }, orderBy: [{ name: 'asc' }, { id: 'asc' }], take, select: ELEMENT_SELECT });
+    },
+
+    /** How many elements the book holds of each kind (an aggregate: no row is read out). */
+    async countByKind(db: Db, workspaceId: string, bookId: string): Promise<Map<BibleElementKind, number>> {
+        const rows = await db.bibleElement.groupBy({ by: ['kind'], where: { workspaceId, bookId }, _count: { _all: true } });
+        return new Map(rows.map((r) => [r.kind, r._count._all]));
+    },
+
+    /** An element of a LIVE book: an element of a deleted book (Phase 1.H) is not found. */
     find(db: Db, workspaceId: string, bookId: string, elementId: string) {
-        return db.bibleElement.findFirst({ where: { id: elementId, workspaceId, bookId }, select: ELEMENT_SELECT });
+        return db.bibleElement.findFirst({ where: { id: elementId, workspaceId, bookId, book: { deletedAt: null } }, select: ELEMENT_SELECT });
     },
 
     /** The book's elements holding any of `slugs` (an import's lookup, Phase 1.3). */
@@ -161,6 +225,35 @@ export const BibleFieldRepository = {
         });
     },
 
+    /**
+     * How many of the book's elements of each kind have a stored value under
+     * each key: an aggregate in the database (the board's completeness,
+     * Phase 1.H), so nothing is decrypted and no field row is read out.
+     *
+     * The fields are read PER ELEMENT, through the (workspaceId, elementId)
+     * index: the `LATERAL … OFFSET 0` keeps the planner from flattening the
+     * subquery into a plain join. As a plain join its plan rested on the
+     * statistics: for a book they did not yet know (a large import, before
+     * autoanalyze), the book's elements were estimated at one row, and the
+     * planner chose a nested loop that scanned EVERY field of the workspace
+     * once per element — quadratic, 400 ms for 400 elements and growing with
+     * the square of the book. Read this way it is one index probe per
+     * element, whatever the estimate (the load test analyzes before seeding
+     * to hold it to that).
+     */
+    async filledKeysByKind(db: Db, workspaceId: string, bookId: string): Promise<Array<{ kind: BibleElementKind; key: string; n: number }>> {
+        return db.$queryRaw<Array<{ kind: BibleElementKind; key: string; n: number }>>`
+            SELECT e."kind" AS "kind", f."key" AS "key", count(*)::int AS "n"
+            FROM "BibleElement" e
+            CROSS JOIN LATERAL (
+                SELECT fi."key" FROM "BibleField" fi
+                WHERE fi."workspaceId" = e."workspaceId" AND fi."elementId" = e."id"
+                OFFSET 0
+            ) f
+            WHERE e."workspaceId" = ${workspaceId} AND e."bookId" = ${bookId}
+            GROUP BY e."kind", f."key"`;
+    },
+
     /** Set one field's stored value (JSON), creating its row if it has none. */
     upsert(db: Db, workspaceId: string, elementId: string, field: { key: string; value: string; order: number }) {
         return db.bibleField.upsert({
@@ -179,12 +272,12 @@ export const BibleFieldRepository = {
 };
 
 export const BibleRelationRepository = {
-    /** Every relation touching the element, from either end. */
-    listForElement(db: Db, workspaceId: string, bookId: string, elementId: string) {
+    /** Relations touching the element, from either end, oldest first; `take` bounds it. */
+    listForElement(db: Db, workspaceId: string, bookId: string, elementId: string, take: number) {
         return db.bibleRelation.findMany({
             where: { workspaceId, bookId, OR: [{ fromElementId: elementId }, { toElementId: elementId }] },
             orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
-            take: 1_000,
+            take,
             select: {
                 ...RELATION_SELECT,
                 from: { select: { id: true, kind: true, name: true, slug: true } },
@@ -219,13 +312,20 @@ export const BibleRelationRepository = {
         });
     },
 
-    /** The relation between the two elements of this type, in either direction. */
+    /**
+     * The SYMMETRIC relation between the two elements of this type, in either
+     * direction (only a symmetric row: a directed one of the same key is
+     * another fact). The key alone names the declaration: no two kinds may
+     * each hold one key between the same two elements
+     * (`relationLookupCollisions`, checked when the templates load).
+     */
     findPair(db: Db, workspaceId: string, bookId: string, a: string, b: string, type: string) {
         return db.bibleRelation.findFirst({
             where: {
                 workspaceId,
                 bookId,
                 type,
+                symmetric: true,
                 OR: [
                     { fromElementId: a, toElementId: b },
                     { fromElementId: b, toElementId: a },

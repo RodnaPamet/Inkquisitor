@@ -14,6 +14,9 @@
  *   bible.view         read books and their bibles           all
  *   bible.edit         write books, bible elements, fields,  OWNER, EDITOR
  *                      relations; restore a version
+ *   books.delete       delete a book (soft: 30 days to       OWNER
+ *                      restore), list and restore the
+ *                      workspace's deleted books (Phase 1.H)
  *   audit.view         read the audit trail                  OWNER
  *
  * Adapted from inflect-compliance's `src/lib/permissions.ts` (see
@@ -26,6 +29,7 @@ export interface PermissionSet {
     workspace: { view: boolean; manage: boolean };
     members: { view: boolean; manage: boolean };
     bible: { view: boolean; edit: boolean };
+    books: { delete: boolean };
     audit: { view: boolean };
 }
 
@@ -39,18 +43,21 @@ const ROLE_PERMISSIONS: Readonly<Record<WorkspaceRole, PermissionSet>> = {
         workspace: { view: true, manage: true },
         members: { view: true, manage: true },
         bible: { view: true, edit: true },
+        books: { delete: true },
         audit: { view: true },
     },
     EDITOR: {
         workspace: { view: true, manage: false },
         members: { view: true, manage: false },
         bible: { view: true, edit: true },
+        books: { delete: false },
         audit: { view: false },
     },
     READER: {
         workspace: { view: true, manage: false },
         members: { view: true, manage: false },
         bible: { view: true, edit: false },
+        books: { delete: false },
         audit: { view: false },
     },
 };

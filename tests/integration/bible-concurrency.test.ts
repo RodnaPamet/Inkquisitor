@@ -9,14 +9,20 @@
  *   - a derived slug never collides for good: long names whose suffix
  *     shortens the base, and concurrent creates of one name, all succeed;
  *   - a restore whose old slug is taken between its check and its write keeps
- *     the current slug rather than failing.
+ *     the current slug rather than failing;
+ *   - an import compares each element with its state UNDER the element's lock
+ *     (Phase 1.H): a save that lands between the import's lookup and its lock
+ *     is overwritten by the file, never mistaken for the file's own value.
  */
 import { prisma } from '@/lib/db';
 import { createElement, getElement, updateElement } from '@/app-layer/usecases/bible-elements';
+import { importBibleBundle, importConceptNote, type ImportDeps } from '@/app-layer/usecases/bible-import';
 import { addRelation } from '@/app-layer/usecases/bible-relations';
 import { restoreVersion } from '@/app-layer/usecases/bible-versions';
 import { createBook } from '@/app-layer/usecases/books';
+import { writeZip } from '@/lib/archive/zip';
 import { ConflictError } from '@/lib/errors/types';
+import type { ScanResult } from '@/lib/storage/av-scan';
 import { createAccount, workspaceCtx } from '../helpers/workspaces';
 
 afterAll(() => prisma.$disconnect());
@@ -108,7 +114,7 @@ describe('derived slugs', () => {
 describe('restore', () => {
     it('keeps the current slug when another element takes the old one between the check and the write', async () => {
         const el = await createElement(ctx, bookId, { kind: 'THEME', name: 'Loss', slug: 'loss-original' });
-        await updateElement(ctx, bookId, el.id, { slug: 'loss-renamed' }); // version 2; version 1 holds `loss-original`
+        await updateElement(ctx, bookId, el.id, { slug: 'loss-renamed', baseVersion: 1 }); // version 2; version 1 holds `loss-original`
 
         // A transaction outside the product holds the element's row, so the
         // restore's UPDATE waits AFTER its slug check; meanwhile it gives the
@@ -117,7 +123,7 @@ describe('restore', () => {
         await prisma.$transaction(
             async (tx) => {
                 await tx.$queryRaw`SELECT 1 FROM "BibleElement" WHERE id = ${el.id} FOR UPDATE`;
-                restoring = restoreVersion(ctx, bookId, el.id, 1);
+                restoring = restoreVersion(ctx, bookId, el.id, 1, { baseVersion: 2 });
                 restoring.catch(() => undefined);
                 await waitForLockWait();
                 await tx.bibleElement.create({
@@ -135,6 +141,62 @@ describe('restore', () => {
         expect(after.versionNumber).toBe(3);
     });
 });
+
+describe('import', () => {
+    const clean: ImportDeps = { scan: async (): Promise<ScanResult> => ({ status: 'CLEAN', engine: 'test', durationMs: 0 }) };
+
+    /**
+     * Hold the element's save lock outside the product, start `run`, and once it
+     * waits on that lock (after its lookup), rename the element and commit:
+     * the save that lands between an import's read and its lock.
+     */
+    async function renamedWhileWaiting<T>(elementId: string, run: () => Promise<T>): Promise<T> {
+        let running: Promise<T> | undefined;
+        await prisma.$transaction(
+            async (tx) => {
+                await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${'bible-element:' + elementId}))`;
+                running = run();
+                running.catch(() => undefined);
+                await waitForAdvisoryWait();
+                await tx.$executeRaw`UPDATE "BibleElement" SET "name" = 'Renamed meanwhile' WHERE "id" = ${elementId}`;
+            },
+            { timeout: 20_000 },
+        );
+        return running!;
+    }
+
+    it('a bundle sets the file’s name over a rename made between its lookup and its lock', async () => {
+        const el = await createElement(ctx, bookId, { kind: 'THEME', name: 'Tide', slug: 'tide' });
+        const bundle = writeZip(
+            new Map([
+                ['manifest.json', '{"format":"inkquisitor-bible","version":1}\n'],
+                ['theme/tide.md', '---\nkind: THEME\nname: Tide\nslug: tide\nstatus: DRAFT\n---\n'],
+            ]),
+        );
+        const report = await renamedWhileWaiting(el.id, () => importBibleBundle(ctx, bookId, bundle, {}, clean));
+        expect(report.items).toEqual([expect.objectContaining({ id: el.id, outcome: 'updated', versionNumber: 2 })]);
+        expect((await getElement(ctx, bookId, el.id)).name).toBe('Tide');
+    });
+
+    it('a concept note does the same for the note it updates', async () => {
+        const first = await importConceptNote(ctx, bookId, { text: 'Salt and debt.', name: 'Salt', slug: 'salt-note' }, clean);
+        const report = await renamedWhileWaiting(first.element.id, () => importConceptNote(ctx, bookId, { text: 'Salt and debt.', name: 'Salt', slug: 'salt-note' }, clean));
+        expect(report).toMatchObject({ outcome: 'updated', versionNumber: 2 });
+        expect((await getElement(ctx, bookId, first.element.id)).name).toBe('Salt');
+    });
+});
+
+/** Until another backend waits on an advisory lock (an element's save lock). */
+async function waitForAdvisoryWait(): Promise<void> {
+    for (let i = 0; i < 400; i++) {
+        const rows = await prisma.$queryRaw<Array<{ n: bigint }>>`
+            SELECT count(*) AS n FROM pg_stat_activity
+             WHERE wait_event_type = 'Lock' AND wait_event = 'advisory' AND datname = current_database()`;
+        if (Number(rows[0].n) > 0) return;
+        await new Promise((r) => setTimeout(r, 25));
+    }
+    throw new Error('nothing ever waited on the element’s lock');
+}
 
 /** Until another backend waits on a row lock in an UPDATE of an element (the restore's). */
 async function waitForLockWait(): Promise<void> {

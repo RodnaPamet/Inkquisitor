@@ -19,6 +19,8 @@ export interface CraftedEntry {
     localName?: string;
     /** The entry's compressed bytes as given, in place of compressing `data`. */
     body?: Uint8Array;
+    /** What the LOCAL header says, where it should differ from the directory (Phase 1.H). */
+    local?: { method?: number; flags?: number; crc?: number; size?: number; compressedSize?: number };
 }
 
 export function craftZip(entries: readonly CraftedEntry[], options: { entryCountOverride?: number } = {}): Uint8Array {
@@ -38,11 +40,11 @@ export function craftZip(entries: readonly CraftedEntry[], options: { entryCount
         const local = Buffer.alloc(30);
         local.writeUInt32LE(0x04034b50, 0);
         local.writeUInt16LE(20, 4);
-        local.writeUInt16LE(flags, 6);
-        local.writeUInt16LE(method, 8);
-        local.writeUInt32LE(crc >>> 0, 14);
-        local.writeUInt32LE(compressedSize >>> 0, 18);
-        local.writeUInt32LE(size >>> 0, 22);
+        local.writeUInt16LE(e.local?.flags ?? flags, 6);
+        local.writeUInt16LE(e.local?.method ?? method, 8);
+        local.writeUInt32LE((e.local?.crc ?? crc) >>> 0, 14);
+        local.writeUInt32LE((e.local?.compressedSize ?? compressedSize) >>> 0, 18);
+        local.writeUInt32LE((e.local?.size ?? size) >>> 0, 22);
         local.writeUInt16LE(localName.length, 26);
         locals.push(local, localName, body);
         const central = Buffer.alloc(46);

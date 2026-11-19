@@ -49,3 +49,18 @@ export function pluralize(
     if (count === 1) return word;
     return options.plural ?? `${word}s`;
 }
+
+/**
+ * One line of text as a name column stores it (Phase 1.H, #17): C0 control
+ * characters and DEL removed (tab, line feed and carriage return become a
+ * space first), runs of whitespace collapsed, ends trimmed. PostgreSQL refuses
+ * a NUL in a text column, so a name carrying one was a 500 rather than a
+ * stored name. No HTML handling: the value is rendered as React text.
+ */
+export function cleanLine(input: string): string {
+    return input
+        .replace(/[\t\n\r]/g, ' ')
+        .replace(/[\u0000-\u001F\u007F]/g, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+}

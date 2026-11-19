@@ -24,7 +24,7 @@ jest.mock('next/navigation', () => ({
 
 import { ElementPage } from '@/components/bible/ElementPage';
 import type { RelationView } from '@/app-layer/usecases/bible-elements';
-import { API, elementView, mockFetch, pageProps, versionMeta } from '../helpers/bible-ui';
+import { API, elementView, mockFetch, pageProps, searchAnswer, versionMeta } from '../helpers/bible-ui';
 
 beforeAll(() => {
     Document.prototype.elementFromPoint = () => null;
@@ -35,6 +35,9 @@ beforeEach(() => {
 });
 
 const EL = `${API}/elements/el_1`;
+/** The relation picker's server search (Phase 1.H): every query string on the element list. */
+const SEARCH = { [`GET ${API}/elements?`]: searchAnswer };
+const notSearch = (r: { url: string }) => !r.url.startsWith(`${API}/elements?`);
 const MEMBER_OF: RelationView = {
     id: 'rel_1',
     direction: 'outgoing',
@@ -69,8 +72,8 @@ describe('relations', () => {
         expect(within(row).getByRole('link', { name: 'The Tidewardens' })).toHaveAttribute('href', '/w/ada/books/book_1/elements/el_guild');
     });
 
-    it('offers only the relation types valid for this kind, then only elements of a kind the type allows', async () => {
-        mockFetch({});
+    it('offers only the relation types valid for this kind, then searches the book for elements of a kind the type allows', async () => {
+        const { requests } = mockFetch({ ...SEARCH });
         const user = userEvent.setup();
         mount();
         await user.click(document.getElementById('relation-type')!);
@@ -85,6 +88,22 @@ describe('relations', () => {
         await user.click(document.getElementById('relation-other')!);
         const others = (await screen.findAllByRole('option')).map((o) => o.textContent);
         expect(others).toEqual(['The TidewardensFaction']);
+        // The candidates came from the server, asked for the kinds the type reaches (#18).
+        const search = requests.filter((r) => !notSearch(r)).at(-1)!;
+        expect(new URL(search.url, 'http://x').searchParams.get('kinds')).toBe('FACTION');
+    });
+
+    it('searches as the author types, never offering this element itself', async () => {
+        const { requests } = mockFetch({ ...SEARCH });
+        const user = userEvent.setup();
+        mount();
+        await pick(user, 'relation-type', 'related to');
+        await user.click(document.getElementById('relation-other')!);
+        // Every kind is reachable by `related to`; Mara (this element) is never a candidate.
+        await waitFor(() => expect(screen.getAllByRole('option').map((o) => o.textContent?.replace(/(Character|Faction|Setting)$/, ''))).toEqual(['Jon', 'The Harbour', 'The Tidewardens']));
+        await user.keyboard('har');
+        await waitFor(() => expect(screen.getAllByRole('option').map((o) => o.textContent)).toEqual(['The HarbourSetting']));
+        expect(new URL(requests.filter((r) => !notSearch(r)).at(-1)!.url, 'http://x').searchParams.get('q')).toBe('har');
     });
 
     it('tells apart two relation types that read the same from this end, by the kinds each reaches', async () => {
@@ -101,6 +120,7 @@ describe('relations', () => {
 
     it('adds an outgoing relation from this element, then re-reads the element', async () => {
         const { requests } = mockFetch({
+            ...SEARCH,
             [`POST ${API}/relations`]: { status: 201, json: { relation: { id: 'rel_2' } } },
             [`GET ${EL}`]: { json: { element: elementView({ relations: [MEMBER_OF] }) } },
         });
@@ -110,14 +130,48 @@ describe('relations', () => {
         await pick(user, 'relation-other', 'The Tidewardens');
         await user.click(screen.getByRole('button', { name: 'Link' }));
         await waitFor(() => expect(panel()).toHaveTextContent('member of The Tidewardens'));
-        expect(requests.map((r) => [r.method, r.url, r.body])).toEqual([
+        expect(requests.filter(notSearch).map((r) => [r.method, r.url, r.body])).toEqual([
             ['POST', `${API}/relations`, { fromElementId: 'el_1', toElementId: 'el_guild', type: 'member_of' }],
             ['GET', EL, undefined],
         ]);
     });
 
+    it('an add whose re-read fails is still an add (#20): it re-reads again, and never reports the add as failed', async () => {
+        let reads = 0;
+        const { requests } = mockFetch({
+            ...SEARCH,
+            [`POST ${API}/relations`]: { status: 201, json: { relation: { id: 'rel_2' } } },
+            [`GET ${EL}`]: () => (++reads === 1 ? { status: 500, json: {} } : { json: { element: elementView({ relations: [MEMBER_OF] }) } }),
+        });
+        const user = userEvent.setup();
+        mount();
+        await pick(user, 'relation-type', 'member of');
+        await pick(user, 'relation-other', 'The Tidewardens');
+        await user.click(screen.getByRole('button', { name: 'Link' }));
+        await waitFor(() => expect(panel()).toHaveTextContent('member of The Tidewardens'));
+        expect(requests.filter((r) => r.method === 'POST')).toHaveLength(1);
+        expect(reads).toBe(2);
+        expect(within(panel()).queryByRole('alert')).toBeNull();
+    });
+
+    it('when the re-read fails twice, says the list may be stale rather than that the add failed', async () => {
+        mockFetch({
+            ...SEARCH,
+            [`POST ${API}/relations`]: { status: 201, json: { relation: { id: 'rel_2' } } },
+            [`GET ${EL}`]: { status: 500, json: {} },
+        });
+        const user = userEvent.setup();
+        mount();
+        await pick(user, 'relation-type', 'member of');
+        await pick(user, 'relation-other', 'The Tidewardens');
+        await user.click(screen.getByRole('button', { name: 'Link' }));
+        expect(await within(panel()).findByText('The relation was added, but the list could not be refreshed. Reload the page to see it.')).toBeInTheDocument();
+        expect(within(panel()).queryByRole('alert')).toBeNull();
+    });
+
     it('sends a relation another kind declares from the other element', async () => {
         const { requests } = mockFetch({
+            ...SEARCH,
             [`POST ${API}/relations`]: { status: 201, json: { relation: { id: 'rel_3' } } },
             [`GET ${EL}`]: { json: { element: elementView() } },
         });
@@ -126,11 +180,11 @@ describe('relations', () => {
         await pick(user, 'relation-type', 'mentored by');
         await pick(user, 'relation-other', 'Jon');
         await user.click(screen.getByRole('button', { name: 'Link' }));
-        await waitFor(() => expect(requests[0]?.body).toEqual({ fromElementId: 'el_jon', toElementId: 'el_1', type: 'mentor_of' }));
+        await waitFor(() => expect(requests.filter(notSearch)[0]?.body).toEqual({ fromElementId: 'el_jon', toElementId: 'el_1', type: 'mentor_of' }));
     });
 
     it('words a refusal from its reason', async () => {
-        mockFetch({ [`POST ${API}/relations`]: { status: 409, json: { error: { code: 'CONFLICT', message: 'x', details: { reason: 'RELATION_EXISTS' } } } } });
+        mockFetch({ ...SEARCH, [`POST ${API}/relations`]: { status: 409, json: { error: { code: 'CONFLICT', message: 'x', details: { reason: 'RELATION_EXISTS' } } } } });
         const user = userEvent.setup();
         mount();
         await pick(user, 'relation-type', 'member of');
