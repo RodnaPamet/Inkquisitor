@@ -87,6 +87,10 @@ COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/prisma.config.ts ./prisma.config.ts
 COPY --from=builder /app/scripts/entrypoint.sh ./scripts/entrypoint.sh
 COPY --from=builder /app/dist ./dist
+# The PDF export's font (Noto Sans and its OFL licence, issue #24), read at run
+# time from <cwd>/fonts/noto-sans (src/lib/pdf/fonts.ts); the working
+# directory is /app.
+COPY --from=builder /app/fonts ./fonts
 
 RUN chmod +x ./scripts/entrypoint.sh && chown -R nextjs:nodejs /app
 

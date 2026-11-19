@@ -8,7 +8,7 @@
  *   POST …/import/bundle     the zip as the body; a body past the bound is a
  *                            413 refused on its declared length, unread; a
  *                            body that is not labelled a zip is refused
- *   POST …/import/concept-note   JSON; 201 for a new element, 200 after
+ *   POST …/import/concept-note   JSON; 201, always a new element (#27 item 3)
  *
  * The scanner is ClamAV in production; here AV_SCAN_MODE=disabled, the
  * development setting with no clamd, under which the scan reports CLEAN.
@@ -117,12 +117,14 @@ describe('import', () => {
         expect(((await res.json()) as { error: { details: { reason: string } } }).error.details.reason).toBe('NOT_A_ZIP_UPLOAD');
     });
 
-    it('stores a concept note: 201 for the new element, 200 when it is already there', async () => {
+    it('stores a concept note: 201 for a new element, every time, at the next free slug', async () => {
         const body = JSON.stringify({ text: 'A pitch\n\nIn two paragraphs.' });
         const first = await importNote(request('/import/concept-note', { method: 'POST', headers: { 'content-type': 'application/json' }, body }), params());
         expect(first.status).toBe(201);
         const second = await importNote(request('/import/concept-note', { method: 'POST', headers: { 'content-type': 'application/json' }, body }), params());
-        expect(second.status).toBe(200);
-        expect(((await second.json()) as { report: { outcome: string } }).report.outcome).toBe('unchanged');
+        expect(second.status).toBe(201);
+        const slugs = await Promise.all([first, second].map(async (r) => ((await r.json()) as { report: { element: { slug: string } } }).report.element.slug));
+        expect(slugs[1]).not.toBe(slugs[0]);
+        expect(slugs[1]).toBe(`${slugs[0]}-2`);
     });
 });

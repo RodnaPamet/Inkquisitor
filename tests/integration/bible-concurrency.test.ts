@@ -10,9 +10,12 @@
  *     shortens the base, and concurrent creates of one name, all succeed;
  *   - a restore whose old slug is taken between its check and its write keeps
  *     the current slug rather than failing;
- *   - an import compares each element with its state UNDER the element's lock
- *     (Phase 1.H): a save that lands between the import's lookup and its lock
- *     is overwritten by the file, never mistaken for the file's own value.
+ *   - a bundle import compares each element with its state UNDER the
+ *     element's lock (Phase 1.H): a save that lands between the import's
+ *     lookup and its lock is overwritten by the file, never mistaken for the
+ *     file's own value;
+ *   - concurrent concept-note imports of one note each create their own
+ *     element at their own slug (#27 item 3: a note never updates one).
  */
 import { prisma } from '@/lib/db';
 import { createElement, getElement, updateElement } from '@/app-layer/usecases/bible-elements';
@@ -178,11 +181,13 @@ describe('import', () => {
         expect((await getElement(ctx, bookId, el.id)).name).toBe('Tide');
     });
 
-    it('a concept note does the same for the note it updates', async () => {
-        const first = await importConceptNote(ctx, bookId, { text: 'Salt and debt.', name: 'Salt', slug: 'salt-note' }, clean);
-        const report = await renamedWhileWaiting(first.element.id, () => importConceptNote(ctx, bookId, { text: 'Salt and debt.', name: 'Salt', slug: 'salt-note' }, clean));
-        expect(report).toMatchObject({ outcome: 'updated', versionNumber: 2 });
-        expect((await getElement(ctx, bookId, first.element.id)).name).toBe('Salt');
+    it('concurrent imports of one concept note each make their own element, every time (#27 item 3)', async () => {
+        for (let round = 0; round < 5; round++) {
+            const text = `Salt and debt ${round}\n\nThe guild keeps the ledgers.`;
+            const reports = await Promise.all([1, 2, 3].map(() => importConceptNote(ctx, bookId, { text }, clean)));
+            expect(reports.map((r) => r.outcome)).toEqual(['created', 'created', 'created']);
+            expect(new Set(reports.map((r) => r.element.slug))).toEqual(new Set([`salt-and-debt-${round}`, `salt-and-debt-${round}-2`, `salt-and-debt-${round}-3`]));
+        }
     });
 });
 

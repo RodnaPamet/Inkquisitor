@@ -8,12 +8,13 @@
  * trailing-blank-page bug (`STAMP_TEXT_HEIGHT`, below); the colours are the
  * design tokens (`PALETTE`); the cover names the workspace and the book, with
  * none of inflect's confidentiality or compliance wording; the metadata page
- * and the watermark (compliance reports) are not carried.
+ * and the watermark (compliance reports) are not carried. Text is drawn in
+ * the embedded Noto Sans through `drawableText` (./fonts.ts).
  */
 import { formatDateShort, formatDateTime } from '@inkquisitor/ui/lib/format-date';
 import type { ReportMeta } from './types';
 import { CONTENT_WIDTH, MARGINS, PAGE_HEIGHT, PAGE_WIDTH, PALETTE } from './pdfKitFactory';
-import { toWinAnsi } from './win-ansi';
+import { drawableText, PDF_FONT } from './fonts';
 
 // ─── Cover Page ───
 
@@ -22,14 +23,14 @@ export function addCoverPage(doc: PDFKit.PDFDocument, meta: ReportMeta): void {
     doc.rect(0, 0, PAGE_WIDTH, 280).fill(PALETTE.inverted);
 
     // Workspace name (top-left)
-    doc.fontSize(11).fillColor(PALETTE.onInverted).text(toWinAnsi(meta.workspaceName), MARGINS.left, 40, { width: CONTENT_WIDTH });
+    doc.fontSize(11).fillColor(PALETTE.onInverted).text(drawableText(meta.workspaceName), MARGINS.left, 40, { width: CONTENT_WIDTH });
 
     // Title
-    doc.font('Helvetica-Bold').fontSize(28).fillColor(PALETTE.onInverted).text(toWinAnsi(meta.reportTitle), MARGINS.left, 100, { width: CONTENT_WIDTH, height: 90, ellipsis: true });
-    doc.font('Helvetica');
+    doc.font(PDF_FONT.bold).fontSize(28).fillColor(PALETTE.onInverted).text(drawableText(meta.reportTitle), MARGINS.left, 100, { width: CONTENT_WIDTH, height: 90, ellipsis: true });
+    doc.font(PDF_FONT.regular);
 
     if (meta.reportSubtitle) {
-        doc.fontSize(14).fillColor(PALETTE.onInverted).text(toWinAnsi(meta.reportSubtitle), MARGINS.left, 195, { width: CONTENT_WIDTH, height: 36, ellipsis: true });
+        doc.fontSize(14).fillColor(PALETTE.onInverted).text(drawableText(meta.reportSubtitle), MARGINS.left, 195, { width: CONTENT_WIDTH, height: 36, ellipsis: true });
     }
 
     // Generated date, through the canonical formatter (en-GB, UTC), so the
@@ -65,10 +66,10 @@ export function addHeader(doc: PDFKit.PDFDocument, meta: ReportMeta): void {
     doc.save();
 
     // Left: workspace name
-    doc.fontSize(7).fillColor(PALETTE.subtle).text(toWinAnsi(meta.workspaceName), MARGINS.left, y, { width: 200, lineBreak: false, height: STAMP_TEXT_HEIGHT, ellipsis: true });
+    doc.fontSize(7).fillColor(PALETTE.subtle).text(drawableText(meta.workspaceName), MARGINS.left, y, { width: 200, lineBreak: false, height: STAMP_TEXT_HEIGHT, ellipsis: true });
 
     // Centre: title
-    doc.text(toWinAnsi(meta.reportTitle), PAGE_WIDTH / 2 - 100, y, { width: 200, lineBreak: false, align: 'center', height: STAMP_TEXT_HEIGHT, ellipsis: true });
+    doc.text(drawableText(meta.reportTitle), PAGE_WIDTH / 2 - 100, y, { width: 200, lineBreak: false, align: 'center', height: STAMP_TEXT_HEIGHT, ellipsis: true });
 
     // Right: date (DD/MM/YYYY, UTC)
     doc.text(formatDateShort(meta.generatedAt), PAGE_WIDTH - MARGINS.right - 100, y, { width: 100, align: 'right', lineBreak: false, height: STAMP_TEXT_HEIGHT });

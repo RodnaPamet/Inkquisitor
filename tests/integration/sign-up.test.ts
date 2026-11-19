@@ -64,17 +64,18 @@ describe('signUpWithPassword', () => {
             if (calls === 3) throw new Error('injected failure on the MEMBERSHIP_CREATED row');
             return jest.requireActual<typeof auditWriter>('@/lib/audit/audit-writer').appendAuditEntryWithin(...args);
         });
-        const workspacesBefore = await prisma.workspace.count();
+        // A name only this run uses: other test files create workspaces at the
+        // same time, so a global count would race; this name cannot.
+        const workspaceName = `Never Was ${email}`;
         try {
-            await expect(signUpWithPassword({ email, password: PASSWORD, workspaceName: 'Never Was' }, { breachCheck: clean })).rejects.toThrow(
+            await expect(signUpWithPassword({ email, password: PASSWORD, workspaceName }, { breachCheck: clean })).rejects.toThrow(
                 /injected failure/,
             );
         } finally {
             spy.mockRestore();
         }
         expect(await prisma.user.findUnique({ where: { email } })).toBeNull();
-        expect(await prisma.workspace.count()).toBe(workspacesBefore);
-        expect(await prisma.workspace.findFirst({ where: { name: 'Never Was' } })).toBeNull();
+        expect(await prisma.workspace.findFirst({ where: { name: workspaceName } })).toBeNull();
     });
 
     it('refuses a breached password, creating nothing', async () => {

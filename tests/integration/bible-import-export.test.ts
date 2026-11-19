@@ -13,7 +13,10 @@
  *   - a virus-scan verdict of INFECTED refuses the upload, and a scan that
  *     cannot run refuses it in strict mode;
  *   - an import reaches only the caller's workspace, and needs `bible.edit`;
- *   - a concept note becomes a RESEARCH element, idempotent per slug.
+ *   - a concept note becomes a NEW RESEARCH element every time, at the next
+ *     free slug, never touching an existing one (#27 item 3);
+ *   - the PDF prints Cyrillic, Greek and accented Latin exactly, CJK and emoji
+ *     as one `�` per character (#24).
  */
 import { prisma } from '@/lib/db';
 import { readZip, writeZip } from '@/lib/archive/zip';
@@ -27,7 +30,7 @@ import { BUNDLE_ZIP_LIMITS } from '@/app-layer/schemas/bible-transfer';
 import { AppError, ForbiddenError, NotFoundError } from '@/lib/errors/types';
 import type { ScanResult } from '@/lib/storage/av-scan';
 import { addMember, createAccount, createBareUser, workspaceCtx } from '../helpers/workspaces';
-import { pdfText } from '../helpers/pdf-text';
+import { pdfText, pdfTextRuns } from '../helpers/pdf-text';
 
 afterAll(() => prisma.$disconnect());
 
@@ -483,7 +486,7 @@ describe('isolation and permission', () => {
 });
 
 describe('the concept note', () => {
-    it('becomes a RESEARCH element with the text in its notes, versioned IMPORT, and is idempotent per slug', async () => {
+    it('becomes a RESEARCH element with the text in its notes, versioned IMPORT', async () => {
         const book = await createBook(ctx, { title: 'Concepts' });
         const text = 'The Salt Roads\n\nA ferrywoman crosses a drowned country.\nShe owes a debt <script>x</script> & more.';
         const first = await importConceptNote(ctx, book.id, { text }, clean);
@@ -493,15 +496,42 @@ describe('the concept note', () => {
         expect(el.fields.find((f) => f.key === 'notes')?.value).toBe('<p>The Salt Roads</p><p>A ferrywoman crosses a drowned country.<br />She owes a debt  &amp; more.</p>');
         expect((await getVersion(ctx, book.id, el.id, 1)).source).toBe('IMPORT');
 
-        const again = await importConceptNote(ctx, book.id, { text }, clean);
-        expect(again).toMatchObject({ outcome: 'unchanged', versionNumber: null, element: { id: el.id } });
-
-        const changed = await importConceptNote(ctx, book.id, { text: `${text}\n\nA third paragraph.` }, clean);
-        expect(changed).toMatchObject({ outcome: 'updated', versionNumber: 2, element: { id: el.id } });
-        expect((await getVersion(ctx, book.id, el.id, 2)).source).toBe('IMPORT');
-
         const named = await importConceptNote(ctx, book.id, { text: 'Other', name: 'Pitch', slug: 'pitch' }, clean);
         expect(named).toMatchObject({ outcome: 'created', element: { name: 'Pitch', slug: 'pitch' } });
+    });
+
+    it('never touches an existing element: a clashing derived slug makes a new element at the next free slug', async () => {
+        const book = await createBook(ctx, { title: 'Clashes' });
+        const text = 'My idea\n\nA drowned country.';
+        const first = await importConceptNote(ctx, book.id, { text }, clean);
+        const before = await getElement(ctx, book.id, first.element.id);
+
+        // The same note again, and a changed one under the same first line:
+        // each is a new element; the first is exactly as it was, at version 1.
+        const again = await importConceptNote(ctx, book.id, { text }, clean);
+        const changed = await importConceptNote(ctx, book.id, { text: `${text}\n\nA third paragraph.` }, clean);
+        expect([first.element.slug, again.element.slug, changed.element.slug]).toEqual(['my-idea', 'my-idea-2', 'my-idea-3']);
+        for (const r of [again, changed]) expect(r).toMatchObject({ outcome: 'created', versionNumber: 1, element: { kind: 'RESEARCH', name: 'My idea' } });
+        expect(new Set([first, again, changed].map((r) => r.element.id)).size).toBe(3);
+        expect(await getElement(ctx, book.id, first.element.id)).toEqual(before);
+        expect(await prisma.bibleEntryVersion.count({ where: { elementId: first.element.id } })).toBe(1);
+        expect((await getElement(ctx, book.id, changed.element.id)).fields.find((f) => f.key === 'notes')?.value).toContain('A third paragraph.');
+
+        // A slug another kind holds is passed over the same way.
+        const theme = await createElement(ctx, book.id, { kind: 'THEME', name: 'Debt', slug: 'debt' });
+        const debt = await importConceptNote(ctx, book.id, { text: 'Debt' }, clean);
+        expect(debt).toMatchObject({ outcome: 'created', element: { kind: 'RESEARCH', slug: 'debt-2' } });
+        expect((await getElement(ctx, book.id, theme.id)).kind).toBe('THEME');
+    });
+
+    it('refuses a supplied slug that is taken, whatever holds it, and writes nothing', async () => {
+        const book = await createBook(ctx, { title: 'Supplied slugs' });
+        await createElement(ctx, book.id, { kind: 'THEME', name: 'Pitch', slug: 'pitch' });
+        await importConceptNote(ctx, book.id, { text: 'A note', slug: 'a-note' }, clean);
+        const count = await prisma.bibleElement.count({ where: { bookId: book.id } });
+        expect(await refusalOf(importConceptNote(ctx, book.id, { text: 'x', slug: 'pitch' }, clean))).toMatchObject({ status: 409, reason: 'SLUG_TAKEN' });
+        expect(await refusalOf(importConceptNote(ctx, book.id, { text: 'A note', slug: 'a-note' }, clean))).toMatchObject({ status: 409, reason: 'SLUG_TAKEN' });
+        expect(await prisma.bibleElement.count({ where: { bookId: book.id } })).toBe(count);
     });
 
     it('answers a note its markup would take past the rich-text bound as too long, the reason the modal words', async () => {
@@ -514,10 +544,8 @@ describe('the concept note', () => {
         expect(await prisma.bibleElement.count({ where: { bookId: book.id } })).toBe(0);
     });
 
-    it('refuses a slug another kind holds, and an empty or over-long note', async () => {
+    it('refuses an empty or over-long note', async () => {
         const book = await createBook(ctx, { title: 'Concept refusals' });
-        await createElement(ctx, book.id, { kind: 'THEME', name: 'Pitch', slug: 'pitch' });
-        expect(await refusalOf(importConceptNote(ctx, book.id, { text: 'x', slug: 'pitch' }, clean))).toMatchObject({ status: 409, reason: 'KIND_CONFLICT' });
         expect(await refusalOf(importConceptNote(ctx, book.id, { text: '<b></b>' }, clean))).toMatchObject({ status: 400, reason: 'EMPTY' });
         expect((await refusalOf(importConceptNote(ctx, book.id, { text: 'x'.repeat(50_001) }, clean))).reason).toBe('TOO_LONG');
     });
@@ -543,6 +571,19 @@ describe('the PDF export and the audit trail', () => {
         for (const secret of ['Mara', 'ferrywoman', 'secret concept', 'Salt']) expect([secret, all.includes(secret)]).toEqual([secret, false]);
         const imported = rows.find((r) => r.action === 'BIBLE_BUNDLE_IMPORTED')!.detailsJson as Record<string, unknown>;
         expect(imported).toMatchObject({ elementsCreated: 5, versionsWritten: 5, relationsCreated: 3 });
+    });
+});
+
+describe('the PDF in other scripts (#24)', () => {
+    it('prints Bulgarian, Greek and accented Latin exactly, and CJK and emoji as one mark per character', async () => {
+        const book = await createBook(ctx, { title: 'Солените пътища', logline: 'Ωκεανός και θάλασσα — Ærøskøbing, Dvořák, naïve.' });
+        await createElement(ctx, book.id, { kind: 'CHARACTER', name: 'Мара Вел', summary: 'Фериботчицата дължи на гилдията; ъгъл, юг, ябълка.' });
+        await createElement(ctx, book.id, { kind: 'THEME', name: 'Тайфун 台風 😀 👨‍👩‍👧' });
+        const runs = pdfTextRuns((await exportBiblePdf(ctx, book.id)).bytes);
+        for (const exact of ['Солените пътища', 'Ωκεανός και θάλασσα — Ærøskøbing, Dvořák, naïve.', 'Мара Вел', 'Фериботчицата дължи на гилдията; ъгъл, юг, ябълка.']) {
+            expect([exact, runs.includes(exact)]).toEqual([exact, true]);
+        }
+        expect(runs).toContain('Тайфун \uFFFD\uFFFD \uFFFD \uFFFD');
     });
 });
 

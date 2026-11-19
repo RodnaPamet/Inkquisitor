@@ -14,7 +14,7 @@
 import { createPdfDocument, CONTENT_WIDTH, MARGINS, PALETTE } from '@/lib/pdf/pdfKitFactory';
 import { addCoverPage, applyHeadersAndFooters, SAFE_BOTTOM_Y } from '@/lib/pdf/layout';
 import type { ReportMeta } from '@/lib/pdf/types';
-import { toWinAnsi } from '@/lib/pdf/win-ansi';
+import { drawableText, PDF_FONT } from '@/lib/pdf/fonts';
 import { BIBLE_KINDS } from './kinds';
 import { getTemplate } from './templates';
 import { relationLinesBySlug, sortElements, STATUS_WORDS, valueLines, type BibleBundle } from './bundle-format';
@@ -33,6 +33,8 @@ export interface BiblePdfMeta {
     generatedAt: string;
 }
 
+const graphemes = new Intl.Segmenter('en', { granularity: 'grapheme' });
+
 /** Keep `needed` points of room below the cursor, or start a new page. */
 function room(doc: PDFKit.PDFDocument, needed: number): void {
     if (doc.y + needed > SAFE_BOTTOM_Y) doc.addPage();
@@ -48,7 +50,8 @@ function room(doc: PDFKit.PDFDocument, needed: number): void {
  * editor may store) took six seconds to lay out, and every viewer may ask for
  * the PDF. Breaking the run here, measuring each character once, makes it
  * linear; the lines are the ones PDFKit would have made, give or take where
- * the first one starts.
+ * the first one starts. The run is cut between user-perceived characters
+ * (grapheme clusters), never inside one, so a letter keeps its accents.
  */
 export function breakLongRuns(doc: PDFKit.PDFDocument, value: string, width: number): string {
     const widths = new Map<string, number>();
@@ -62,7 +65,7 @@ export function breakLongRuns(doc: PDFKit.PDFDocument, value: string, width: num
         let out = '';
         let line = '';
         let used = 0;
-        for (const ch of run) {
+        for (const { segment: ch } of graphemes.segment(run)) {
             const w = widthOf(ch);
             if (line !== '' && used + w > width) {
                 out += `${line}\n`;
@@ -77,7 +80,7 @@ export function breakLongRuns(doc: PDFKit.PDFDocument, value: string, width: num
 }
 
 function text(doc: PDFKit.PDFDocument, value: string, options: PDFKit.Mixins.TextOptions = {}): void {
-    doc.text(breakLongRuns(doc, toWinAnsi(value), CONTENT_WIDTH), MARGINS.left, doc.y, { width: CONTENT_WIDTH, ...options });
+    doc.text(breakLongRuns(doc, drawableText(value), CONTENT_WIDTH), MARGINS.left, doc.y, { width: CONTENT_WIDTH, ...options });
 }
 
 export function renderBiblePdf(bundle: BibleBundle, meta: BiblePdfMeta): Promise<Buffer> {
@@ -98,7 +101,7 @@ export function renderBiblePdf(bundle: BibleBundle, meta: BiblePdfMeta): Promise
     addCoverPage(doc, report);
     const elements = sortElements(bundle.elements);
     const { book } = bundle;
-    doc.font('Helvetica').fontSize(11).fillColor(PALETTE.text);
+    doc.font(PDF_FONT.regular).fontSize(11).fillColor(PALETTE.text);
     if (book.logline !== null) text(doc, book.logline, { lineGap: 2 });
     doc.moveDown(0.5);
     const details = [`Stage: ${STAGE_WORDS[book.stage] ?? book.stage}`];
@@ -115,17 +118,17 @@ export function renderBiblePdf(bundle: BibleBundle, meta: BiblePdfMeta): Promise
         if (ofKind.length === 0) continue;
         const template = getTemplate(kind);
         doc.addPage();
-        doc.font('Helvetica-Bold').fontSize(18).fillColor(PALETTE.accent);
+        doc.font(PDF_FONT.bold).fontSize(18).fillColor(PALETTE.accent);
         text(doc, template.label);
-        doc.font('Helvetica').fontSize(9).fillColor(PALETTE.muted);
+        doc.font(PDF_FONT.regular).fontSize(9).fillColor(PALETTE.muted);
         text(doc, template.description, { lineGap: 1 });
         doc.moveDown(1);
 
         for (const e of ofKind) {
             room(doc, 80);
-            doc.font('Helvetica-Bold').fontSize(14).fillColor(PALETTE.emphasis);
+            doc.font(PDF_FONT.bold).fontSize(14).fillColor(PALETTE.emphasis);
             text(doc, e.customLabel !== null ? `${e.name} (${e.customLabel})` : e.name);
-            doc.font('Helvetica').fontSize(8).fillColor(PALETTE.subtle);
+            doc.font(PDF_FONT.regular).fontSize(8).fillColor(PALETTE.subtle);
             text(doc, STATUS_WORDS[e.status]);
             doc.moveDown(0.4);
             if (e.summary !== null) {
@@ -137,18 +140,18 @@ export function renderBiblePdf(bundle: BibleBundle, meta: BiblePdfMeta): Promise
                 const value = e.fields.get(def.key);
                 if (value === undefined) continue;
                 room(doc, 36);
-                doc.font('Helvetica-Bold').fontSize(8).fillColor(PALETTE.muted);
+                doc.font(PDF_FONT.bold).fontSize(8).fillColor(PALETTE.muted);
                 text(doc, def.label);
-                doc.font('Helvetica').fontSize(10).fillColor(PALETTE.text);
+                doc.font(PDF_FONT.regular).fontSize(10).fillColor(PALETTE.text);
                 for (const line of valueLines(kind, def.key, value)) text(doc, line, { lineGap: 1 });
                 doc.moveDown(0.3);
             }
             const relationLines = lines.get(e.slug) ?? [];
             if (relationLines.length > 0) {
                 room(doc, 36);
-                doc.font('Helvetica-Bold').fontSize(8).fillColor(PALETTE.muted);
+                doc.font(PDF_FONT.bold).fontSize(8).fillColor(PALETTE.muted);
                 text(doc, 'Relations');
-                doc.font('Helvetica').fontSize(10).fillColor(PALETTE.text);
+                doc.font(PDF_FONT.regular).fontSize(10).fillColor(PALETTE.text);
                 for (const r of relationLines) text(doc, `${r.label} ${r.other.name}${r.note !== null ? `: ${r.note.replace(/\s+/g, ' ')}` : ''}`);
             }
             doc.moveDown(0.6);

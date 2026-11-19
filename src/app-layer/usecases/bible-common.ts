@@ -32,6 +32,7 @@ import { decodeFieldValue, encodeFieldValue, normaliseFieldValue, sameFieldValue
 import type { BibleVersionSource } from '@/lib/bible/kinds';
 import { buildSnapshot, serialiseSnapshot } from '@/lib/bible/snapshot';
 import { getFieldDef, getTemplate } from '@/lib/bible/templates';
+import { slugCandidates } from '@/lib/bible/slug';
 import { plainBlock, plainLine } from '@/lib/bible/text';
 import { CHANGE_SUMMARY_MAX, CUSTOM_LABEL_MAX } from '@/app-layer/schemas/bible';
 
@@ -58,6 +59,30 @@ export const SLUG_TAKEN = { reason: 'SLUG_TAKEN' } as const;
 
 export function slugConflict(): ConflictError {
     return new ConflictError('Another element of this book already uses that slug.', SLUG_TAKEN);
+}
+
+/** Candidates checked per query when deriving a slug. */
+const SLUG_CANDIDATE_BATCH = 50;
+/** Batches tried before giving up (2,500 elements of one name in one book). */
+const SLUG_CANDIDATE_BATCHES = 50;
+/**
+ * Attempts at a create whose slug was DERIVED. Two creates of one name read
+ * the same free slug and the second insert breaks the unique index; it is
+ * retried in a fresh transaction, which reads the slug the first one took and
+ * moves on. Each retry is lost to a concurrent create of the same name, so
+ * this bounds how many may race at once before one is refused.
+ */
+export const DERIVED_SLUG_ATTEMPTS = 8;
+
+/** The first free candidate slug for `base` in the book, asked by the candidates themselves. */
+export async function freeSlug(db: PrismaTx, ctx: WorkspaceRequestContext, bookId: string, base: string): Promise<string> {
+    for (let batch = 0; batch < SLUG_CANDIDATE_BATCHES; batch++) {
+        const candidates = slugCandidates(base, 1 + batch * SLUG_CANDIDATE_BATCH, SLUG_CANDIDATE_BATCH);
+        const taken = await BibleElementRepository.slugsTaken(db, ctx.workspaceId, bookId, candidates);
+        const free = candidates.find((c) => !taken.has(c));
+        if (free) return free;
+    }
+    throw slugConflict();
 }
 
 // ─── Plain text ─────────────────────────────────────────────────────
