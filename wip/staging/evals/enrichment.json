@@ -1,0 +1,2493 @@
+[
+  {
+    "id": "en-01",
+    "rationale": "ADD into an empty want, and an UPDATE where the author contradicts the stored wound: the mother stayed and the father left. The new wound must drop the retracted fact rather than merge both versions, and must not add a motive or feeling the answer does not give.",
+    "kind": "CHARACTER",
+    "elementName": "Wren Halloway",
+    "bookElements": [
+      {
+        "kind": "CHARACTER",
+        "name": "Wren Halloway"
+      },
+      {
+        "kind": "SETTING",
+        "name": "Saltmarsh"
+      }
+    ],
+    "bibleState": {
+      "role": "Protagonist. Runs the ferry office in a shrinking marsh town.",
+      "want": null,
+      "wound": "Her mother left the family when Wren was nine.",
+      "false_belief": null,
+      "need": null,
+      "arc": null
+    },
+    "sessionId": "s2",
+    "scopeFieldKeys": [
+      "want",
+      "wound"
+    ],
+    "answers": [
+      {
+        "id": "a1",
+        "sessionId": "s2",
+        "questionKind": "OPEN",
+        "question": "What does Wren want, in words she would use herself?",
+        "targetsFieldKeys": [
+          "want"
+        ],
+        "status": "ANSWERED",
+        "answer": "She wants to win back the seat on the town council that she lost to her brother."
+      },
+      {
+        "id": "a2",
+        "sessionId": "s2",
+        "questionKind": "OPEN",
+        "question": "How does the hurt you have stored still shape what Wren does?",
+        "targetsFieldKeys": [
+          "wound"
+        ],
+        "status": "ANSWERED",
+        "answer": "Actually I've changed that. Her mother stayed. It was her father who walked out, the winter she turned nine, and she has never forgiven him."
+      }
+    ],
+    "expect": {
+      "operations": [
+        {
+          "fieldKey": "want",
+          "op": "ADD",
+          "cites": [
+            "a1"
+          ],
+          "mustContain": [
+            "council"
+          ],
+          "mustNotContain": [
+            "revenge"
+          ],
+          "reference": "To win back the seat on the town council that she lost to her brother."
+        },
+        {
+          "fieldKey": "wound",
+          "op": "UPDATE",
+          "cites": [
+            "a2"
+          ],
+          "mustContain": [
+            "father"
+          ],
+          "mustNotContain": [
+            "mother left"
+          ],
+          "reference": "Her father walked out the winter she turned nine, and she has never forgiven him."
+        }
+      ],
+      "newElements": [],
+      "mustNot": [
+        "CITES_NO_ANSWER",
+        "CITES_FOREIGN_ANSWER",
+        "CITES_UNANSWERED",
+        "TARGETS_OUT_OF_SCOPE_FIELD",
+        "UNSOURCED_SENTENCE",
+        "PROPOSES_STORY_CONTENT"
+      ]
+    }
+  },
+  {
+    "id": "en-02",
+    "rationale": "An UPDATE that appends a third complication to a stored list, keeping the two already there, and a SKIPPED climax that must stay NO_CHANGE. The harbour master the answer names is already a book element, so no new element is proposed.",
+    "kind": "PLOT",
+    "elementName": "The salvage claim",
+    "bookElements": [
+      {
+        "kind": "PLOT",
+        "name": "The salvage claim"
+      },
+      {
+        "kind": "CHARACTER",
+        "name": "Ruud Delaney"
+      },
+      {
+        "kind": "CHARACTER",
+        "name": "Ma Corrigan"
+      }
+    ],
+    "bibleState": {
+      "plotline_owner": "Ma Corrigan, who runs the salvage yard.",
+      "opening_disturbance": "A sunk trawler surfaces in the bay with its hold still sealed.",
+      "driving_goal": "Win the salvage rights before the insurers arrive.",
+      "complications": [
+        "A rival yard files its claim first.",
+        "Her diver refuses to go down after the first dive."
+      ],
+      "climax": null,
+      "resolution": null
+    },
+    "sessionId": "s3",
+    "scopeFieldKeys": [
+      "complications",
+      "climax"
+    ],
+    "answers": [
+      {
+        "id": "a1",
+        "sessionId": "s3",
+        "questionKind": "OPEN",
+        "question": "What else stands between Ma Corrigan and the salvage rights?",
+        "targetsFieldKeys": [
+          "complications"
+        ],
+        "status": "ANSWERED",
+        "answer": "Add a third one after those two: the harbour master, Ruud Delaney, impounds her boat for unpaid mooring fees."
+      },
+      {
+        "id": "a2",
+        "sessionId": "s3",
+        "questionKind": "OPEN",
+        "question": "Where does this plotline come to its decisive confrontation?",
+        "targetsFieldKeys": [
+          "climax"
+        ],
+        "status": "SKIPPED",
+        "answer": null
+      }
+    ],
+    "expect": {
+      "operations": [
+        {
+          "fieldKey": "complications",
+          "op": "UPDATE",
+          "cites": [
+            "a1"
+          ],
+          "mustContain": [
+            "Ruud Delaney",
+            "impounds"
+          ],
+          "mustNotContain": [
+            "bribe"
+          ],
+          "reference": [
+            "A rival yard files its claim first.",
+            "Her diver refuses to go down after the first dive.",
+            "The harbour master, Ruud Delaney, impounds her boat for unpaid mooring fees."
+          ]
+        },
+        {
+          "fieldKey": "climax",
+          "op": "NO_CHANGE",
+          "cites": [],
+          "mustContain": [],
+          "mustNotContain": [],
+          "reference": null
+        }
+      ],
+      "newElements": [],
+      "mustNot": [
+        "CITES_NO_ANSWER",
+        "CITES_FOREIGN_ANSWER",
+        "CITES_UNANSWERED",
+        "TARGETS_OUT_OF_SCOPE_FIELD",
+        "UNSOURCED_SENTENCE",
+        "PROPOSES_STORY_CONTENT",
+        "INVENTS_NEW_ELEMENT"
+      ]
+    }
+  },
+  {
+    "id": "en-03",
+    "rationale": "One answer fills two empty fields: the sensory signature and why the story needs the place. It also names Ilse, who is not yet a book element, so a new character is proposed; Tomas already exists and must not be proposed again.",
+    "kind": "SETTING",
+    "elementName": "The tannery yard",
+    "bookElements": [
+      {
+        "kind": "SETTING",
+        "name": "The tannery yard"
+      },
+      {
+        "kind": "CHARACTER",
+        "name": "Tomas"
+      }
+    ],
+    "bibleState": {
+      "place_type": "A walled tannery yard at the edge of a river town, closed at night.",
+      "sensory_signature": null,
+      "story_purpose": null,
+      "pressure_on_characters": null
+    },
+    "sessionId": "s1",
+    "scopeFieldKeys": [
+      "sensory_signature",
+      "story_purpose"
+    ],
+    "answers": [
+      {
+        "id": "a1",
+        "sessionId": "s1",
+        "questionKind": "OPEN",
+        "question": "What is it like to be in the tannery yard, and why does the story need it?",
+        "targetsFieldKeys": [
+          "sensory_signature",
+          "story_purpose"
+        ],
+        "status": "ANSWERED",
+        "answer": "It stinks of lime and old hides, and the vats hiss when it rains. The book needs it because it is the one place where Tomas and Ilse can meet without being seen."
+      }
+    ],
+    "expect": {
+      "operations": [
+        {
+          "fieldKey": "sensory_signature",
+          "op": "ADD",
+          "cites": [
+            "a1"
+          ],
+          "mustContain": [
+            "lime",
+            "hides",
+            "vats hiss"
+          ],
+          "mustNotContain": [
+            "rats"
+          ],
+          "reference": "It stinks of lime and old hides, and the vats hiss when it rains."
+        },
+        {
+          "fieldKey": "story_purpose",
+          "op": "ADD",
+          "cites": [
+            "a1"
+          ],
+          "mustContain": [
+            "Tomas",
+            "Ilse"
+          ],
+          "mustNotContain": [
+            "lovers"
+          ],
+          "reference": "The one place where Tomas and Ilse can meet without being seen."
+        }
+      ],
+      "newElements": [
+        {
+          "kind": "CHARACTER",
+          "name": "Ilse",
+          "cites": [
+            "a1"
+          ]
+        }
+      ],
+      "mustNot": [
+        "CITES_NO_ANSWER",
+        "CITES_FOREIGN_ANSWER",
+        "CITES_UNANSWERED",
+        "TARGETS_OUT_OF_SCOPE_FIELD",
+        "UNSOURCED_SENTENCE",
+        "PROPOSES_STORY_CONTENT",
+        "OMITS_NEW_ELEMENT",
+        "INVENTS_NEW_ELEMENT"
+      ]
+    }
+  },
+  {
+    "id": "en-04",
+    "rationale": "A vague reply about the counter-argument must yield NO_CHANGE rather than a guessed one. The carriers reply removes one item and confirms two, so the list is UPDATED without the orchard. Writing 'duty' into the counter-argument is the tempting mistake.",
+    "kind": "THEME",
+    "elementName": "What we are left",
+    "bookElements": [
+      {
+        "kind": "THEME",
+        "name": "What we are left"
+      },
+      {
+        "kind": "CHARACTER",
+        "name": "Agathe Wolde"
+      }
+    ],
+    "bibleState": {
+      "subject": "What an inheritance asks of the people who receive it.",
+      "thematic_question": "Is accepting an inheritance a debt to the dead or a theft from the living?",
+      "stance": "The book comes down on debt: the sisters keep the house and pay for it.",
+      "counter_argument": null,
+      "carriers": [
+        "The two sisters",
+        "The unsigned will",
+        "The orchard"
+      ]
+    },
+    "sessionId": "s2",
+    "scopeFieldKeys": [
+      "counter_argument",
+      "carriers"
+    ],
+    "answers": [
+      {
+        "id": "a1",
+        "sessionId": "s2",
+        "questionKind": "OPEN",
+        "question": "What is the strongest case against the reply your book gives?",
+        "targetsFieldKeys": [
+          "counter_argument"
+        ],
+        "status": "ANSWERED",
+        "answer": "Not sure. Maybe something about duty? I'd have to think about it."
+      },
+      {
+        "id": "a2",
+        "sessionId": "s2",
+        "questionKind": "OPEN",
+        "question": "Which characters, events or images carry this theme?",
+        "targetsFieldKeys": [
+          "carriers"
+        ],
+        "status": "ANSWERED",
+        "answer": "Take the orchard out, I cut those chapters. The two sisters and the unsigned will still carry it."
+      }
+    ],
+    "expect": {
+      "operations": [
+        {
+          "fieldKey": "counter_argument",
+          "op": "NO_CHANGE",
+          "cites": [],
+          "mustContain": [],
+          "mustNotContain": [],
+          "reference": null
+        },
+        {
+          "fieldKey": "carriers",
+          "op": "UPDATE",
+          "cites": [
+            "a2"
+          ],
+          "mustContain": [
+            "two sisters",
+            "unsigned will"
+          ],
+          "mustNotContain": [
+            "orchard"
+          ],
+          "reference": [
+            "The two sisters",
+            "The unsigned will"
+          ]
+        }
+      ],
+      "newElements": [],
+      "mustNot": [
+        "CITES_NO_ANSWER",
+        "CITES_FOREIGN_ANSWER",
+        "CITES_UNANSWERED",
+        "TARGETS_OUT_OF_SCOPE_FIELD",
+        "UNSOURCED_SENTENCE",
+        "PROPOSES_STORY_CONTENT"
+      ]
+    }
+  },
+  {
+    "id": "en-05",
+    "rationale": "A scale UPDATE from 4 to 2 and a list ADD of one mood shift. a3 comes from an earlier session and is already folded into the closing feeling; citing it, or touching the closing feeling at all, is wrong.",
+    "kind": "MOOD",
+    "elementName": "Book-wide mood",
+    "bookElements": [
+      {
+        "kind": "MOOD",
+        "name": "Book-wide mood"
+      }
+    ],
+    "bibleState": {
+      "dominant_feeling": "A low, patient unease.",
+      "intensity": 4,
+      "mood_shifts": null,
+      "closing_feeling": "Tired relief."
+    },
+    "sessionId": "s2",
+    "scopeFieldKeys": [
+      "intensity",
+      "mood_shifts"
+    ],
+    "answers": [
+      {
+        "id": "a3",
+        "sessionId": "s1",
+        "questionKind": "OPEN",
+        "question": "What should a reader feel as they close the book?",
+        "targetsFieldKeys": [
+          "closing_feeling"
+        ],
+        "status": "ANSWERED",
+        "answer": "Tired relief, like after a long night shift."
+      },
+      {
+        "id": "a1",
+        "sessionId": "s2",
+        "questionKind": "SCALE",
+        "question": "How hard should the unease press on the reader?",
+        "scaleLabels": {
+          "low": "restrained",
+          "high": "overwhelming"
+        },
+        "targetsFieldKeys": [
+          "intensity"
+        ],
+        "status": "ANSWERED",
+        "answer": 2
+      },
+      {
+        "id": "a2",
+        "sessionId": "s2",
+        "questionKind": "OPEN",
+        "question": "Where should the feeling deliberately change, and to what?",
+        "targetsFieldKeys": [
+          "mood_shifts"
+        ],
+        "status": "ANSWERED",
+        "answer": "It lifts once, at the wedding in chapter twelve, into something almost giddy, and then drops back."
+      }
+    ],
+    "expect": {
+      "operations": [
+        {
+          "fieldKey": "intensity",
+          "op": "UPDATE",
+          "cites": [
+            "a1"
+          ],
+          "mustContain": [
+            "2"
+          ],
+          "mustNotContain": [],
+          "reference": 2
+        },
+        {
+          "fieldKey": "mood_shifts",
+          "op": "ADD",
+          "cites": [
+            "a2"
+          ],
+          "mustContain": [
+            "wedding",
+            "giddy"
+          ],
+          "mustNotContain": [
+            "funeral"
+          ],
+          "reference": [
+            "At the wedding in chapter twelve the unease lifts into something almost giddy, then drops back."
+          ]
+        }
+      ],
+      "newElements": [],
+      "mustNot": [
+        "CITES_NO_ANSWER",
+        "CITES_FOREIGN_ANSWER",
+        "CITES_UNANSWERED",
+        "TARGETS_OUT_OF_SCOPE_FIELD",
+        "UNSOURCED_SENTENCE",
+        "PROPOSES_STORY_CONTENT"
+      ]
+    }
+  },
+  {
+    "id": "en-06",
+    "rationale": "A scale UPDATE (density 2 to 4) and a motifs ADD naming two recurring images with the meaning the author gives them. The proposal must not add a third motif or a meaning beyond 'the house is still alive'.",
+    "kind": "TEXTURE",
+    "elementName": "Book-wide texture",
+    "bookElements": [
+      {
+        "kind": "TEXTURE",
+        "name": "Book-wide texture"
+      },
+      {
+        "kind": "SETTING",
+        "name": "Calder House"
+      }
+    ],
+    "bibleState": {
+      "sensory_emphasis": "Sound first, then touch.",
+      "detail_density": 2,
+      "recurring_details": [
+        "A cracked teacup on the dresser",
+        "Swifts nesting under the eaves",
+        "The clock that runs ten minutes slow"
+      ],
+      "motifs": null
+    },
+    "sessionId": "s4",
+    "scopeFieldKeys": [
+      "detail_density",
+      "motifs"
+    ],
+    "answers": [
+      {
+        "id": "a1",
+        "sessionId": "s4",
+        "questionKind": "SCALE",
+        "question": "How much concrete detail should the page carry?",
+        "scaleLabels": {
+          "low": "sparse",
+          "high": "lush"
+        },
+        "targetsFieldKeys": [
+          "detail_density"
+        ],
+        "status": "ANSWERED",
+        "answer": 4
+      },
+      {
+        "id": "a2",
+        "sessionId": "s4",
+        "questionKind": "OPEN",
+        "question": "Which of your recurring details should gather meaning as they return?",
+        "targetsFieldKeys": [
+          "motifs"
+        ],
+        "status": "ANSWERED",
+        "answer": "The cracked teacup and the swifts. Every time they come back they should say the house is still alive."
+      }
+    ],
+    "expect": {
+      "operations": [
+        {
+          "fieldKey": "detail_density",
+          "op": "UPDATE",
+          "cites": [
+            "a1"
+          ],
+          "mustContain": [
+            "4"
+          ],
+          "mustNotContain": [],
+          "reference": 4
+        },
+        {
+          "fieldKey": "motifs",
+          "op": "ADD",
+          "cites": [
+            "a2"
+          ],
+          "mustContain": [
+            "cracked teacup",
+            "swifts"
+          ],
+          "mustNotContain": [
+            "clock"
+          ],
+          "reference": [
+            "The cracked teacup: the house is still alive",
+            "The swifts: the house is still alive"
+          ]
+        }
+      ],
+      "newElements": [],
+      "mustNot": [
+        "CITES_NO_ANSWER",
+        "CITES_FOREIGN_ANSWER",
+        "CITES_UNANSWERED",
+        "TARGETS_OUT_OF_SCOPE_FIELD",
+        "UNSOURCED_SENTENCE",
+        "PROPOSES_STORY_CONTENT"
+      ]
+    }
+  },
+  {
+    "id": "en-07",
+    "rationale": "The author reverses the tense (UPDATE, dropping 'past tense throughout' but keeping the letters in past tense) and explicitly retracts the dialogue conventions with nothing in their place (REMOVE). Proposing a replacement convention is the tempting mistake.",
+    "kind": "STYLE",
+    "elementName": "Prose style",
+    "bookElements": [
+      {
+        "kind": "STYLE",
+        "name": "Prose style"
+      }
+    ],
+    "bibleState": {
+      "tense": "Past tense throughout.",
+      "diction": "Plain, concrete, few Latinate words.",
+      "sentence_rhythm": null,
+      "dialogue_conventions": "Single quotation marks, 'said' only, tags after the first clause.",
+      "spelling_variant": "British English."
+    },
+    "sessionId": "s2",
+    "scopeFieldKeys": [
+      "tense",
+      "dialogue_conventions"
+    ],
+    "answers": [
+      {
+        "id": "a1",
+        "sessionId": "s2",
+        "questionKind": "OPEN",
+        "question": "Does the stored tense still hold, and are there exceptions?",
+        "targetsFieldKeys": [
+          "tense"
+        ],
+        "status": "ANSWERED",
+        "answer": "I've changed my mind: present tense, except the letters between the sisters, which stay in the past tense."
+      },
+      {
+        "id": "a2",
+        "sessionId": "s2",
+        "questionKind": "OPEN",
+        "question": "How should speech be set out and tagged?",
+        "targetsFieldKeys": [
+          "dialogue_conventions"
+        ],
+        "status": "ANSWERED",
+        "answer": "Scrap what I said about dialogue. I don't want any fixed rule written down for it yet."
+      }
+    ],
+    "expect": {
+      "operations": [
+        {
+          "fieldKey": "tense",
+          "op": "UPDATE",
+          "cites": [
+            "a1"
+          ],
+          "mustContain": [
+            "present tense",
+            "letters"
+          ],
+          "mustNotContain": [
+            "past tense throughout"
+          ],
+          "reference": "Present tense, except the letters between the sisters, which stay in the past tense."
+        },
+        {
+          "fieldKey": "dialogue_conventions",
+          "op": "REMOVE",
+          "cites": [
+            "a2"
+          ],
+          "mustContain": [],
+          "mustNotContain": [],
+          "reference": null
+        }
+      ],
+      "newElements": [],
+      "mustNot": [
+        "CITES_NO_ANSWER",
+        "CITES_FOREIGN_ANSWER",
+        "CITES_UNANSWERED",
+        "TARGETS_OUT_OF_SCOPE_FIELD",
+        "UNSOURCED_SENTENCE",
+        "PROPOSES_STORY_CONTENT"
+      ]
+    }
+  },
+  {
+    "id": "en-08",
+    "rationale": "One answer touches two fields: Joss is dropped as a viewpoint (list UPDATE to Mara alone) and the author explicitly asks for the alternating-chapters note to go (REMOVE). Mara and Joss are existing elements; no new element.",
+    "kind": "POV",
+    "elementName": "Narration",
+    "bookElements": [
+      {
+        "kind": "POV",
+        "name": "Narration"
+      },
+      {
+        "kind": "CHARACTER",
+        "name": "Mara"
+      },
+      {
+        "kind": "CHARACTER",
+        "name": "Joss"
+      }
+    ],
+    "bibleState": {
+      "viewpoint_characters": [
+        "Mara",
+        "Joss"
+      ],
+      "person": "Close third person.",
+      "narrative_distance": 4,
+      "knowledge_limits": "Each chapter knows only what its viewpoint character knows.",
+      "switching_pattern": "Alternates every chapter between Mara and Joss."
+    },
+    "sessionId": "s4",
+    "scopeFieldKeys": [
+      "viewpoint_characters",
+      "switching_pattern"
+    ],
+    "answers": [
+      {
+        "id": "a1",
+        "sessionId": "s4",
+        "questionKind": "OPEN",
+        "question": "Whose perspective does the narration follow now?",
+        "targetsFieldKeys": [
+          "viewpoint_characters",
+          "switching_pattern"
+        ],
+        "status": "ANSWERED",
+        "answer": "Joss is out as a viewpoint; it's Mara's book alone. So delete the alternating-chapters note too, there's no switching left to describe."
+      }
+    ],
+    "expect": {
+      "operations": [
+        {
+          "fieldKey": "viewpoint_characters",
+          "op": "UPDATE",
+          "cites": [
+            "a1"
+          ],
+          "mustContain": [
+            "Mara"
+          ],
+          "mustNotContain": [
+            "Joss"
+          ],
+          "reference": [
+            "Mara"
+          ]
+        },
+        {
+          "fieldKey": "switching_pattern",
+          "op": "REMOVE",
+          "cites": [
+            "a1"
+          ],
+          "mustContain": [],
+          "mustNotContain": [],
+          "reference": null
+        }
+      ],
+      "newElements": [],
+      "mustNot": [
+        "CITES_NO_ANSWER",
+        "CITES_FOREIGN_ANSWER",
+        "CITES_UNANSWERED",
+        "TARGETS_OUT_OF_SCOPE_FIELD",
+        "UNSOURCED_SENTENCE",
+        "PROPOSES_STORY_CONTENT",
+        "INVENTS_NEW_ELEMENT"
+      ]
+    }
+  },
+  {
+    "id": "en-09",
+    "rationale": "The answer adds a limit on top of the stored cost, so the UPDATE keeps the existing cost and adds the new limit. who_knows was deferred this session and stays NO_CHANGE; inventing who knows is the tempting mistake.",
+    "kind": "WORLD_RULE",
+    "elementName": "Tide-binding",
+    "bookElements": [
+      {
+        "kind": "WORLD_RULE",
+        "name": "Tide-binding"
+      }
+    ],
+    "bibleState": {
+      "rule_statement": "A binder can hold a ship still on any tide by speaking its true name.",
+      "domain": "Magic.",
+      "cost_or_limit": "Each binding takes a year from the binder's life.",
+      "who_knows": null,
+      "story_consequence": null
+    },
+    "sessionId": "s2",
+    "scopeFieldKeys": [
+      "cost_or_limit",
+      "who_knows"
+    ],
+    "answers": [
+      {
+        "id": "a1",
+        "sessionId": "s2",
+        "questionKind": "OPEN",
+        "question": "Where does tide-binding stop working, beyond the cost you have stored?",
+        "targetsFieldKeys": [
+          "cost_or_limit"
+        ],
+        "status": "ANSWERED",
+        "answer": "On top of the year it costs, it only works within sight of the sea. Inland it does nothing at all."
+      },
+      {
+        "id": "a2",
+        "sessionId": "s2",
+        "questionKind": "CHOICE",
+        "question": "How widely is tide-binding understood?",
+        "options": [
+          "known to everyone",
+          "known to a trained few",
+          "known to one family",
+          "known to no one living"
+        ],
+        "targetsFieldKeys": [
+          "who_knows"
+        ],
+        "status": "DECIDE_LATER",
+        "answer": null
+      }
+    ],
+    "expect": {
+      "operations": [
+        {
+          "fieldKey": "cost_or_limit",
+          "op": "UPDATE",
+          "cites": [
+            "a1"
+          ],
+          "mustContain": [
+            "within sight of the sea"
+          ],
+          "mustNotContain": [
+            "moon"
+          ],
+          "reference": "Each binding takes a year from the binder's life, and it only works within sight of the sea; inland it does nothing."
+        },
+        {
+          "fieldKey": "who_knows",
+          "op": "NO_CHANGE",
+          "cites": [],
+          "mustContain": [],
+          "mustNotContain": [],
+          "reference": null
+        }
+      ],
+      "newElements": [],
+      "mustNot": [
+        "CITES_NO_ANSWER",
+        "CITES_FOREIGN_ANSWER",
+        "CITES_UNANSWERED",
+        "TARGETS_OUT_OF_SCOPE_FIELD",
+        "UNSOURCED_SENTENCE",
+        "PROPOSES_STORY_CONTENT"
+      ]
+    }
+  },
+  {
+    "id": "en-10",
+    "rationale": "One answer gives both when the fire happens and who was present. Piet and Arend Klaas are not book elements and are proposed as new characters; Sunniva already exists. The participants list holds exactly the three people named.",
+    "kind": "TIMELINE_EVENT",
+    "elementName": "The mill fire",
+    "bookElements": [
+      {
+        "kind": "TIMELINE_EVENT",
+        "name": "The mill fire"
+      },
+      {
+        "kind": "CHARACTER",
+        "name": "Sunniva"
+      }
+    ],
+    "bibleState": {
+      "what_happens": "The old flour mill burns to the ground overnight.",
+      "story_time": null,
+      "participants": null,
+      "consequences": "The village loses its only employer, and Sunniva's family is blamed."
+    },
+    "sessionId": "s3",
+    "scopeFieldKeys": [
+      "story_time",
+      "participants"
+    ],
+    "answers": [
+      {
+        "id": "a1",
+        "sessionId": "s3",
+        "questionKind": "OPEN",
+        "question": "When does the fire happen, and who is there?",
+        "targetsFieldKeys": [
+          "story_time",
+          "participants"
+        ],
+        "status": "ANSWERED",
+        "answer": "It happens the night before Sunniva's wedding, and the only people there are Sunniva, her uncle Piet and the night watchman, Arend Klaas."
+      }
+    ],
+    "expect": {
+      "operations": [
+        {
+          "fieldKey": "story_time",
+          "op": "ADD",
+          "cites": [
+            "a1"
+          ],
+          "mustContain": [
+            "night before",
+            "wedding"
+          ],
+          "mustNotContain": [],
+          "reference": "The night before Sunniva's wedding."
+        },
+        {
+          "fieldKey": "participants",
+          "op": "ADD",
+          "cites": [
+            "a1"
+          ],
+          "mustContain": [
+            "Sunniva",
+            "Piet",
+            "Arend Klaas"
+          ],
+          "mustNotContain": [
+            "fire brigade"
+          ],
+          "reference": [
+            "Sunniva",
+            "Piet, her uncle",
+            "Arend Klaas, the night watchman"
+          ]
+        }
+      ],
+      "newElements": [
+        {
+          "kind": "CHARACTER",
+          "name": "Piet",
+          "cites": [
+            "a1"
+          ]
+        },
+        {
+          "kind": "CHARACTER",
+          "name": "Arend Klaas",
+          "cites": [
+            "a1"
+          ]
+        }
+      ],
+      "mustNot": [
+        "CITES_NO_ANSWER",
+        "CITES_FOREIGN_ANSWER",
+        "CITES_UNANSWERED",
+        "TARGETS_OUT_OF_SCOPE_FIELD",
+        "UNSOURCED_SENTENCE",
+        "PROPOSES_STORY_CONTENT",
+        "OMITS_NEW_ELEMENT",
+        "INVENTS_NEW_ELEMENT"
+      ]
+    }
+  },
+  {
+    "id": "en-11",
+    "rationale": "ADD the internal tension; the same answer volunteers a detail about the leader's key, which is outside scope and yields no operation. The author withdraws the faction's side in the conflict and leaves it blank: REMOVE, with no replacement side.",
+    "kind": "FACTION",
+    "elementName": "The Wardens of the Weir",
+    "bookElements": [
+      {
+        "kind": "FACTION",
+        "name": "The Wardens of the Weir"
+      },
+      {
+        "kind": "CHARACTER",
+        "name": "The Duke of Marrow"
+      }
+    ],
+    "bibleState": {
+      "purpose": "To keep the weir gates working and decide when the lowlands flood.",
+      "membership": "Hereditary; a seat passes to the eldest child.",
+      "power_base": "They alone hold the keys to the weir gates.",
+      "internal_tension": null,
+      "role_in_conflict": "They side with the Duke of Marrow against the lowland farmers."
+    },
+    "sessionId": "s2",
+    "scopeFieldKeys": [
+      "internal_tension",
+      "role_in_conflict"
+    ],
+    "answers": [
+      {
+        "id": "a1",
+        "sessionId": "s2",
+        "questionKind": "OPEN",
+        "question": "Where do the Wardens disagree among themselves?",
+        "targetsFieldKeys": [
+          "internal_tension"
+        ],
+        "status": "ANSWERED",
+        "answer": "The old families resent the newcomers who now outnumber them on the council. And by the way, their leader always carries a silver key on a chain."
+      },
+      {
+        "id": "a2",
+        "sessionId": "s2",
+        "questionKind": "OPEN",
+        "question": "Where do the Wardens stand in the central conflict?",
+        "targetsFieldKeys": [
+          "role_in_conflict"
+        ],
+        "status": "ANSWERED",
+        "answer": "I'm withdrawing what I said about them siding with the duke. Leave it blank until I know."
+      }
+    ],
+    "expect": {
+      "operations": [
+        {
+          "fieldKey": "internal_tension",
+          "op": "ADD",
+          "cites": [
+            "a1"
+          ],
+          "mustContain": [
+            "old families",
+            "newcomers"
+          ],
+          "mustNotContain": [
+            "silver key"
+          ],
+          "reference": "The old families resent the newcomers who now outnumber them on the council."
+        },
+        {
+          "fieldKey": "role_in_conflict",
+          "op": "REMOVE",
+          "cites": [
+            "a2"
+          ],
+          "mustContain": [],
+          "mustNotContain": [],
+          "reference": null
+        }
+      ],
+      "newElements": [],
+      "mustNot": [
+        "CITES_NO_ANSWER",
+        "CITES_FOREIGN_ANSWER",
+        "CITES_UNANSWERED",
+        "TARGETS_OUT_OF_SCOPE_FIELD",
+        "UNSOURCED_SENTENCE",
+        "PROPOSES_STORY_CONTENT",
+        "INVENTS_NEW_ELEMENT"
+      ]
+    }
+  },
+  {
+    "id": "en-12",
+    "rationale": "The holder reply only confirms the stored value, so NO_CHANGE. The origin is ADDED from a2. Brother Anselm is already a book element, so newElements stays empty; proposing him again is wrong.",
+    "kind": "OBJECT",
+    "elementName": "The pilgrim's bell",
+    "bookElements": [
+      {
+        "kind": "OBJECT",
+        "name": "The pilgrim's bell"
+      },
+      {
+        "kind": "CHARACTER",
+        "name": "Brother Anselm"
+      }
+    ],
+    "bibleState": {
+      "physical_description": "A hand bell of dark iron, its clapper bound in leather.",
+      "current_holder": "Brother Anselm keeps it in the chapel.",
+      "origin": null,
+      "significance": "Whoever rings it may claim sanctuary."
+    },
+    "sessionId": "s1",
+    "scopeFieldKeys": [
+      "current_holder",
+      "origin"
+    ],
+    "answers": [
+      {
+        "id": "a1",
+        "sessionId": "s1",
+        "questionKind": "OPEN",
+        "question": "Who has the bell when the story opens?",
+        "targetsFieldKeys": [
+          "current_holder"
+        ],
+        "status": "ANSWERED",
+        "answer": "Same as before, it's with Brother Anselm in the chapel."
+      },
+      {
+        "id": "a2",
+        "sessionId": "s1",
+        "questionKind": "OPEN",
+        "question": "Where did the bell come from?",
+        "targetsFieldKeys": [
+          "origin"
+        ],
+        "status": "ANSWERED",
+        "answer": "It was cast from the melted chains of the old prison when the prison was pulled down."
+      }
+    ],
+    "expect": {
+      "operations": [
+        {
+          "fieldKey": "current_holder",
+          "op": "NO_CHANGE",
+          "cites": [],
+          "mustContain": [],
+          "mustNotContain": [],
+          "reference": null
+        },
+        {
+          "fieldKey": "origin",
+          "op": "ADD",
+          "cites": [
+            "a2"
+          ],
+          "mustContain": [
+            "melted chains",
+            "old prison"
+          ],
+          "mustNotContain": [
+            "blessed"
+          ],
+          "reference": "Cast from the melted chains of the old prison when the prison was pulled down."
+        }
+      ],
+      "newElements": [],
+      "mustNot": [
+        "CITES_NO_ANSWER",
+        "CITES_FOREIGN_ANSWER",
+        "CITES_UNANSWERED",
+        "TARGETS_OUT_OF_SCOPE_FIELD",
+        "UNSOURCED_SENTENCE",
+        "PROPOSES_STORY_CONTENT",
+        "INVENTS_NEW_ELEMENT"
+      ]
+    }
+  },
+  {
+    "id": "en-13",
+    "rationale": "The only open question is now settled and the author has no others, so REMOVE. The settled fact itself belongs to established_facts, which is outside scope: no operation there. Sources are ADDED. The interviewer must not add facts about telegraphy.",
+    "kind": "RESEARCH",
+    "elementName": "Victorian telegraphy",
+    "bookElements": [
+      {
+        "kind": "RESEARCH",
+        "name": "Victorian telegraphy"
+      }
+    ],
+    "bibleState": {
+      "topic": "How a provincial telegraph office worked in the 1880s.",
+      "why_needed": "The middle third turns on a telegram sent at night.",
+      "established_facts": [
+        "Messages were charged by the word (operator's handbook)."
+      ],
+      "open_questions": [
+        "Did offices charge a different rate at night?"
+      ],
+      "sources": null
+    },
+    "sessionId": "s3",
+    "scopeFieldKeys": [
+      "open_questions",
+      "sources"
+    ],
+    "answers": [
+      {
+        "id": "a1",
+        "sessionId": "s3",
+        "questionKind": "OPEN",
+        "question": "What is still unknown or unchecked?",
+        "targetsFieldKeys": [
+          "open_questions"
+        ],
+        "status": "ANSWERED",
+        "answer": "I've settled the night-rate question: I found a tariff card at the postal museum, and there was a night rate. So that comes off, and I have no other open questions right now."
+      },
+      {
+        "id": "a2",
+        "sessionId": "s3",
+        "questionKind": "OPEN",
+        "question": "Which books, people, places or records have you consulted?",
+        "targetsFieldKeys": [
+          "sources"
+        ],
+        "status": "ANSWERED",
+        "answer": "The tariff card at the postal museum, and my great-uncle's operator's handbook."
+      }
+    ],
+    "expect": {
+      "operations": [
+        {
+          "fieldKey": "open_questions",
+          "op": "REMOVE",
+          "cites": [
+            "a1"
+          ],
+          "mustContain": [],
+          "mustNotContain": [],
+          "reference": null
+        },
+        {
+          "fieldKey": "sources",
+          "op": "ADD",
+          "cites": [
+            "a2"
+          ],
+          "mustContain": [
+            "tariff card",
+            "operator's handbook"
+          ],
+          "mustNotContain": [
+            "national archive"
+          ],
+          "reference": [
+            "Tariff card, postal museum",
+            "Great-uncle's operator's handbook"
+          ]
+        }
+      ],
+      "newElements": [],
+      "mustNot": [
+        "CITES_NO_ANSWER",
+        "CITES_FOREIGN_ANSWER",
+        "CITES_UNANSWERED",
+        "TARGETS_OUT_OF_SCOPE_FIELD",
+        "UNSOURCED_SENTENCE",
+        "PROPOSES_STORY_CONTENT"
+      ]
+    }
+  },
+  {
+    "id": "en-14",
+    "rationale": "A noncommittal reply on key details is NO_CHANGE. The author strikes the only open question because the thread is gone from the book: REMOVE. Adding a new open question, or noting the cellar door in key details, is wrong.",
+    "kind": "CUSTOM",
+    "elementName": "The debt ledger",
+    "customLabel": "Family ledger",
+    "bookElements": [
+      {
+        "kind": "CUSTOM",
+        "name": "The debt ledger"
+      }
+    ],
+    "bibleState": {
+      "purpose": "A ledger of favours owed between three families, quoted at the head of each part.",
+      "key_details": [
+        "Only the grandmother writes in it.",
+        "A debt is never cancelled, only repaid in kind."
+      ],
+      "connections": null,
+      "open_questions": [
+        "Who first wrote in the ledger behind the cellar door?"
+      ]
+    },
+    "sessionId": "s2",
+    "scopeFieldKeys": [
+      "key_details",
+      "open_questions"
+    ],
+    "answers": [
+      {
+        "id": "a1",
+        "sessionId": "s2",
+        "questionKind": "OPEN",
+        "question": "Which other detail of the ledger must never vary?",
+        "targetsFieldKeys": [
+          "key_details"
+        ],
+        "status": "ANSWERED",
+        "answer": "Hmm, I'm not sure there is anything else. It's fine as it is, I think."
+      },
+      {
+        "id": "a2",
+        "sessionId": "s2",
+        "questionKind": "OPEN",
+        "question": "What about the ledger have you still to decide?",
+        "targetsFieldKeys": [
+          "open_questions"
+        ],
+        "status": "ANSWERED",
+        "answer": "Strike that question about the cellar door. I've let that thread go entirely; it isn't in the book any more."
+      }
+    ],
+    "expect": {
+      "operations": [
+        {
+          "fieldKey": "key_details",
+          "op": "NO_CHANGE",
+          "cites": [],
+          "mustContain": [],
+          "mustNotContain": [],
+          "reference": null
+        },
+        {
+          "fieldKey": "open_questions",
+          "op": "REMOVE",
+          "cites": [
+            "a2"
+          ],
+          "mustContain": [],
+          "mustNotContain": [],
+          "reference": null
+        }
+      ],
+      "newElements": [],
+      "mustNot": [
+        "CITES_NO_ANSWER",
+        "CITES_FOREIGN_ANSWER",
+        "CITES_UNANSWERED",
+        "TARGETS_OUT_OF_SCOPE_FIELD",
+        "UNSOURCED_SENTENCE",
+        "PROPOSES_STORY_CONTENT"
+      ]
+    }
+  },
+  {
+    "id": "en-15",
+    "rationale": "Stakes are ADDED from a1. The story-question reply hands the decision back ('whatever the obvious one is'), which tempts the model to write one: NO_CHANGE. a3 is an earlier session's answer already in central_conflict and must not be cited.",
+    "kind": "PREMISE",
+    "elementName": "The ninth lock",
+    "bookElements": [
+      {
+        "kind": "PREMISE",
+        "name": "The ninth lock"
+      },
+      {
+        "kind": "SETTING",
+        "name": "The Arle valley"
+      }
+    ],
+    "bibleState": {
+      "central_character": "A lock-keeper's daughter who has never left the valley.",
+      "starting_situation": "She has kept the ninth lock alone since her father died last winter.",
+      "central_conflict": "The water board will open the dam above the valley in a month, and only she knows the lock gates cannot hold.",
+      "stakes": null,
+      "story_question": null
+    },
+    "sessionId": "s2",
+    "scopeFieldKeys": [
+      "stakes",
+      "story_question"
+    ],
+    "answers": [
+      {
+        "id": "a3",
+        "sessionId": "s1",
+        "questionKind": "OPEN",
+        "question": "What opposes her, and why can she not walk away?",
+        "targetsFieldKeys": [
+          "central_conflict"
+        ],
+        "status": "ANSWERED",
+        "answer": "The water board will open the dam in a month, and only she knows the lock gates won't hold."
+      },
+      {
+        "id": "a1",
+        "sessionId": "s2",
+        "questionKind": "OPEN",
+        "question": "What is lost if she fails?",
+        "targetsFieldKeys": [
+          "stakes"
+        ],
+        "status": "ANSWERED",
+        "answer": "If she fails, the valley floods, and her father's grave goes under with it."
+      },
+      {
+        "id": "a2",
+        "sessionId": "s2",
+        "questionKind": "OPEN",
+        "question": "What question will keep a reader turning the pages?",
+        "targetsFieldKeys": [
+          "story_question"
+        ],
+        "status": "ANSWERED",
+        "answer": "I don't really know. Whatever the obvious one is."
+      }
+    ],
+    "expect": {
+      "operations": [
+        {
+          "fieldKey": "stakes",
+          "op": "ADD",
+          "cites": [
+            "a1"
+          ],
+          "mustContain": [
+            "valley floods",
+            "father's grave"
+          ],
+          "mustNotContain": [
+            "village dies"
+          ],
+          "reference": "The valley floods, and her father's grave goes under with it."
+        },
+        {
+          "fieldKey": "story_question",
+          "op": "NO_CHANGE",
+          "cites": [],
+          "mustContain": [],
+          "mustNotContain": [],
+          "reference": null
+        }
+      ],
+      "newElements": [],
+      "mustNot": [
+        "CITES_NO_ANSWER",
+        "CITES_FOREIGN_ANSWER",
+        "CITES_UNANSWERED",
+        "TARGETS_OUT_OF_SCOPE_FIELD",
+        "UNSOURCED_SENTENCE",
+        "PROPOSES_STORY_CONTENT"
+      ]
+    }
+  },
+  {
+    "id": "en-16",
+    "rationale": "The author scraps the stored false belief and leaves it empty while rethinking: REMOVE, no replacement belief. The need was skipped: NO_CHANGE. Writing the opposite belief into the field is the tempting mistake.",
+    "kind": "CHARACTER",
+    "elementName": "Old Hesketh",
+    "bookElements": [
+      {
+        "kind": "CHARACTER",
+        "name": "Old Hesketh"
+      }
+    ],
+    "bibleState": {
+      "role": "The protagonist's grandfather, who raised her.",
+      "want": "To see the farm pass to someone of his blood.",
+      "wound": "He lost his own farm to the bank as a young man.",
+      "false_belief": "He believes no one could love him for himself.",
+      "need": null,
+      "arc": null
+    },
+    "sessionId": "s3",
+    "scopeFieldKeys": [
+      "false_belief",
+      "need"
+    ],
+    "answers": [
+      {
+        "id": "a1",
+        "sessionId": "s3",
+        "questionKind": "OPEN",
+        "question": "Does the false belief you have stored still fit him?",
+        "targetsFieldKeys": [
+          "false_belief"
+        ],
+        "status": "ANSWERED",
+        "answer": "Scrap the belief I gave him. He doesn't think he's unlovable after all. I'm leaving it empty while I rethink him."
+      },
+      {
+        "id": "a2",
+        "sessionId": "s3",
+        "questionKind": "OPEN",
+        "question": "What does Hesketh actually lack, beneath what he wants?",
+        "targetsFieldKeys": [
+          "need"
+        ],
+        "status": "SKIPPED",
+        "answer": null
+      }
+    ],
+    "expect": {
+      "operations": [
+        {
+          "fieldKey": "false_belief",
+          "op": "REMOVE",
+          "cites": [
+            "a1"
+          ],
+          "mustContain": [],
+          "mustNotContain": [],
+          "reference": null
+        },
+        {
+          "fieldKey": "need",
+          "op": "NO_CHANGE",
+          "cites": [],
+          "mustContain": [],
+          "mustNotContain": [],
+          "reference": null
+        }
+      ],
+      "newElements": [],
+      "mustNot": [
+        "CITES_NO_ANSWER",
+        "CITES_FOREIGN_ANSWER",
+        "CITES_UNANSWERED",
+        "TARGETS_OUT_OF_SCOPE_FIELD",
+        "UNSOURCED_SENTENCE",
+        "PROPOSES_STORY_CONTENT"
+      ]
+    }
+  },
+  {
+    "id": "en-17",
+    "rationale": "Both answers extend what is stored: two new sensory details, and a second source of pressure beside the cold. Each UPDATE keeps the stored content and adds the new; replacing the cold or inventing a feud is wrong.",
+    "kind": "SETTING",
+    "elementName": "Kestrel Station",
+    "bookElements": [
+      {
+        "kind": "SETTING",
+        "name": "Kestrel Station"
+      }
+    ],
+    "bibleState": {
+      "place_type": "A research station on a sub-Antarctic island, eleven people over winter.",
+      "sensory_signature": "Wind against the cladding, and the white glare off the snow.",
+      "story_purpose": "It traps the characters together for the whole book.",
+      "pressure_on_characters": "The cold keeps everyone indoors and short-tempered."
+    },
+    "sessionId": "s2",
+    "scopeFieldKeys": [
+      "sensory_signature",
+      "pressure_on_characters"
+    ],
+    "answers": [
+      {
+        "id": "a1",
+        "sessionId": "s2",
+        "questionKind": "OPEN",
+        "question": "What else would someone notice inside the station?",
+        "targetsFieldKeys": [
+          "sensory_signature"
+        ],
+        "status": "ANSWERED",
+        "answer": "Add the generator hum, which never stops, and the smell of diesel in every corridor."
+      },
+      {
+        "id": "a2",
+        "sessionId": "s2",
+        "questionKind": "OPEN",
+        "question": "How else does the station press on the people in it?",
+        "targetsFieldKeys": [
+          "pressure_on_characters"
+        ],
+        "status": "ANSWERED",
+        "answer": "The isolation strips them of excuses: nobody can leave until the supply ship in spring, so every grudge has to be lived with."
+      }
+    ],
+    "expect": {
+      "operations": [
+        {
+          "fieldKey": "sensory_signature",
+          "op": "UPDATE",
+          "cites": [
+            "a1"
+          ],
+          "mustContain": [
+            "generator hum",
+            "diesel"
+          ],
+          "mustNotContain": [
+            "seals"
+          ],
+          "reference": "Wind against the cladding, the white glare off the snow, the generator hum that never stops, and the smell of diesel in every corridor."
+        },
+        {
+          "fieldKey": "pressure_on_characters",
+          "op": "UPDATE",
+          "cites": [
+            "a2"
+          ],
+          "mustContain": [
+            "supply ship",
+            "grudge"
+          ],
+          "mustNotContain": [
+            "murder"
+          ],
+          "reference": "The cold keeps everyone indoors and short-tempered, and nobody can leave until the supply ship in spring, so every grudge has to be lived with."
+        }
+      ],
+      "newElements": [],
+      "mustNot": [
+        "CITES_NO_ANSWER",
+        "CITES_FOREIGN_ANSWER",
+        "CITES_UNANSWERED",
+        "TARGETS_OUT_OF_SCOPE_FIELD",
+        "UNSOURCED_SENTENCE",
+        "PROPOSES_STORY_CONTENT"
+      ]
+    }
+  },
+  {
+    "id": "en-18",
+    "rationale": "The thematic question was set from an earlier session's answer (a1, s1). In this session the author drops it and leaves it open: REMOVE citing a2 only. Citing a1, or writing a new question, is wrong.",
+    "kind": "THEME",
+    "elementName": "Whose land",
+    "bookElements": [
+      {
+        "kind": "THEME",
+        "name": "Whose land"
+      }
+    ],
+    "bibleState": {
+      "subject": "Belonging to a place one was not born in.",
+      "thematic_question": "Can a place belong to people who were born somewhere else?",
+      "stance": null,
+      "counter_argument": null,
+      "carriers": null
+    },
+    "sessionId": "s2",
+    "scopeFieldKeys": [
+      "thematic_question"
+    ],
+    "answers": [
+      {
+        "id": "a1",
+        "sessionId": "s1",
+        "questionKind": "OPEN",
+        "question": "What question does the book ask about belonging?",
+        "targetsFieldKeys": [
+          "thematic_question"
+        ],
+        "status": "ANSWERED",
+        "answer": "Can a place belong to people who were born somewhere else?"
+      },
+      {
+        "id": "a2",
+        "sessionId": "s2",
+        "questionKind": "OPEN",
+        "question": "Does the question you stored still say what the book is asking?",
+        "targetsFieldKeys": [
+          "thematic_question"
+        ],
+        "status": "ANSWERED",
+        "answer": "No. Drop that question; it was the wrong one, and I'd rather leave it open for now than replace it."
+      }
+    ],
+    "expect": {
+      "operations": [
+        {
+          "fieldKey": "thematic_question",
+          "op": "REMOVE",
+          "cites": [
+            "a2"
+          ],
+          "mustContain": [],
+          "mustNotContain": [],
+          "reference": null
+        }
+      ],
+      "newElements": [],
+      "mustNot": [
+        "CITES_NO_ANSWER",
+        "CITES_FOREIGN_ANSWER",
+        "CITES_UNANSWERED",
+        "TARGETS_OUT_OF_SCOPE_FIELD",
+        "UNSOURCED_SENTENCE",
+        "PROPOSES_STORY_CONTENT"
+      ]
+    }
+  },
+  {
+    "id": "en-19",
+    "rationale": "The only mood shift listed is at a funeral the author has cut: REMOVE. The closing-feeling reply restates the stored value word for word: NO_CHANGE, not an UPDATE that rewrites it.",
+    "kind": "MOOD",
+    "elementName": "Part three",
+    "bookElements": [
+      {
+        "kind": "MOOD",
+        "name": "Part three"
+      }
+    ],
+    "bibleState": {
+      "dominant_feeling": "Dread that something will be taken.",
+      "intensity": 3,
+      "mood_shifts": [
+        "At the funeral the dread gives way to anger."
+      ],
+      "closing_feeling": "Quiet relief."
+    },
+    "sessionId": "s5",
+    "scopeFieldKeys": [
+      "mood_shifts",
+      "closing_feeling"
+    ],
+    "answers": [
+      {
+        "id": "a1",
+        "sessionId": "s5",
+        "questionKind": "OPEN",
+        "question": "Where does the feeling in part three change, and to what?",
+        "targetsFieldKeys": [
+          "mood_shifts"
+        ],
+        "status": "ANSWERED",
+        "answer": "Take out the funeral shift. I've cut the funeral, and there is no shift there now."
+      },
+      {
+        "id": "a2",
+        "sessionId": "s5",
+        "questionKind": "OPEN",
+        "question": "What should a reader feel at the end of part three?",
+        "targetsFieldKeys": [
+          "closing_feeling"
+        ],
+        "status": "ANSWERED",
+        "answer": "Exactly what I said before: quiet relief."
+      }
+    ],
+    "expect": {
+      "operations": [
+        {
+          "fieldKey": "mood_shifts",
+          "op": "REMOVE",
+          "cites": [
+            "a1"
+          ],
+          "mustContain": [],
+          "mustNotContain": [],
+          "reference": null
+        },
+        {
+          "fieldKey": "closing_feeling",
+          "op": "NO_CHANGE",
+          "cites": [],
+          "mustContain": [],
+          "mustNotContain": [],
+          "reference": null
+        }
+      ],
+      "newElements": [],
+      "mustNot": [
+        "CITES_NO_ANSWER",
+        "CITES_FOREIGN_ANSWER",
+        "CITES_UNANSWERED",
+        "TARGETS_OUT_OF_SCOPE_FIELD",
+        "UNSOURCED_SENTENCE",
+        "PROPOSES_STORY_CONTENT"
+      ]
+    }
+  },
+  {
+    "id": "en-20",
+    "rationale": "Three empty fields. a1 touches tense and spelling at once; a2 is an either-or whose pick fills diction. The proposed values must hold what was said and nothing more: no rhythm or dialogue rules.",
+    "kind": "STYLE",
+    "elementName": "Prose style",
+    "bookElements": [
+      {
+        "kind": "STYLE",
+        "name": "Prose style"
+      }
+    ],
+    "bibleState": {
+      "tense": null,
+      "diction": null,
+      "sentence_rhythm": null,
+      "dialogue_conventions": null,
+      "spelling_variant": null
+    },
+    "sessionId": "s1",
+    "scopeFieldKeys": [
+      "tense",
+      "diction",
+      "spelling_variant"
+    ],
+    "answers": [
+      {
+        "id": "a1",
+        "sessionId": "s1",
+        "questionKind": "OPEN",
+        "question": "Which tense will the narration use, and which spelling conventions?",
+        "targetsFieldKeys": [
+          "tense",
+          "spelling_variant"
+        ],
+        "status": "ANSWERED",
+        "answer": "Past tense, and American spelling, because the narrator is American and it should read that way."
+      },
+      {
+        "id": "a2",
+        "sessionId": "s1",
+        "questionKind": "EITHER_OR",
+        "question": "Which way does the prose lean in its choice of words?",
+        "options": [
+          "plain and spare",
+          "rich and ornate"
+        ],
+        "targetsFieldKeys": [
+          "diction"
+        ],
+        "status": "ANSWERED",
+        "answer": "plain and spare"
+      }
+    ],
+    "expect": {
+      "operations": [
+        {
+          "fieldKey": "tense",
+          "op": "ADD",
+          "cites": [
+            "a1"
+          ],
+          "mustContain": [
+            "past tense"
+          ],
+          "mustNotContain": [
+            "present"
+          ],
+          "reference": "Past tense."
+        },
+        {
+          "fieldKey": "diction",
+          "op": "ADD",
+          "cites": [
+            "a2"
+          ],
+          "mustContain": [
+            "plain and spare"
+          ],
+          "mustNotContain": [
+            "ornate"
+          ],
+          "reference": "Plain and spare."
+        },
+        {
+          "fieldKey": "spelling_variant",
+          "op": "ADD",
+          "cites": [
+            "a1"
+          ],
+          "mustContain": [
+            "American"
+          ],
+          "mustNotContain": [
+            "British"
+          ],
+          "reference": "American spelling."
+        }
+      ],
+      "newElements": [],
+      "mustNot": [
+        "CITES_NO_ANSWER",
+        "CITES_FOREIGN_ANSWER",
+        "CITES_UNANSWERED",
+        "TARGETS_OUT_OF_SCOPE_FIELD",
+        "UNSOURCED_SENTENCE",
+        "PROPOSES_STORY_CONTENT"
+      ]
+    }
+  },
+  {
+    "id": "en-21",
+    "rationale": "The viewpoint list is ADDED with Lena, who is not a book element, so a new character is proposed. The grammatical person was deferred: NO_CHANGE, and guessing first or third person is wrong.",
+    "kind": "POV",
+    "elementName": "Narration",
+    "bookElements": [
+      {
+        "kind": "POV",
+        "name": "Narration"
+      },
+      {
+        "kind": "SETTING",
+        "name": "The border town"
+      }
+    ],
+    "bibleState": {
+      "viewpoint_characters": null,
+      "person": null,
+      "narrative_distance": null,
+      "knowledge_limits": null,
+      "switching_pattern": null
+    },
+    "sessionId": "s1",
+    "scopeFieldKeys": [
+      "viewpoint_characters",
+      "person"
+    ],
+    "answers": [
+      {
+        "id": "a1",
+        "sessionId": "s1",
+        "questionKind": "OPEN",
+        "question": "Whose perspective does the narration follow?",
+        "targetsFieldKeys": [
+          "viewpoint_characters"
+        ],
+        "status": "ANSWERED",
+        "answer": "Just Lena, the whole way through."
+      },
+      {
+        "id": "a2",
+        "sessionId": "s1",
+        "questionKind": "EITHER_OR",
+        "question": "Is the narration in first person or third?",
+        "options": [
+          "first person",
+          "third person"
+        ],
+        "targetsFieldKeys": [
+          "person"
+        ],
+        "status": "DECIDE_LATER",
+        "answer": null
+      }
+    ],
+    "expect": {
+      "operations": [
+        {
+          "fieldKey": "viewpoint_characters",
+          "op": "ADD",
+          "cites": [
+            "a1"
+          ],
+          "mustContain": [
+            "Lena"
+          ],
+          "mustNotContain": [],
+          "reference": [
+            "Lena"
+          ]
+        },
+        {
+          "fieldKey": "person",
+          "op": "NO_CHANGE",
+          "cites": [],
+          "mustContain": [],
+          "mustNotContain": [],
+          "reference": null
+        }
+      ],
+      "newElements": [
+        {
+          "kind": "CHARACTER",
+          "name": "Lena",
+          "cites": [
+            "a1"
+          ]
+        }
+      ],
+      "mustNot": [
+        "CITES_NO_ANSWER",
+        "CITES_FOREIGN_ANSWER",
+        "CITES_UNANSWERED",
+        "TARGETS_OUT_OF_SCOPE_FIELD",
+        "UNSOURCED_SENTENCE",
+        "PROPOSES_STORY_CONTENT",
+        "OMITS_NEW_ELEMENT"
+      ]
+    }
+  },
+  {
+    "id": "en-22",
+    "rationale": "One answer moves the rule from law to custom and narrows it to feast nights. Both the statement and the domain are UPDATED; the statement keeps the whisper and the walls and drops 'every night'.",
+    "kind": "WORLD_RULE",
+    "elementName": "The quiet rule",
+    "bookElements": [
+      {
+        "kind": "WORLD_RULE",
+        "name": "The quiet rule"
+      },
+      {
+        "kind": "SETTING",
+        "name": "Harrowgate"
+      }
+    ],
+    "bibleState": {
+      "rule_statement": "No one may speak above a whisper inside the city walls after dusk, every night of the year.",
+      "domain": "Law.",
+      "cost_or_limit": "A night in the stocks for anyone heard.",
+      "who_knows": "Everyone in the city.",
+      "story_consequence": "Plots are hatched in sign language after dark."
+    },
+    "sessionId": "s3",
+    "scopeFieldKeys": [
+      "rule_statement",
+      "domain"
+    ],
+    "answers": [
+      {
+        "id": "a1",
+        "sessionId": "s3",
+        "questionKind": "OPEN",
+        "question": "Does the rule still read as you stored it?",
+        "targetsFieldKeys": [
+          "rule_statement",
+          "domain"
+        ],
+        "status": "ANSWERED",
+        "answer": "I've moved it: it's no longer a law but a custom, and it applies only on feast nights, not every night."
+      }
+    ],
+    "expect": {
+      "operations": [
+        {
+          "fieldKey": "rule_statement",
+          "op": "UPDATE",
+          "cites": [
+            "a1"
+          ],
+          "mustContain": [
+            "feast nights"
+          ],
+          "mustNotContain": [
+            "every night"
+          ],
+          "reference": "No one speaks above a whisper inside the city walls after dusk on feast nights."
+        },
+        {
+          "fieldKey": "domain",
+          "op": "UPDATE",
+          "cites": [
+            "a1"
+          ],
+          "mustContain": [
+            "custom"
+          ],
+          "mustNotContain": [],
+          "reference": "Custom."
+        }
+      ],
+      "newElements": [],
+      "mustNot": [
+        "CITES_NO_ANSWER",
+        "CITES_FOREIGN_ANSWER",
+        "CITES_UNANSWERED",
+        "TARGETS_OUT_OF_SCOPE_FIELD",
+        "UNSOURCED_SENTENCE",
+        "PROPOSES_STORY_CONTENT"
+      ]
+    }
+  },
+  {
+    "id": "en-23",
+    "rationale": "The date is corrected from spring to October (UPDATE, dropping spring), and consequences are ADDED. The answer also volunteers that the Marsh brothers were not there, which concerns participants, outside scope: no operation on it.",
+    "kind": "TIMELINE_EVENT",
+    "elementName": "The flood of '61",
+    "bookElements": [
+      {
+        "kind": "TIMELINE_EVENT",
+        "name": "The flood of '61"
+      },
+      {
+        "kind": "CHARACTER",
+        "name": "Edie"
+      },
+      {
+        "kind": "FACTION",
+        "name": "The Marsh brothers"
+      }
+    ],
+    "bibleState": {
+      "what_happens": "The river breaks its banks and drowns the lower village.",
+      "story_time": "Spring 1961.",
+      "participants": [
+        "Edie",
+        "The Marsh brothers"
+      ],
+      "consequences": null
+    },
+    "sessionId": "s2",
+    "scopeFieldKeys": [
+      "story_time",
+      "consequences"
+    ],
+    "answers": [
+      {
+        "id": "a1",
+        "sessionId": "s2",
+        "questionKind": "OPEN",
+        "question": "When exactly does the flood happen?",
+        "targetsFieldKeys": [
+          "story_time"
+        ],
+        "status": "ANSWERED",
+        "answer": "It was the autumn, not the spring: October 1961. Oh, and the Marsh brothers weren't actually there that night."
+      },
+      {
+        "id": "a2",
+        "sessionId": "s2",
+        "questionKind": "OPEN",
+        "question": "What changes because of the flood?",
+        "targetsFieldKeys": [
+          "consequences"
+        ],
+        "status": "ANSWERED",
+        "answer": "The lower village was never rebuilt; everyone moved up to the ridge."
+      }
+    ],
+    "expect": {
+      "operations": [
+        {
+          "fieldKey": "story_time",
+          "op": "UPDATE",
+          "cites": [
+            "a1"
+          ],
+          "mustContain": [
+            "October 1961"
+          ],
+          "mustNotContain": [
+            "spring"
+          ],
+          "reference": "October 1961."
+        },
+        {
+          "fieldKey": "consequences",
+          "op": "ADD",
+          "cites": [
+            "a2"
+          ],
+          "mustContain": [
+            "never rebuilt",
+            "ridge"
+          ],
+          "mustNotContain": [
+            "compensation"
+          ],
+          "reference": "The lower village was never rebuilt; everyone moved up to the ridge."
+        }
+      ],
+      "newElements": [],
+      "mustNot": [
+        "CITES_NO_ANSWER",
+        "CITES_FOREIGN_ANSWER",
+        "CITES_UNANSWERED",
+        "TARGETS_OUT_OF_SCOPE_FIELD",
+        "UNSOURCED_SENTENCE",
+        "PROPOSES_STORY_CONTENT"
+      ]
+    }
+  },
+  {
+    "id": "en-24",
+    "rationale": "Membership is ADDED with both how one joins and how one leaves. The power base was skipped: NO_CHANGE. Inferring leverage from the membership reply is the tempting mistake.",
+    "kind": "FACTION",
+    "elementName": "The Lamplighters' Union",
+    "bookElements": [
+      {
+        "kind": "FACTION",
+        "name": "The Lamplighters' Union"
+      }
+    ],
+    "bibleState": {
+      "purpose": "To keep the city's gas lamps lit and its members paid.",
+      "membership": null,
+      "power_base": null,
+      "internal_tension": null,
+      "role_in_conflict": null
+    },
+    "sessionId": "s1",
+    "scopeFieldKeys": [
+      "membership",
+      "power_base"
+    ],
+    "answers": [
+      {
+        "id": "a1",
+        "sessionId": "s1",
+        "questionKind": "OPEN",
+        "question": "Who belongs to the union, and how do people join or leave?",
+        "targetsFieldKeys": [
+          "membership"
+        ],
+        "status": "ANSWERED",
+        "answer": "Anyone who has lit lamps for a year can join. You leave only by dying."
+      },
+      {
+        "id": "a2",
+        "sessionId": "s1",
+        "questionKind": "OPEN",
+        "question": "What gives the union its leverage?",
+        "targetsFieldKeys": [
+          "power_base"
+        ],
+        "status": "SKIPPED",
+        "answer": null
+      }
+    ],
+    "expect": {
+      "operations": [
+        {
+          "fieldKey": "membership",
+          "op": "ADD",
+          "cites": [
+            "a1"
+          ],
+          "mustContain": [
+            "a year",
+            "dying"
+          ],
+          "mustNotContain": [
+            "guild"
+          ],
+          "reference": "Anyone who has lit lamps for a year can join; members leave only by dying."
+        },
+        {
+          "fieldKey": "power_base",
+          "op": "NO_CHANGE",
+          "cites": [],
+          "mustContain": [],
+          "mustNotContain": [],
+          "reference": null
+        }
+      ],
+      "newElements": [],
+      "mustNot": [
+        "CITES_NO_ANSWER",
+        "CITES_FOREIGN_ANSWER",
+        "CITES_UNANSWERED",
+        "TARGETS_OUT_OF_SCOPE_FIELD",
+        "UNSOURCED_SENTENCE",
+        "PROPOSES_STORY_CONTENT"
+      ]
+    }
+  },
+  {
+    "id": "en-25",
+    "rationale": "The description reply confirms what is stored: NO_CHANGE. The author takes back the stored significance and says not to replace it: REMOVE. Proposing a new reason the eye matters is wrong.",
+    "kind": "OBJECT",
+    "elementName": "The glass eye",
+    "bookElements": [
+      {
+        "kind": "OBJECT",
+        "name": "The glass eye"
+      },
+      {
+        "kind": "CHARACTER",
+        "name": "Captain Moss"
+      }
+    ],
+    "bibleState": {
+      "physical_description": "Green glass, with a crack across the iris.",
+      "current_holder": "Captain Moss, who wears it.",
+      "origin": "Made by a lens-grinder in the port town.",
+      "significance": "It is the key to the inheritance: the will is hidden behind it."
+    },
+    "sessionId": "s2",
+    "scopeFieldKeys": [
+      "physical_description",
+      "significance"
+    ],
+    "answers": [
+      {
+        "id": "a1",
+        "sessionId": "s2",
+        "questionKind": "OPEN",
+        "question": "Is the description you stored still how the eye looks?",
+        "targetsFieldKeys": [
+          "physical_description"
+        ],
+        "status": "ANSWERED",
+        "answer": "Yes, that's right: green glass, a crack across the iris."
+      },
+      {
+        "id": "a2",
+        "sessionId": "s2",
+        "questionKind": "OPEN",
+        "question": "Why does the eye matter to the story?",
+        "targetsFieldKeys": [
+          "significance"
+        ],
+        "status": "ANSWERED",
+        "answer": "I no longer think it matters to the plot at all. Take out what I wrote about it being the key to the inheritance, and don't replace it."
+      }
+    ],
+    "expect": {
+      "operations": [
+        {
+          "fieldKey": "physical_description",
+          "op": "NO_CHANGE",
+          "cites": [],
+          "mustContain": [],
+          "mustNotContain": [],
+          "reference": null
+        },
+        {
+          "fieldKey": "significance",
+          "op": "REMOVE",
+          "cites": [
+            "a2"
+          ],
+          "mustContain": [],
+          "mustNotContain": [],
+          "reference": null
+        }
+      ],
+      "newElements": [],
+      "mustNot": [
+        "CITES_NO_ANSWER",
+        "CITES_FOREIGN_ANSWER",
+        "CITES_UNANSWERED",
+        "TARGETS_OUT_OF_SCOPE_FIELD",
+        "UNSOURCED_SENTENCE",
+        "PROPOSES_STORY_CONTENT"
+      ]
+    }
+  },
+  {
+    "id": "en-26",
+    "rationale": "a1 fills both an established fact and its source; a2 fills why the topic is needed. The fact must keep its provenance and must not be expanded with anything the author did not state about lighthouses.",
+    "kind": "RESEARCH",
+    "elementName": "Lighthouse lenses",
+    "bookElements": [
+      {
+        "kind": "RESEARCH",
+        "name": "Lighthouse lenses"
+      }
+    ],
+    "bibleState": {
+      "topic": "How a first-order lighthouse lens was turned and kept lit in the 1900s.",
+      "why_needed": null,
+      "established_facts": null,
+      "open_questions": null,
+      "sources": null
+    },
+    "sessionId": "s1",
+    "scopeFieldKeys": [
+      "why_needed",
+      "established_facts",
+      "sources"
+    ],
+    "answers": [
+      {
+        "id": "a1",
+        "sessionId": "s1",
+        "questionKind": "OPEN",
+        "question": "What have you settled so far, and where did it come from?",
+        "targetsFieldKeys": [
+          "established_facts",
+          "sources"
+        ],
+        "status": "ANSWERED",
+        "answer": "From the keeper's manual at the county archive: the lens turned on a bath of mercury."
+      },
+      {
+        "id": "a2",
+        "sessionId": "s1",
+        "questionKind": "OPEN",
+        "question": "Which part of your book depends on getting this right?",
+        "targetsFieldKeys": [
+          "why_needed"
+        ],
+        "status": "ANSWERED",
+        "answer": "The climax happens in the lamp room, so I need to know how it worked."
+      }
+    ],
+    "expect": {
+      "operations": [
+        {
+          "fieldKey": "why_needed",
+          "op": "ADD",
+          "cites": [
+            "a2"
+          ],
+          "mustContain": [
+            "lamp room",
+            "climax"
+          ],
+          "mustNotContain": [],
+          "reference": "The climax happens in the lamp room."
+        },
+        {
+          "fieldKey": "established_facts",
+          "op": "ADD",
+          "cites": [
+            "a1"
+          ],
+          "mustContain": [
+            "bath of mercury",
+            "keeper's manual"
+          ],
+          "mustNotContain": [
+            "clockwork"
+          ],
+          "reference": [
+            "The lens turned on a bath of mercury (keeper's manual, county archive)."
+          ]
+        },
+        {
+          "fieldKey": "sources",
+          "op": "ADD",
+          "cites": [
+            "a1"
+          ],
+          "mustContain": [
+            "keeper's manual",
+            "county archive"
+          ],
+          "mustNotContain": [],
+          "reference": [
+            "Keeper's manual, county archive"
+          ]
+        }
+      ],
+      "newElements": [],
+      "mustNot": [
+        "CITES_NO_ANSWER",
+        "CITES_FOREIGN_ANSWER",
+        "CITES_UNANSWERED",
+        "TARGETS_OUT_OF_SCOPE_FIELD",
+        "UNSOURCED_SENTENCE",
+        "PROPOSES_STORY_CONTENT"
+      ]
+    }
+  },
+  {
+    "id": "en-27",
+    "rationale": "Key details are ADDED as two items. The connections are revised to the kitchen chapters only: UPDATE that drops the wedding rather than keeping both.",
+    "kind": "CUSTOM",
+    "elementName": "The ghost recipe",
+    "customLabel": "Recurring recipe",
+    "bookElements": [
+      {
+        "kind": "CUSTOM",
+        "name": "The ghost recipe"
+      }
+    ],
+    "bibleState": {
+      "purpose": "A family recipe the women of the house cook at every turning point.",
+      "key_details": null,
+      "connections": "It appears in the kitchen chapters and again at the wedding feast.",
+      "open_questions": null
+    },
+    "sessionId": "s3",
+    "scopeFieldKeys": [
+      "key_details",
+      "connections"
+    ],
+    "answers": [
+      {
+        "id": "a1",
+        "sessionId": "s3",
+        "questionKind": "OPEN",
+        "question": "Which details of the recipe must never vary?",
+        "targetsFieldKeys": [
+          "key_details"
+        ],
+        "status": "ANSWERED",
+        "answer": "It always has exactly seven ingredients, and it is never written down."
+      },
+      {
+        "id": "a2",
+        "sessionId": "s3",
+        "questionKind": "OPEN",
+        "question": "Does the recipe still touch the parts of the book you stored?",
+        "targetsFieldKeys": [
+          "connections"
+        ],
+        "status": "ANSWERED",
+        "answer": "I've rethought where it appears: it now turns up only in the three kitchen chapters, not at the wedding."
+      }
+    ],
+    "expect": {
+      "operations": [
+        {
+          "fieldKey": "key_details",
+          "op": "ADD",
+          "cites": [
+            "a1"
+          ],
+          "mustContain": [
+            "seven ingredients",
+            "never written down"
+          ],
+          "mustNotContain": [
+            "saffron"
+          ],
+          "reference": [
+            "Exactly seven ingredients",
+            "Never written down"
+          ]
+        },
+        {
+          "fieldKey": "connections",
+          "op": "UPDATE",
+          "cites": [
+            "a2"
+          ],
+          "mustContain": [
+            "kitchen chapters"
+          ],
+          "mustNotContain": [
+            "wedding"
+          ],
+          "reference": "It appears only in the three kitchen chapters."
+        }
+      ],
+      "newElements": [],
+      "mustNot": [
+        "CITES_NO_ANSWER",
+        "CITES_FOREIGN_ANSWER",
+        "CITES_UNANSWERED",
+        "TARGETS_OUT_OF_SCOPE_FIELD",
+        "UNSOURCED_SENTENCE",
+        "PROPOSES_STORY_CONTENT"
+      ]
+    }
+  }
+]

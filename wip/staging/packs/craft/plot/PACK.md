@@ -97,7 +97,7 @@ A plot entry records one plotline: whose choices drive it, the disturbance that 
 7. [CHOICE] (opposing_force) Where does the main resistance to your plotline owner's goal come from? Options: another person; a group; the place or world around them; a circumstance nobody controls.
 8. [OPEN] (complications) What is the first obstacle your plotline owner meets after committing to the goal?
 9. [SCENARIO] (complications) If one complication on your list were taken out, which later obstacle would stop making sense?
-10. [SCALE] (escalation_pace) How steeply should the pressure on your plotline owner rise from one complication to the next? Scale: 1 = slow, gradual build, 5 = steep, relentless climb.
+10. [SCALE] (escalation_pace) How steeply should the pressure on your plotline owner rise from one complication to the next? Scale: 1 = a slow and gradual build, 5 = a steep and relentless climb.
 11. [OPEN] (climax) What does your plotline owner do in the decisive confrontation where the goal is won or lost?
 12. [EITHER_OR] (climax) Is the climax of this plotline decided by your plotline owner's own act, or by something done to them? Options: by their own act; by something done to them.
 13. [CHOICE] (goal_outcome) Where does the climax leave your plotline owner's goal? Options: achieved; achieved at a heavy cost; lost; given up for a different aim; left open.

@@ -1,0 +1,367 @@
+[
+  {
+    "id": "custom-01",
+    "rationale": "Fresh element at depth 1, detail 1: only purpose has no prerequisite. A right output asks a pick, either-or or scale about what this element is or why the book needs it, using the author's label. Wrong: an open question, asking about details or connections, or options that name what the element might be.",
+    "elementName": "The counting rhyme",
+    "customLabel": "Recurring rhyme",
+    "bibleState": {
+      "purpose": null,
+      "key_details": null,
+      "connections": null,
+      "open_questions": null
+    },
+    "priorAnswers": [],
+    "dials": {
+      "depth": 1,
+      "detail": 1
+    },
+    "expect": {
+      "targetsAnyOf": [
+        "purpose"
+      ],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE",
+        "MISMATCHES_DETAIL",
+        "MALFORMED_OPTIONS",
+        "EXCEEDS_DEPTH",
+        "UNGROUNDED_RECOMMENDATION"
+      ]
+    }
+  },
+  {
+    "id": "custom-02",
+    "rationale": "Purpose stored; at depth 2 the three level-2 fields open together. The tempting mistake is to ask what the rhyme is again. Right: a question on the details to keep consistent, the parts of the book it touches or what is undecided, built on the stored purpose, inventing no verse or scene.",
+    "elementName": "The counting rhyme",
+    "customLabel": "Recurring rhyme",
+    "bibleState": {
+      "purpose": "A counting rhyme children in the harbour town chant while skipping, which the narrator hears in every part of the book.",
+      "key_details": null,
+      "connections": null,
+      "open_questions": null
+    },
+    "priorAnswers": [],
+    "dials": {
+      "depth": 2,
+      "detail": 3
+    },
+    "expect": {
+      "targetsAnyOf": [
+        "key_details",
+        "connections",
+        "open_questions"
+      ],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE",
+        "OUT_OF_SCOPE_KIND",
+        "LEADING_QUESTION"
+      ]
+    }
+  },
+  {
+    "id": "custom-03",
+    "rationale": "Purpose stored, but depth 1 reaches only level-1 fields, and purpose is filled. The frontier is empty, so the right output asks nothing and says why. Wrong: re-asking the purpose, or reaching for a level-2 field the dial excludes.",
+    "elementName": "The favour ledger",
+    "customLabel": "Family ledger",
+    "bibleState": {
+      "purpose": "A ledger of favours owed between the three families, kept by the grandmother and quoted in the margins of chapters.",
+      "key_details": null,
+      "connections": null,
+      "open_questions": null
+    },
+    "priorAnswers": [],
+    "dials": {
+      "depth": 1,
+      "detail": 2
+    },
+    "expect": {
+      "targetsAnyOf": [],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE",
+        "EXCEEDS_DEPTH"
+      ]
+    }
+  },
+  {
+    "id": "custom-04",
+    "rationale": "Purpose is empty in the bible but an ANSWERED earlier reply settles it, so the level-2 fields open. Detail 4 allows open, scenario, choice or either-or, inviting about a paragraph. Wrong: asking the purpose again, or asking for a one-word pick with no reason.",
+    "elementName": "The favour ledger",
+    "customLabel": "Family ledger",
+    "bibleState": {
+      "purpose": null,
+      "key_details": null,
+      "connections": null,
+      "open_questions": null
+    },
+    "priorAnswers": [
+      {
+        "id": "a1",
+        "questionKind": "OPEN",
+        "question": "In a line, what is this element, in the terms you use for it yourself?",
+        "targetsFieldKeys": [
+          "purpose"
+        ],
+        "status": "ANSWERED",
+        "answer": "A ledger of favours owed between the three families, kept by the grandmother and quoted in the margins of chapters."
+      }
+    ],
+    "dials": {
+      "depth": 2,
+      "detail": 4
+    },
+    "expect": {
+      "targetsAnyOf": [
+        "key_details",
+        "connections",
+        "open_questions"
+      ],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE",
+        "REPEATS_PRIOR_QUESTION",
+        "MISMATCHES_DETAIL"
+      ]
+    }
+  },
+  {
+    "id": "custom-05",
+    "rationale": "Purpose and key details stored; connections was deferred this session and stays closed. At depth 5, detail 5, only open questions remain. Right: an open or scenario question about what is undecided, inviting several paragraphs. Wrong: asking about connections again, or a pick or scale.",
+    "elementName": "The lighthouse log",
+    "customLabel": "Chapter-opening device",
+    "bibleState": {
+      "purpose": "Each chapter opens with a weather report from the lighthouse log, dated in the island's own calendar.",
+      "key_details": [
+        "Every entry gives wind, sea state and visibility, in that order.",
+        "Dates use the island calendar, never the mainland one.",
+        "The keeper never comments on the weather; the log only records it."
+      ],
+      "connections": null,
+      "open_questions": null
+    },
+    "priorAnswers": [
+      {
+        "id": "a1",
+        "questionKind": "OPEN",
+        "question": "Which parts of your book does the log touch most, and what does it do there?",
+        "targetsFieldKeys": [
+          "connections"
+        ],
+        "status": "DECIDE_LATER",
+        "answer": null
+      }
+    ],
+    "dials": {
+      "depth": 5,
+      "detail": 5
+    },
+    "expect": {
+      "targetsAnyOf": [
+        "open_questions"
+      ],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE",
+        "REPEATS_PRIOR_QUESTION",
+        "MISMATCHES_DETAIL"
+      ]
+    }
+  },
+  {
+    "id": "custom-06",
+    "rationale": "Fresh element whose purpose was skipped this session. A skipped field is not re-opened and does not satisfy its dependants, so nothing is eligible: ask nothing and say the other fields wait on the purpose. Wrong: asking the purpose again or jumping to details.",
+    "elementName": "The lighthouse log",
+    "customLabel": "Chapter-opening device",
+    "bibleState": {
+      "purpose": null,
+      "key_details": null,
+      "connections": null,
+      "open_questions": null
+    },
+    "priorAnswers": [
+      {
+        "id": "a1",
+        "questionKind": "CHOICE",
+        "question": "Which job does this element mainly do for your book?",
+        "options": [
+          "keeps track of something the reader must follow",
+          "marks a pattern that recurs",
+          "shapes how the story is presented",
+          "records planning the reader never sees"
+        ],
+        "targetsFieldKeys": [
+          "purpose"
+        ],
+        "status": "SKIPPED",
+        "answer": null
+      }
+    ],
+    "dials": {
+      "depth": 3,
+      "detail": 3
+    },
+    "expect": {
+      "targetsAnyOf": [],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE",
+        "REPEATS_PRIOR_QUESTION"
+      ]
+    }
+  },
+  {
+    "id": "custom-07",
+    "rationale": "The ANSWERED reply on key details asks the interviewer to make the verses up. The field counts as settled for the session, so connections and open questions remain. Right: write no verse and invent no detail, and ask a short question on an open field. Wrong: supplying lines of the rhyme or asking the details again.",
+    "elementName": "The counting rhyme",
+    "customLabel": "Recurring rhyme",
+    "bibleState": {
+      "purpose": "A counting rhyme children in the harbour town chant while skipping, which the narrator hears in every part of the book.",
+      "key_details": null,
+      "connections": null,
+      "open_questions": null
+    },
+    "priorAnswers": [
+      {
+        "id": "a1",
+        "questionKind": "OPEN",
+        "question": "Which detail of this rhyme must read exactly the same every time it appears?",
+        "targetsFieldKeys": [
+          "key_details"
+        ],
+        "status": "ANSWERED",
+        "answer": "Honestly, just make the verses up for me and decide what has to stay the same. You'll do it better than I would."
+      }
+    ],
+    "dials": {
+      "depth": 2,
+      "detail": 2
+    },
+    "expect": {
+      "targetsAnyOf": [
+        "connections",
+        "open_questions"
+      ],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE",
+        "FOLLOWS_EMBEDDED_INSTRUCTION",
+        "MISMATCHES_DETAIL"
+      ]
+    }
+  },
+  {
+    "id": "custom-08",
+    "rationale": "Every core field is filled, so the frontier is empty even at depth 5. The right output asks no new question; at most it would be a challenge, which this round does not require. Wrong: asking any core field afresh, or treating optional fields as a reason to re-ask core ones.",
+    "elementName": "The favour ledger",
+    "customLabel": "Family ledger",
+    "bibleState": {
+      "purpose": "A ledger of favours owed between the three families, kept by the grandmother and quoted in the margins of chapters.",
+      "key_details": [
+        "Only the grandmother writes in it.",
+        "A favour is never cancelled, only repaid in kind."
+      ],
+      "connections": "It opens every chapter in the second part, and the climax turns on an entry the grandmother crossed out.",
+      "open_questions": [
+        "Does anyone outside the families know it exists?"
+      ]
+    },
+    "priorAnswers": [],
+    "dials": {
+      "depth": 5,
+      "detail": 3
+    },
+    "expect": {
+      "targetsAnyOf": [],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE",
+        "REPEATS_PRIOR_QUESTION",
+        "VERDICT_NOT_QUESTION"
+      ]
+    }
+  },
+  {
+    "id": "custom-09",
+    "rationale": "Purpose and connections stored; at depth 4, detail 1, key details and open questions remain, asked as picks, either-or or a scale. Wrong: re-asking the stored connections, an open question, or options that name a detail of the device the author has not given.",
+    "elementName": "The lighthouse log",
+    "customLabel": "Chapter-opening device",
+    "bibleState": {
+      "purpose": "Each chapter opens with a weather report from the lighthouse log, dated in the island's own calendar.",
+      "key_details": null,
+      "connections": "Every chapter opens with an entry; the entries thin out as the keeper's sight fails in the last third.",
+      "open_questions": null
+    },
+    "priorAnswers": [],
+    "dials": {
+      "depth": 4,
+      "detail": 1
+    },
+    "expect": {
+      "targetsAnyOf": [
+        "key_details",
+        "open_questions"
+      ],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE",
+        "MISMATCHES_DETAIL",
+        "MALFORMED_OPTIONS",
+        "UNGROUNDED_RECOMMENDATION"
+      ]
+    }
+  },
+  {
+    "id": "custom-10",
+    "rationale": "Three core fields stored and connections empty; at depth 3, detail 4, connections is the whole frontier. The tempting mistake is to ask what must stay consistent, which is already stored. Right: one question on where the rhyme appears and what it does there, quoting the stored purpose, inventing no scene.",
+    "elementName": "The counting rhyme",
+    "customLabel": "Recurring rhyme",
+    "bibleState": {
+      "purpose": "A counting rhyme children in the harbour town chant while skipping, which the narrator hears in every part of the book.",
+      "key_details": [
+        "It counts down from seven, never up.",
+        "Only children chant it; adults hum it."
+      ],
+      "connections": null,
+      "open_questions": [
+        "Does the narrator ever learn where it came from?"
+      ]
+    },
+    "priorAnswers": [],
+    "dials": {
+      "depth": 3,
+      "detail": 4
+    },
+    "expect": {
+      "targetsAnyOf": [
+        "connections"
+      ],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE",
+        "LEADING_QUESTION",
+        "OUT_OF_SCOPE_KIND"
+      ]
+    }
+  }
+]

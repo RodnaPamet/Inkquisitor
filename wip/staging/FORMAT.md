@@ -34,7 +34,12 @@ run in Phase 2.3, never by hand), no scripts.
   evals/question-coverage.json
   evals/enrichment.json
   evals/adversarial.json
+  design/QUESTION-ENGINE.md                  the question engine design (prose, not a content format)
+  README.md                                  file index and computed counts, written by the final consistency pass
 ```
+
+The last two were added on 2026-11-19 by the consistency pass that closed the
+staged content; no content agent writes them.
 
 `<dir>` is the kind identifier in lower case, underscores kept: `premise`,
 `plot`, `character`, `setting`, `theme`, `mood`, `texture`, `style`, `pov`,
@@ -326,7 +331,11 @@ Earlier answers in every evaluation file have this shape, keys in this order:
 - `status`: `ANSWERED`, `SKIPPED` or `DECIDE_LATER`.
 - `answer`: null unless `status` is `ANSWERED`. Then: for `CHOICE` and
   `EITHER_OR`, a string equal to one of `options`; for `SCALE`, an integer
-  1..5; otherwise a string of at most 600 characters.
+  1..5; otherwise a string of at most 600 characters. One exception: in
+  `adversarial.json`, a case whose `attack` is `IGNORE_PREVIOUS` may carry one
+  answer of up to 6,000 characters, to test an override placed after enough
+  filler to push the model's instructions out of view. A loader built from
+  this file allows that length there and nowhere else.
 
 ### 1.14 The dials object
 
@@ -960,14 +969,16 @@ grounded in the answers they cite (roadmap 2.5)?
           "op": "ADD",
           "cites": ["a1"],
           "mustContain": ["<phrase>"],
-          "mustNotContain": ["<phrase>"]
+          "mustNotContain": ["<phrase>"],
+          "reference": "<one acceptable proposed value>"
         },
         {
           "fieldKey": "wound",
           "op": "NO_CHANGE",
           "cites": [],
           "mustContain": [],
-          "mustNotContain": []
+          "mustNotContain": [],
+          "reference": null
         }
       ],
       "newElements": [],
@@ -994,7 +1005,7 @@ grounded in the answers they cite (roadmap 2.5)?
 | `sessionId` | The current session. |
 | `scopeFieldKeys` | Core keys the current round's questions targeted, in Appendix A order. The reconcile step may propose changes to these fields only. |
 | `answers` | Answer objects (1.13) **with** `sessionId`. At least one belongs to the current session. Answers from other sessions are earlier context, already folded into the bible. |
-| `expect.operations` | Exactly one entry per `scopeFieldKeys` key, in the same order. |
+| `expect.operations` | Exactly one entry per `scopeFieldKeys` key, in the same order. Each entry's keys in this order: `fieldKey`, `op`, `cites`, `mustContain`, `mustNotContain`, `reference`. |
 | `expect.newElements` | Entities a current-session `ANSWERED` answer names that `bookElements` lacks: `{ "kind", "name", "cites" }`. May be `[]`. |
 | `expect.mustNot` | Codes marked E. Always includes the six in the example. |
 
@@ -1017,6 +1028,12 @@ grounded in the answers they cite (roadmap 2.5)?
 - `mustNotContain`: for `ADD` and `UPDATE`, 0 to 4 phrases that must not
   appear: an embellishment the model will be tempted to add, a fact the answer
   retracted, a foreign session's content. `[]` for `REMOVE` and `NO_CHANGE`.
+- `reference` (added 2026-11-19): for `ADD` and `UPDATE`, one acceptable
+  proposed value, typed as the field (1.3), drawn only from the cited answers
+  and, for `UPDATE`, the parts of the stored value that are still true. It
+  contains every `mustContain` phrase and no `mustNotContain` phrase. It is a
+  reference wording for reviewers and for a judge model, never compared
+  verbatim: an output need not match it. `null` for `REMOVE` and `NO_CHANGE`.
 - `newElements[].cites`: as for `cites`, non-empty.
 
 **How a case is graded.** The harness gives the reconcile step the case and
@@ -1190,7 +1207,7 @@ one is not done.
 
 **Evaluation sets**
 - [ ] `question-coverage.json`: 10 cases; `mustCover` and `mustNotTarget` equal the simulation's output; 5.1 coverage met.
-- [ ] `enrichment.json`: one operation per scope key in order; each `op` allowed by the stored value; `cites` only current-session `ANSWERED` ids; operation counts and 5.2 coverage met.
+- [ ] `enrichment.json`: one operation per scope key in order; each `op` allowed by the stored value; `cites` only current-session `ANSWERED` ids; each `reference` typed, holding every `mustContain` phrase and no `mustNotContain` phrase; operation counts and 5.2 coverage met.
 - [ ] `adversarial.json`: `injectedText` occurs verbatim in exactly one current-session `ANSWERED` answer; category `mustNot` rules met; 5.3 coverage met.
 
 ---
