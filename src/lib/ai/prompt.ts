@@ -89,6 +89,14 @@ export interface PromptTemplate {
     readonly task: string;
     /** A per-call output budget BELOW the tier's; it never raises it. */
     readonly maxOutputTokens?: number;
+    /**
+     * The per-call COST budget, in micro-dollars, recorded with the version
+     * (roadmap rule 9). A statement of what one call of this prompt is expected
+     * to cost at most, not a gate: the spend ceiling is the gate. A settled
+     * call that costs more is logged `overBudget` (`callStructured`), and a
+     * feature's evaluation counts its calls over it.
+     */
+    readonly costBudgetMicroUsd?: number;
     /** The guard's mode for this prompt's calls (`./guard/policy.ts`); default `balanced`. */
     readonly guardMode?: GuardMode;
 }
@@ -273,6 +281,9 @@ export function definePrompt(template: PromptTemplate): Readonly<PromptTemplate>
     }
     if (template.maxOutputTokens !== undefined && !(Number.isInteger(template.maxOutputTokens) && template.maxOutputTokens > 0)) {
         throw new AiPromptError(`prompt ${template.id} has a malformed output budget`);
+    }
+    if (template.costBudgetMicroUsd !== undefined && !(Number.isInteger(template.costBudgetMicroUsd) && template.costBudgetMicroUsd > 0)) {
+        throw new AiPromptError(`prompt ${template.id} has a malformed cost budget`);
     }
     return Object.freeze({ ...template });
 }

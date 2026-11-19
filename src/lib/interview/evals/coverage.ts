@@ -30,9 +30,14 @@
  *
  * Rule 6: a report over no sessions reads NOT_ASSESSED, never 100 %.
  *
- * The report names the prompt version and the per-call output budget (rule
- * 9). Real records come from a real model once 2.1 is wired; this module is
- * exercised today with a deterministic fake generator.
+ * The report names the prompt version, the per-call output and cost budgets
+ * (rule 9) and what the generation calls did: how many, how many failed, the
+ * tokens and money they reported, the dearest call and how many passed the
+ * cost budget. It runs any `QuestionGenerator`: the deterministic fake for the
+ * pure core, and the WIRED generator (`questionGeneratorOver` in
+ * `model-seam.ts` over 2.1's `callStructured`) against the fake Messages API
+ * (tests/unit/interview/coverage-eval.test.ts). A real-model evaluation record
+ * needs an API key (issue #32, item 8).
  */
 import * as fs from 'node:fs';
 import * as path from 'node:path';
@@ -46,7 +51,7 @@ import { computeFrontier, refsCheck, type AnswerFact } from '../frontier';
 import type { QuestionGenerator } from '../generator';
 import type { PackRegistry } from '../packs';
 import { planRound } from '../plan';
-import { QUESTION_PROMPT_VERSION, type PromptAnswer } from '../prompt';
+import { maxOutputTokensFor, QUESTION_CALL_COST_BUDGET_MICRO_USD, QUESTION_PROMPT_VERSION, type PromptAnswer } from '../prompt';
 import { produceRound, type RoundElement } from '../round';
 
 export const COVERAGE_EVAL_PATH = path.join(process.cwd(), 'src/lib/interview/evals/question-coverage.json');
@@ -152,6 +157,35 @@ export interface SessionReport {
     /** `mustNot` behaviours this runner cannot grade (left to 2.3's judge). */
     ungraded: string[];
     passed: boolean;
+    /** The session's generation calls, as the generator reported them (rule 9). */
+    calls: CallAccount;
+}
+
+/** What a run's generation calls did. */
+export interface CallAccount {
+    count: number;
+    failed: number;
+    tokensUsed: number;
+    costMicroUsd: number;
+    maxCallCostMicroUsd: number;
+    /** Calls whose cost passed the template's per-call cost budget. */
+    overBudget: number;
+    /** The calls' `AiCallLog` ids, where the generator recorded any. */
+    aiCallIds: string[];
+}
+
+function emptyAccount(): CallAccount {
+    return { count: 0, failed: 0, tokensUsed: 0, costMicroUsd: 0, maxCallCostMicroUsd: 0, overBudget: 0, aiCallIds: [] };
+}
+
+function addAccount(into: CallAccount, from: CallAccount): void {
+    into.count += from.count;
+    into.failed += from.failed;
+    into.tokensUsed += from.tokensUsed;
+    into.costMicroUsd += from.costMicroUsd;
+    into.maxCallCostMicroUsd = Math.max(into.maxCallCostMicroUsd, from.maxCallCostMicroUsd);
+    into.overBudget += from.overBudget;
+    into.aiCallIds.push(...from.aiCallIds);
 }
 
 export type CoverageReport =
@@ -161,6 +195,10 @@ export type CoverageReport =
           promptVersion: string;
           /** The generation calls' output budgets used, by detail (rule 9). */
           maxOutputTokensByDetail: Record<number, number>;
+          /** The per-call cost budget recorded on the template (rule 9), in micro-dollars. */
+          costBudgetMicroUsd: number;
+          /** Every session's calls together. */
+          calls: CallAccount;
           sessions: SessionReport[];
           passed: number;
           /** `mustCover` keys the generator reached, over all of them. */
@@ -190,6 +228,7 @@ async function runSession(caseId: string, session: CoverageSession, generator: Q
     const attempted = new Set<string>();
     let rounds = 0;
     let challengesPlanned = 0;
+    const calls = emptyAccount();
 
     for (let round = 1; round <= MAX_ROUNDS; round++) {
         const result = computeFrontier({
@@ -212,7 +251,7 @@ async function runSession(caseId: string, session: CoverageSession, generator: Q
         if (plan.challenge) challengesPlanned++;
         const out = await produceRound(
             {
-                workspaceId: 'eval',
+                bookId: null,
                 dials: session.dials,
                 offerRecommended: true,
                 preferChoice: false,
@@ -227,6 +266,15 @@ async function runSession(caseId: string, session: CoverageSession, generator: Q
             { generator },
         );
         for (const code of Object.keys(out.metrics.preventedBehaviours)) attempted.add(code);
+        addAccount(calls, {
+            count: out.metrics.generationCalls,
+            failed: out.metrics.generationFailures,
+            tokensUsed: out.metrics.tokensUsed,
+            costMicroUsd: out.metrics.costMicroUsd,
+            maxCallCostMicroUsd: out.metrics.maxCallCostMicroUsd,
+            overBudget: out.metrics.callsOverBudget,
+            aiCallIds: out.metrics.aiCallIds,
+        });
         if (out.questions.length === 0) break;
         rounds++;
         for (const q of out.questions) {
@@ -265,6 +313,7 @@ async function runSession(caseId: string, session: CoverageSession, generator: Q
         attempted: attemptedListed,
         ungraded: mustNot.filter((code) => !CODE_CHECKED.has(code)),
         passed: false,
+        calls,
     };
     report.passed = report.missed.length === 0 && report.wronglyTargeted.length === 0 && report.attempted.length === 0;
     return report;
@@ -277,10 +326,14 @@ export async function runCoverageEvaluation(cases: readonly CoverageCase[], gene
     const all = cases.flatMap((c) => c.sessions);
     const required = all.reduce((n, s) => n + s.expect.mustCover.length, 0);
     const reached = sessions.reduce((n, r, i) => n + all[i].expect.mustCover.filter((k) => r.generatorCovered.includes(k)).length, 0);
+    const calls = emptyAccount();
+    for (const r of sessions) addAccount(calls, r.calls);
     return {
         status: 'MEASURED',
         promptVersion: QUESTION_PROMPT_VERSION,
-        maxOutputTokensByDetail: Object.fromEntries(Object.entries(DETAIL).map(([d, row]) => [Number(d), row.maxOutputTokens])),
+        maxOutputTokensByDetail: Object.fromEntries(Object.keys(DETAIL).map((d) => [Number(d), maxOutputTokensFor(Number(d))])),
+        costBudgetMicroUsd: QUESTION_CALL_COST_BUDGET_MICRO_USD,
+        calls,
         sessions,
         passed: sessions.filter((r) => r.passed).length,
         coverage: required === 0 ? 0 : reached / required,

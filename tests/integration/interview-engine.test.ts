@@ -10,7 +10,10 @@
  *   the bible's stored values are never asked (rule 5)
  *   answers are append-only; a re-answer is a new revision
  *   question and answer text is ciphertext at rest
- *   without a wired model nothing is written (503 MODEL_NOT_WIRED)
+ *   with no model call possible (no key) nothing is written (503
+ *   AI_UNAVAILABLE CREDENTIAL_NOT_CONFIGURED)
+ *   the wired generator over 2.1 (interview-model-wiring.test.ts holds the
+ *   calls, the ledger and the stops)
  *   another workspace sees nothing
  */
 import { randomBytes } from 'node:crypto';
@@ -81,9 +84,10 @@ describe('a session runs its rounds', () => {
         expect(targetsOf(started)[0]).toBe('role');
         expect(new Set(targetsOf(started)).size).toBe(targetsOf(started).length);
         expect(gen.calls).toHaveLength(1);
-        // The author's text is fenced data, never the system prompt.
-        expect(gen.calls[0].system).not.toContain('Aurel Pask');
-        expect(gen.calls[0].user).toContain('Aurel Pask');
+        // The author's text is data (2.1 fences it), never the system prompt or the task.
+        expect(gen.calls[0].template.system).not.toContain('Aurel Pask');
+        expect(gen.calls[0].template.task).not.toContain('Aurel Pask');
+        expect(gen.calls[0].data.some((b) => b.text.includes('Aurel Pask'))).toBe(true);
 
         // Answer every question of the round, then close it.
         for (const q of started.round!.questions) await answerQuestion(ctx, bookId, started.session.id, q.id, answerFor(q));
@@ -122,7 +126,7 @@ describe('a session runs its rounds', () => {
             { key: 'role', value: 'Plays at the chapel.' },
             { key: 'prominence', value: option },
         ]);
-        const notWired = { wired: false, generateCandidates: async () => ({ output: {}, tokensUsed: 0 }) };
+        const notWired = { unavailableReason: () => 'CREDENTIAL_NOT_CONFIGURED', generateCandidates: async () => ({ output: {}, tokensUsed: 0 }) };
         // Depth 1: only `role` and `prominence` are in reach, and both are stored; everything else is deeper.
         const view = await startInterview(ctx, bookId, { scope: 'ELEMENT', elementId: el.id, depth: 1, detail: 1 }, { generator: notWired, embedder });
         expect(view.session).toMatchObject({ status: 'COMPLETED', stopReason: 'NOTHING_AT_DEPTH' });
@@ -142,13 +146,16 @@ describe('a session runs its rounds', () => {
     });
 });
 
-describe('without a wired model', () => {
-    it('refuses 503 MODEL_NOT_WIRED and writes nothing', async () => {
+describe('when no model call can be made (no API key: jest.setup.js clears it)', () => {
+    it('the deployment generator refuses 503 AI_UNAVAILABLE naming the missing key, and writes nothing', async () => {
         const el = await character('Never Asked');
         const before = await prisma.interviewSession.count({ where: { workspaceId: owner.workspaceId } });
+        const calls = await prisma.aiCallLog.count({ where: { workspaceId: owner.workspaceId } });
         const r = await refusal(startInterview(ctx, bookId, { scope: 'ELEMENT', elementId: el.id }));
-        expect(r).toEqual({ status: 503, reason: 'MODEL_NOT_WIRED' });
+        expect(r).toEqual({ status: 503, reason: 'CREDENTIAL_NOT_CONFIGURED' });
         expect(await prisma.interviewSession.count({ where: { workspaceId: owner.workspaceId } })).toBe(before);
+        // Refused before any call: no AiCallLog row either.
+        expect(await prisma.aiCallLog.count({ where: { workspaceId: owner.workspaceId } })).toBe(calls);
     });
 });
 
@@ -287,7 +294,7 @@ describe('scopes and dials', () => {
         const gen = fakeGenerator();
         const view = await startInterview(ctx, bookId, { scope: 'ELEMENT', elementId: el.id, persona: 'socratic' }, { generator: gen, embedder });
         expect(view.session.personaKeys).toEqual(['socratic']);
-        expect(gen.calls[0].system).toContain('# Socratic');
+        expect(gen.calls[0].template.system).toContain('# Socratic');
         expect(view.round!.questions.every((q) => q.personaKey === 'socratic' || q.origin === 'PACK_FALLBACK')).toBe(true);
         expect((await refusal(startInterview(ctx, bookId, { scope: 'ELEMENT', elementId: el.id, persona: 'the-critic' }, { generator: gen, embedder }))).status).toBe(400);
     });
@@ -323,7 +330,7 @@ describe('when generation goes wrong', () => {
         let release!: () => void;
         const gate = new Promise<void>((r) => (release = r));
         const slow = fakeGenerator();
-        const slowGen = { wired: true, generateCandidates: async (req: Parameters<typeof slow.generateCandidates>[0]) => (await gate, slow.generateCandidates(req)) };
+        const slowGen = { unavailableReason: () => null, generateCandidates: async (req: Parameters<typeof slow.generateCandidates>[0]) => (await gate, slow.generateCandidates(req)) };
         const first = nextRound(ctx, bookId, start.session.id, { generator: slowGen, embedder });
         await new Promise((r) => setTimeout(r, 300));
         const second = await refusal(nextRound(ctx, bookId, start.session.id, { generator: slowGen, embedder }));

@@ -38,7 +38,7 @@ import {
 import { kindsAllowed, type Dials } from './dials';
 import { dedupe, dedupeTokens, exactKey, questionDedupeKey, type AskedQuestion, type DedupeTextContext, type DuplicateSignal, type EmbeddingNeighbour } from './dedupe';
 import { refKey, type FieldRef } from './frontier';
-import type { QuestionGenerator } from './generator';
+import { GenerationStop, type GenerationFailureKind, type GenerationResult, type QuestionGenerator } from './generator';
 import type { CraftPack, PackRegistry } from './packs';
 import type { RoundPlan } from './plan';
 import { buildGenerationRequest, type PromptAnswer, type PromptElement } from './prompt';
@@ -57,7 +57,8 @@ export interface RoundElement {
 }
 
 export interface RoundInput {
-    workspaceId: string;
+    /** The book the generation calls are recorded against (`AiCallLog.bookId`); null in the evaluation. */
+    bookId: string | null;
     dials: Dials;
     offerRecommended: boolean;
     preferChoice: boolean;
@@ -118,6 +119,19 @@ export interface RoundMetrics {
     unembedded: number;
     /** Tokens the round's generation calls reported (charged to the session's token budget). */
     tokensUsed: number;
+    /** Calls that failed, by kind (2.1's outcome, `GenerationFailureKind`): their fields went to the pack fallback. */
+    failures: Partial<Record<GenerationFailureKind, number>>;
+    /** Calls the guard flagged and let through ("flag and fence"); their questions are asked, never applied unseen. */
+    guardFlaggedCalls: number;
+    /** The guard rule ids that fired on the round's calls (codes, never text). */
+    guardRuleIds: string[];
+    /** The round's `AiCallLog` ids, in call order: where each call's tokens, cost and outcome are recorded. */
+    aiCallIds: string[];
+    /** What the round's calls cost, in micro-dollars (0 for a generator that reports none). */
+    costMicroUsd: number;
+    /** The dearest single call, in micro-dollars, and how many calls passed the template's cost budget (rule 9). */
+    maxCallCostMicroUsd: number;
+    callsOverBudget: number;
 }
 
 /** One call's reported tokens are clamped to this, so a bad report cannot overflow the session's counter. */
@@ -125,6 +139,18 @@ export const TOKENS_PER_CALL_REPORT_MAX = 1_000_000;
 
 function reportedTokens(value: unknown): number {
     return typeof value === 'number' && Number.isFinite(value) && value > 0 ? Math.min(Math.floor(value), TOKENS_PER_CALL_REPORT_MAX) : 0;
+}
+
+/** Fold one call's record (id, cost, guard verdict) into the round's metrics. */
+function recordCall(metrics: RoundMetrics, result: Partial<GenerationResult> | null, costBudget: number | null): void {
+    if (!result) return;
+    if (typeof result.callId === 'string') metrics.aiCallIds.push(result.callId);
+    const cost = typeof result.costMicroUsd === 'number' && Number.isFinite(result.costMicroUsd) && result.costMicroUsd > 0 ? Math.floor(result.costMicroUsd) : 0;
+    metrics.costMicroUsd += cost;
+    metrics.maxCallCostMicroUsd = Math.max(metrics.maxCallCostMicroUsd, cost);
+    if (costBudget !== null && cost > costBudget) metrics.callsOverBudget++;
+    if (result.reviewRequired) metrics.guardFlaggedCalls++;
+    for (const id of result.guardRuleIds ?? []) if (!metrics.guardRuleIds.includes(id)) metrics.guardRuleIds.push(id);
 }
 
 export interface RoundOutput {
@@ -207,6 +233,13 @@ export async function produceRound(input: RoundInput, deps: RoundDeps): Promise<
         noQuestion: [],
         unembedded: 0,
         tokensUsed: 0,
+        failures: {},
+        guardFlaggedCalls: 0,
+        guardRuleIds: [],
+        aiCallIds: [],
+        costMicroUsd: 0,
+        maxCallCostMicroUsd: 0,
+        callsOverBudget: 0,
     };
     const elements = new Map(input.elements.map((e) => [e.elementId, e] as const));
     const validationElements = new Map<string, ValidationElement>(
@@ -242,7 +275,7 @@ export async function produceRound(input: RoundInput, deps: RoundDeps): Promise<
         }));
         const kinds = [...new Set(inPlay.map((e) => e.kind))];
         const request = buildGenerationRequest({
-            workspaceId: input.workspaceId,
+            bookId: input.bookId,
             dials: input.dials,
             offerRecommended: input.offerRecommended,
             preferChoice: input.preferChoice,
@@ -256,11 +289,23 @@ export async function produceRound(input: RoundInput, deps: RoundDeps): Promise<
         metrics.generationCalls++;
         let raw: unknown;
         try {
-            const result = await deps.generator.generateCandidates(request);
-            metrics.tokensUsed += reportedTokens((result as { tokensUsed?: unknown } | null)?.tokensUsed);
-            raw = (result as { output?: unknown } | null)?.output;
-        } catch {
-            // A failed call costs only its persona's share: those fields go to the pack fallback.
+            const result = (await deps.generator.generateCandidates(request)) as Partial<GenerationResult> | null;
+            metrics.tokensUsed += reportedTokens(result?.tokensUsed);
+            recordCall(metrics, result, request.template.costBudgetMicroUsd ?? null);
+            if (result?.failure) {
+                // One call failed (2.1's outcome named): its persona's fields go
+                // to the pack fallback; nothing it said is used.
+                metrics.generationFailures++;
+                bump(metrics.failures, result.failure.kind);
+                continue;
+            }
+            raw = result?.output;
+        } catch (err) {
+            // The session must stop (kill switch, ceiling, no configuration):
+            // the round is abandoned, carrying what it has spent so far.
+            if (err instanceof GenerationStop) throw err.withTokens(metrics.tokensUsed);
+            // Any other throw: a failed call, costing only its persona's share
+            // (those fields go to the pack fallback).
             metrics.generationFailures++;
             continue;
         }

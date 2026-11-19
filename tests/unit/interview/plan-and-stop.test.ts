@@ -84,8 +84,12 @@ describe('stops', () => {
         expect(decideStop({ ...base, ...over })).toBe(reason);
     });
 
-    it('checks in the stated order: kill switch, ceiling, token budget, author, rounds', () => {
+    it('checks in the stated order: the frontier, kill switch, ceiling, token budget, author, rounds', () => {
         const all = { ...base, killSwitch: true, workspaceCeilingReached: true, tokensUsed: 95, authorStopped: true, roundsRun: 4 };
+        // Nothing left to ask finishes, the kill switch on or not (owner decision 2026-11-19).
+        expect(decideStop({ ...all, frontierStop: 'FRONTIER_EMPTY' })).toBe('FRONTIER_EMPTY');
+        expect(decideStop({ ...all, frontierStop: 'NOTHING_AT_DEPTH' })).toBe('NOTHING_AT_DEPTH');
+        expect(decideStop({ ...all, frontierStop: null })).toBe('KILL_SWITCH');
         expect(decideStop(all)).toBe('KILL_SWITCH');
         expect(decideStop({ ...all, killSwitch: false })).toBe('WORKSPACE_CEILING');
         expect(decideStop({ ...all, killSwitch: false, workspaceCeilingReached: false })).toBe('TOKEN_BUDGET');

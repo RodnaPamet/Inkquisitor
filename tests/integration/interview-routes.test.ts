@@ -2,9 +2,10 @@
  * The interview routes (Phase 2.2), called as Next calls them, with the
  * session as the one seam (`auth()`) and the model seam
  * (`src/lib/interview/model-seam.ts`) the other: unmocked it is the
- * deployment's — NOT WIRED until 2.1 — and the routes that would generate
- * questions answer 503 MODEL_NOT_WIRED writing nothing; given the
- * deterministic fake, a whole interview runs over HTTP. Signed out, stranger
+ * deployment's, over 2.1, and with no API key (jest.setup.js clears it) the
+ * routes that would generate questions answer 503 AI_UNAVAILABLE naming
+ * CREDENTIAL_NOT_CONFIGURED, writing nothing; given the deterministic fake,
+ * a whole interview runs over HTTP. Signed out, stranger
  * and READER are tests/integration/api-route-authorization.test.ts.
  */
 const session: { userId: string | null } = { userId: null };
@@ -15,7 +16,10 @@ jest.mock('@/auth', () => ({
 const seam: { generator: import('@/lib/interview/generator').QuestionGenerator | null } = { generator: null };
 jest.mock('@/lib/interview/model-seam', () => {
     const actual = jest.requireActual<typeof import('@/lib/interview/model-seam')>('@/lib/interview/model-seam');
-    return { ...actual, defaultQuestionGenerator: () => seam.generator ?? actual.defaultQuestionGenerator() };
+    return {
+        ...actual,
+        defaultQuestionGenerator: (ctx: Parameters<typeof actual.defaultQuestionGenerator>[0]) => seam.generator ?? actual.defaultQuestionGenerator(ctx),
+    };
 });
 
 import { NextRequest } from 'next/server';
@@ -67,12 +71,12 @@ function answerFor(q: QuestionView): Record<string, unknown> {
     return { text: 'She will not let the ferry go for scrap.' };
 }
 
-it('refuses 503 MODEL_NOT_WIRED while no model is wired, and writes nothing', async () => {
+it('refuses 503 AI_UNAVAILABLE, naming the missing key, when no model call can be made, and writes nothing', async () => {
     seam.generator = null;
     const before = await prisma.interviewSession.count({ where: { bookId } });
     const res = await call(startRoute, '', {}, { scope: 'ELEMENT', elementId });
     expect(res.status).toBe(503);
-    expect(res.json.error).toMatchObject({ code: 'SERVICE_UNAVAILABLE', details: { reason: 'MODEL_NOT_WIRED' } });
+    expect(res.json.error).toMatchObject({ code: 'AI_UNAVAILABLE', details: { reason: 'CREDENTIAL_NOT_CONFIGURED' } });
     expect(await prisma.interviewSession.count({ where: { bookId } })).toBe(before);
 });
 

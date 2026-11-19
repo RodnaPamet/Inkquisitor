@@ -1,8 +1,9 @@
 /**
- * Stop precedence (implementation note, "Stop precedence"): 2.1's kill
- * switch and spend ceiling first, then the frontier's reasons, then the token
- * and round budgets. A session with nothing left to ask completes saying so,
- * whatever budget is spent; one with something left stops for its budget.
+ * Stop precedence (implementation note, "Stop precedence"; owner decision
+ * 2026-11-19): the frontier's reasons first, then 2.1's kill switch and spend
+ * ceiling, then the token and round budgets. A session with nothing left to
+ * ask completes saying so, whatever else holds — the kill switch included;
+ * only a session that would need the model pauses for it.
  */
 import type { SessionRow } from '@/app-layer/repositories/interview.repository';
 import { stopNow } from '@/app-layer/usecases/interview-rounds';
@@ -43,7 +44,15 @@ it('something left to ask: the token budget, then the round budget, stop it', ()
     expect(stopNow(session(), state({}))).toBeNull();
 });
 
-it('the kill switch and the spend ceiling come first, even with nothing left to ask', () => {
-    expect(stopNow(session(), state(allLevelOne), { killSwitch: true, workspaceCeilingReached: true })?.reason).toBe('KILL_SWITCH');
-    expect(stopNow(session(), state(allLevelOne), { killSwitch: false, workspaceCeilingReached: true })?.reason).toBe('WORKSPACE_CEILING');
+it('nothing left to ask FINISHES even with the kill switch on or the ceiling reached: it needs no model', () => {
+    const done = stopNow(session(), state(allLevelOne), { killSwitch: true, workspaceCeilingReached: true });
+    expect(done?.reason).toMatch(/^(FRONTIER_EMPTY|NOTHING_AT_DEPTH)$/);
+    expect(stopNow(session(), state(allLevelOne), { killSwitch: false, workspaceCeilingReached: true })?.reason).toMatch(/^(FRONTIER_EMPTY|NOTHING_AT_DEPTH)$/);
+});
+
+it('a session that would need the model pauses: the kill switch first, then the ceiling, before any budget', () => {
+    const spent = session({ tokensUsed: 30_000, roundsRun: 2 });
+    expect(stopNow(spent, state({}), { killSwitch: true, workspaceCeilingReached: true })?.reason).toBe('KILL_SWITCH');
+    expect(stopNow(spent, state({}), { killSwitch: false, workspaceCeilingReached: true })?.reason).toBe('WORKSPACE_CEILING');
+    expect(stopNow(session(), state({}), { killSwitch: true, workspaceCeilingReached: false })?.reason).toBe('KILL_SWITCH');
 });

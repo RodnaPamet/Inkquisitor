@@ -1,12 +1,13 @@
 /**
  * A deterministic question generator for tests (Phase 2.2): no model, no
- * network. It reads what the engine's prompt allows — the `allowed_targets`
- * data blocks and the detail dial's kinds in the system text — and words one
+ * network, no 2.1 call. It reads what the engine's request allows — the
+ * `targets.N` data blocks and the detail dial's kinds in the template's system
+ * text — and words one
  * well-formed question per allowed target, so a test sees exactly what the
  * engine does with a generator that behaves. `mutate` bends its output to
  * test what the engine does with one that does not.
  */
-import type { GenerationRequest, GenerationResult, QuestionGenerator } from '@/lib/interview/generator';
+import type { GenerationFailureKind, GenerationRequest, GenerationResult, QuestionGenerator } from '@/lib/interview/generator';
 import type { GeneratedQuestion } from '@/lib/interview/candidates';
 import type { QuestionKind } from '@/lib/interview/vocabulary';
 
@@ -17,6 +18,8 @@ export interface FakeGeneratorOptions {
     raw?: (request: GenerationRequest) => unknown;
     /** Every call throws (a provider failure). */
     fail?: boolean;
+    /** Every call fails with this 2.1 outcome, named (`failure`), spending `tokensPerCall`. */
+    failWith?: GenerationFailureKind;
     /** The tokens each call reports (default 0). */
     tokensPerCall?: number;
 }
@@ -31,19 +34,17 @@ interface AllowedTargets {
     may_challenge: string | null;
 }
 
-/** The fenced data blocks of a request, by name, decoded. */
-export function dataBlocks(user: string): Map<string, string> {
-    const out = new Map<string, string>();
-    for (const m of user.matchAll(/<data name="([^"]+)">\n(.*)\n<\/data>/g)) out.set(m[1], JSON.parse(m[2]) as string);
-    return out;
+/** A request's data blocks (the author text 2.1 will fence), by label. */
+export function dataBlocks(request: GenerationRequest): Map<string, string> {
+    return new Map(request.data.map((b) => [b.label, b.text]));
 }
 
 export function allowedTargets(request: GenerationRequest): AllowedTargets[] {
-    return [...dataBlocks(request.user)].filter(([name]) => name.startsWith('allowed_targets_')).map(([, body]) => JSON.parse(body) as AllowedTargets);
+    return [...dataBlocks(request)].filter(([label]) => label.startsWith('targets.')).map(([, body]) => JSON.parse(body) as AllowedTargets);
 }
 
 export function kindsInPrompt(request: GenerationRequest): QuestionKind[] {
-    const m = /Use only these question kinds: ([A-Z_, ]+)\./.exec(request.system);
+    const m = /Use only these question kinds: ([A-Z_, ]+)\./.exec(request.template.system);
     return m ? (m[1].split(', ') as QuestionKind[]) : [];
 }
 
@@ -59,12 +60,13 @@ export function fakeQuestion(elementId: string, fieldKey: string, kinds: readonl
 export function fakeGenerator(options: FakeGeneratorOptions = {}): FakeGenerator {
     const calls: GenerationRequest[] = [];
     return {
-        wired: true,
+        unavailableReason: () => null,
         calls,
         async generateCandidates(request): Promise<GenerationResult> {
             calls.push(request);
             if (options.fail) throw new Error('provider unavailable');
             const tokensUsed = options.tokensPerCall ?? 0;
+            if (options.failWith) return { output: null, tokensUsed, failure: { kind: options.failWith, errorCode: 'FAKE' } };
             if (options.raw) return { output: options.raw(request), tokensUsed };
             const kinds = kindsInPrompt(request);
             const questions = allowedTargets(request).flatMap((t) =>

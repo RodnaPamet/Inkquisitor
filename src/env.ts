@@ -194,14 +194,20 @@ export const env = createEnv({
         EMBEDDING_TEI_PASSAGE_PREFIX: z.string().max(200).optional(),
 
         // ── The model layer (Phase 2.1; src/lib/ai/config.ts, src/lib/ai/tiers.ts) ──
-        // The Anthropic API key. Optional: without it every model call is
-        // refused (CREDENTIAL_NOT_CONFIGURED) and the product runs with AI
-        // unavailable. Read ONLY by src/lib/ai/client.ts (`clientForRun`).
+        // The Anthropic API key. Optional outside production: without it every
+        // model call is refused (CREDENTIAL_NOT_CONFIGURED). Production
+        // requires it unless AI_DISABLED=1 (src/lib/ai/config.ts). Read ONLY
+        // by src/lib/ai/client.ts (`clientForRun`).
         ANTHROPIC_API_KEY: z.string().min(1).optional(),
-        // `1` states that the key's Anthropic organization has a
-        // zero-data-retention arrangement (decision D5). ZDR is enabled per
-        // organization by Anthropic, not per request; production refuses to
-        // start holding a key without this statement.
+        // The operator's declaration of how the key's Anthropic organization
+        // retains what it is sent (decision D5, amended 2026-11-19): `zdr`
+        // (a zero-data-retention arrangement) or `standard-beta` (Anthropic's
+        // standard retention, permitted during the closed beta only; a WARN
+        // at every start). Production refuses to start holding a key with no
+        // declared mode.
+        AI_RETENTION_MODE: z.enum(['zdr', 'standard-beta']).optional(),
+        // The 2.1 spelling of `AI_RETENTION_MODE=zdr`, still honoured: `1`
+        // states the key's organization has a zero-data-retention arrangement.
         ANTHROPIC_ZDR_CONFIRMED: z.enum(['0', '1']).optional(),
         // Read by the SDK itself and merged into every request; declared so
         // the model layer can refuse to build a client while it is set.
@@ -209,7 +215,7 @@ export const env = createEnv({
         // The global kill switch: `1` refuses every model call (KILLED).
         AI_DISABLED: z.enum(['0', '1']).optional(),
         // Each workspace's model spend ceiling per UTC calendar month, in US
-        // dollars (default 25). The worst case of a call is checked against it
+        // dollars (default 50, decision D10). The worst case of a call is checked against it
         // before the call is sent.
         AI_MONTHLY_CEILING_USD_DEFAULT: z
             .string()
@@ -278,6 +284,7 @@ export const env = createEnv({
         EMBEDDING_TEI_QUERY_PREFIX: process.env.EMBEDDING_TEI_QUERY_PREFIX,
         EMBEDDING_TEI_PASSAGE_PREFIX: process.env.EMBEDDING_TEI_PASSAGE_PREFIX,
         ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
+        AI_RETENTION_MODE: process.env.AI_RETENTION_MODE,
         ANTHROPIC_ZDR_CONFIRMED: process.env.ANTHROPIC_ZDR_CONFIRMED,
         ANTHROPIC_CUSTOM_HEADERS: process.env.ANTHROPIC_CUSTOM_HEADERS,
         AI_DISABLED: process.env.AI_DISABLED,

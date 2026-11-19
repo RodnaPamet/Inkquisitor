@@ -51,7 +51,7 @@ function gated() {
     const started = new Promise<void>((r) => (entered = r));
     const inner = fakeGenerator();
     const generator: QuestionGenerator = {
-        wired: true,
+        unavailableReason: () => null,
         async generateCandidates(request) {
             entered();
             await gate;

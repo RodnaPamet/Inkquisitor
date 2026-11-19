@@ -5,14 +5,22 @@
  * session, in memory — is exercised with deterministic fake generators: a
  * good one passes every session; one that targets the wrong fields, words
  * nothing (so only the pack fallback asks), or attempts a refused behaviour
- * fails the sessions it should. Real records come from a real model once
- * 2.1 is wired.
+ * fails the sessions it should. And the WIRED generator — the deployment's,
+ * over 2.1's real `callStructured` — runs the whole set against the fake
+ * Messages API, with every call recorded. A real-model evaluation record
+ * waits for an API key (issue #32, item 8).
  */
 import { expectedCoverage, loadCoverageEval, runCoverageEvaluation } from '@/lib/interview/evals/coverage';
 import { getPacks } from '@/lib/interview/packs';
 import { QUESTION_PROMPT_VERSION } from '@/lib/interview/prompt';
 import { BIBLE_KINDS } from '@/lib/bible/kinds';
+import { callStructured as callStructuredCore } from '@/lib/ai/call-structured';
+import { questionGeneratorOver } from '@/lib/interview/model-seam';
+import { QUESTION_CALL_COST_BUDGET_MICRO_USD, QUESTION_PROMPT } from '@/lib/interview/prompt';
 import { fakeGenerator } from '../../helpers/fake-question-generator';
+import { fakeAnthropic, setFakeApiKey } from '../../helpers/fake-anthropic';
+import { memoryLedger } from '../../helpers/memory-ai-ledger';
+import { questionModel } from '../../helpers/fake-question-model';
 
 const cases = loadCoverageEval();
 const packs = getPacks();
@@ -65,6 +73,34 @@ describe('the runner', () => {
         const premise = report.sessions.find((s) => s.kind === 'PREMISE')!;
         expect(premise.attempted).toContain('ASKS_ANSWERED_FIELD');
         expect(premise.passed).toBe(false);
+    });
+
+    it('the WIRED generator (2.1’s callStructured over the fake Messages API) passes every session, every call recorded with the version and within the cost budget', async () => {
+        const restore = setFakeApiKey();
+        try {
+            const api = fakeAnthropic([questionModel()]);
+            const ledger = memoryLedger();
+            const generator = questionGeneratorOver((input) => callStructuredCore({ ...input, requestedById: null }, { ledger, fetch: api.fetch, env: {} }));
+            const report = await runCoverageEvaluation(cases, generator, { packs });
+            if (report.status !== 'MEASURED') throw new Error('expected a measured report');
+            expect(report.sessions.filter((s) => !s.passed)).toEqual([]);
+            expect(report.coverage).toBe(1);
+            // The recorded output: one AiCallLog record per call, each the template's.
+            expect(report.calls.count).toBeGreaterThan(0);
+            expect(report.calls.failed).toBe(0);
+            expect(api.requests).toHaveLength(report.calls.count);
+            expect(ledger.records).toHaveLength(report.calls.count);
+            expect(report.calls.aiCallIds).toEqual(ledger.records.map((r) => r.id));
+            expect(ledger.records.every((r) => r.outcome === 'OK' && r.promptId === QUESTION_PROMPT.id && r.promptVersion === QUESTION_PROMPT_VERSION && r.tier === 'balanced')).toBe(true);
+            expect(report.calls.tokensUsed).toBe(report.calls.count * 1_500);
+            expect(report.calls.costMicroUsd).toBe(ledger.records.reduce((n, r) => n + r.costMicroUsd, 0));
+            // Rule 9: the cost budget per call, recorded on the template, held.
+            expect(report.costBudgetMicroUsd).toBe(QUESTION_CALL_COST_BUDGET_MICRO_USD);
+            expect(report.calls.maxCallCostMicroUsd).toBeLessThanOrEqual(QUESTION_CALL_COST_BUDGET_MICRO_USD);
+            expect(report.calls.overBudget).toBe(0);
+        } finally {
+            restore();
+        }
     });
 
     it('over no session the report is NOT ASSESSED, never 100 % (rule 6)', async () => {

@@ -21,9 +21,14 @@
  *   next round   generates the next round (a PAUSED session resumes here)
  *   stop         STOPPED, AUTHOR_STOPPED; every answer given is kept
  *
- * A request that needs the model (start, next round) refuses 503
- * `MODEL_NOT_WIRED` until 2.1 wires it (`src/lib/interview/model-seam.ts`),
- * before writing anything. Nothing here fakes model output.
+ * A request that needs the model (start, next round) calls it through 2.1
+ * (`src/lib/interview/model-seam.ts`), under this module's own `bible.edit`
+ * check: a model call needs no permission of its own. When the deployment's
+ * configuration can make no call (no key, ambient SDK headers, no declared
+ * retention mode) it refuses 503 `AI_UNAVAILABLE` naming the reason, before
+ * writing anything; the kill switch and the spend ceiling pause the session
+ * with KILL_SWITCH / WORKSPACE_CEILING, unless nothing is left to ask, when it
+ * completes. Nothing here fakes model output.
  *
  * A scope with no element (a kind the book has none of) is refused 400
  * `SCOPE_EMPTY`: a session over nothing would "complete" having asked
@@ -82,7 +87,7 @@ async function viewOf(db: PrismaTx, ctx: WorkspaceRequestContext, bookId: string
 export async function startInterview(ctx: WorkspaceRequestContext, bookId: string, input: unknown, deps: InterviewDeps = {}): Promise<InterviewView> {
     await assertPermission(ctx, 'bible.edit');
     const parsed = InterviewStartInput.parse(input);
-    const generator = generatorOf(deps);
+    const generator = generatorOf(ctx, deps);
     // Before anything is written: a pack that will not load fails the request
     // here, not after a round has been claimed and left generating.
     deps = { ...deps, packs: deps.packs ?? getPacks() };
@@ -147,7 +152,7 @@ export async function getInterview(ctx: WorkspaceRequestContext, bookId: string,
 /** Generate the session's next round (a paused session resumes). */
 export async function nextRound(ctx: WorkspaceRequestContext, bookId: string, sessionId: string, deps: InterviewDeps = {}): Promise<InterviewView> {
     await assertPermission(ctx, 'bible.edit');
-    const generator = generatorOf(deps);
+    const generator = generatorOf(ctx, deps);
     deps = { ...deps, packs: deps.packs ?? getPacks() };
     const claimed = await runInWorkspaceContext(ctx, async (db) => {
         await requireBook(db, ctx, bookId);

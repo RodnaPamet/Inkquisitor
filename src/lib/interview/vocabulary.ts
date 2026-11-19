@@ -22,6 +22,7 @@ export const STOP_REASONS = [
     'AUTHOR_STOPPED',
     'PROVIDER_FAILURE',
     'NO_ACCEPTABLE_QUESTION',
+    'GUARD_REFUSED',
 ] as const;
 export type StopReason = (typeof STOP_REASONS)[number];
 
@@ -51,7 +52,7 @@ export function isPersonaKey(value: unknown): value is PersonaKey {
 /**
  * How a stop leaves the session. A stop that ran out of things to ask or of
  * rounds COMPLETES it; the author's stop STOPS it; a stop that can clear (a
- * failed model call, a budget, the kill switch) PAUSES it, and the next round
+ * failed model call, a guard refusal, a budget, the kill switch) PAUSES it, and the next round
  * resumes it.
  */
 export const STATUS_AFTER_STOP: Readonly<Record<StopReason, Exclude<InterviewStatus, 'ACTIVE'>>> = {
@@ -64,4 +65,5 @@ export const STATUS_AFTER_STOP: Readonly<Record<StopReason, Exclude<InterviewSta
     AUTHOR_STOPPED: 'STOPPED',
     PROVIDER_FAILURE: 'PAUSED',
     NO_ACCEPTABLE_QUESTION: 'PAUSED',
+    GUARD_REFUSED: 'PAUSED',
 };

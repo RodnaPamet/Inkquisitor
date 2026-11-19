@@ -5,7 +5,7 @@
  *   POST  start one (`bible.edit`) and generate its first round:
  *         { "scope": "ELEMENT" | "KIND" | "BOOK", "elementId"?, "kind"?, "depth"?: 1..5,
  *           "detail"?: 1..5, "persona"?: "socratic" | …, "offerRecommended"?, "preferChoice"? }
- *         503 MODEL_NOT_WIRED until the model layer is wired (nothing is written).
+ *         503 AI_UNAVAILABLE when no model call can be made (nothing is written).
  */
 import { NextResponse } from 'next/server';
 import { withApiErrorHandling } from '@/lib/errors/api';

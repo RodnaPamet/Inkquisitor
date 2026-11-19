@@ -89,6 +89,7 @@ enum InterviewStopReason {
   AUTHOR_STOPPED
   PROVIDER_FAILURE
   NO_ACCEPTABLE_QUESTION
+  GUARD_REFUSED
 }
 
 /// A round's life: GENERATING while its questions are being made (a claim:

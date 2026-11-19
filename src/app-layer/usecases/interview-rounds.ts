@@ -9,9 +9,10 @@
  *      whether the session stops (`decideStop`, then the frontier's own
  *      stops); if not, and the generator is wired, write the round as
  *      GENERATING with its plan. A session holds at most one GENERATING or
- *      OPEN round, so two tabs cannot generate one round twice. If the
- *      generator is NOT wired the claim refuses 503 `MODEL_NOT_WIRED` before
- *      it writes anything.
+ *      OPEN round, so two tabs cannot generate one round twice. If no model
+ *      call can be made under the deployment's configuration (no key, ambient
+ *      SDK headers, no declared retention mode) the claim refuses 503
+ *      `AI_UNAVAILABLE`, naming 2.1's reason, before it writes anything.
  *   2. GENERATE (no transaction): `produceRound` — the model words, code
  *      validates, deduplicates (with the vector store's neighbours, read in a
  *      short transaction of their own), fills gaps from the packs, orders.
@@ -20,9 +21,12 @@
  *      in) and open it, then file their vectors in a transaction of their own
  *      (a vector-store failure degrades later deduplication, never the
  *      round); a round that produced no question is
- *      FAILED and the session PAUSED with the reason (`PROVIDER_FAILURE` when
- *      every call failed, else `NO_ACCEPTABLE_QUESTION`), resumable by the
- *      next round.
+ *      FAILED and the session PAUSED with the reason (`GUARD_REFUSED` when the
+ *      guard refused every call, `PROVIDER_FAILURE` when every call failed,
+ *      else `NO_ACCEPTABLE_QUESTION`), resumable by the next round. A call
+ *      that must stop the whole session (2.1's kill switch, the spend
+ *      ceiling: `GenerationStop`, `model-seam.ts`) abandons the round — FAILED,
+ *      its tokens charged — and pauses the session with that reason.
  *
  * A session whose plan is empty ends at once with FRONTIER_EMPTY or
  * NOTHING_AT_DEPTH (and `stopDetail` naming which fields wait on which); one
@@ -34,19 +38,20 @@ import type { WorkspaceRequestContext } from '@/app-layer/types';
 import { logEvent } from '@/app-layer/events/audit';
 import { InterviewRoundRepository, InterviewSessionRepository, QuestionRepository, type SessionRow } from '@/app-layer/repositories/interview.repository';
 import { runInWorkspaceContext, type PrismaTx } from '@/lib/db/rls-middleware';
-import { ConflictError, ServiceUnavailableError } from '@/lib/errors/types';
+import { ConflictError } from '@/lib/errors/types';
+import { AiUnavailableError, type AiUnavailableReason } from '@/lib/ai/errors';
 import { getTemplate } from '@/lib/bible/templates';
 import { TOKENS_PER_GENERATION_CALL } from '@/lib/interview/dials';
 import { BibleElementRepository } from '@/app-layer/repositories/bible.repository';
 import { isVerbatimQuote } from '@/lib/interview/candidates';
 import { dedupeTokens, exactKey, questionDedupeKey } from '@/lib/interview/dedupe';
 import type { FrontierResult } from '@/lib/interview/frontier';
-import type { QuestionGenerator } from '@/lib/interview/generator';
+import { GenerationStop, type QuestionGenerator } from '@/lib/interview/generator';
 import { defaultQuestionGenerator, modelBudgetSignals } from '@/lib/interview/model-seam';
 import { getPacks, type PackRegistry } from '@/lib/interview/packs';
 import { planRound, type RoundPlan } from '@/lib/interview/plan';
 import { QUESTION_PROMPT_VERSION } from '@/lib/interview/prompt';
-import { produceRound, type PlannedQuestion, type RoundOutput } from '@/lib/interview/round';
+import { produceRound, TOKENS_PER_CALL_REPORT_MAX, type PlannedQuestion, type RoundOutput } from '@/lib/interview/round';
 import { logger } from '@/lib/observability/logger';
 import type { VectorRecord } from '@/app-layer/repositories/vector.repository';
 import { decideStop } from '@/lib/interview/stop';
@@ -66,15 +71,20 @@ export interface InterviewDeps {
 /** A GENERATING round older than this is a claim whose process died: the next request fails it and goes on. */
 export const STALE_CLAIM_MS = 5 * 60_000;
 
-export const MODEL_NOT_WIRED = { reason: 'MODEL_NOT_WIRED' } as const;
-
-export function generatorOf(deps: InterviewDeps): QuestionGenerator {
-    return deps.generator ?? defaultQuestionGenerator();
+/** The context's generator: the one handed in (tests, the evaluation), else the deployment's over 2.1. */
+export function generatorOf(ctx: WorkspaceRequestContext, deps: InterviewDeps): QuestionGenerator {
+    return deps.generator ?? defaultQuestionGenerator(ctx);
 }
 
-/** Refuse, before anything is written, a request that needs the model when none is wired. */
-export function assertGeneratorWired(generator: QuestionGenerator): void {
-    if (!generator.wired) throw new ServiceUnavailableError('Questions cannot be generated yet: the model is not wired.', MODEL_NOT_WIRED);
+/**
+ * Refuse, before anything is written, a request that needs the model when the
+ * deployment's configuration can make no call (2.1's reason: no key, ambient
+ * SDK headers, no declared retention mode). 503 `AI_UNAVAILABLE`, its
+ * `details.reason` naming which. Never a 500, and never questions faked.
+ */
+export function assertModelAvailable(generator: QuestionGenerator): void {
+    const reason = generator.unavailableReason();
+    if (reason) throw new AiUnavailableError(reason as AiUnavailableReason);
 }
 
 /** End a session with its reason, in the caller's transaction. */
@@ -120,8 +130,15 @@ export function stopNow(
 ): { reason: StopReason; detail: Prisma.InputJsonValue } | null {
     const { frontier, plan } = planOf(state, session);
     const fromFrontier = frontierStop(frontier, plan);
-    const budget = decideStop({
+    // THE precedence is `decideStop`'s (`src/lib/interview/stop.ts`): the
+    // frontier's own stop first — a session with nothing left to ask
+    // COMPLETES saying so, even with the kill switch on or a budget spent
+    // (owner decision 2026-11-19) — then the kill switch and the spend
+    // ceiling, which pause only a session that would need the model, then the
+    // token and round budgets.
+    const reason = decideStop({
         ...signals,
+        frontierStop: fromFrontier,
         tokenBudget: session.tokenBudget,
         tokensUsed: session.tokensUsed,
         nextRoundTokens: Math.max(1, session.personaKeys.length) * TOKENS_PER_GENERATION_CALL,
@@ -129,16 +146,8 @@ export function stopNow(
         roundBudget: session.roundBudget,
         roundsRun: session.roundsRun,
     });
-    // The precedence (implementation note, "Stop precedence"): 2.1's kill
-    // switch and spend ceiling first; then the frontier's own reasons; then
-    // the session's token and round budgets. A session with nothing left to
-    // ask COMPLETES saying so, even when a budget is spent too: a spent token
-    // budget would only PAUSE it, and it could never resume (its tokens only
-    // grow), so it would stay paused with nothing left to ask.
-    if (budget === 'KILL_SWITCH' || budget === 'WORKSPACE_CEILING') return { reason: budget, detail: stopDetailFor(budget, frontier) };
-    if (fromFrontier) return { reason: fromFrontier, detail: stopDetailFor(fromFrontier, frontier, { scopeElements: state.elements.length }) };
-    if (budget) return { reason: budget, detail: stopDetailFor(budget, frontier) };
-    return null;
+    if (!reason) return null;
+    return { reason, detail: stopDetailFor(reason, frontier, reason === fromFrontier ? { scopeElements: state.elements.length } : undefined) };
 }
 
 /** Plan the session's next round and claim it, or end the session. Runs under the session's lock. */
@@ -151,12 +160,12 @@ export async function claimRound(db: PrismaTx, ctx: WorkspaceRequestContext, ses
             await InterviewRoundRepository.update(db, ctx.workspaceId, r.id, { status: 'FAILED' });
         }
     }
-    const stop = stopNow(session, state, await modelBudgetSignals(ctx.workspaceId));
+    const stop = stopNow(session, state, await modelBudgetSignals(db, ctx, session.detail));
     if (stop) {
         await endSession(db, ctx, session, stop.reason, stop.detail);
         return { kind: 'stopped', reason: stop.reason };
     }
-    assertGeneratorWired(generator);
+    assertModelAvailable(generator);
     const { frontier, plan } = planOf(state, session);
     const roundNumber = nextRoundNumber(state);
     const round = await InterviewRoundRepository.create(db, ctx.workspaceId, {
@@ -197,7 +206,7 @@ export async function generateClaimedRound(
     claim: Extract<ClaimOutcome, { kind: 'claimed' }>,
     deps: InterviewDeps,
 ): Promise<void> {
-    const generator = generatorOf(deps);
+    const generator = generatorOf(ctx, deps);
     const embedder = deps.embedder === undefined ? defaultQuestionEmbedder() : deps.embedder;
     const packs = deps.packs ?? getPacks();
     const { state, plan } = claim;
@@ -207,7 +216,7 @@ export async function generateClaimedRound(
     try {
         output = await produceRound(
             {
-                workspaceId: ctx.workspaceId,
+                bookId: session.bookId,
                 dials: { depth: session.depth, detail: session.detail },
                 offerRecommended: session.offerRecommended,
                 preferChoice: session.preferChoice,
@@ -227,12 +236,27 @@ export async function generateClaimedRound(
             },
         );
     } catch (err) {
+        // A stop of the whole session (2.1's kill switch, the spend ceiling, a
+        // configuration that can make no call): the round is abandoned — none
+        // of it is asked — its tokens are charged, and the session pauses with
+        // the named reason. The request answers with the session, not an error.
+        const stopped = err instanceof GenerationStop ? err : null;
         await runInWorkspaceContext(ctx, async (db) => {
             await InterviewSessionRepository.lock(db, session.id);
             await InterviewRoundRepository.update(db, ctx.workspaceId, claim.roundId, { status: 'FAILED' });
             const current = await InterviewSessionRepository.find(db, ctx.workspaceId, session.bookId, session.id);
-            if (current?.status === 'ACTIVE') await endSession(db, ctx, current, 'PROVIDER_FAILURE', { roundNumber: claim.roundNumber });
+            if (current && stopped && stopped.tokensUsed > 0) await InterviewSessionRepository.addTokens(db, ctx.workspaceId, session.id, Math.min(stopped.tokensUsed, TOKENS_PER_CALL_REPORT_MAX));
+            if (current?.status === 'ACTIVE') {
+                await endSession(
+                    db,
+                    ctx,
+                    current,
+                    stopped ? stopped.reason : 'PROVIDER_FAILURE',
+                    stopped ? { roundNumber: claim.roundNumber, errorCode: stopped.errorCode, ...(stopped.callId ? { aiCallId: stopped.callId } : {}) } : { roundNumber: claim.roundNumber },
+                );
+            }
         });
+        if (stopped) return;
         throw err;
     }
 
@@ -263,8 +287,14 @@ export async function generateClaimedRound(
                 await endSession(db, ctx, after ?? current, stop?.reason ?? 'NO_ACCEPTABLE_QUESTION', stop?.detail ?? { roundNumber: claim.roundNumber, staleAtPersist: output.questions.length });
                 return [];
             }
-            const allFailed = output.metrics.generationCalls > 0 && output.metrics.generationFailures === output.metrics.generationCalls;
-            await endSession(db, ctx, current, allFailed ? 'PROVIDER_FAILURE' : 'NO_ACCEPTABLE_QUESTION', { roundNumber: claim.roundNumber, noQuestion: output.metrics.noQuestion.length });
+            const m = output.metrics;
+            const allFailed = m.generationCalls > 0 && m.generationFailures === m.generationCalls;
+            const allGuarded = allFailed && (m.failures.GUARD ?? 0) === m.generationCalls;
+            await endSession(db, ctx, current, allGuarded ? 'GUARD_REFUSED' : allFailed ? 'PROVIDER_FAILURE' : 'NO_ACCEPTABLE_QUESTION', {
+                roundNumber: claim.roundNumber,
+                noQuestion: m.noQuestion.length,
+                ...(allFailed ? { failures: m.failures, aiCallIds: m.aiCallIds } : {}),
+            });
             return [];
         }
 
