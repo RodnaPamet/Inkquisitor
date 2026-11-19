@@ -38,7 +38,10 @@ export function pdfTextRuns(pdf: Uint8Array): string[] {
         } catch {
             continue; // not a deflated content stream (a font, an image)
         }
-        const arrays = /\[((?:<[0-9a-fA-F]*>|[^\]])*)\]\s*TJ/g;
+        // A TJ array's hex strings never contain `]`, so one character class
+        // reads the whole array. An alternation of `<hex>` with `[^\]]` would
+        // match a `<` both ways and backtrack exponentially (CodeQL js/redos).
+        const arrays = /\[([^\]]*)\]\s*TJ/g;
         for (let a = arrays.exec(content); a; a = arrays.exec(content)) {
             runs.push([...a[1].matchAll(/<([0-9a-fA-F]*)>/g)].map((h) => decodeHex(h[1])).join(''));
         }
