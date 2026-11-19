@@ -73,21 +73,36 @@ prisma/schema/          → multi-file Prisma schema; base.prisma owns the gener
 
 A call goes `app/api → usecases → policies → repositories`, never sideways or
 backwards: a route handler does not import a repository or Prisma, and a
-repository does not authorize. The usecase, policy and repository folders
-arrive with the first usecase (Phase 0.3). Phase 0.4 added:
+repository does not authorize. Phase 0.4 added:
 
 ```
-src/app-layer/types.ts       → RequestContext (workspace fields optional until 0.3)
+src/app-layer/types.ts       → RequestContext (workspace fields optional) and WorkspaceRequestContext (required)
 src/app-layer/jobs/          → BullMQ: types, queue (enqueue), executor-registry, schedules, scheduler, worker
 src/lib/observability/       → pino logger + redaction, request context, OTel, Sentry, shutdown, job runner
 src/lib/errors/              → typed errors and withApiErrorHandling (every product route handler is wrapped in it; the probes are not)
 src/lib/security/, rate-limit/ → the three rate-limit tiers
 src/lib/storage/             → local / S3 providers, workspace object keys, ClamAV scan
 src/lib/{mailer,redis,startup-checks}.ts, src/lib/http/, src/lib/health/
-src/middleware.ts            → auth + read rate-limit tiers, x-request-id
+src/middleware.ts            → auth + read rate-limit tiers, x-request-id (and, from 0.3, the workspace gate)
 scripts/worker.ts            → the worker process (bundled by scripts/build-worker.mjs)
 eslint-rules/                → the local ESLint plugin (`local/…`)
 site/                        → the Starlight help site, publishing docs/user/ only
+```
+
+Phase 0.3 (identity, workspaces, RLS) added:
+
+```
+src/auth.ts                  → next-auth 4: Credentials + Google (when configured), JWT sessions backed by UserSession
+src/app-layer/context.ts     → getWorkspaceCtx / getWorkspacePageCtx / getUserCtx: session + DB membership → RequestContext
+src/app-layer/usecases/      → sign-up (and Google provisioning), members, sessions
+src/app-layer/policies/      → assertPermission (audits AUTHZ_DENIED, then a generic 403)
+src/app-layer/repositories/  → user, workspace (createWorkspaceWithDek), membership
+src/app-layer/events/audit.ts → logEvent(ctx, …), the one writer API of the audit trail
+src/lib/auth/                → passwords, credentials (lockout), session-revoked, workspace-gate (edge), membership claims, redirect-path
+src/lib/db/                  → rls-middleware (runInWorkspaceContext, runWithoutRls), rls-tripwire, db-context, encryption-middleware
+src/lib/security/            → encryption, workspace keys, encrypted-fields manifest, sentinel, session-tracker, password-check (HIBP), permission-middleware
+src/lib/audit/               → the hash-chained audit writer and user-level auth events
+src/app/login, signup, signout, no-workspace; src/app/w/[workspaceSlug]/ (books, settings)
 ```
 
 ## Rules every change obeys
@@ -146,6 +161,65 @@ only under zero-retention terms (D5).
   keys are `workspaces/<workspaceId>/…` (`buildWorkspaceObjectKey`) and are
   checked with `assertWorkspaceKey` before use. A URL handed outside the
   process comes from `publicBaseUrl()` (APP_URL), never the request host.
+- **Routes and workspaces.** Every app page lives under `/w/[workspaceSlug]/`
+  and every workspace API route under `/api/w/[workspaceSlug]/` (an author may
+  belong to more than one workspace later, D4). Build links from
+  `APP_ROUTES` (`src/lib/app-routes.ts`), never a literal. `/` sends a
+  signed-in person to their first workspace and shows the landing page
+  otherwise; sign-in pages are `/login`, `/signup`, `/signout`, `/no-workspace`.
+  The edge middleware gates `/w/**` and `/api/w/**` on the JWT's `memberships`
+  claim (capped at 50, `membershipsTruncated` defers to the server) over every
+  spelling of the path (`src/lib/auth/workspace-gate.ts`); it is a pre-filter.
+  The authority is the DATABASE check in `getWorkspaceCtx` (API) and the
+  workspace layout (`getCurrentWorkspace`), which treat a missing workspace and
+  a non-member alike (404 / `/no-workspace`). A workspace usecase takes a
+  `WorkspaceRequestContext` as its first argument, built only there.
+- **Authorization.** A workspace route is
+  `withApiErrorHandling(requirePermission('<key>', handler))`; a usecase also
+  asks `assertPermission(ctx, '<key>')`. Keys come from `PermissionSet`
+  (`src/lib/permissions.ts`: OWNER, EDITOR, READER), never a role name. A denial
+  writes AUTHZ_DENIED to the audit trail and returns a generic 403 naming no
+  key; if the row cannot be written the request fails 500. Self-service account
+  routes (`/api/account/**`) use `getUserCtx` and bind every query to the
+  caller.
+- **Authentication.** Credentials go through `authenticateWithPassword` only
+  (bcrypt over the password itself, which is refused past 72 UTF-8 bytes rather than
+  truncated — never a fast digest of a password first; progressive lockout per email, one bcrypt
+  compare on every failure path so timing does not enumerate; the failure's
+  audit row is never awaited, at most one per user per lockout window, none for
+  a lockout refusal). Sign-up runs the
+  password policy and the HIBP check (`PASSWORD_BREACH_CHECK=off` skips it;
+  tests inject `breachCheck` and never reach the network) and provisions the
+  user, the workspace with its data key and the OWNER membership in ONE
+  transaction. Google signs in only an address Google verified, and claims an
+  unverified password account. Every sign-in records a `UserSession`; the `jwt`
+  callback verifies it on every pass and THROWS `SessionRevokedError` for a
+  revoked, expired or missing row or a bumped `sessionVersion` — never a flag.
+- **Row-level security.** Every model with a `workspaceId` (and `Workspace`)
+  has FORCE RLS, a `workspace_isolation` policy (USING and WITH CHECK) and
+  `superuser_bypass`, in its migration, and is reached only through
+  `runInWorkspaceContext` (as `app_user`). Every other model is listed in
+  `GLOBAL_MODELS` with a reason. `runWithoutRls` takes a reason from a closed
+  list. See `docs/rls-workspace-isolation.md`; both coverage tests compare the
+  policies exactly (not by substring) and the live one proves isolation per
+  table. `app_user` reads only `id`, `name`, `email` of `User` and writes none
+  of it; a new column read in a workspace context is a grant in a migration.
+- **Field encryption.** Author text is encrypted at rest by listing its column
+  in `src/lib/security/encrypted-fields.ts` (empty until Phase 1), never by
+  calling the primitives: inside a workspace context a manifest field is a `v2:`
+  envelope under the workspace's data key (`createWorkspaceWithDek` makes one
+  per workspace, wrapped under `DATA_ENCRYPTION_KEY`). A field is encrypted only
+  on the model that lists it (nested writes and includes resolve their model
+  from the DMMF); every value is sealed, with no "already an envelope" skip;
+  `runInWorkspaceContext` resolves the key before opening its transaction.
+  Production refuses to
+  start without `DATA_ENCRYPTION_KEY` and `AUTH_SECRET`; the web tier and the
+  worker run an encrypt → decrypt sentinel at boot.
+- **Audit trail.** Write through `logEvent(ctx, …)` (pass `{ db }` to commit
+  with the change). Rows are hash-chained per workspace and append-only (a
+  trigger refuses UPDATE, DELETE and TRUNCATE for every role); details carry
+  ids, counts and codes, never author text or an email. Sign-in events are
+  appended to each of the user's workspaces (`recordUserAuthEvent`).
 - **Probes.** `/api/health` and `/api/livez` (process up) and `/api/readyz`
   (PostgreSQL and Redis within a 2 s timeout, 503 naming the failure) are
   unauthenticated and excluded from rate limiting.
@@ -201,11 +275,12 @@ has the design. Reach for the primitives, never hand-roll a replacement:
   written new where it did not). A probe drives the primitive and asserts
   what only it produces, never the sink's own trigger button.
 - **`WorkspaceContext`** (`src/lib/workspace/workspace-context.tsx`) is the
-  one context the chrome reads. Its exported interface is a contract with
-  subphase 0.3 — do not change it. Shell components read
-  `useOptionalWorkspace()` and render a signed-out state for `null`;
-  `getCurrentWorkspace()` (`current-workspace.ts`) is the server-side stub 0.3
-  replaces.
+  one context the chrome reads; do not change its exported interface. The
+  `/w/[workspaceSlug]` layout feeds it from `getCurrentWorkspace(slug)`
+  (`current-workspace.ts`, the session and a database membership check). Shell
+  components read `useOptionalWorkspace()` and render a signed-out state for
+  `null` (the dev kitchen sink). The command palette is mounted above that
+  provider and reads the slug from the URL.
 - **UI strings** go through next-intl (`useTranslations`), from
   `messages/en.json`; the locale is a cookie (`inkquisitor_locale`), no URL
   routing. Add only keys something reads.
@@ -225,7 +300,13 @@ has the design. Reach for the primitives, never hand-roll a replacement:
   Prisma. `DATABASE_URL` from the shell wins; otherwise `jest.setup.js` uses
   `postgresql://postgres:postgres@localhost:5432/inkquisitor_test`. An
   integration test never skips because the database is missing: it fails.
-- **E2E** (`tests/e2e`): Playwright against a production build.
+- **Integration fixtures**: `tests/helpers/workspaces.ts` creates accounts
+  through the real provisioning path, with unique emails; never clean
+  `AuditLog` (it is append-only by trigger).
+- **E2E** (`tests/e2e`): Playwright against a production build, against the
+  database `DATABASE_URL` names (migrations applied). `playwright.config.ts`
+  gives the server obviously-fake production secrets, no breach check and no
+  rate limits; a spec signs up its own unique account (`tests/e2e/helpers.ts`).
   `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` (read only by `playwright.config.ts`)
   launches another Chromium binary when the expected build is not installed.
 - **No test calls a model provider or any network service.** `jest.setup.js`

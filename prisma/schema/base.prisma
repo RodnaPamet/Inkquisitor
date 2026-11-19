@@ -9,8 +9,8 @@
 //
 //  There is exactly one of each per Prisma project and they live
 //  here. No model or enum belongs in this file: a domain file
-//  (auth.prisma in Phase 0.3, bible.prisma in Phase 1.1, ...) holds
-//  its models, and shared enums go in enums.prisma once one exists.
+//  (auth.prisma, workspace.prisma, audit.prisma; bible.prisma in
+//  Phase 1.1) holds its models, and shared enums go in enums.prisma.
 //  See prisma/schema/README.md.
 // ─────────────────────────────────────────────────────────────────
 

@@ -1,0 +1,35 @@
+// ─────────────────────────────────────────────────────────────────
+//  The audit trail (Phase 0.3).
+//
+//  Append-only and hash-chained per workspace: each row's `entryHash`
+//  is SHA-256 over its canonical fields and the previous row's hash
+//  (src/lib/audit/). A trigger refuses UPDATE, DELETE and TRUNCATE for
+//  every role, and app_user holds no UPDATE or DELETE grant on it.
+//
+//  Written ONLY by `appendAuditEntry` (src/lib/audit/audit-writer.ts),
+//  through `logEvent(ctx, …)`. `detailsJson` carries ids, counts and
+//  codes — never author text.
+//
+//  No foreign keys, on purpose: the trail outlives the workspace and
+//  the users it names, and a cascade would be a DELETE the trigger
+//  refuses.
+// ─────────────────────────────────────────────────────────────────
+
+model AuditLog {
+  id           String   @id
+  workspaceId  String
+  actorUserId  String?
+  /// USER for a person, SYSTEM for the platform acting on its own.
+  actorType    String
+  action       String
+  entityType   String
+  entityId     String?
+  detailsJson  Json
+  requestId    String?
+  previousHash String?
+  entryHash    String
+  version      Int      @default(1)
+  createdAt    DateTime @default(now())
+
+  @@index([workspaceId, createdAt])
+}

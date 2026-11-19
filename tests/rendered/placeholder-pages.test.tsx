@@ -1,15 +1,15 @@
 /**
- * The Books and Settings pages — the shell's two destinations, placeholders
- * until their features land. Signed out they say so; inside a workspace they
- * show the page's empty state. Both render the lifted `<PageHeader>`.
+ * The Books page — a placeholder until Phase 1. Signed out it says so; inside
+ * a workspace it shows the page's empty state, under the lifted
+ * `<PageHeader>`. (Settings became a real page in 0.3: its sessions section is
+ * tests/rendered/sessions-panel.test.tsx.)
  */
 import { render, screen } from '@testing-library/react';
 import * as React from 'react';
 
-jest.mock('next/navigation', () => ({ usePathname: () => '/books' }));
+jest.mock('next/navigation', () => ({ usePathname: () => '/w/ada/books' }));
 
-import BooksPage from '@/app/(app)/books/page';
-import SettingsPage from '@/app/(app)/settings/page';
+import BooksPage from '@/app/w/[workspaceSlug]/books/page';
 import { WorkspaceProvider, type WorkspaceContextValue } from '@/lib/workspace/workspace-context';
 
 const WORKSPACE: WorkspaceContextValue = {
@@ -23,7 +23,6 @@ const WORKSPACE: WorkspaceContextValue = {
 
 describe.each([
     ['books', BooksPage, 'Books', 'Sign in to see your books.', 'No books yet.'],
-    ['settings', SettingsPage, 'Settings', 'Sign in to change your settings.', 'Nothing to configure yet.'],
 ] as const)('the %s page', (name, Page, title, signedOut, empty) => {
     it('names itself in an H1', () => {
         render(<Page />);

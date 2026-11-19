@@ -22,6 +22,10 @@
  */
 
 import { isNextProductionBuild } from './build-phase';
+import { DEV_FALLBACK_DATA_ENCRYPTION_KEY, MIN_DATA_ENCRYPTION_KEY_LENGTH } from './security/encryption-constants';
+import { DEV_FALLBACK_AUTH_SECRET, MIN_AUTH_SECRET_LENGTH } from './auth/auth-constants';
+
+export { MIN_AUTH_SECRET_LENGTH };
 
 /** The environment as a plain record (`process.env`, or a test's object). */
 export type EnvRecord = Readonly<Record<string, string | undefined>>;
@@ -66,6 +70,30 @@ export function productionConfigProblems(e: EnvRecord): string[] {
             'CLAMAV_HOST is required unless AV_SCAN_MODE=disabled: without a scanner every upload stays unscanned ' +
                 'and, in strict mode, undownloadable.',
         );
+    }
+
+    // ── Identity and encryption (Phase 0.3) ──
+    if (!present(e.AUTH_SECRET) || e.AUTH_SECRET.length < MIN_AUTH_SECRET_LENGTH) {
+        problems.push(
+            `AUTH_SECRET is required, at least ${MIN_AUTH_SECRET_LENGTH} characters: it signs every session. ` +
+                'Generate one with: openssl rand -base64 48',
+        );
+    } else if (e.AUTH_SECRET === DEV_FALLBACK_AUTH_SECRET) {
+        problems.push('AUTH_SECRET is the documented development fallback; production needs its own secret.');
+    }
+    if (!present(e.NEXTAUTH_URL)) {
+        problems.push('NEXTAUTH_URL is required: sign-in callbacks are built on it (https://your.host).');
+    }
+    if (!present(e.DATA_ENCRYPTION_KEY) || e.DATA_ENCRYPTION_KEY.length < MIN_DATA_ENCRYPTION_KEY_LENGTH) {
+        problems.push(
+            `DATA_ENCRYPTION_KEY is required, at least ${MIN_DATA_ENCRYPTION_KEY_LENGTH} characters: it wraps every ` +
+                "workspace's data key. Generate one with: openssl rand -base64 48",
+        );
+    } else if (e.DATA_ENCRYPTION_KEY === DEV_FALLBACK_DATA_ENCRYPTION_KEY) {
+        problems.push('DATA_ENCRYPTION_KEY is the documented development fallback; production needs its own key.');
+    }
+    if (present(e.GOOGLE_CLIENT_ID) !== present(e.GOOGLE_CLIENT_SECRET)) {
+        problems.push('GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET are set together or not at all.');
     }
 
     if (present(e.UPSTASH_REDIS_REST_URL) !== present(e.UPSTASH_REDIS_REST_TOKEN)) {

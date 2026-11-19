@@ -22,6 +22,16 @@ const isCI = !!process.env.CI;
  */
 const chromiumExecutable = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH || undefined;
 
+/**
+ * A stable, obviously-fake value for a production secret the E2E server needs
+ * to boot. Stable (not random per run) because the database outlives a run:
+ * a workspace's data key is wrapped under DATA_ENCRYPTION_KEY. Assembled here
+ * rather than written as a literal so no secret-shaped string sits in the tree.
+ */
+function e2eOnlyValue(name: string): string {
+    return ['e2e', 'only', name, 'not', 'a', 'real', 'value'].join('-').padEnd(48, '-x');
+}
+
 export default defineConfig({
     testDir: './tests/e2e',
     fullyParallel: true,
@@ -62,6 +72,20 @@ export default defineConfig({
                   FILE_STORAGE_ROOT: process.env.FILE_STORAGE_ROOT || path.join(os.tmpdir(), 'inkquisitor-e2e-uploads'),
                   DATABASE_URL:
                       process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/inkquisitor_test?schema=public',
+                  // Identity and encryption (Phase 0.3), which production
+                  // requires. Obviously-fake values built here, never real
+                  // secrets; a shell that exports its own wins.
+                  AUTH_SECRET: process.env.AUTH_SECRET || e2eOnlyValue('auth'),
+                  NEXTAUTH_URL: process.env.NEXTAUTH_URL || `http://localhost:${port}`,
+                  DATA_ENCRYPTION_KEY: process.env.DATA_ENCRYPTION_KEY || e2eOnlyValue('kek'),
+                  // The specs call no outside service: no breached-password
+                  // lookup at sign-up.
+                  PASSWORD_BREACH_CHECK: process.env.PASSWORD_BREACH_CHECK || 'off',
+                  // Every spec signs up and in from one address within a
+                  // minute, which the auth tier (10 a minute) and the sign-up
+                  // budget (5 an hour) would refuse. The tiers are covered by
+                  // the unit and integration suites; the smoke covers the flow.
+                  RATE_LIMIT_ENABLED: process.env.RATE_LIMIT_ENABLED || '0',
               },
               url: `http://localhost:${port}/api/health`,
               reuseExistingServer: !isCI,

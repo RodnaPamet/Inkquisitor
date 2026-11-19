@@ -13,10 +13,10 @@
  * through props and has two sidebar variants. Inkquisitor has one workspace
  * per author (D4): every piece of chrome reads `useOptionalWorkspace()`, so the
  * shell takes no identity props at all, and renders a signed-out-safe state
- * when the workspace is `null` (today always, until subphase 0.3).
+ * when the workspace is `null` (the dev kitchen sink).
  *
- * `onLogout` is optional for the same reason: authentication arrives in 0.3,
- * which passes it in. Without it no sign-out control is rendered.
+ * `onLogout` is optional: `WorkspaceAppShell` passes next-auth's sign-out
+ * inside a workspace. Without it no sign-out control is rendered.
  */
 
 import { SidebarContent } from '@/components/layout/SidebarNav';

@@ -2,6 +2,8 @@
  * Server start-up on the Node runtime (called from `src/instrumentation.ts`):
  *   1. refuse to start a production process whose configuration is missing
  *      something production requires (`src/lib/startup-checks.ts`);
+ *   1b. the encryption sentinel: the master key must round-trip a value
+ *      (`src/lib/security/encryption-sentinel.ts`, Phase 0.3);
  *   2. OpenTelemetry (no-op unless OTEL_ENABLED=true) and Sentry (no-op
  *      unless SENTRY_DSN is set);
  *   3. the mailer's SMTP transport (console sink when SMTP_HOST is unset);
@@ -32,13 +34,15 @@ export interface RegisterNodeSeams {
 }
 
 async function loadServices() {
-    const [telemetry, sentry, mailer, shutdown] = await Promise.all([
+    const [sentinel, telemetry, sentry, mailer, shutdown] = await Promise.all([
+        import('@/lib/security/encryption-sentinel'),
         import('@/lib/observability/instrumentation'),
         import('@/lib/observability/sentry'),
         import('@/lib/mailer'),
         import('@/lib/observability/shutdown'),
     ]);
     return {
+        runEncryptionSentinel: sentinel.runEncryptionSentinel,
         initTelemetry: telemetry.initTelemetry,
         initSentry: sentry.initSentry,
         initMailerFromEnv: mailer.initMailerFromEnv,
@@ -68,6 +72,15 @@ export async function registerNode(seams: RegisterNodeSeams = {}): Promise<void>
         // values; the first line is enough to say why.
         const reason = err instanceof Error ? err.message.split('\n')[0] : String(err);
         report(`[startup] FATAL: the server's configuration failed to load: ${reason}`);
+        exit(1);
+        return;
+    }
+
+    try {
+        services.runEncryptionSentinel();
+    } catch (err) {
+        if (!isProductionServer(process.env)) throw err;
+        report(`[startup] FATAL: ${err instanceof Error ? err.message : String(err)}`);
         exit(1);
         return;
     }

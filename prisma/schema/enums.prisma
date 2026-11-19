@@ -1,0 +1,13 @@
+// ─────────────────────────────────────────────────────────────────
+//  Shared enums. Every enum in the schema lives in this file, so a
+//  domain file never has to import from another domain file to name
+//  one. See prisma/schema/README.md.
+// ─────────────────────────────────────────────────────────────────
+
+/// A member's role in a workspace (owner decision D4). The permission
+/// set each role grants is `src/lib/permissions.ts`.
+enum WorkspaceRole {
+  OWNER
+  EDITOR
+  READER
+}

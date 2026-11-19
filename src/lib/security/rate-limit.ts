@@ -203,6 +203,20 @@ export const LOGIN_LIMIT: RateLimitConfig = {
 };
 
 /**
+ * Self-service sign-up (POST /api/auth/register, Phase 0.3): 5 per hour per IP.
+ *
+ * Threat model: each accepted request permanently creates a user, a
+ * workspace and its wrapped data key, runs bcrypt at cost 12 and makes an
+ * outbound breached-password call. The generic mutation budget would allow
+ * 3,600 an hour from one address (inflect-compliance's TENANT_CREATE_LIMIT,
+ * for the same reason).
+ */
+export const WORKSPACE_CREATE_LIMIT: RateLimitConfig = {
+    maxAttempts: 5,
+    windowMs: 60 * 60 * 1000,
+};
+
+/**
  * General mutation API: 60 requests per minute per (IP, userId).
  *
  * Threat model: a compromised credential or a runaway client making

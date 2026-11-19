@@ -12,8 +12,8 @@
  * licensed only for the product it ships with), and the tour, admin link and
  * calendar badge, which have no Inkquisitor counterpart.
  *
- * Signed-out-safe: with no workspace the nav still renders (the routes render
- * their own signed-out state) and the identity block names nobody.
+ * Signed-out-safe: with no workspace the nav has no destinations (every page
+ * belongs to a workspace) and the identity block names nobody.
  */
 
 import { usePathname } from 'next/navigation';
@@ -23,6 +23,7 @@ import { Tooltip } from '@/components/ui/tooltip';
 import { useCommandPalette } from '@/components/command-palette/command-palette-provider';
 import { cn } from '@inkquisitor/ui/lib/cn';
 import { useOptionalWorkspace, type WorkspaceRole } from '@/lib/workspace/workspace-context';
+import { APP_ROUTES } from '@/lib/app-routes';
 import { NavItem } from './nav-item';
 import type { NavGlyph } from './nav-item';
 import { NavSection } from './nav-section';
@@ -39,19 +40,20 @@ interface NavSectionDef {
     items: NavItemDef[];
 }
 
-/** The application's routes. One workspace per author (D4), so no slug. */
-export const APP_ROUTES = {
-    books: '/books',
-    settings: '/settings',
-} as const;
+/** The routes table; re-exported so the shell's consumers find it beside the nav. */
+export { APP_ROUTES };
 
+/** The sidebar's destinations. Signed out (no workspace) there are none: every page belongs to a workspace. */
 export function useNavSections(): NavSectionDef[] {
     const t = useTranslations('nav');
+    const workspace = useOptionalWorkspace();
+    if (!workspace) return [{ items: [] }];
+    const slug = workspace.workspaceSlug;
     return [
         {
             items: [
-                { href: APP_ROUTES.books, label: t('books'), icon: BookOpen },
-                { href: APP_ROUTES.settings, label: t('settings'), icon: Settings },
+                { href: APP_ROUTES.books(slug), label: t('books'), icon: BookOpen },
+                { href: APP_ROUTES.settings(slug), label: t('settings'), icon: Settings },
             ],
         },
     ];
@@ -70,7 +72,7 @@ const ROLE_KEYS: Record<WorkspaceRole, 'owner' | 'editor' | 'reader'> = {
 };
 
 interface SidebarContentProps {
-    /** Absent until sign-out exists (subphase 0.3); the button is then not rendered. */
+    /** Supplied inside a workspace (`WorkspaceAppShell`); without it no sign-out button is rendered. */
     onLogout?: () => void;
     onNavClick?: () => void;
     /** Desktop only — when provided, renders the collapse/expand toggle. */

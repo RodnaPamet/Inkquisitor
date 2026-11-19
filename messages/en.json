@@ -207,9 +207,74 @@
         },
         "settings": {
             "title": "Settings",
-            "description": "Workspace and account settings.",
-            "signedOut": "Sign in to change your settings.",
-            "empty": "Nothing to configure yet."
+            "description": "Workspace and account settings."
+        }
+    },
+    "home": {
+        "signIn": "Sign in",
+        "signUp": "Create an account"
+    },
+    "auth": {
+        "email": "Email",
+        "password": "Password",
+        "name": "Your name",
+        "workspaceName": "Workspace name",
+        "workspaceNameHint": "You can change it later. Leave it empty to use your name.",
+        "passwordHint": "At least {min} characters.",
+        "or": "or",
+        "continueWithGoogle": "Continue with Google",
+        "login": {
+            "title": "Sign in",
+            "description": "Welcome back to {app}.",
+            "submit": "Sign in",
+            "noAccount": "No account yet?",
+            "toSignUp": "Create one"
+        },
+        "signup": {
+            "title": "Create your account",
+            "description": "Your account comes with a workspace of your own.",
+            "submit": "Create account",
+            "haveAccount": "Already have an account?",
+            "toLogin": "Sign in"
+        },
+        "signout": {
+            "title": "Sign out",
+            "description": "Sign out of {app} on this browser.",
+            "submit": "Sign out"
+        },
+        "errors": {
+            "invalid": "That email and password do not match an account.",
+            "rateLimited": "Too many attempts. Wait a few minutes and try again.",
+            "googleUnverified": "Google has not verified that email address, so it cannot be used to sign in.",
+            "generic": "Something went wrong. Try again.",
+            "emailTaken": "An account with this email already exists. Sign in instead.",
+            "passwordTooShort": "The password must be at least {min} characters.",
+            "passwordTooLong": "The password is too long: at most {max} characters (fewer for letters outside the basic Latin alphabet).",
+            "passwordBreached": "This password has appeared in a data breach. Choose another.",
+            "invalidEmail": "Enter a valid email address."
+        }
+    },
+    "noWorkspace": {
+        "title": "No workspace here",
+        "description": "You are not a member of that workspace, or it does not exist.",
+        "home": "Go to your workspace",
+        "signOut": "Sign out"
+    },
+    "settingsPage": {
+        "sessions": {
+            "title": "Sessions",
+            "description": "Browsers signed in to your account. Signing one out takes effect on its next request.",
+            "current": "This browser",
+            "unknownDevice": "Unknown browser",
+            "signedIn": "Signed in {date}",
+            "lastActive": "Last active {date}",
+            "revoke": "Sign out",
+            "revokeOthers": "Sign out other sessions",
+            "revokedOne": "Session signed out",
+            "revokedOthers": "Other sessions signed out",
+            "undo": "Undo",
+            "failed": "The session could not be signed out.",
+            "none": "No other sessions."
         }
     }
 }

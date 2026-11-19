@@ -16,6 +16,7 @@ jest.mock('@/lib/startup-checks', () => ({
         calls.push(e === process.env ? 'enforce(process.env)' : 'enforce(other)');
     }),
 }));
+jest.mock('@/lib/security/encryption-sentinel', () => ({ runEncryptionSentinel: jest.fn(() => void calls.push('sentinel')) }));
 jest.mock('@/lib/observability/instrumentation', () => ({ initTelemetry: jest.fn(async () => void calls.push('telemetry')) }));
 jest.mock('@/lib/observability/sentry', () => ({ initSentry: jest.fn(() => void calls.push('sentry')) }));
 jest.mock('@/lib/mailer', () => ({ initMailerFromEnv: jest.fn(() => void calls.push('mailer')) }));
@@ -28,7 +29,7 @@ const ROOT = path.resolve(__dirname, '../../..');
 it('the web tier enforces the production configuration with process.env before anything initialises', async () => {
     calls.length = 0;
     await registerNode();
-    expect(calls).toEqual(['enforce(process.env)', 'telemetry', 'sentry', 'mailer', 'shutdown']);
+    expect(calls).toEqual(['enforce(process.env)', 'sentinel', 'telemetry', 'sentry', 'mailer', 'shutdown']);
 });
 
 it('the worker refuses to start in production without REDIS_URL, before it connects to anything', () => {
