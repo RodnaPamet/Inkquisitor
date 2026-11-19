@@ -44,7 +44,8 @@
  *      the nonce for the two inline scripts it renders.
  *
  * The matcher is every path except the static assets, which next.config.mjs
- * gives the same headers.
+ * gives the same headers: the two are a PARTITION of every path (each path is
+ * stamped by exactly one of them), held by tests/unit/platform/proxy-matcher.test.ts.
  *
  * THE GRAPH STAYS RUNTIME-NEUTRAL. Next 16 runs the proxy on Node, but nothing
  * it imports needs Node: Web Crypto, `fetch`-only Upstash, the console logger.
@@ -148,7 +149,16 @@ export async function proxy(req: NextRequest): Promise<NextResponse> {
  * Every path except the static assets (next.config.mjs stamps those): pages,
  * API routes, the 404 page, the probes. A path the proxy does not run for
  * would answer without a policy.
+ *
+ * The exclusion is anchored at a segment boundary. It used to be
+ * `(?!_next/static|_next/image)`, a bare prefix, so `/_next/imagefoo`,
+ * `/_next/image_`, `/_next/static-x` and `/_next/staticx/a` skipped the proxy
+ * and rendered the 404 page with no policy, no headers and un-nonced scripts.
+ * Now only a path INSIDE `/_next/static/` (at least one character after the
+ * slash) and the image optimiser's own path, exactly `/_next/image` (its
+ * input is the query string, which the matcher never sees), are skipped —
+ * the two sources `headers()` in next.config.mjs stamps instead.
  */
 export const config = {
-    matcher: ['/((?!_next/static|_next/image).*)'],
+    matcher: ['/((?!_next/static/.|_next/image$).*)'],
 };

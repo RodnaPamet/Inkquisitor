@@ -5,8 +5,12 @@
  * Next could route it by is below `/api/auth`, so `/api/%61uth/…`,
  * `//api/auth/…` and `/api/auth/x/..%2F..%2Fhealth` are too) and at which
  * level; this module counts it. Runs in `src/proxy.ts` before authentication, so it is keyed on the
- * caller's IP plus a short hash of the User-Agent (to soften the shared
- * bucket behind a NAT), never on a user. Three strictness levels:
+ * caller's address ALONE (`edgeClientIp`: the trusted X-Forwarded-For entry,
+ * an IPv6 client's /64), never on a user. inflect-compliance also keyed on a
+ * hash of the User-Agent "to soften the shared bucket behind a NAT"; the
+ * User-Agent is whatever the client sends, so it bought a fresh budget per
+ * string — 12 guesses with 12 User-Agents went through a limit of 10. Three
+ * strictness levels:
  *
  *   high    10/min  sign-in, callback, sign-out — credential guessing lives here
  *   medium  30/min  session probes
@@ -58,19 +62,6 @@ export function classifyAuthEndpoint(pathname: string): AuthEndpointTier {
     return 'low';
 }
 
-async function clientKey(req: NextRequest): Promise<string> {
-    const ip = edgeClientIp(req.headers);
-    const ua = req.headers.get('user-agent') || 'unknown';
-    let uaHash = 'unknown';
-    try {
-        const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(ua));
-        uaHash = Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, '0')).join('').slice(0, 8);
-    } catch {
-        // crypto.subtle unavailable: share the IP's bucket.
-    }
-    return `${ip}:${uaHash}`;
-}
-
 const memory = new MemoryWindowStore();
 
 /** @internal test-only */
@@ -93,7 +84,7 @@ export async function checkAuthRateLimit(
 ): Promise<{ ok: boolean; response?: NextResponse; headers?: Headers }> {
     if (edgeRateLimitBypassed()) return { ok: true };
     try {
-        const check = await checkWindow(memory, `rl:auth:${tier}`, await clientKey(req), AUTH_TIER_POLICIES[tier]);
+        const check = await checkWindow(memory, `rl:auth:${tier}`, edgeClientIp(req.headers), AUTH_TIER_POLICIES[tier]);
         const headers = new Headers({
             'X-RateLimit-Limit': String(check.limit),
             'X-RateLimit-Remaining': String(check.remaining),

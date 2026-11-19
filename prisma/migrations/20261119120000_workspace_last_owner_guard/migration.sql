@@ -29,6 +29,17 @@
 -- this function VOLATILE (the default). A STABLE function would reuse the
 -- calling statement's snapshot and the lock would be decorative.
 --
+-- UNDER REPEATABLE READ AND SERIALIZABLE the fresh snapshot is not there to
+-- take: the whole transaction reads the snapshot of its first statement,
+-- taken BEFORE the lock was granted, so the plain count saw an owner another
+-- transaction had already demoted and committed, and both demotions committed
+-- (Phase 0.H review). At those levels the count locks the rows it counts
+-- (`FOR UPDATE`): a row changed by a transaction that committed after this
+-- snapshot raises SQLSTATE 40001 instead of being counted. The plain count
+-- stays for READ COMMITTED, where `FOR UPDATE` would add nothing the lock and
+-- fresh snapshot do not, and would let two raw deletes that each hold their
+-- own row deadlock on each other's.
+--
 -- RLS. The function runs with the caller's rights. Under app_user the caller
 -- can only reach memberships of the workspace its context names, and every
 -- other membership of that workspace is visible to it too, so the count is
@@ -62,11 +73,25 @@ BEGIN
     -- Queue behind every other owner change in this workspace (the usecase's key).
     PERFORM pg_advisory_xact_lock(hashtext('workspace-owner:' || OLD."workspaceId"));
 
-    SELECT COUNT(*) INTO owner_count
-      FROM "WorkspaceMembership"
-     WHERE "workspaceId" = OLD."workspaceId"
-       AND "role" = 'OWNER'
-       AND "id" <> OLD."id";
+    IF current_setting('transaction_isolation') = 'read committed' THEN
+        SELECT COUNT(*) INTO owner_count
+          FROM "WorkspaceMembership"
+         WHERE "workspaceId" = OLD."workspaceId"
+           AND "role" = 'OWNER'
+           AND "id" <> OLD."id";
+    ELSE
+        -- REPEATABLE READ / SERIALIZABLE: the snapshot predates the lock, so
+        -- lock the rows counted. One a concurrent transaction changed and
+        -- committed since the snapshot raises 40001 (could not serialize)
+        -- rather than being counted as it was.
+        SELECT COUNT(*) INTO owner_count
+          FROM (SELECT 1
+                  FROM "WorkspaceMembership"
+                 WHERE "workspaceId" = OLD."workspaceId"
+                   AND "role" = 'OWNER'
+                   AND "id" <> OLD."id"
+                   FOR UPDATE) AS other_owners;
+    END IF;
 
     IF owner_count < 1 THEN
         RAISE EXCEPTION 'LAST_OWNER_GUARD: workspace % would have no OWNER', OLD."workspaceId"

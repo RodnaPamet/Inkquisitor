@@ -130,3 +130,33 @@ describe('volume: the trail is bounded per user', () => {
         expect(recordUserAuthEvent.mock.calls[1][0]).toMatchObject({ userId: 'user-other' });
     });
 });
+
+describe('concurrency: the lockout gates the verify, not a read taken before it', () => {
+    // The pre-review flow read the count, verified, then recorded the failure:
+    // twenty guesses sent together at nine failures all read nine and all
+    // verified. The attempt is now counted atomically BEFORE the verify.
+    it('twenty concurrent wrong passwords at nine failures: one verify, nineteen refusals, one compare each', async () => {
+        process.env.RATE_LIMIT_ENABLED = '1';
+        for (let i = 0; i < LOGIN_PROGRESSIVE_POLICY.lockoutAtFailures - 1; i++) await attempt(`wrong-${i}`);
+        verifyPassword.mockClear();
+        dummyVerify.mockClear();
+        // A verify that takes real time, so every attempt is in flight at once.
+        verifyPassword.mockImplementation(() => new Promise((r) => setImmediate(() => r(false))));
+
+        const results = await Promise.all(Array.from({ length: 20 }, (_, i) => attempt(`guess-${i}`)));
+
+        expect(verifyPassword).toHaveBeenCalledTimes(1);
+        expect(results.filter((r) => !r.ok && r.reason === 'rate_limited')).toHaveLength(19);
+        // Timing: every refusal still paid one compare.
+        expect(verifyPassword.mock.calls.length + dummyVerify.mock.calls.length).toBe(20);
+        verifyPassword.mockImplementation(async () => false);
+    });
+
+    it('from zero, forty concurrent guesses verify at most the lockout count', async () => {
+        process.env.RATE_LIMIT_ENABLED = '1';
+        verifyPassword.mockImplementation(() => new Promise((r) => setImmediate(() => r(false))));
+        await Promise.all(Array.from({ length: 40 }, (_, i) => attempt(`guess-${i}`)));
+        expect(verifyPassword).toHaveBeenCalledTimes(LOGIN_PROGRESSIVE_POLICY.lockoutAtFailures);
+        verifyPassword.mockImplementation(async () => false);
+    });
+});

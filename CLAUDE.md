@@ -177,10 +177,16 @@ only under zero-retention terms (D5).
   `clientIpFrom` (`src/lib/http/client-ip.ts`): the X-Forwarded-For entry
   `TRUSTED_PROXY_HOPS` (default 1: Caddy) positions from the right, never the
   client-written leftmost entry or `x-real-ip`; `0` trusts no header and every
-  request shares one bucket. The sign-in lockout counts failures in a store
-  every process shares (`src/lib/security/progressive-lockout.ts`: Upstash when
-  configured, Redis in production, memory only in development and test; a
-  failing store degrades to memory). The proxy's import graph stays free of
+  request shares one bucket. The address is parsed and written canonically (a
+  malformed one is the shared bucket; IPv4-mapped IPv6 is the IPv4 address),
+  and the tiers key on `clientRateLimitKeyFrom`, which masks IPv6 to its /64;
+  never add a client-chosen value (a User-Agent, a header) to a key. The
+  sign-in lockout counts attempts in a store every process shares
+  (`src/lib/security/progressive-lockout.ts`: Upstash when configured, Redis in
+  production, memory only in development and test; a failing store degrades to
+  memory), and reserves each attempt BEFORE its verify in one atomic step (a
+  Lua script on Redis and Upstash) whose count gates it — never read the count
+  and record afterwards. The proxy's import graph stays free of
   Node-only modules (`tests/guards/proxy-imports-no-node-only-module.test.ts`):
   Upstash is imported from `@upstash/redis/cloudflare`, never the package root.
   Close a Redis client with `closeRedisClient` (`src/lib/redis.ts`), never a bare
@@ -210,8 +216,14 @@ only under zero-retention terms (D5).
   writes AUTHZ_DENIED to the audit trail and returns a generic 403 naming no
   key; if the row cannot be written the request fails 500. Self-service account
   routes (`/api/account/**`) use `getUserCtx` and bind every query to the
-  caller. Every route file is in one class (`tests/helpers/api-routes.ts`:
-  workspace, account, or the closed `PUBLIC_ROUTES` list with a reason);
+  caller: the handler is `withApiErrorHandling(async (req) => { const ctx =
+  await getUserCtx(req); … })`, that statement first and exactly. Every
+  route-handler file (any `route.*` under an app directory, anything under
+  `pages/api`) is in one class (`tests/helpers/api-routes.ts`: a `.ts` route
+  under `src/app/api/w/[workspaceSlug]/` or `src/app/api/account/`, or the
+  closed `PUBLIC_ROUTES` list with a reason), and exports each handler as
+  `export const <METHOD> = …` (a destructured, `let`/`var`, default or
+  re-exported handler fails the guard);
   `tests/guards/api-route-authorization.test.ts` checks the shape and
   `tests/integration/api-route-authorization.test.ts` calls every handler
   signed out (401), as a stranger (404) and as a READER (403).
@@ -257,15 +269,19 @@ only under zero-retention terms (D5).
   (`members.ts`, under `pg_advisory_xact_lock(hashtext('workspace-owner:' ||
   workspaceId))`) and so does the database, whoever writes
   (`workspace_membership_last_owner_guard`, P0001, the same lock key; a
-  workspace's own cascade delete passes). Keep the trigger function VOLATILE.
+  workspace's own cascade delete passes). Keep the trigger function VOLATILE;
+  under REPEATABLE READ / SERIALIZABLE it counts with `FOR UPDATE` (a race is
+  40001), under READ COMMITTED with a plain count after the lock.
   Deleting the last OWNER's user account is refused until the workspace is
   dealt with.
 - **Security headers.** The proxy stamps a per-request-nonce CSP (script-src
   `'nonce-…' 'strict-dynamic'`, no `unsafe-inline`; style-src `unsafe-inline`
   and no nonce) and `SECURITY_HEADERS` (`src/lib/security/csp.ts`) on every
   response it returns; `next.config.mjs` repeats the headers, with
-  `STATIC_ASSET_CSP`, for `/_next/static` and `/_next/image`, which the proxy
-  does not run for. Every inline `<script>` takes the nonce from `x-csp-nonce`
+  `STATIC_ASSET_CSP`, for `/_next/static/:path+` and exactly `/_next/image`,
+  the only paths the proxy's matcher (`(?!_next/static/.|_next/image$)`) skips.
+  The two partition every path (`tests/unit/platform/proxy-matcher.test.ts`,
+  with Next's own compilers): change them together, never as a bare prefix. Every inline `<script>` takes the nonce from `x-csp-nonce`
   (the root layout's two do). A new origin is added to the policy in the change
   that needs it, never as a wildcard. `tests/e2e/security-headers.spec.ts`
   checks every kind of response, both copies of the list, and a browser walk
@@ -348,7 +364,9 @@ has the design. Reach for the primitives, never hand-roll a replacement:
   `__mocks__/next-intl.js` answers from `messages/en.json`; `vaul` maps to a
   Radix-backed stub (`tests/rendered/vaul-mock.tsx`).
 - **Integration** (`tests/integration`): a real PostgreSQL, never a mocked
-  Prisma. `DATABASE_URL` from the shell wins; otherwise `jest.setup.js` uses
+  Prisma. Its environment (`tests/helpers/open-handle-environment.ts`) fails a
+  file that leaves a socket, pool, server or ref'd timer open after its
+  `afterAll`s: close what a file opens (`closeRedisClient`, `$disconnect`). `DATABASE_URL` from the shell wins; otherwise `jest.setup.js` uses
   `postgresql://postgres:postgres@localhost:5432/inkquisitor_test`. An
   integration test never skips because the database is missing: it fails.
 - **Integration fixtures**: `tests/helpers/workspaces.ts` creates accounts

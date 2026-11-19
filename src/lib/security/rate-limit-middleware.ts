@@ -37,7 +37,7 @@ import {
 } from './rate-limit';
 import { logger } from '@/lib/observability/logger';
 import { env } from '@/env';
-import { clientIpFrom } from '@/lib/http/client-ip';
+import { clientRateLimitKeyFrom } from '@/lib/http/client-ip';
 
 // ─── Types ───────────────────────────────────────────────────────────
 
@@ -80,15 +80,16 @@ export interface RateLimitEnforcement {
 // ─── IP extraction ───────────────────────────────────────────────────
 
 /**
- * The client address a Node route charges a request to. One rule for every
+ * The client key a Node route charges a request to. One rule for every
  * tier (src/lib/http/client-ip.ts): the X-Forwarded-For entry
  * `TRUSTED_PROXY_HOPS` positions from the right, so a spoofed leftmost entry
- * is charged to the real client's bucket; `'unknown'` (one shared bucket)
- * when the header is missing, malformed or not trusted. inflect-compliance's
- * extractor took the leftmost entry, then `x-real-ip`, both client-writable.
+ * is charged to the real client's bucket; canonicalised, and an IPv6 client
+ * masked to its /64; `'unknown'` (one shared bucket) when the header is
+ * missing, malformed or not trusted. inflect-compliance's extractor took the
+ * leftmost entry, then `x-real-ip`, both client-writable.
  */
 export function getClientIp(req: NextRequest | Request): string {
-    return clientIpFrom(req.headers);
+    return clientRateLimitKeyFrom(req.headers);
 }
 
 // ─── Key builder ─────────────────────────────────────────────────────

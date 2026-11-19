@@ -52,7 +52,10 @@ const nextConfig = {
     poweredByHeader: false,
     async headers() {
         return [
-            { source: '/_next/static/:path*', headers: STATIC_ASSET_HEADERS },
+            // Exactly the paths src/proxy.ts's matcher skips: something INSIDE
+            // /_next/static/ (`:path+`, not `:path*`, so /_next/static itself
+            // is the proxy's), and the optimiser's own path.
+            { source: '/_next/static/:path+', headers: STATIC_ASSET_HEADERS },
             { source: '/_next/image', headers: STATIC_ASSET_HEADERS },
         ];
     },

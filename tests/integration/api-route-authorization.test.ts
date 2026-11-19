@@ -23,7 +23,7 @@ import * as path from 'node:path';
 import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/db';
 import { ALL_PERMISSION_KEYS, getPermissionsForRole, hasPermission, type PermissionKey } from '@/lib/permissions';
-import { apiRouteFiles, classifyRoute, exportsOf, permissionKeyOf, readRoute, urlAndParamsFor } from '../helpers/api-routes';
+import { classifyRoute, exportsOf, permissionKeyOf, readRoute, routeHandlerFiles, urlAndParamsFor } from '../helpers/api-routes';
 import { REPO_ROOT } from '../helpers/repo-files';
 import { addMember, createAccount, createBareUser } from '../helpers/workspaces';
 
@@ -31,7 +31,7 @@ afterAll(() => prisma.$disconnect());
 
 type Handler = (req: NextRequest, ctx: { params: Promise<Record<string, string>> }) => Promise<Response>;
 
-const routes = apiRouteFiles()
+const routes = routeHandlerFiles()
     .map((file) => ({ file, cls: classifyRoute(file) }))
     .filter((r) => r.cls === 'workspace' || r.cls === 'account');
 
