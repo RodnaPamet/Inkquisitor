@@ -91,10 +91,67 @@ export function createProducerRedisClient(url: string = resolveRedisUrl(), conne
     });
 }
 
+/**
+ * A NEW client for a request-path lookup (the sign-in lockout): a command
+ * fails within `commandTimeout` rather than waiting for Redis to come back, so
+ * the caller can degrade instead of hanging a sign-in. Commands sent before
+ * the first connection are queued (the offline queue is on), so the first
+ * request after a boot does not fail spuriously.
+ */
+export function createRedisClientWithBoundedCommands(connectionName: string, url: string = resolveRedisUrl()): Redis {
+    const client = new Redis(url, {
+        maxRetriesPerRequest: 1,
+        commandTimeout: 1_500,
+        connectTimeout: 2_000,
+        enableReadyCheck: true,
+        connectionName,
+        retryStrategy: (times: number) => Math.min(times * 200, 5_000),
+    });
+    client.on('error', (err) => {
+        logger.warn('Redis connection error', { component: 'redis', connectionName, error: err instanceof Error ? err.message : String(err) });
+    });
+    return client;
+}
+
+/**
+ * Close a client this process owns, completely: nothing of it may keep the
+ * event loop alive afterwards.
+ *
+ *   ready        QUIT, so the server sees a clean goodbye (falls back to a hard
+ *                disconnect if QUIT fails).
+ *   end          nothing: already closed.
+ *   anything     else (connecting, reconnecting after a refusal, waiting for a
+ *                lazy connect): a hard disconnect, which also cancels the
+ *                pending reconnect.
+ *
+ * WHY NOT JUST `disconnect()` (issue #9). ioredis's connector answers
+ * `disconnect()` by calling `end()` on its socket and arming a 2-second timer
+ * that destroys the socket unless it emits `close` first. A socket that was
+ * refused has ALREADY closed and will not close again, so that timer always
+ * runs to the end: a process (or a Jest run) that has finished is held open
+ * for two more seconds. When the socket is already gone, `close` is emitted
+ * for it here, which is what the connector is waiting for; nothing else is
+ * listening on a socket ioredis has finished with.
+ */
+export async function closeRedisClient(client: Redis): Promise<void> {
+    if (client.status === 'end') return;
+    if (client.status === 'ready') {
+        try {
+            await client.quit();
+            return;
+        } catch {
+            // fall through to a hard disconnect
+        }
+    }
+    const stream = (client as unknown as { stream?: { destroyed?: boolean; emit(event: 'close', hadError: boolean): boolean } }).stream;
+    client.disconnect();
+    if (stream?.destroyed) stream.emit('close', false);
+}
+
 /** Quit the shared client, if one was made. */
 export async function disconnectRedis(): Promise<void> {
     const client = globalForRedis.__inkquisitorRedis;
     if (!client) return;
     globalForRedis.__inkquisitorRedis = undefined;
-    await client.quit().catch(() => client.disconnect());
+    await closeRedisClient(client);
 }

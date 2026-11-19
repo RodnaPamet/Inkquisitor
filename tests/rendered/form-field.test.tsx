@@ -187,7 +187,7 @@ describe('<FormField /> — `hint` prop (Epic 56)', () => {
             <FormField
                 label="Retention"
                 description="ISO 8601 date."
-                hint="Evidence is archived after this date."
+                hint="Drafts are archived after this date."
             >
                 <Input type="date" />
             </FormField>,
@@ -207,7 +207,7 @@ describe('<FormField /> — `hint` prop (Epic 56)', () => {
             <FormField
                 label="Retention"
                 error="Required."
-                hint="Evidence is archived after this date."
+                hint="Drafts are archived after this date."
             >
                 <Input type="date" />
             </FormField>,
@@ -235,7 +235,7 @@ describe('<FieldGroup />', () => {
 
     it('renders an InfoTooltip trigger next to the heading when hint is set (Epic 56)', () => {
         render(
-            <FieldGroup title="Retention" hint="Controls how long evidence stays searchable.">
+            <FieldGroup title="Retention" hint="Sets how long drafts stay searchable.">
                 <FormField label="Until">
                     <Input type="date" />
                 </FormField>

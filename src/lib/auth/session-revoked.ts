@@ -9,7 +9,7 @@
  * the token would be something every reader had to remember to check;
  * inflect-compliance shipped that once and no revocation signed anybody out.
  *
- * The edge middleware decodes the cookie without running the callback, so a
+ * The proxy (`src/proxy.ts`) decodes the cookie without running the callback, so a
  * revoked browser passes the edge and is refused at the first server gate.
  *
  * Lifted from inflect-compliance's `src/lib/auth/session-revoked.ts` (see

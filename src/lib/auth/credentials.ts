@@ -29,30 +29,28 @@
  * lockout window (`LOGIN_PROGRESSIVE_POLICY.lockoutMs`), with the limiter on
  * or off, and an attempt refused DURING a lockout writes none (it is the
  * lockout's own consequence, already evidenced by the row that preceded it).
- * The window is per process, like the lockout store.
+ * That window is per process (it bounds this process's writes).
  *
  * PROGRESSIVE LOCKOUT (`LOGIN_PROGRESSIVE_POLICY`, src/lib/security/rate-limit.ts):
  * 3 failures → 5 s delay before the next verify, 5 → 30 s, 10 → 15 minutes
- * locked, keyed on sha256(email) so the in-memory store holds no address.
- * Off when the rate limiter is (`RATE_LIMIT_ENABLED=0`, and under Jest unless
- * a suite sets it to 1). The store is per process: the edge auth tier and the
- * route's LOGIN_LIMIT bound the rest.
+ * locked, keyed on sha256(email) so no store holds an address. Off when the
+ * rate limiter is (`RATE_LIMIT_ENABLED=0`, and under Jest unless a suite sets
+ * it to 1). The failures are counted in a store every process shares — Upstash
+ * when configured, Redis in production, memory only in development and test
+ * (`src/lib/security/progressive-lockout.ts`, issue #10) — so N processes are
+ * one lockout budget, not N. The edge auth tier and the route's LOGIN_LIMIT
+ * bound the rest.
  *
  * Lifted from inflect-compliance's `src/lib/auth/credentials.ts` (see
- * docs/carve-manifest.md). Not carried: the Upstash per-email sliding window,
- * the email-verification gate (no verification flow yet) and the email-hash
+ * docs/carve-manifest.md). Not carried: the email-verification gate (no verification flow yet) and the email-hash
  * lookup column (Inkquisitor stores the email itself, lower-cased).
  */
 import { createHash } from 'node:crypto';
 import { prisma } from '@/lib/db';
 import { recordUserAuthEvent } from '@/lib/audit/user-auth-events';
 import { isRateLimitBypassed } from '@/lib/security/rate-limit-middleware';
-import {
-    LOGIN_PROGRESSIVE_POLICY,
-    evaluateProgressiveRateLimit,
-    recordProgressiveFailure,
-    resetProgressiveFailures,
-} from '@/lib/security/rate-limit';
+import { LOGIN_PROGRESSIVE_POLICY } from '@/lib/security/rate-limit';
+import { lockoutFor } from '@/lib/security/progressive-lockout';
 import { logger } from '@/lib/observability/logger';
 import { dummyVerify, hashPassword, needsRehash, verifyPassword } from './passwords';
 
@@ -104,6 +102,7 @@ export async function authenticateWithPassword(input: AuthenticateInput, options
 
     const key = progressiveKeyFor(email);
     const lockoutOn = !isRateLimitBypassed();
+    const lockout = lockoutFor(LOGIN_PROGRESSIVE_POLICY);
 
     let user: { id: string; email: string; name: string | null; passwordHash: string | null } | null = null;
     try {
@@ -121,7 +120,7 @@ export async function authenticateWithPassword(input: AuthenticateInput, options
     }
 
     if (lockoutOn) {
-        const decision = evaluateProgressiveRateLimit(key, LOGIN_PROGRESSIVE_POLICY);
+        const decision = await lockout.evaluate(key);
         if (!decision.allowed) {
             // The same compare a real verify costs, so a locked-out answer is not faster.
             await dummyVerify(password);
@@ -136,14 +135,14 @@ export async function authenticateWithPassword(input: AuthenticateInput, options
 
     if (!user || !user.passwordHash) {
         await dummyVerify(password);
-        const after = lockoutOn ? recordProgressiveFailure(key, LOGIN_PROGRESSIVE_POLICY) : null;
+        const after = lockoutOn ? await lockout.recordFailure(key) : null;
         recordFailure(user?.id ?? null, user ? 'no_password' : 'unknown_email', after?.failureCount, input.requestId);
         return { ok: false, reason: 'credentials_invalid' };
     }
 
     const valid = await verifyPassword(password, user.passwordHash);
     if (!valid) {
-        const after = lockoutOn ? recordProgressiveFailure(key, LOGIN_PROGRESSIVE_POLICY) : null;
+        const after = lockoutOn ? await lockout.recordFailure(key) : null;
         recordFailure(user.id, 'credentials_invalid', after?.failureCount, input.requestId);
         return { ok: false, reason: 'credentials_invalid' };
     }
@@ -157,7 +156,7 @@ export async function authenticateWithPassword(input: AuthenticateInput, options
         }
     }
 
-    resetProgressiveFailures(key);
+    await lockout.reset(key);
     return { ok: true, userId: user.id, email: user.email, name: user.name };
 }
 

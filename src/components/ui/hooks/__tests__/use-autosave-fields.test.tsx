@@ -330,9 +330,9 @@ describe('re-seeding', () => {
             { initialProps: { seed: SEED } },
         );
 
-        rerender({ seed: { name: 'Backup policy', category: 'TECHNOLOGICAL' } });
+        rerender({ seed: { name: 'Second draft', category: 'TECHNOLOGICAL' } });
         expect(result.current.fields).toEqual({
-            name: 'Backup policy',
+            name: 'Second draft',
             category: 'TECHNOLOGICAL',
         });
     });
@@ -425,8 +425,8 @@ describe('re-seeding', () => {
 
         act(() => result.current.update({ name: 'Renamed' }));
         await flushDebounce();
-        rerender({ seed: { name: 'Backup policy', category: 'TECHNOLOGICAL' } });
-        expect(result.current.fields.name).toBe('Backup policy');
+        rerender({ seed: { name: 'Second draft', category: 'TECHNOLOGICAL' } });
+        expect(result.current.fields.name).toBe('Second draft');
     });
 
     it('resets a stale error when a different row is seeded in', async () => {

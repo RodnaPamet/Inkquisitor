@@ -28,8 +28,12 @@
  * sign-in down with it.
  */
 import { Ratelimit } from '@upstash/ratelimit';
-import { Redis } from '@upstash/redis';
+// The fetch-only entry. The package root resolves to its Node entry, which
+// reads `process.version` for telemetry: a Node-only API in the proxy's graph,
+// and the build's Edge Runtime warning (issue #8). This one uses `fetch` alone.
+import { Redis } from '@upstash/redis/cloudflare';
 import { env } from '@/env';
+import { clientIpFrom } from '@/lib/http/client-ip';
 
 export interface WindowCheck {
     ok: boolean;
@@ -104,14 +108,19 @@ export class MemoryWindowStore {
 let redis: Redis | null = null;
 const limiters = new Map<string, Ratelimit>();
 
+/** The process's Upstash client (only when `usesUpstash()`); the sign-in lockout counts in it too. */
+export function upstashRedis(): Redis {
+    redis ??= new Redis({ url: env.UPSTASH_REDIS_REST_URL!, token: env.UPSTASH_REDIS_REST_TOKEN! });
+    return redis;
+}
+
 /** A sliding-window Upstash limiter for one policy, built on first use. */
 function upstashLimiter(prefix: string, policy: WindowPolicy): Ratelimit {
     const id = `${prefix}:${policy.limit}:${policy.windowMs}`;
     let limiter = limiters.get(id);
     if (!limiter) {
-        redis ??= new Redis({ url: env.UPSTASH_REDIS_REST_URL!, token: env.UPSTASH_REDIS_REST_TOKEN! });
         limiter = new Ratelimit({
-            redis,
+            redis: upstashRedis(),
             limiter: Ratelimit.slidingWindow(policy.limit, `${policy.windowMs} ms`),
             prefix,
         });
@@ -138,14 +147,13 @@ export async function checkWindow(
     };
 }
 
-/** The client IP an edge request names; a dev server sets none. */
+/**
+ * The client address an edge request is charged to: the X-Forwarded-For entry
+ * `TRUSTED_PROXY_HOPS` from the right, never the client-supplied leftmost one
+ * (src/lib/http/client-ip.ts, the one place the rule lives).
+ */
 export function edgeClientIp(headers: Headers): string {
-    const forwarded = headers.get('x-forwarded-for');
-    if (forwarded) {
-        const first = forwarded.split(',')[0]?.trim();
-        if (first) return first;
-    }
-    return headers.get('x-real-ip')?.trim() || '127.0.0.1';
+    return clientIpFrom(headers);
 }
 
 /** True when the edge tiers are switched off for this process. */

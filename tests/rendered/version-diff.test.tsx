@@ -161,6 +161,33 @@ describe('htmlToLines', () => {
         expect(out).not.toMatch(/<[A-Za-z/!?]/);
         expect(out).toContain('x');
     });
+    it('strips 100 KB of crafted nesting in linear time (issue #6)', () => {
+        // Each '<' is joined to an 's' only once the tag before it is gone:
+        // a strip-until-stable loop needed one pass per level (quadratic;
+        // 60 KB took about five seconds).
+        const k = 34_000;
+        const crafted = '<'.repeat(k) + '<b>' + 's>'.repeat(k);
+        expect(crafted.length).toBeGreaterThan(100_000);
+        const started = performance.now();
+        const out = htmlToLines(crafted);
+        expect(performance.now() - started).toBeLessThan(100);
+        expect(out).not.toMatch(/<[A-Za-z/!?]/);
+        // A 100 KB run of unterminated tags and stray '<' is linear too.
+        const ragged = '<a <<b'.repeat(20_000);
+        const t2 = performance.now();
+        expect(htmlToLines(ragged)).not.toMatch(/<[A-Za-z/!?]/);
+        expect(performance.now() - t2).toBeLessThan(100);
+    });
+    it('never leaves a tag-starting "<" on any input built from tag fragments', () => {
+        const pieces = ['<', '>', 'b', 's', '/', '<b>', '</p>', 'x', ' ', '<br>', '!', '?'];
+        let seed = 7;
+        const next = () => (seed = (seed * 1103515245 + 12345) % 2 ** 31);
+        for (let n = 0; n < 2_000; n++) {
+            let input = '';
+            for (let j = 0; j < 12; j++) input += pieces[next() % pieces.length];
+            expect([input, /<[A-Za-z/!?]/.test(htmlToLines(input))]).toEqual([input, false]);
+        }
+    });
     it('ends a line at every block, so a heading never glues to the paragraph after it (#5309)', () => {
         const out = htmlToLines(
             '<h2>Scope</h2><p>Applies to staff.</p><ul><li>One</li><li>Two</li></ul><blockquote>Quoted</blockquote><hr><p>End</p>',

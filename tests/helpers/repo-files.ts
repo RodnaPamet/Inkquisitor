@@ -103,7 +103,23 @@ export function listGitFiles(cwd: string): string[] {
         );
     }
 
-    return stdout.split('\0').filter(Boolean).sort();
+    // A tracked file deleted from the work tree (and not yet staged) is still
+    // in the index, so `--cached` lists it, and every guard that reads it
+    // fails on ENOENT. It is not part of the tree being tested: drop it.
+    const deleted = new Set(
+        execFileSync('git', ['ls-files', '--deleted', '-z'], {
+            cwd,
+            encoding: 'utf-8',
+            maxBuffer: 64 * 1024 * 1024,
+            stdio: ['ignore', 'pipe', 'pipe'],
+        })
+            .split('\0')
+            .filter(Boolean),
+    );
+    return stdout
+        .split('\0')
+        .filter((f) => f && !deleted.has(f))
+        .sort();
 }
 
 /**

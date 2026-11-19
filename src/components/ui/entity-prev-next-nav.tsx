@@ -11,7 +11,7 @@
  * the ORDERED ids (the same order the list shows) + an href builder; the
  * component finds the current id's neighbours and disables the ends.
  *
- * Reusable across Asset / Risk / Control / … detail pages — pass that
+ * Reusable across Book / Character / Scene / … detail pages — pass that
  * entity's ordered id list + `hrefFor`.
  */
 import { useRouter } from 'next/navigation';
@@ -25,12 +25,12 @@ export interface EntityPrevNextNavProps {
     ids: ReadonlyArray<string>;
     /** The id of the entity currently open. */
     currentId: string;
-    /** Build the tenant-prefixed href for a neighbour id. */
+    /** Build the workspace-prefixed href for a neighbour id. */
     hrefFor: (id: string) => string;
     /**
      * Which entity this stepper walks — a KEY under `ui.recordStepper`, not a
      * display noun. Callers pass the lowercase entity slug they already used
-     * (`'asset'`, `'policy'`, …); the component resolves the whole phrase from
+     * (`'book'`, `'character'`, …); the component resolves the whole phrase from
      * the catalog. An entity with no entry falls back to `item`.
      */
     labelSingular?: string;

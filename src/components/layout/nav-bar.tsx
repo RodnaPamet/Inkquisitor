@@ -233,12 +233,12 @@ export const NAV_BAR_BOTTOM_HAIRLINE =
  *       override here is required.
  *
  * R14-PR11 wires this recipe into every clickable chrome slot —
- * brand mark, search anchor (both forms), tenant switcher trigger,
+ * brand mark, search anchor (both forms), workspace switcher trigger,
  * notifications bell, user-menu avatar. The shared recipe means a
  * future "let's slow the press to 100ms" PR has ONE place to
  * land — every slot's tactile feel stays coherent.
  *
- * Motion-language exempt: nav-bar.tsx, tenant-switcher.tsx,
+ * Motion-language exempt (in inflect-compliance): nav-bar.tsx, tenant-switcher.tsx,
  * user-menu.tsx, notifications-bell.tsx, search-anchor.tsx are
  * all added to the EXEMPT_FILES list in
  * `motion-language-discipline.test.ts`. The broadening rationale
@@ -282,7 +282,7 @@ export const NAV_BAR_TOP_GLOSS =
  *
  * Responsive slot behaviour is handled inside each slot's own
  * recipe (search → icon-only below lg, breadcrumbs → hidden
- * below md, tenant switcher → hidden below sm).
+ * below md, workspace switcher → hidden below sm).
  */
 export const NAV_BAR_SHELL = [
     'flex',
@@ -345,7 +345,7 @@ export const NAV_BAR_SLOT_RIGHT =
  *
  *   (1) `h-[22px] w-[22px]` — 22×22 footprint. The compact navbar
  *       control size (stepped 32 → 28 → 22), matched across brand /
- *       bell / user-menu / mobile-menu / tenant-switcher so the
+ *       bell / user-menu / mobile-menu / workspace-switcher so the
  *       buttons read as one tight set within the 64px bar.
  *
  *   (2) `rounded-lg` — 8px corner radius. Parity with `<NavItem>`

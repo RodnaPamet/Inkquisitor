@@ -8,6 +8,7 @@ jest.mock('@sentry/nextjs', () => {
     const scope = { setTag: jest.fn(), setUser: jest.fn() };
     return {
         __captured: captured,
+        init: jest.fn(),
         getClient: () => ({}),
         withScope: (fn: (s: typeof scope) => void) => fn(scope),
         captureException: (e: unknown) => {
@@ -25,11 +26,22 @@ import { NotFoundError } from '@/lib/errors/types';
 import { withApiErrorHandling } from '@/lib/errors/api';
 import * as tracing from '@/lib/observability/tracing';
 import { createLogger, pinoInstance } from '@/lib/observability/logger';
-import { captureError, scrubEvent } from '@/lib/observability/sentry';
+import { _resetSentryForTests, captureError, initSentry, scrubEvent } from '@/lib/observability/sentry';
 import { WITHHELD_MESSAGE, safeErrorMeta, safeErrorMessage, toReportableError } from '@/lib/observability/safe-error';
 import { executorRegistry } from '@/app-layer/jobs/executor-registry';
 
 const AUTHOR_TEXT = 'The orchard burned the night Elin left';
+
+// The SDK (mocked above) is loaded only by initSentry with a DSN.
+beforeAll(async () => {
+    _resetSentryForTests();
+    process.env.SENTRY_DSN = 'https://public@sentry.example.test/1';
+    await initSentry();
+});
+afterAll(() => {
+    delete process.env.SENTRY_DSN;
+    _resetSentryForTests();
+});
 
 class PrismaClientValidationError extends Error {
     constructor() {

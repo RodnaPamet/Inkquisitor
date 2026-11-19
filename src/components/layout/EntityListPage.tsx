@@ -74,7 +74,7 @@ export interface EntityListPageHeader {
     /**
      * Optional uppercase eyebrow rendered above the title (v2-PR-12).
      * Conventionally the resource name in screaming-quiet caps —
-     * e.g. "Controls" above a "Compliance register" title. The trio
+     * e.g. "Characters" above a "Cast list" title. The trio
      * (eyebrow + title + description) gives every list page the same
      * 3-line composition signature.
      */
@@ -91,7 +91,7 @@ export interface EntityListPageHeader {
     /**
      * Optional descriptive sentence below the title (v2-PR-12).
      * Distinct from `count` — `description` carries narrative
-     * context ("Track and treat enterprise risk in one register"),
+     * context ("Every character, with the scenes they appear in"),
      * `count` is the rolling tally. When both are passed,
      * `description` wins; when neither is, the line is omitted.
      */
@@ -215,7 +215,7 @@ export interface EntityListPageProps<TRow extends TableRowData> {
     /**
      * R23-PR-D — optional KPI strip rendered ABOVE the filter
      * toolbar (inside the same `<Filters>` slot, so spacing and
-     * scroll behaviour stay consistent with the Risks-page reference
+     * scroll behaviour stay consistent with the reference list
      * layout). Pass a row of `<KpiFilterCard>`s wrapped in the
      * standard `grid grid-cols-2 md:grid-cols-4 gap-default`. Omit
      * for pages that don't need a KPI strip.
@@ -250,7 +250,7 @@ export interface EntityListPageProps<TRow extends TableRowData> {
      * PR-1 — rendered inside `<ListPageShell.Body>` AFTER the
      * `<DataTable>`. Canonical use: the shared
      * `<TableLoadMoreFooter>` driven by `useThresholdLoadMore`, so
-     * tenant list pages can match the org-level "Load more …"
+     * in-memory list pages can match the server-cursor "Load more …"
      * pattern without dropping into bespoke layout. Pure passthrough
      * — the shell doesn't reach inside.
      */
@@ -362,9 +362,9 @@ export function EntityListPage<TRow extends TableRowData>(
                 />
                 {/* PR-1 — Load-more footer slot. Pass a
                     `<TableLoadMoreFooter>` driven by either
-                    `useThresholdLoadMore` (tenant in-memory) or
-                    `useCursorPagination` (org server cursor) and the
-                    footer matches the org table experience. */}
+                    `useThresholdLoadMore` (in-memory) or
+                    `useCursorPagination` (server cursor) and the
+                    footer matches either way. */}
                 {tableFooter}
             </ListPageShell.Body>
 

@@ -8,9 +8,9 @@
  *
  * Thin layer on top of `src/lib/security/rate-limit.ts`. Provides:
  *
- *   1. A canonical IP extractor that walks the standard fallback
- *      chain (`x-forwarded-for` → `x-real-ip` → Next's own
- *      `request.ip` → `'unknown'`).
+ *   1. The client address, as every tier reads it: the X-Forwarded-For
+ *      entry `TRUSTED_PROXY_HOPS` from the right (src/lib/http/client-ip.ts),
+ *      never the leftmost entry a client can write.
  *   2. A keying strategy: `<scope>:ip:<ip>:<actor>` where `actor`
  *      is `u:<userId>` when authenticated, `anon` otherwise. This
  *      ensures authenticated users get their own budget per (IP,
@@ -37,6 +37,7 @@ import {
 } from './rate-limit';
 import { logger } from '@/lib/observability/logger';
 import { env } from '@/env';
+import { clientIpFrom } from '@/lib/http/client-ip';
 
 // ─── Types ───────────────────────────────────────────────────────────
 
@@ -79,36 +80,15 @@ export interface RateLimitEnforcement {
 // ─── IP extraction ───────────────────────────────────────────────────
 
 /**
- * Canonical client-IP extractor. Walks the standard fallback chain:
- *
- *   1. `x-forwarded-for` first value (trust upstream proxy; matches
- *      what the rest of the codebase already does in context.ts /
- *      csp-report route).
- *   2. `x-real-ip` (nginx-style single-value header).
- *   3. `request.ip` (Next.js-provided; present in edge + some deploys).
- *   4. `'unknown'` sentinel — the middleware will still track the
- *      bucket, just with all unknown-IP traffic pooled together.
- *
- * Returning `'unknown'` rather than throwing keeps the middleware
- * usable in weird environments (tests, CLI tools, local dev without
- * a proxy) at the cost of a shared bucket. Production deployments
- * behind a proxy always have `x-forwarded-for`.
+ * The client address a Node route charges a request to. One rule for every
+ * tier (src/lib/http/client-ip.ts): the X-Forwarded-For entry
+ * `TRUSTED_PROXY_HOPS` positions from the right, so a spoofed leftmost entry
+ * is charged to the real client's bucket; `'unknown'` (one shared bucket)
+ * when the header is missing, malformed or not trusted. inflect-compliance's
+ * extractor took the leftmost entry, then `x-real-ip`, both client-writable.
  */
 export function getClientIp(req: NextRequest | Request): string {
-    const headers = req.headers;
-    const forwarded = headers.get('x-forwarded-for');
-    if (forwarded) {
-        const first = forwarded.split(',')[0]?.trim();
-        if (first) return first;
-    }
-    const realIp = headers.get('x-real-ip');
-    if (realIp) return realIp.trim();
-
-    // Next.js provides `ip` on NextRequest; guard for plain Request.
-    const maybeReq = req as NextRequest & { ip?: string };
-    if (typeof maybeReq.ip === 'string' && maybeReq.ip) return maybeReq.ip;
-
-    return 'unknown';
+    return clientIpFrom(req.headers);
 }
 
 // ─── Key builder ─────────────────────────────────────────────────────

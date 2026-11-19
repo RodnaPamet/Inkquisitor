@@ -10,9 +10,9 @@
  * Why a separate file:
  *
  *   - Previously `NavItem` lived inline at the bottom of
- *     `SidebarNav.tsx`. The tenant sidebar mounts it; the org sidebar
- *     re-implements an almost-identical `OrgNavItem` in
- *     `OrgSidebarNav.tsx`. Two copies of the same recipe.
+ *     `SidebarNav.tsx`. In inflect-compliance the tenant sidebar mounted
+ *     it and the org sidebar re-implemented an almost-identical
+ *     `OrgNavItem`: two copies of the same recipe.
  *   - Hoisting the recipe into one primitive (and exporting the class
  *     strings as named consts) gives the rest of Roadmap-12 a single
  *     place to land changes. The contract:
@@ -132,7 +132,7 @@ export const NAV_ITEM_ICON_CLASS = `${NAV_ITEM_ICON_SIZE} flex-shrink-0`;
 
 export interface NavItemProps {
     /**
-     * Tenant-prefixed href.
+     * Workspace-prefixed href (`APP_ROUTES`).
      *
      * OMIT IT for an action row: the row then renders a `<button>` that runs
      * `onClick` (sign out, open a dialog) in the same recipe as its link
@@ -162,10 +162,9 @@ export interface NavItemProps {
     badge?: string | number;
     /**
      * Accessible description of what the badge counts. A bare number on a
-     * nav row is ambiguous — the Calendar badge counts only the caller's
-     * OWN tasks while the Calendar page is tenant-wide across every
-     * deadline source, so the scope has to be stated somewhere rather
-     * than guessed. Applied as the chip's aria-label + title.
+     * nav row is ambiguous — a badge may count only the caller's OWN items
+     * while the page it links to covers the whole workspace, so the scope
+     * has to be stated somewhere rather than guessed. Applied as the chip's aria-label + title.
      */
     badgeLabel?: string;
     /**
@@ -807,7 +806,7 @@ export function NavItem({
             //
             // THAT NUMBER STILL DOES NOT EXIST. #3099 went looking for it and
             // this is what the repo actually holds on the benefit side: one
-            // prod measurement from 2026-06-30, TTFB ~276 ms per tenant
+            // inflect-compliance prod measurement from 2026-06-30, TTFB ~276 ms per tenant
             // navigation, in
             // docs/implementation-notes/2026-06-30-instant-nav-router-cache.md.
             // Read what that buys carefully — 276 ms is what the ROUTER CACHE

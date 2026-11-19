@@ -40,8 +40,8 @@ function renderToast(overrides: Partial<React.ComponentProps<typeof UndoToast>> 
 
 describe("UndoToast — render contract", () => {
     it("shows the destructive message", () => {
-        renderToast({ message: "Vendor unlinked" });
-        expect(screen.getByText("Vendor unlinked")).toBeInTheDocument();
+        renderToast({ message: "Scene unlinked" });
+        expect(screen.getByText("Scene unlinked")).toBeInTheDocument();
     });
 
     it("renders the Undo button as a real <button> with the supplied label", () => {

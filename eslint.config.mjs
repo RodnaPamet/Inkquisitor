@@ -54,8 +54,9 @@ const config = [
     {
         // Server and shared code logs through the structured logger, never the
         // console (author text must never reach a log line by accident —
-        // roadmap rule 4).
-        files: ['src/**/*.{ts,tsx}'],
+        // roadmap rule 4). The worker and its health check are server code
+        // too (Phase 0.H): they log through the process logger.
+        files: ['src/**/*.{ts,tsx}', 'scripts/**/*.ts'],
         rules: {
             'no-console': 'error',
             // Roadmap rule 3: one file loads the model SDK.

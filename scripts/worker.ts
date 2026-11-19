@@ -29,7 +29,7 @@ import { safeErrorMeta } from '../src/lib/observability/safe-error';
 import { initTelemetry, shutdownTelemetry } from '../src/lib/observability/instrumentation';
 import { initSentry, shutdownSentry } from '../src/lib/observability/sentry';
 import { initMailerFromEnv } from '../src/lib/mailer';
-import { createRedisClient, redactRedisUrl, resolveRedisUrl } from '../src/lib/redis';
+import { closeRedisClient, createRedisClient, redactRedisUrl, resolveRedisUrl } from '../src/lib/redis';
 import { registerSchedules } from '../src/app-layer/jobs/register-schedules';
 import { createJobWorker } from '../src/app-layer/jobs/worker';
 import { executorRegistry } from '../src/app-layer/jobs/executor-registry';
@@ -49,7 +49,7 @@ let worker: Worker | undefined;
 
 async function bootstrap(): Promise<void> {
     await initTelemetry();
-    initSentry();
+    await initSentry();
     initMailerFromEnv();
 
     const url = resolveRedisUrl();
@@ -67,7 +67,7 @@ async function bootstrap(): Promise<void> {
         log.error({ error: safeErrorMeta(err) }, 'failed to register repeatable schedules');
     } finally {
         await schedulerQueue.close().catch(() => undefined);
-        await schedulerConnection.quit().catch(() => undefined);
+        await closeRedisClient(schedulerConnection);
     }
 
     connection = createRedisClient(url, 'inkquisitor-worker');
@@ -79,7 +79,7 @@ async function shutdown(signal: string): Promise<void> {
     log.info({ signal }, 'shutdown signal received — closing worker');
     try {
         await worker?.close();
-        await connection?.quit().catch(() => undefined);
+        if (connection) await closeRedisClient(connection);
         await shutdownTelemetry();
         await shutdownSentry();
         log.info('worker shut down gracefully');

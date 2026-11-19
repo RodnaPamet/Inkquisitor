@@ -213,7 +213,7 @@ describe("useToastWithUndo — re-trigger after undo", () => {
             await act(async () => {
                 trigger({
                     action: firstAction,
-                    message: "Risk deleted",
+                    message: "Scene deleted",
                     undoMessage: "Undo",
                 });
             });
@@ -225,7 +225,7 @@ describe("useToastWithUndo — re-trigger after undo", () => {
             await act(async () => {
                 trigger({
                     action: secondAction,
-                    message: "Risk deleted",
+                    message: "Scene deleted",
                     undoMessage: "Undo",
                 });
             });
@@ -319,7 +319,7 @@ describe("useToastWithUndo — lifecycle safety", () => {
             await act(async () => {
                 trigger({
                     action,
-                    message: "Risk deleted",
+                    message: "Scene deleted",
                     undoMessage: "Undo",
                     onCommit,
                 });

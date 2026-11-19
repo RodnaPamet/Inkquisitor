@@ -86,7 +86,7 @@ export async function registerNode(seams: RegisterNodeSeams = {}): Promise<void>
     }
 
     await services.initTelemetry();
-    services.initSentry();
+    await services.initSentry();
     services.initMailerFromEnv();
     services.installShutdownHandlers();
 }

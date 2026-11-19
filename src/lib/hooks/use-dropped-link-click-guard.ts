@@ -4,9 +4,9 @@
  * The dropped-navigation predicate (#3099), and its guard for a `<Link>`.
  *
  * Dependency-free on purpose: `src/lib/hooks` is shared UI, and the sidebar's
- * `<NavItem>` uses the guard below. The evidence for the predicate and the
- * delay is written in `@/lib/nav/use-guarded-push`, the row-click guard that
- * came first and re-exports these.
+ * `<NavItem>` uses the guard below. The measurements behind the predicate
+ * and the delay are inflect-compliance's (#3099, its
+ * `src/lib/nav/use-guarded-push.ts`, the row-click guard, not carried).
  */
 import { useCallback, useEffect, useRef, type MouseEvent as ReactMouseEvent } from 'react';
 

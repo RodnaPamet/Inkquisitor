@@ -269,7 +269,7 @@ describe('DataTable — fillBody composes the flex-fill classes', () => {
     it('with fillBody the scroll wrapper gets max-h-full + min-h-0 + overflow-y-auto', () => {
         // Updated for content-sized cards — fillBody dropped flex-1
         // in favour of max-h-full so the wrapper can shrink to
-        // content height (Evidence with 1 row, empty state) and
+        // content height (a list with 1 row, empty state) and
         // only grows up to its parent allocation.
         const { container } = render(
             <DataTable

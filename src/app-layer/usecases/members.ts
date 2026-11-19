@@ -10,7 +10,11 @@
  * LAST-OWNER PROTECTION: a workspace always keeps at least one OWNER. The
  * count runs after a per-workspace advisory lock, so two owners demoting each
  * other at once cannot both succeed under READ COMMITTED (the loser waits,
- * then counts one owner and is refused).
+ * then counts one owner and is refused). The database holds the same rule
+ * behind it (`workspace_membership_last_owner_guard`, Phase 0.H): a trigger
+ * that takes the same lock key and raises P0001, so a path that skips this
+ * module cannot leave a workspace ownerless either. Its refusal reaching here
+ * is answered as this module's own 409.
  *
  * AUTHORITY IS RE-CHECKED UNDER THE LOCK. The context's role was read when
  * the request was gated, before the lock; by the time a change runs the
@@ -59,6 +63,11 @@ async function lockOwners(db: PrismaTx, workspaceId: string): Promise<void> {
 
 const LAST_OWNER = { reason: 'LAST_OWNER' } as const;
 
+/** The database trigger's refusal (SQLSTATE P0001, `LAST_OWNER_GUARD: …`). */
+export function isLastOwnerGuardRefusal(err: unknown): boolean {
+    return err instanceof Error && err.message.includes('LAST_OWNER_GUARD');
+}
+
 /** The actor's authority, re-read inside the transaction, no longer holds. Never leaves this module. */
 class AuthorityLapsed extends Error {
     constructor(readonly currentRole: WorkspaceRole | null) {
@@ -82,6 +91,7 @@ async function withLiveAuthority<T>(ctx: WorkspaceRequestContext, key: Permissio
         });
     } catch (err) {
         if (err instanceof AuthorityLapsed) return denyPermission(ctx, key, {}, { currentRole: err.currentRole });
+        if (isLastOwnerGuardRefusal(err)) throw new ConflictError('A workspace must keep at least one owner.', LAST_OWNER);
         throw err;
     }
 }

@@ -37,7 +37,9 @@ function productionSecret(name: string, min: number, forbidden?: string) {
  * client), but its SCHEMA is ordinary module code, so anything `next build`
  * bundles for the client would carry every key name in this file. Client
  * code imports `@/env-client`, which holds the `NEXT_PUBLIC_` variables.
- * `tests/guards/client-modules-import-no-server-env.test.ts` holds this.
+ * `tests/guards/client-reachable-modules-import-no-server-env.test.ts` holds
+ * this over the whole client import graph, and `scripts/check-build.js` over
+ * the built client chunks.
  *
  * Every variable read here is listed in `.env.example`;
  * `tests/unit/env-example.test.ts` fails when one is missing.
@@ -154,6 +156,12 @@ export const env = createEnv({
         RATE_LIMIT_MODE: z.enum(['upstash', 'memory']).optional(),
         UPSTASH_REDIS_REST_URL: z.string().url().optional(),
         UPSTASH_REDIS_REST_TOKEN: z.string().min(1).optional(),
+        // How many reverse proxies in front of this process append to
+        // X-Forwarded-For (production: one, Caddy on our own VM). The client
+        // address is the entry this many positions from the RIGHT; anything to
+        // its left is whatever the client sent. 0 trusts no forwarded header.
+        // Read in one place: src/lib/http/client-ip.ts.
+        TRUSTED_PROXY_HOPS: z.coerce.number().int().min(0).max(10).default(1),
 
         // ── File storage ──
         // `local` (the default) writes under FILE_STORAGE_ROOT; `s3` talks to
@@ -210,6 +218,7 @@ export const env = createEnv({
         RATE_LIMIT_MODE: process.env.RATE_LIMIT_MODE,
         UPSTASH_REDIS_REST_URL: process.env.UPSTASH_REDIS_REST_URL,
         UPSTASH_REDIS_REST_TOKEN: process.env.UPSTASH_REDIS_REST_TOKEN,
+        TRUSTED_PROXY_HOPS: process.env.TRUSTED_PROXY_HOPS,
         STORAGE_PROVIDER: process.env.STORAGE_PROVIDER,
         FILE_STORAGE_ROOT: process.env.FILE_STORAGE_ROOT,
         FILE_MAX_SIZE_BYTES: process.env.FILE_MAX_SIZE_BYTES,

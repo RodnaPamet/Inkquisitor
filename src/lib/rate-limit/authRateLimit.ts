@@ -4,7 +4,7 @@
  * `./edge-tier.ts` decides that a request is in this tier (when ANY spelling
  * Next could route it by is below `/api/auth`, so `/api/%61uth/…`,
  * `//api/auth/…` and `/api/auth/x/..%2F..%2Fhealth` are too) and at which
- * level; this module counts it. Runs in `src/middleware.ts` before authentication, so it is keyed on the
+ * level; this module counts it. Runs in `src/proxy.ts` before authentication, so it is keyed on the
  * caller's IP plus a short hash of the User-Agent (to soften the shared
  * bucket behind a NAT), never on a user. Three strictness levels:
  *
@@ -89,6 +89,7 @@ export async function checkAuthRateLimit(
     req: NextRequest,
     tier: AuthEndpointTier,
     pathname: string,
+    requestId?: string,
 ): Promise<{ ok: boolean; response?: NextResponse; headers?: Headers }> {
     if (edgeRateLimitBypassed()) return { ok: true };
     try {
@@ -99,7 +100,7 @@ export async function checkAuthRateLimit(
             'X-RateLimit-Reset': String(check.reset),
         });
         if (!check.ok) {
-            edgeLogger.warn('auth rate limit exceeded', { component: 'rate-limit', tier, pathname });
+            edgeLogger.warn('auth rate limit exceeded', { component: 'rate-limit', requestId, tier, pathname });
             headers.set('Retry-After', String(check.retryAfter));
             return {
                 ok: false,
@@ -112,7 +113,7 @@ export async function checkAuthRateLimit(
         return { ok: true, headers };
     } catch (error) {
         // Fail open: an Upstash outage must not stop people signing in.
-        edgeLogger.error('auth rate limit exception, failing open', { component: 'rate-limit', err: String(error) });
+        edgeLogger.error('auth rate limit exception, failing open', { component: 'rate-limit', requestId, err: String(error) });
         return { ok: true };
     }
 }

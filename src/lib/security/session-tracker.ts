@@ -26,6 +26,7 @@
 import { randomBytes } from 'node:crypto';
 import { prisma } from '@/lib/db';
 import { logger } from '@/lib/observability/logger';
+import { UNKNOWN_CLIENT, clientIpFrom } from '@/lib/http/client-ip';
 
 /** A session lives this long from sign-in; the JWT's `maxAge` matches it (src/auth.ts). */
 export const SESSION_MAX_AGE_SECONDS = 30 * 24 * 60 * 60;
@@ -33,11 +34,11 @@ export const SESSION_MAX_AGE_SECONDS = 30 * 24 * 60 * 60;
 /** `lastActiveAt` is written at most this often. */
 const TOUCH_INTERVAL_MS = 5 * 60 * 1000;
 
+/** The address the rate limits charge (src/lib/http/client-ip.ts); null when it cannot be trusted. */
 function pickIp(headers: Headers | null): string | null {
     if (!headers) return null;
-    const forwarded = headers.get('x-forwarded-for')?.split(',')[0]?.trim();
-    const ip = forwarded || headers.get('x-real-ip')?.trim() || null;
-    return ip ? ip.slice(0, 64) : null;
+    const ip = clientIpFrom(headers);
+    return ip === UNKNOWN_CLIENT ? null : ip;
 }
 
 function pickUserAgent(headers: Headers | null): string | null {

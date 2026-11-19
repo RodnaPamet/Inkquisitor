@@ -26,7 +26,7 @@
 import { Queue, type JobsOptions, type ConnectionOptions } from 'bullmq';
 import type Redis from 'ioredis';
 import { trace, SpanStatusCode } from '@opentelemetry/api';
-import { createProducerRedisClient } from '@/lib/redis';
+import { closeRedisClient, createProducerRedisClient } from '@/lib/redis';
 import { externalServiceError } from '@/lib/errors/types';
 import { captureTraceCarrier, OTEL_CARRIER_KEY } from '@/lib/observability/job-trace';
 import { logger } from '@/lib/observability/logger';
@@ -143,8 +143,9 @@ export async function closeQueue(): Promise<void> {
     queues().clear();
     for (const { queue, connection } of all) {
         await queue.close().catch(() => undefined);
-        // BullMQ leaves a connection it was handed open; it is ours to quit.
-        await connection.quit().catch(() => connection.disconnect());
+        // BullMQ leaves a connection it was handed open; it is ours to close,
+        // completely, whatever state an outage left it in (issue #9).
+        await closeRedisClient(connection);
     }
     if (all.length > 0) logger.info('job queue closed', { component: 'queue' });
 }

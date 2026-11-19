@@ -235,7 +235,7 @@ export const API_MUTATION_LIMIT: RateLimitConfig = {
 /**
  * General read API: 120 requests per minute per (IP, userId, workspace).
  *
- * Applied at the Edge middleware to GET requests under `/api/`, excluding the
+ * Applied by the proxy (src/proxy.ts) to GET requests under `/api/`, excluding the
  * health probes (`/api/health`, `/api/livez`, `/api/readyz`) and the auth
  * tier's `/api/auth/` (see `src/lib/rate-limit/apiReadRateLimit.ts`).
  *
@@ -313,7 +313,7 @@ export interface ProgressiveRateLimitPolicy {
  * spread over a day never lock anyone out. The lockout itself lasts
  * `lockoutMs` (15 minutes) from the last failure, NOT the rest of the
  * window: the first attempt after it ends finds the counter RESET to
- * zero (`evaluateProgressiveRateLimit`). So this policy alone admits
+ * zero (`ProgressiveLockout.evaluate`). So this policy alone admits
  * about 10 guesses per 15 minutes per identifier, roughly 40 an hour —
  * size brute-force exposure from that figure, not from 10/hour.
  */
@@ -327,128 +327,7 @@ export const LOGIN_PROGRESSIVE_POLICY: ProgressiveRateLimitPolicy = {
     windowMs: 60 * 60 * 1000,
 };
 
-export interface ProgressiveRateLimitDecision {
-    /**
-     * `false` when the identifier is in lockout and no further
-     * verify should be attempted. The caller returns 429/"too many
-     * requests" to the client.
-     */
-    allowed: boolean;
-    /**
-     * Delay (ms) the caller SHOULD sleep before proceeding with the
-     * expensive verify. `0` when under the first tier. The caller
-     * is responsible for actually sleeping — this function returns
-     * synchronously so it can be used inside timing-sensitive
-     * branches (e.g. a dummyVerify needs to happen even on lockout).
-     */
-    delayMs: number;
-    /**
-     * Only populated when `allowed === false`. Seconds until the
-     * lockout expires (always ≥ 1).
-     */
-    retryAfterSeconds: number;
-    /** Failures currently counted against this identifier. */
-    failureCount: number;
-}
-
-function pickDelayMs(
-    count: number,
-    tiers: readonly ProgressiveRateLimitTier[],
-): number {
-    let delay = 0;
-    for (const tier of tiers) {
-        if (count >= tier.atFailures) delay = tier.delayMs;
-    }
-    return delay;
-}
-
-/**
- * Evaluate the current state WITHOUT recording a new attempt. Call
- * this BEFORE verifying the password so the caller knows how long
- * to delay (and whether to short-circuit with a lockout response).
- *
- * Reuses the same sliding-window store the other rate-limit functions
- * in this file already use — one process-wide Map, swept on a caller's
- * turn (see the header).
- */
-export function evaluateProgressiveRateLimit(
-    key: string,
-    policy: ProgressiveRateLimitPolicy,
-): ProgressiveRateLimitDecision {
-    const now = Date.now();
-    sweepStale(now);
-    const entry = entryFor(key, policy.windowMs);
-
-    // Expire stale failures out of the count but keep the entry
-    // stored; caller may be about to write a new failure.
-    const windowStart = now - policy.windowMs;
-    entry.timestamps = entry.timestamps.filter((t) => t > windowStart);
-    store.set(key, entry);
-
-    const failureCount = entry.timestamps.length;
-
-    if (failureCount >= policy.lockoutAtFailures) {
-        const lastFailure = entry.timestamps[entry.timestamps.length - 1];
-        const lockoutEnd = lastFailure + policy.lockoutMs;
-        if (now < lockoutEnd) {
-            return {
-                allowed: false,
-                delayMs: 0,
-                retryAfterSeconds: Math.max(
-                    1,
-                    Math.ceil((lockoutEnd - now) / 1000),
-                ),
-                failureCount,
-            };
-        }
-        // Lockout expired — counter resets. The attempt proceeds
-        // with zero delay; a legitimate user who came back after
-        // the lockout should not immediately eat another 30s.
-        entry.timestamps = [];
-        store.set(key, entry);
-        return {
-            allowed: true,
-            delayMs: 0,
-            retryAfterSeconds: 0,
-            failureCount: 0,
-        };
-    }
-
-    return {
-        allowed: true,
-        delayMs: pickDelayMs(failureCount, policy.tiers),
-        retryAfterSeconds: 0,
-        failureCount,
-    };
-}
-
-/**
- * Record a failure for this identifier. Call AFTER a verify has
- * returned `false`. Returns the post-increment decision so the
- * caller can surface the new lockout state to logging / audit.
- */
-export function recordProgressiveFailure(
-    key: string,
-    policy: ProgressiveRateLimitPolicy,
-): ProgressiveRateLimitDecision {
-    const now = Date.now();
-    sweepStale(now);
-    const entry = entryFor(key, policy.windowMs);
-    // Trim the window before writing so the count we return is
-    // current.
-    const windowStart = now - policy.windowMs;
-    entry.timestamps = entry.timestamps.filter((t) => t > windowStart);
-    entry.timestamps.push(now);
-    store.set(key, entry);
-
-    return evaluateProgressiveRateLimit(key, policy);
-}
-
-/**
- * Clear the failure list. Call after a SUCCESSFUL verify so a
- * legitimate user who typo'd a few times isn't still throttled on
- * the next login.
- */
-export function resetProgressiveFailures(key: string): void {
-    store.delete(key);
-}
+// The decision logic, and the store the failures are counted in (shared by
+// every process when one is configured), live in ./progressive-lockout.ts
+// (Phase 0.H, issue #10): the per-process Map this file used to count them in
+// gave N processes N lockout budgets.

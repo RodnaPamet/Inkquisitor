@@ -29,7 +29,7 @@ import type { RateLimitConfig } from '@/lib/security/rate-limit';
  * only (`@/lib/observability/safe-error`).
  */
 
-/** The id the middleware stamped, if it has the safe shape, else a new one. */
+/** The id the proxy stamped, if it has the safe shape, else a new one. */
 const REQUEST_ID_SHAPE = /^[A-Za-z0-9._:-]{1,128}$/;
 function resolveRequestId(header: string | null): string {
     return header && REQUEST_ID_SHAPE.test(header) ? header : crypto.randomUUID();

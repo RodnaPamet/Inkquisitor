@@ -20,7 +20,7 @@
  *     `WITHHELD_MESSAGE`.
  *
  * Detection is by `instanceof AppError` and by name, never by importing
- * Prisma: `src/lib/errors/types.ts` is imported from edge middleware.
+ * Prisma: `src/lib/errors/types.ts` is imported from the proxy (`src/proxy.ts`).
  */
 import { AppError } from '@/lib/errors/types';
 

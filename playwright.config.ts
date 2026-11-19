@@ -8,9 +8,11 @@ import path from 'node:path';
  * Runs against `next start` — a production build — on a dedicated port so it
  * never collides with `npm run dev` on 3000. Run `npm run build` first; the
  * web server below only starts the built app. Setting URL points the suite at
- * an already-running server instead.
+ * an already-running server instead. `E2E_PORT` moves the port (default 3100)
+ * for a machine where that one is taken; the refusal spec starts its own,
+ * short-lived server one above it.
  */
-const port = 3100;
+const port = Number(process.env.E2E_PORT || 3100);
 const isCI = !!process.env.CI;
 
 /**

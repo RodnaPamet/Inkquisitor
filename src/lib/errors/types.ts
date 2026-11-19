@@ -244,7 +244,7 @@ export function toApiErrorResponse(error: unknown, requestId?: string): { payloa
         // wrong, not that the caller sent a bad request — answering 400
         // would blame the client for a server defect and hide the bug.
         // Detected by name rather than `instanceof`: this module is
-        // imported from Edge middleware, which cannot pull in
+        // imported from the proxy, whose graph stays free of
         // `@prisma/client` (see the comment above).
         status = 500;
         payload.error.code = 'INVALID_QUERY';

@@ -179,7 +179,7 @@ describe('Tooltip primitive', () => {
         it('exposes the help button with an accessible label', () => {
             render(
                 <Harness>
-                    <InfoTooltip content="Evidence must be dated." />
+                    <InfoTooltip content="Scenes must be dated." />
                 </Harness>,
             );
 
@@ -192,7 +192,7 @@ describe('Tooltip primitive', () => {
                 <Harness>
                     <InfoTooltip
                         aria-label="Field validation help"
-                        content="Evidence must be dated."
+                        content="Scenes must be dated."
                     />
                 </Harness>,
             );
@@ -206,13 +206,13 @@ describe('Tooltip primitive', () => {
             const user = userEvent.setup();
             render(
                 <Harness>
-                    <InfoTooltip content="Evidence must be dated." />
+                    <InfoTooltip content="Scenes must be dated." />
                 </Harness>,
             );
 
             await user.tab();
             const tooltip = await screen.findByRole('tooltip');
-            expect(tooltip).toHaveTextContent('Evidence must be dated.');
+            expect(tooltip).toHaveTextContent('Scenes must be dated.');
         });
     });
 
@@ -221,8 +221,8 @@ describe('Tooltip primitive', () => {
             const { container } = render(
                 <Harness>
                     <Tooltip
-                        title="ISO 27001 Clause 9.3"
-                        content="Management review ensures the ISMS remains suitable."
+                        title="Point of view"
+                        content="Whose eyes the reader sees this scene through."
                         shortcut="?"
                     >
                         <button type="button">Help</button>

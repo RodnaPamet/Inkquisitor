@@ -1,6 +1,6 @@
 /**
  * The secret next-auth signs and encrypts the session JWT with, read by both
- * the auth configuration (`src/auth.ts`) and the edge middleware's
+ * the auth configuration (`src/auth.ts`) and the proxy's (`src/proxy.ts`)
  * `getToken`, so the two can never disagree.
  *
  * REQUIRED in production: `src/lib/startup-checks.ts` refuses a production

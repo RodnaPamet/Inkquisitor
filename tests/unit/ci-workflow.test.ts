@@ -131,7 +131,9 @@ describe('.github/workflows/ci.yml', () => {
 
     it('Build succeeds without secrets', () => {
         expect(all.build).toMatch(/SKIP_ENV_VALIDATION: '1'/);
-        expect(all.build).toMatch(/- run: npm run build$/m);
+        // The build runs through its checker, which fails on a warning (Phase 0.H).
+        expect(all.build).toMatch(/- run: npm run build:check$/m);
+        expect(JSON.parse(fs.readFileSync(path.resolve(__dirname, '../../package.json'), 'utf8')).scripts['build:check']).toBe('node scripts/check-build.js');
         expect(all.build).toMatch(/- run: npm run build:worker$/m);
         expect(ci).not.toMatch(/\$\{\{\s*secrets\./);
     });

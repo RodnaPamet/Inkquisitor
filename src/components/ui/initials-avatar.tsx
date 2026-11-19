@@ -3,7 +3,7 @@
 /**
  * `<InitialsAvatar>` — the single avatar primitive.
  *
- * Before this existed, four chrome surfaces (`UserMenu`,
+ * Before this existed, four inflect-compliance chrome surfaces (`UserMenu`,
  * `TenantSwitcher`, `TenantIdentityPill`, `OrgIdentityPill`) each
  * carried their own `initials*()` helper and their own
  * `bg-[var(--brand-subtle)]` circle recipe — four subtly-divergent

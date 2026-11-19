@@ -30,21 +30,22 @@ import {
     progressiveKeyFor,
     settleSignInFailureAudits,
 } from '@/lib/auth/credentials';
-import { LOGIN_PROGRESSIVE_POLICY, resetProgressiveFailures } from '@/lib/security/rate-limit';
+import { LOGIN_PROGRESSIVE_POLICY } from '@/lib/security/rate-limit';
+import { lockoutFor } from '@/lib/security/progressive-lockout';
 
 const EMAIL = 'victim@example.test';
 const USER = { id: 'user-victim', email: EMAIL, name: null, passwordHash: 'stored-hash' };
 const noSleep = { sleepImpl: async () => undefined };
 
 let now: number;
-beforeEach(() => {
+beforeEach(async () => {
     now = Date.UTC(2026, 10, 19, 12, 0, 0);
     jest.spyOn(Date, 'now').mockImplementation(() => now);
     findUnique.mockReset().mockResolvedValue(USER);
     recordUserAuthEvent.mockReset().mockResolvedValue(undefined);
     verifyPassword.mockClear();
     dummyVerify.mockClear();
-    resetProgressiveFailures(progressiveKeyFor(EMAIL));
+    await lockoutFor(LOGIN_PROGRESSIVE_POLICY).reset(progressiveKeyFor(EMAIL));
     _resetSignInFailureAuditWindow();
     delete process.env.RATE_LIMIT_ENABLED;
 });
@@ -58,7 +59,11 @@ const attempt = (password = 'wrong') => authenticateWithPassword({ email: EMAIL,
 describe('timing: the failure path does not wait for the audit write', () => {
     it('a known email with a wrong password answers while its audit append is still pending', async () => {
         recordUserAuthEvent.mockImplementation(() => new Promise(() => undefined)); // never settles
-        const answer = await Promise.race([attempt(), new Promise((r) => setTimeout(() => r('BLOCKED'), 1_000))]);
+        // The timer is cleared: one left running outlives the file in its Jest
+        // worker, which is then force-exited at the end of the run.
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        const blocked = new Promise((r) => (timer = setTimeout(() => r('BLOCKED'), 1_000)));
+        const answer = await Promise.race([attempt(), blocked]).finally(() => clearTimeout(timer));
         expect(answer).toEqual({ ok: false, reason: 'credentials_invalid' });
         expect(recordUserAuthEvent).toHaveBeenCalledTimes(1);
     });
