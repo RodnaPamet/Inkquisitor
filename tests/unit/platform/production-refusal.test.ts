@@ -38,6 +38,9 @@ function productionEnv(overrides: Record<string, string | undefined>): NodeJS.Pr
         NEXTAUTH_URL: 'https://inkquisitor.example.test',
         AUTH_SECRET: fake('auth'),
         DATA_ENCRYPTION_KEY: fake('kek'),
+        // Production requires the model key since 2.2, with a declared retention mode.
+        ANTHROPIC_API_KEY: fake('model'),
+        AI_RETENTION_MODE: 'zdr',
         LOG_LEVEL: 'silent',
         ...overrides,
     };
@@ -66,12 +69,22 @@ describe('the worker refuses to start in production', () => {
         ['DATA_ENCRYPTION_KEY', { DATA_ENCRYPTION_KEY: undefined }],
         ['AUTH_SECRET', { AUTH_SECRET: 'too-short' }],
         ['AUTH_SECRET', { AUTH_SECRET: DEV_FALLBACK_AUTH_SECRET }],
+        ['ANTHROPIC_API_KEY', { ANTHROPIC_API_KEY: undefined }],
+        ['AI_RETENTION_MODE', { AI_RETENTION_MODE: undefined }],
     ])('refuses when %s alone is missing or unfit', (name, overrides) => {
         const r = startWorker(productionEnv({ SKIP_ENV_VALIDATION: '1', ...overrides }));
         expect(r.status).toBe(1);
         const fatal = fatalLines(r.stderr);
         expect(fatal).toHaveLength(1);
         expect(fatal[0]).toContain(name);
+    }, 60_000);
+
+    it('standard-beta retention is named in a WARN at start, before (and apart from) any FATAL', () => {
+        const r = startWorker(productionEnv({ SKIP_ENV_VALIDATION: '1', AI_RETENTION_MODE: 'standard-beta', AUTH_SECRET: undefined }));
+        expect(r.status).toBe(1);
+        const warn = r.stderr.split('\n').filter((l) => l.startsWith('[startup] WARN:'));
+        expect(warn).toEqual([expect.stringContaining('AI_RETENTION_MODE=standard-beta')]);
+        expect(fatalLines(r.stderr)).toEqual([expect.stringContaining('AUTH_SECRET')]);
     }, 60_000);
 
     it('with schema validation ON, the env schema refuses first, naming both, and the process exits non-zero', () => {

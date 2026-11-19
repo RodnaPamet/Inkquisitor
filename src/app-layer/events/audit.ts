@@ -48,7 +48,11 @@ export type AuditAction =
     | 'BIBLE_VERSION_RESTORED'
     | 'BIBLE_EXPORTED'
     | 'BIBLE_BUNDLE_IMPORTED'
-    | 'BIBLE_CONCEPT_NOTE_IMPORTED';
+    | 'BIBLE_CONCEPT_NOTE_IMPORTED'
+    | 'INTERVIEW_STARTED'
+    | 'INTERVIEW_ROUND_OPENED'
+    | 'INTERVIEW_ROUND_CLOSED'
+    | 'INTERVIEW_ENDED';
 
 export interface AuditEventPayload {
     action: AuditAction;

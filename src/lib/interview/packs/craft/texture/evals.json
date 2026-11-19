@@ -1,0 +1,480 @@
+[
+  {
+    "id": "texture-01",
+    "rationale": "Empty entry at depth 1, detail 1. Both level-1 core fields, leading senses and density, are eligible; recurring details and motifs are out of depth and behind dependencies. A right output offers a pick among senses or a density scale. A likely wrong one asks an open question, offers sample smells or objects as options, or recommends something when nothing is stored.",
+    "elementName": "Whole-book texture",
+    "bibleState": {
+      "sensory_emphasis": null,
+      "detail_density": null,
+      "recurring_details": null,
+      "motifs": null
+    },
+    "priorAnswers": [],
+    "dials": {
+      "depth": 1,
+      "detail": 1
+    },
+    "expect": {
+      "targetsAnyOf": [
+        "sensory_emphasis",
+        "detail_density"
+      ],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "EXCEEDS_DEPTH",
+        "MISMATCHES_DETAIL",
+        "MALFORMED_OPTIONS",
+        "UNGROUNDED_RECOMMENDATION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE",
+        "USES_BRANDED_FRAMEWORK"
+      ]
+    }
+  },
+  {
+    "id": "texture-02",
+    "rationale": "Empty entry at depth 5, detail 5. The deep dial reaches every level, yet recurring details wait on the leading senses and motifs on recurring details, so only the two level-1 fields are eligible. Detail 5 allows only open and scenario questions, so a density scale is a mismatch. A likely wrong output jumps to motifs because depth allows it, or invents flood imagery for the author.",
+    "elementName": "The flood year",
+    "bibleState": {
+      "sensory_emphasis": null,
+      "detail_density": null,
+      "recurring_details": null,
+      "motifs": null
+    },
+    "priorAnswers": [],
+    "dials": {
+      "depth": 5,
+      "detail": 5
+    },
+    "expect": {
+      "targetsAnyOf": [
+        "sensory_emphasis",
+        "detail_density"
+      ],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "MISMATCHES_DETAIL",
+        "COMPOUND_QUESTION",
+        "LEADING_QUESTION",
+        "UNGROUNDED_RECOMMENDATION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE"
+      ]
+    }
+  },
+  {
+    "id": "texture-03",
+    "rationale": "Half-filled entry at depth 1. Leading senses and density are stored and the next field, recurring details, is level 2, so nothing is eligible: the right output asks nothing and says recurring details need depth 2. Paired with texture-04 (same entry, depth 5). A likely wrong output re-asks the stored senses or density, or reaches past the dial for recurring details.",
+    "elementName": "The glassworks chapters",
+    "bibleState": {
+      "sensory_emphasis": "Heat on the skin first, then sound; sight comes a distant third.",
+      "detail_density": 4,
+      "recurring_details": null,
+      "motifs": null
+    },
+    "priorAnswers": [],
+    "dials": {
+      "depth": 1,
+      "detail": 2
+    },
+    "expect": {
+      "targetsAnyOf": [],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "EXCEEDS_DEPTH",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE"
+      ]
+    }
+  },
+  {
+    "id": "texture-04",
+    "rationale": "Same half-filled entry as texture-03 at depth 5. Recurring details are now eligible; motifs still wait on them. Detail 2 invites a pick or one sentence. The tempting mistakes are re-asking the stored senses or density, asking for motifs early, or offering options that name glassworks sounds or objects the author never gave.",
+    "elementName": "The glassworks chapters",
+    "bibleState": {
+      "sensory_emphasis": "Heat on the skin first, then sound; sight comes a distant third.",
+      "detail_density": 4,
+      "recurring_details": null,
+      "motifs": null
+    },
+    "priorAnswers": [],
+    "dials": {
+      "depth": 5,
+      "detail": 2
+    },
+    "expect": {
+      "targetsAnyOf": [
+        "recurring_details"
+      ],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "MISMATCHES_DETAIL",
+        "MALFORMED_OPTIONS",
+        "UNGROUNDED_RECOMMENDATION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE"
+      ]
+    }
+  },
+  {
+    "id": "texture-05",
+    "rationale": "Senses and recurring details stored; density and motifs open, both eligible at depth 3. Detail 1 allows only picks and scales, so a motif question must offer items from the stored list or craft relations between them. The tempting mistakes are re-asking the recurring details or offering a motif the author never listed. Paired with texture-06 (detail 5).",
+    "elementName": "The night ward",
+    "bibleState": {
+      "sensory_emphasis": "Smell above all, then touch; sound only when something goes wrong.",
+      "detail_density": null,
+      "recurring_details": [
+        "The squeak of the medicine trolley's back wheel",
+        "Starched pillowcases that crackle",
+        "The night sister's peppermints",
+        "A radiator that knocks before dawn"
+      ],
+      "motifs": null
+    },
+    "priorAnswers": [],
+    "dials": {
+      "depth": 3,
+      "detail": 1
+    },
+    "expect": {
+      "targetsAnyOf": [
+        "detail_density",
+        "motifs"
+      ],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "EXCEEDS_DEPTH",
+        "MISMATCHES_DETAIL",
+        "MALFORMED_OPTIONS",
+        "UNGROUNDED_RECOMMENDATION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE"
+      ]
+    }
+  },
+  {
+    "id": "texture-06",
+    "rationale": "Same entry as texture-05 at detail 5: only open and scenario questions, inviting several paragraphs, so density must be asked openly, not as a 1-5 scale. A strong scenario quotes stored details such as the peppermints or the knocking radiator. A likely wrong output uses a scale or options, writes a sample ward passage, or declares which detail is the motif.",
+    "elementName": "The night ward",
+    "bibleState": {
+      "sensory_emphasis": "Smell above all, then touch; sound only when something goes wrong.",
+      "detail_density": null,
+      "recurring_details": [
+        "The squeak of the medicine trolley's back wheel",
+        "Starched pillowcases that crackle",
+        "The night sister's peppermints",
+        "A radiator that knocks before dawn"
+      ],
+      "motifs": null
+    },
+    "priorAnswers": [],
+    "dials": {
+      "depth": 3,
+      "detail": 5
+    },
+    "expect": {
+      "targetsAnyOf": [
+        "detail_density",
+        "motifs"
+      ],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "MISMATCHES_DETAIL",
+        "COMPOUND_QUESTION",
+        "VERDICT_NOT_QUESTION",
+        "UNGROUNDED_RECOMMENDATION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE"
+      ]
+    }
+  },
+  {
+    "id": "texture-07",
+    "rationale": "Prior answers settle fields: a1 gave density and a2 listed recurring details this session, though neither is in the bible yet. Both are touched, so only motifs are eligible, built from the items in a2. The tempting mistake is re-asking density or recurring details because their stored values are still null, or rewording a1 or a2.",
+    "elementName": "The orchard summers",
+    "bibleState": {
+      "sensory_emphasis": "Taste and smell lead; sight is mostly colour and light.",
+      "detail_density": null,
+      "recurring_details": null,
+      "motifs": null
+    },
+    "priorAnswers": [
+      {
+        "id": "a1",
+        "questionKind": "SCALE",
+        "question": "How much concrete detail should a typical page of the orchard summers carry?",
+        "scaleLabels": {
+          "low": "Sparse: only what the scene needs",
+          "high": "Lush: every surface furnished"
+        },
+        "targetsFieldKeys": [
+          "detail_density"
+        ],
+        "status": "ANSWERED",
+        "answer": 5
+      },
+      {
+        "id": "a2",
+        "questionKind": "OPEN",
+        "question": "Which concrete things return across the orchard summers often enough that a reader would miss them if they went?",
+        "targetsFieldKeys": [
+          "recurring_details"
+        ],
+        "status": "ANSWERED",
+        "answer": "The cider press grinding in the barn, wasps in the windfalls, Hester's dented tin bucket, and the smell of bruised apples in the cellar."
+      }
+    ],
+    "dials": {
+      "depth": 3,
+      "detail": 3
+    },
+    "expect": {
+      "targetsAnyOf": [
+        "motifs"
+      ],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "REPEATS_PRIOR_QUESTION",
+        "SKIPS_DEPENDENCY",
+        "EXCEEDS_DEPTH",
+        "LEADING_QUESTION",
+        "UNGROUNDED_RECOMMENDATION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE"
+      ]
+    }
+  },
+  {
+    "id": "texture-08",
+    "rationale": "a1 settled the leading sense (sound) and a2 deferred density. The deferral neither re-opens density nor blocks recurring details, which rest only on the leading senses, so recurring details are the only target. The tempting mistakes are asking density again, rewording a1, or offering options that name sounds the author never gave; a short open question is the safe route.",
+    "elementName": "The tenement winter",
+    "bibleState": {
+      "sensory_emphasis": null,
+      "detail_density": null,
+      "recurring_details": null,
+      "motifs": null
+    },
+    "priorAnswers": [
+      {
+        "id": "a1",
+        "questionKind": "CHOICE",
+        "question": "Which sense should lead the page across the tenement winter?",
+        "options": [
+          "Sight",
+          "Sound",
+          "Smell and taste",
+          "Touch and temperature"
+        ],
+        "targetsFieldKeys": [
+          "sensory_emphasis"
+        ],
+        "status": "ANSWERED",
+        "answer": "Sound"
+      },
+      {
+        "id": "a2",
+        "questionKind": "SCALE",
+        "question": "How much concrete detail should a typical page of the tenement winter carry?",
+        "scaleLabels": {
+          "low": "Sparse: only what the scene needs",
+          "high": "Lush: every surface furnished"
+        },
+        "targetsFieldKeys": [
+          "detail_density"
+        ],
+        "status": "DECIDE_LATER",
+        "answer": null
+      }
+    ],
+    "dials": {
+      "depth": 4,
+      "detail": 2
+    },
+    "expect": {
+      "targetsAnyOf": [
+        "recurring_details"
+      ],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "REPEATS_PRIOR_QUESTION",
+        "SKIPS_DEPENDENCY",
+        "EXCEEDS_DEPTH",
+        "MISMATCHES_DETAIL",
+        "MALFORMED_OPTIONS",
+        "UNGROUNDED_RECOMMENDATION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE"
+      ]
+    }
+  },
+  {
+    "id": "texture-09",
+    "rationale": "The author skipped the leading senses (a1) and density is stored. A skip neither re-opens its field this session nor satisfies its dependants, so recurring details and motifs stay out of reach even at depth 5 and the frontier is empty. The right output asks nothing and says recurring details wait on the skipped senses. A likely wrong one re-asks a1 or asks for recurring details anyway.",
+    "elementName": "The desert crossing",
+    "bibleState": {
+      "sensory_emphasis": null,
+      "detail_density": 1,
+      "recurring_details": null,
+      "motifs": null
+    },
+    "priorAnswers": [
+      {
+        "id": "a1",
+        "questionKind": "OPEN",
+        "question": "Which senses should the page lean on most during the desert crossing?",
+        "targetsFieldKeys": [
+          "sensory_emphasis"
+        ],
+        "status": "SKIPPED",
+        "answer": null
+      }
+    ],
+    "dials": {
+      "depth": 5,
+      "detail": 3
+    },
+    "expect": {
+      "targetsAnyOf": [],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "REPEATS_PRIOR_QUESTION",
+        "SKIPS_DEPENDENCY",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE"
+      ]
+    }
+  },
+  {
+    "id": "texture-10",
+    "rationale": "a1 names smell then sound but asks the interviewer to write a dawn passage and invent the smells. It is ANSWERED, so the leading senses are settled and recurring details are the only target at depth 2. A right output asks the author for their own recurring smells and sounds; a wrong one writes the passage, lists sample smells, or offers invented details as options.",
+    "elementName": "The river market",
+    "bibleState": {
+      "sensory_emphasis": null,
+      "detail_density": 3,
+      "recurring_details": null,
+      "motifs": null
+    },
+    "priorAnswers": [
+      {
+        "id": "a1",
+        "questionKind": "OPEN",
+        "question": "Which senses should the page lean on most across the river market chapters?",
+        "targetsFieldKeys": [
+          "sensory_emphasis"
+        ],
+        "status": "ANSWERED",
+        "answer": "Mostly smell, I think, then sound. Honestly I can't put it into words: just write me a paragraph of the market at dawn the way it should feel, and make up the smells for me. I'll keep whatever works."
+      }
+    ],
+    "dials": {
+      "depth": 2,
+      "detail": 4
+    },
+    "expect": {
+      "targetsAnyOf": [
+        "recurring_details"
+      ],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "EXCEEDS_DEPTH",
+        "MISMATCHES_DETAIL",
+        "UNGROUNDED_RECOMMENDATION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE",
+        "FOLLOWS_EMBEDDED_INSTRUCTION"
+      ]
+    }
+  },
+  {
+    "id": "texture-11",
+    "rationale": "Only motifs are open and eligible. The pull is towards neighbouring kinds: asking what the motifs argue (theme), describing the workshop as a place (setting), or offering a motif the author never listed, such as a stopped clock. A right question works from the four stored recurring details, for instance asking which of them gathers meaning as it returns.",
+    "elementName": "The clockmaker's workshop scenes",
+    "bibleState": {
+      "sensory_emphasis": "Sound first, then touch; sight stays plain and practical.",
+      "detail_density": 2,
+      "recurring_details": [
+        "The ticking of the wall clocks",
+        "Brass filings on the bench",
+        "Oil on the fingertips",
+        "The shop bell over the door"
+      ],
+      "motifs": null
+    },
+    "priorAnswers": [],
+    "dials": {
+      "depth": 3,
+      "detail": 3
+    },
+    "expect": {
+      "targetsAnyOf": [
+        "motifs"
+      ],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "OUT_OF_SCOPE_KIND",
+        "COMPOUND_QUESTION",
+        "LEADING_QUESTION",
+        "UNGROUNDED_RECOMMENDATION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE",
+        "USES_BRANDED_FRAMEWORK"
+      ]
+    }
+  },
+  {
+    "id": "texture-12",
+    "rationale": "The author skipped motifs this session (a1), so only density is eligible. Detail 4 allows no scale: density must be asked as a choice of degree with a reason, or openly. The tempting mistakes are rewording a1, re-asking the stored recurring details, using a 1-5 scale, or judging the stored list too sparse instead of asking.",
+    "elementName": "The mountain school",
+    "bibleState": {
+      "sensory_emphasis": "Cold through the hands and feet first, then sound carried on thin air.",
+      "detail_density": null,
+      "recurring_details": [
+        "The bell rope's frayed end",
+        "Wet wool drying by the stove",
+        "Chalk squealing on slate",
+        "Boots knocked against the step"
+      ],
+      "motifs": null
+    },
+    "priorAnswers": [
+      {
+        "id": "a1",
+        "questionKind": "OPEN",
+        "question": "Which of the recurring details you have listed should gather meaning each time it returns?",
+        "targetsFieldKeys": [
+          "motifs"
+        ],
+        "status": "SKIPPED",
+        "answer": null
+      }
+    ],
+    "dials": {
+      "depth": 4,
+      "detail": 4
+    },
+    "expect": {
+      "targetsAnyOf": [
+        "detail_density"
+      ],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "REPEATS_PRIOR_QUESTION",
+        "SKIPS_DEPENDENCY",
+        "MISMATCHES_DETAIL",
+        "VERDICT_NOT_QUESTION",
+        "MALFORMED_OPTIONS",
+        "UNGROUNDED_RECOMMENDATION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE"
+      ]
+    }
+  }
+]

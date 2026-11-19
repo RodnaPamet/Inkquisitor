@@ -39,7 +39,11 @@ export const AI_ERROR_CODES = [
     // PROVIDER_ERROR, by configuration (nothing was sent)
     'CREDENTIAL_NOT_CONFIGURED',
     'SDK_AMBIENT_HEADERS_SET',
+    // The 2.1 name of RETENTION_MODE_UNDECLARED; no longer recorded, kept so
+    // rows written before 2.2 stay in the vocabulary.
     'ZDR_NOT_CONFIRMED',
+    // production, no AI_RETENTION_MODE declared (decision D5, amended 2026-11-19)
+    'RETENTION_MODE_UNDECLARED',
     // PROVIDER_ERROR, from the provider or on the way to it
     'PROVIDER_HTTP_ERROR',
     'PROVIDER_CONNECTION',
@@ -65,12 +69,30 @@ export const AI_ERROR_CODES = [
 export type AiErrorCode = (typeof AI_ERROR_CODES)[number];
 
 /** Why the model layer cannot make any call at all. */
-export type AiUnavailableReason = 'AI_DISABLED' | 'CREDENTIAL_NOT_CONFIGURED' | 'SDK_AMBIENT_HEADERS_SET' | 'ZDR_NOT_CONFIRMED';
+export type AiUnavailableReason = 'AI_DISABLED' | 'CREDENTIAL_NOT_CONFIGURED' | 'SDK_AMBIENT_HEADERS_SET' | 'RETENTION_MODE_UNDECLARED';
 
 /** The base of every model-layer error: an `AppError` with a reason and the call's id. */
 export abstract class AiCallError extends AppError {
     public readonly reason: AiErrorCode;
     public readonly callId: string | null;
+    /**
+     * Every token the call used before it ended this way (input, output and
+     * cache reads and writes, as the provider reported them; 0 when nothing
+     * was sent, and for an attempt the provider reported no usage for, whose
+     * cost is estimated: an upper bound is no count). Set by `callStructured`
+     * as it throws, so a feature that budgets tokens (the question engine's
+     * session budget) charges a failed call too. A count, never text; not
+     * part of `details`.
+     */
+    public tokensUsed = 0;
+    /**
+     * What the call cost before it ended this way, in micro-dollars: the
+     * figure settled on its `AiCallLog` row (estimated where the provider
+     * reported no usage). Set by `callStructured` as it throws, so a feature
+     * that accounts per call (rule 9's cost budget) counts a failed call's
+     * spend too — a call that failed after its repair cost two attempts.
+     */
+    public costMicroUsd = 0;
     protected constructor(
         message: string,
         code: string,

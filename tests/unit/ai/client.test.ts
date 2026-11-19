@@ -113,7 +113,7 @@ describe('inspectRequest (pure)', () => {
 describe('clientForRun', () => {
     const saved = { ...process.env };
     afterEach(() => {
-        for (const k of ['ANTHROPIC_API_KEY', 'ANTHROPIC_CUSTOM_HEADERS', 'AI_DISABLED', 'ANTHROPIC_ZDR_CONFIRMED', 'NODE_ENV']) {
+        for (const k of ['ANTHROPIC_API_KEY', 'ANTHROPIC_CUSTOM_HEADERS', 'AI_DISABLED', 'ANTHROPIC_ZDR_CONFIRMED', 'AI_RETENTION_MODE', 'NODE_ENV']) {
             const e = process.env as Record<string, string | undefined>;
             if (saved[k] === undefined) delete e[k];
             else e[k] = saved[k];
@@ -137,11 +137,16 @@ describe('clientForRun', () => {
         expect(clientForRun()).toEqual({ ok: false, reason: 'SDK_AMBIENT_HEADERS_SET' });
     });
 
-    it('in production, refuses without the zero-retention statement (D5)', () => {
+    it('in production, refuses without a declared retention mode (D5, amended 2026-11-19)', () => {
         setFakeApiKey();
         (process.env as Record<string, string | undefined>).NODE_ENV = 'production';
-        expect(clientForRun()).toEqual({ ok: false, reason: 'ZDR_NOT_CONFIRMED' });
+        expect(clientForRun()).toEqual({ ok: false, reason: 'RETENTION_MODE_UNDECLARED' });
         process.env.ANTHROPIC_ZDR_CONFIRMED = '1';
+        expect(clientForRun().ok).toBe(true);
+        delete process.env.ANTHROPIC_ZDR_CONFIRMED;
+        process.env.AI_RETENTION_MODE = 'standard-beta';
+        expect(clientForRun().ok).toBe(true);
+        process.env.AI_RETENTION_MODE = 'zdr';
         expect(clientForRun().ok).toBe(true);
     });
 

@@ -6,12 +6,13 @@ and concatenates them at generate and migrate time.
 | File | Holds |
 |---|---|
 | `base.prisma` | The `generator` and `datasource` blocks — and nothing else. Prisma rejects a duplicate of either anywhere in the folder. |
-| `enums.prisma` | Every shared enum (`WorkspaceRole`; the bible's `BibleElementKind`, `BibleElementStatus`, `BookStage`, `BibleVersionSource`; the model layer's `AiCallOutcome`, `AiModelTier`). |
+| `enums.prisma` | Every shared enum (`WorkspaceRole`; the bible's `BibleElementKind`, `BibleElementStatus`, `BookStage`, `BibleVersionSource`; the question engine's `InterviewScope`, `InterviewStatus`, `InterviewStopReason`, `InterviewRoundStatus`, `QuestionKind`, `QuestionMode`, `QuestionOrigin`, `AnswerStatus`; the model layer's `AiCallOutcome`, `AiModelTier`). |
 | `auth.prisma` | People and how they sign in: `User`, `Account`, `VerificationToken`, `UserSession`. Not workspace-scoped. |
 | `workspace.prisma` | `Workspace` (with its wrapped data key) and `WorkspaceMembership`. Workspace-scoped. |
 | `audit.prisma` | `AuditLog`, the append-only, hash-chained trail. Workspace-scoped. |
 | `bible.prisma` | The book bible (Phase 1.1): `Book`, `BibleElement`, `BibleField`, `BibleRelation`, `BibleEntryVersion` (append-only). Workspace-scoped; the workspace travels in every foreign key. |
 | `ai.prisma` | The model layer's ledger (Phase 2.1): `AiCallLog` (one row per model call, numbers and names only, append-only), `AiSpendMonth` (settled spend per UTC month) and `AiSpendReservation` (a running call's worst case). Workspace-scoped; written only by `src/app-layer/repositories/ai-call.repository.ts`. |
+| `interview.prisma` | The question engine (Phase 2.2): `InterviewSession`, `InterviewRound`, `Question`, `Answer` (append-only). Workspace-scoped; the workspace travels in every foreign key, and a question's element is reached by `(bookId, elementId)`. |
 | `vector.prisma` | The vector store (subphase 2.0): `VectorEmbedding`, vectors only, one table for every embedding revision and source model. Workspace-scoped; the `embedding` column is `Unsupported("vector")` and reached only through `src/app-layer/repositories/vector.repository.ts`. |
 
 Pick the file that matches a new model's

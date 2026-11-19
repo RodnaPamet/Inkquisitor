@@ -6,7 +6,17 @@
  * spend ceiling counts: its arithmetic is integer, rounded up, long prompts are
  * dearer on Haiku 5.5, and an unknown model is priced at the dearest rates.
  */
-import { aiConfigProblems, aiDisabled, DEFAULT_MONTHLY_CEILING_USD, monthlyCeilingMicroUsd, parseCeilingUsd, zdrConfirmed } from '@/lib/ai/config';
+import {
+    aiConfigProblems,
+    aiConfigWarnings,
+    aiDisabled,
+    aiUnavailableReason,
+    DEFAULT_MONTHLY_CEILING_USD,
+    monthlyCeilingMicroUsd,
+    parseCeilingUsd,
+    retentionMode,
+    zdrConfirmed,
+} from '@/lib/ai/config';
 import { CONSERVATIVE_CAPABILITIES, MODEL_CAPABILITIES, MODEL_FAMILIES, modelCapabilitiesFor, modelFamilyOf } from '@/lib/ai/model-capabilities';
 import { costMicroUsd, MODEL_PRICES, priceFor, tokensCost, UNKNOWN_MODEL_PRICE, worstCaseCostMicroUsd } from '@/lib/ai/pricing';
 import { MODEL_TIERS, modelForTier, TIER_DEFAULTS, TIER_MODEL_ENV } from '@/lib/ai/tiers';
@@ -145,25 +155,52 @@ describe('deployment switches', () => {
         expect(aiDisabled({})).toBe(false);
     });
 
-    it('the ceiling defaults to $25 (a placeholder the owner may change), and a bad value never widens it', () => {
-        expect(DEFAULT_MONTHLY_CEILING_USD).toBe(25);
-        expect(monthlyCeilingMicroUsd({})).toBe(25_000_000);
+    it('the ceiling defaults to $50 (decision D10), and a bad value never widens it', () => {
+        expect(DEFAULT_MONTHLY_CEILING_USD).toBe(50);
+        expect(monthlyCeilingMicroUsd({})).toBe(50_000_000);
         expect(monthlyCeilingMicroUsd({ AI_MONTHLY_CEILING_USD_DEFAULT: '12.5' })).toBe(12_500_000);
         expect(monthlyCeilingMicroUsd({ AI_MONTHLY_CEILING_USD_DEFAULT: '0' })).toBe(0);
-        expect(monthlyCeilingMicroUsd({ AI_MONTHLY_CEILING_USD_DEFAULT: '9e9' })).toBe(25_000_000);
-        expect(monthlyCeilingMicroUsd({ AI_MONTHLY_CEILING_USD_DEFAULT: '-5' })).toBe(25_000_000);
+        expect(monthlyCeilingMicroUsd({ AI_MONTHLY_CEILING_USD_DEFAULT: '9e9' })).toBe(50_000_000);
+        expect(monthlyCeilingMicroUsd({ AI_MONTHLY_CEILING_USD_DEFAULT: '-5' })).toBe(50_000_000);
         expect(parseCeilingUsd('100001')).toBeNull();
     });
 
-    it('zero retention is stated only by exactly 1', () => {
+    it('zero retention is stated by AI_RETENTION_MODE=zdr, or by the 2.1 spelling ANTHROPIC_ZDR_CONFIRMED=1', () => {
+        expect(retentionMode({ AI_RETENTION_MODE: 'zdr' })).toBe('zdr');
+        expect(retentionMode({ AI_RETENTION_MODE: 'standard-beta' })).toBe('standard-beta');
+        expect(retentionMode({ ANTHROPIC_ZDR_CONFIRMED: '1' })).toBe('zdr');
+        expect(retentionMode({ ANTHROPIC_ZDR_CONFIRMED: '0' })).toBeNull();
+        expect(retentionMode({})).toBeNull();
+        // A malformed mode declares nothing; it never reads as standard retention.
+        expect(retentionMode({ AI_RETENTION_MODE: 'standard' })).toBeNull();
         expect(zdrConfirmed({ ANTHROPIC_ZDR_CONFIRMED: '1' })).toBe(true);
-        expect(zdrConfirmed({ ANTHROPIC_ZDR_CONFIRMED: '0' })).toBe(false);
-        expect(zdrConfirmed({})).toBe(false);
+        expect(zdrConfirmed({ AI_RETENTION_MODE: 'standard-beta' })).toBe(false);
     });
 
-    it('aiConfigProblems: no key needs nothing; a key needs the ZDR statement', () => {
-        expect(aiConfigProblems({})).toEqual([]);
-        expect(aiConfigProblems({ ANTHROPIC_API_KEY: 'k' }).join(' ')).toMatch(/ANTHROPIC_ZDR_CONFIRMED=1/);
+    it('aiConfigProblems (production): the key is required unless AI is off, and a key needs a declared retention mode', () => {
+        expect(aiConfigProblems({}).join(' ')).toMatch(/ANTHROPIC_API_KEY is required/);
+        expect(aiConfigProblems({ AI_DISABLED: '1' })).toEqual([]);
+        expect(aiConfigProblems({ ANTHROPIC_API_KEY: 'k' }).join(' ')).toMatch(/AI_RETENTION_MODE/);
+        expect(aiConfigProblems({ ANTHROPIC_API_KEY: 'k', AI_RETENTION_MODE: 'zdr' })).toEqual([]);
+        expect(aiConfigProblems({ ANTHROPIC_API_KEY: 'k', AI_RETENTION_MODE: 'standard-beta' })).toEqual([]);
         expect(aiConfigProblems({ ANTHROPIC_API_KEY: 'k', ANTHROPIC_ZDR_CONFIRMED: '1' })).toEqual([]);
+        expect(aiConfigProblems({ ANTHROPIC_API_KEY: 'k', AI_RETENTION_MODE: 'standard' }).join(' ')).toMatch(/must be one of: zdr, standard-beta/);
+        expect(aiConfigProblems({ ANTHROPIC_API_KEY: 'k', AI_RETENTION_MODE: 'standard-beta', ANTHROPIC_ZDR_CONFIRMED: '1' }).join(' ')).toMatch(/contradicts/);
+    });
+
+    it('standard-beta is said out loud: one WARN, naming the setting, never anything else', () => {
+        expect(aiConfigWarnings({ ANTHROPIC_API_KEY: 'k', AI_RETENTION_MODE: 'standard-beta' })).toEqual([expect.stringMatching(/^AI_RETENTION_MODE=standard-beta: .*closed beta/)]);
+        expect(aiConfigWarnings({ ANTHROPIC_API_KEY: 'k', AI_RETENTION_MODE: 'zdr' })).toEqual([]);
+        expect(aiConfigWarnings({ AI_RETENTION_MODE: 'standard-beta' })).toEqual([]);
+        expect(aiConfigWarnings({ ANTHROPIC_API_KEY: 'k', AI_RETENTION_MODE: 'standard-beta', AI_DISABLED: '1' })).toEqual([]);
+    });
+
+    it('aiUnavailableReason: the kill switch, then the key, then ambient headers, then (production) the retention mode', () => {
+        expect(aiUnavailableReason({ AI_DISABLED: '1', ANTHROPIC_API_KEY: 'k' })).toBe('AI_DISABLED');
+        expect(aiUnavailableReason({})).toBe('CREDENTIAL_NOT_CONFIGURED');
+        expect(aiUnavailableReason({ ANTHROPIC_API_KEY: 'k', ANTHROPIC_CUSTOM_HEADERS: 'x: y' })).toBe('SDK_AMBIENT_HEADERS_SET');
+        expect(aiUnavailableReason({ ANTHROPIC_API_KEY: 'k', NODE_ENV: 'production' })).toBe('RETENTION_MODE_UNDECLARED');
+        expect(aiUnavailableReason({ ANTHROPIC_API_KEY: 'k', NODE_ENV: 'production', AI_RETENTION_MODE: 'standard-beta' })).toBeNull();
+        expect(aiUnavailableReason({ ANTHROPIC_API_KEY: 'k' })).toBeNull();
     });
 });

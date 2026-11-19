@@ -15,6 +15,12 @@
  * labels stay readable on purpose: lists sort by them and the slug is a
  * unique key (docs/implementation-notes/2026-11-19-1.1-bible-model.md).
  *
+ * THE INTERVIEW'S TEXT (Phase 2.2): a question's text, options, scale
+ * labels, recommended answer, rationale and challenge quote (generated from
+ * the author's bible, and a challenge quotes it verbatim), and an answer's
+ * text and choice. Options, scale labels and the recommendation are JSON
+ * serialised to one string and sealed whole.
+ *
  * Every listed field is ciphertext at rest and reads back in its own
  * workspace (`tests/integration/bible-encryption.test.ts`); the extension's
  * behaviour is also proved against a test manifest
@@ -41,6 +47,8 @@ export const ENCRYPTED_FIELDS: EncryptedFieldManifest = Object.freeze({
     BibleField: Object.freeze(['value']),
     BibleRelation: Object.freeze(['note']),
     BibleEntryVersion: Object.freeze(['snapshot', 'changeSummary']),
+    Question: Object.freeze(['text', 'options', 'scaleLabels', 'recommendedAnswer', 'rationale', 'challengeQuote']),
+    Answer: Object.freeze(['text', 'choice']),
 });
 
 /** The lookups the extension runs per operation, compiled once per manifest. */

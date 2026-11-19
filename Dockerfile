@@ -87,6 +87,10 @@ COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/prisma.config.ts ./prisma.config.ts
 COPY --from=builder /app/scripts/entrypoint.sh ./scripts/entrypoint.sh
 COPY --from=builder /app/dist ./dist
+# The question packs (Phase 2.2), read from disk at process.cwd() by
+# src/lib/interview/packs.ts: readable Markdown, so what the interviewer was
+# told stays a file a reviewer can open.
+COPY --from=builder /app/src/lib/interview/packs ./src/lib/interview/packs
 # The PDF export's font (Noto Sans and its OFL licence, issue #24), read at run
 # time from <cwd>/fonts/noto-sans (src/lib/pdf/fonts.ts); the working
 # directory is /app.

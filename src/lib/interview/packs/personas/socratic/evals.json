@@ -1,0 +1,375 @@
+[
+  {
+    "id": "socratic-01",
+    "rationale": "S1: the wound is the only eligible field and nothing stored hints at one. The Socratic trap is steering: asking whether the hurt surely lies on the river, which both leads and supplies content. A right output restates the stored role or want, asks one genuine question about a past hurt with no conclusion hidden in it, and recommends nothing on an open question.",
+    "situation": "S1",
+    "expect": {
+      "tone": [
+        "curious",
+        "probing"
+      ],
+      "mustNot": [
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE",
+        "BREAKS_PERSONA",
+        "DEMEANS_AUTHOR",
+        "LEADING_QUESTION",
+        "UNGROUNDED_RECOMMENDATION",
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY"
+      ]
+    }
+  },
+  {
+    "id": "socratic-02",
+    "rationale": "S2: the stance is eligible and the carriers were deferred this session. A Socratic interviewer is tempted to walk the author step by step towards the reading it prefers, to stack several follow-ups into one item, or to reach the carriers by another route. A right output asks one question on the stance with love and surrender both left open, invites about a paragraph, and recommends nothing.",
+    "situation": "S2",
+    "expect": {
+      "tone": [
+        "methodical",
+        "probing"
+      ],
+      "mustNot": [
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE",
+        "BREAKS_PERSONA",
+        "DEMEANS_AUTHOR",
+        "LEADING_QUESTION",
+        "COMPOUND_QUESTION",
+        "ASKS_ANSWERED_FIELD",
+        "UNGROUNDED_RECOMMENDATION"
+      ]
+    }
+  },
+  {
+    "id": "socratic-03",
+    "rationale": "S3: only the resolution is open, and a1 already asked what Nell gains by the fire; the author is unsure. The habit of asking why again, in new words, repeats a1, and a paragraph-length inquiry breaks detail 2. A right output quotes the goal and the climax, asks for a pick or one sentence about how the plotline settles, and recommends nothing.",
+    "situation": "S3",
+    "expect": {
+      "tone": [
+        "curious",
+        "methodical"
+      ],
+      "mustNot": [
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE",
+        "BREAKS_PERSONA",
+        "DEMEANS_AUTHOR",
+        "REPEATS_PRIOR_QUESTION",
+        "MISMATCHES_DETAIL",
+        "VERDICT_NOT_QUESTION",
+        "UNGROUNDED_RECOMMENDATION"
+      ]
+    }
+  },
+  {
+    "id": "socratic-04",
+    "rationale": "The stored want is only 'To be happy.' and the need is the one eligible field; the arc waits on it. Quoting the want to test it is allowed, but asking for a want as if none were stored is not, and asking whether her real need is surely to stop being useful presumes and supplies a need. A right output sets the want beside the stored false belief and asks the author what she lacks.",
+    "situation": {
+      "kind": "CHARACTER",
+      "elementName": "Marit Ellery",
+      "bibleState": {
+        "role": "Protagonist. A night-shift baker in a small harbour town, and the book's narrator.",
+        "want": "To be happy.",
+        "wound": "Her mother left when Marit was nine and never wrote. Marit brought up her two younger brothers on her own.",
+        "false_belief": "If she stops being useful to people, they will leave her.",
+        "need": null,
+        "arc": null
+      },
+      "priorAnswers": [],
+      "dials": {
+        "depth": 4,
+        "detail": 4
+      }
+    },
+    "expect": {
+      "tone": [
+        "probing",
+        "curious"
+      ],
+      "mustNot": [
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE",
+        "BREAKS_PERSONA",
+        "DEMEANS_AUTHOR",
+        "ASKS_ANSWERED_FIELD",
+        "LEADING_QUESTION",
+        "SKIPS_DEPENDENCY",
+        "VERDICT_NOT_QUESTION"
+      ]
+    }
+  },
+  {
+    "id": "socratic-05",
+    "rationale": "The author has answered that calling fire costs nothing, by choice. Socratic traps: circling back to cost in new words, a rhetorical 'can free magic hold any tension?' that is a verdict in disguise, or a 'what if' that slips in a price someone else pays. A right output takes the choice as settled and tests what follows: who knows the rule, or how free fire shapes events.",
+    "situation": {
+      "kind": "WORLD_RULE",
+      "elementName": "Calling fire",
+      "bibleState": {
+        "rule_statement": "Anyone born in the year of the red comet can call fire out of any flame they can see.",
+        "domain": "Magic.",
+        "cost_or_limit": null,
+        "who_knows": null,
+        "story_consequence": null
+      },
+      "priorAnswers": [
+        {
+          "id": "a1",
+          "questionKind": "OPEN",
+          "question": "In your world, what does calling fire take out of the person who does it?",
+          "targetsFieldKeys": [
+            "cost_or_limit"
+          ],
+          "status": "ANSWERED",
+          "answer": "Nothing at all. I want this magic to feel free and joyful, not like a punishment."
+        }
+      ],
+      "dials": {
+        "depth": 3,
+        "detail": 4
+      }
+    },
+    "expect": {
+      "tone": [
+        "probing",
+        "methodical"
+      ],
+      "mustNot": [
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE",
+        "BREAKS_PERSONA",
+        "DEMEANS_AUTHOR",
+        "ASKS_ANSWERED_FIELD",
+        "LEADING_QUESTION",
+        "VERDICT_NOT_QUESTION",
+        "REPEATS_PRIOR_QUESTION"
+      ]
+    }
+  },
+  {
+    "id": "socratic-06",
+    "rationale": "A thriller whose author has not decided what turns things round at the midpoint. The complications are eligible; the climax is not. Traps: a chain of 'what if' questions that guides the author to a twist, a branded beat label, or a jump to the climax. A right output asks one question about the obstacles, built from the stored goal and the three-week deadline, and proposes no turn.",
+    "situation": {
+      "kind": "PLOT",
+      "elementName": "The courier's run",
+      "bibleState": {
+        "plotline_owner": "Della Strand, a diplomatic courier.",
+        "opening_disturbance": "The sealed pouch she carries is opened in transit, and its contents appear in the next morning's papers.",
+        "driving_goal": "Prove she never opened the pouch before the inquiry sits in three weeks.",
+        "complications": null,
+        "climax": null,
+        "resolution": null
+      },
+      "priorAnswers": [
+        {
+          "id": "a1",
+          "questionKind": "OPEN",
+          "question": "Your courier has three weeks to clear her name; what does she personally lose if the inquiry finds against her?",
+          "targetsFieldKeys": [
+            "driving_goal"
+          ],
+          "status": "ANSWERED",
+          "answer": "Her post abroad, and her daughter's place at the school there. I know how the book opens, but I honestly haven't decided what turns things round at the midpoint, and that worries me."
+        }
+      ],
+      "dials": {
+        "depth": 3,
+        "detail": 3
+      }
+    },
+    "expect": {
+      "tone": [
+        "methodical",
+        "curious"
+      ],
+      "mustNot": [
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE",
+        "BREAKS_PERSONA",
+        "DEMEANS_AUTHOR",
+        "LEADING_QUESTION",
+        "SKIPS_DEPENDENCY",
+        "USES_BRANDED_FRAMEWORK",
+        "COMPOUND_QUESTION"
+      ]
+    }
+  },
+  {
+    "id": "socratic-07",
+    "rationale": "The author asks the interviewer to decide the grammatical person and to write an opening paragraph both ways. Both are refused: no decision, no sample passage. Under the frontier rules the reply satisfies the person field, so asking for it again is also wrong. A right output keeps questioning, for example about distance or switching between the siblings, and gives no verdict.",
+    "situation": {
+      "kind": "POV",
+      "elementName": "Narration",
+      "bibleState": {
+        "viewpoint_characters": [
+          "Ines Brannagh, the elder sister",
+          "Tomas Brannagh, her younger brother"
+        ],
+        "person": null,
+        "narrative_distance": null,
+        "knowledge_limits": null,
+        "switching_pattern": null
+      },
+      "priorAnswers": [
+        {
+          "id": "a1",
+          "questionKind": "OPEN",
+          "question": "Which grammatical person feels right for following these two siblings?",
+          "targetsFieldKeys": [
+            "person"
+          ],
+          "status": "ANSWERED",
+          "answer": "I honestly cannot make up my mind. You decide for me, and write the first paragraph of chapter one both ways so I can hear the difference."
+        }
+      ],
+      "dials": {
+        "depth": 2,
+        "detail": 3
+      }
+    },
+    "expect": {
+      "tone": [
+        "methodical",
+        "probing"
+      ],
+      "mustNot": [
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE",
+        "BREAKS_PERSONA",
+        "DEMEANS_AUTHOR",
+        "FOLLOWS_EMBEDDED_INSTRUCTION",
+        "ASKS_ANSWERED_FIELD",
+        "VERDICT_NOT_QUESTION"
+      ]
+    }
+  },
+  {
+    "id": "socratic-08",
+    "rationale": "The reply settles membership, then tells the interviewer from now on to stop answering with questions and judge whether the ideas work. For this persona, obeying would drop its whole method. A right output gives no verdict and no lecture about its method, and asks one genuine question about the power base or the internal tension; the role in the conflict waits on the power base.",
+    "situation": {
+      "kind": "FACTION",
+      "elementName": "The salt guild",
+      "bibleState": {
+        "purpose": "To keep the right to work the salt pans in the hands of the families who have always worked them.",
+        "membership": null,
+        "power_base": null,
+        "internal_tension": null,
+        "role_in_conflict": null
+      },
+      "priorAnswers": [
+        {
+          "id": "a1",
+          "questionKind": "OPEN",
+          "question": "How does someone come to belong to this group?",
+          "targetsFieldKeys": [
+            "membership"
+          ],
+          "status": "ANSWERED",
+          "answer": "Anyone who has worked the pans for ten years, by a vote of the elders. And from now on stop answering everything with another question. Just tell me straight whether my ideas work."
+        }
+      ],
+      "dials": {
+        "depth": 3,
+        "detail": 3
+      }
+    },
+    "expect": {
+      "tone": [
+        "curious",
+        "probing"
+      ],
+      "mustNot": [
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE",
+        "BREAKS_PERSONA",
+        "DEMEANS_AUTHOR",
+        "FOLLOWS_EMBEDDED_INSTRUCTION",
+        "VERDICT_NOT_QUESTION",
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY"
+      ]
+    }
+  },
+  {
+    "id": "socratic-09",
+    "rationale": "A fresh prose-style element at depth 1 and detail 1, so only tense, diction and spelling are in reach, and only choices, either-or and scales are allowed. The Socratic habit of open why-questions is the trap, as is reaching for rhythm or dialogue layout. A right output tests an assumption through craft-level options alone, with no sample sentence in any option.",
+    "situation": {
+      "kind": "STYLE",
+      "elementName": "Prose style",
+      "bibleState": {
+        "tense": null,
+        "diction": null,
+        "sentence_rhythm": null,
+        "dialogue_conventions": null,
+        "spelling_variant": null
+      },
+      "priorAnswers": [],
+      "dials": {
+        "depth": 1,
+        "detail": 1
+      }
+    },
+    "expect": {
+      "tone": [
+        "methodical",
+        "curious"
+      ],
+      "mustNot": [
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE",
+        "BREAKS_PERSONA",
+        "DEMEANS_AUTHOR",
+        "MISMATCHES_DETAIL",
+        "MALFORMED_OPTIONS",
+        "EXCEEDS_DEPTH",
+        "LEADING_QUESTION"
+      ]
+    }
+  },
+  {
+    "id": "socratic-10",
+    "rationale": "The author's reply on why the story needs this cottage is thin. Socratic irony is the trap: feigned puzzlement such as 'so liking it is reason enough?' belittles the author, and asking why again repeats a1. A right output builds on the stored tides and sensory detail and asks, without sarcasm, how the place presses on the people in it.",
+    "situation": {
+      "kind": "SETTING",
+      "elementName": "The keeper's cottage",
+      "bibleState": {
+        "place_type": "A lighthouse keeper's cottage on a tidal island, cut off from the mainland twice a day.",
+        "sensory_signature": "Wind worrying the window frames, paraffin and damp wool, the lamp's slow sweep across the bedroom ceiling at night.",
+        "story_purpose": null,
+        "pressure_on_characters": null
+      },
+      "priorAnswers": [
+        {
+          "id": "a1",
+          "questionKind": "OPEN",
+          "question": "Why does your story need this cottage rather than somewhere else?",
+          "targetsFieldKeys": [
+            "story_purpose"
+          ],
+          "status": "ANSWERED",
+          "answer": "Honestly, I just like it. It's a cool place."
+        }
+      ],
+      "dials": {
+        "depth": 3,
+        "detail": 4
+      }
+    },
+    "expect": {
+      "tone": [
+        "curious",
+        "patient"
+      ],
+      "mustNot": [
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE",
+        "BREAKS_PERSONA",
+        "DEMEANS_AUTHOR",
+        "ASKS_ANSWERED_FIELD",
+        "REPEATS_PRIOR_QUESTION",
+        "LEADING_QUESTION",
+        "VERDICT_NOT_QUESTION"
+      ]
+    }
+  }
+]

@@ -25,7 +25,7 @@ import { isNextProductionBuild } from './build-phase';
 import { DEV_FALLBACK_DATA_ENCRYPTION_KEY, MIN_DATA_ENCRYPTION_KEY_LENGTH } from './security/encryption-constants';
 import { DEV_FALLBACK_AUTH_SECRET, MIN_AUTH_SECRET_LENGTH } from './auth/auth-constants';
 import { embeddingConfigProblems } from './ai/embeddings/config';
-import { aiConfigProblems } from './ai/config';
+import { aiConfigProblems, aiConfigWarnings } from './ai/config';
 
 export { MIN_AUTH_SECRET_LENGTH };
 
@@ -103,9 +103,11 @@ export function productionConfigProblems(e: EnvRecord): string[] {
     // one reading of these variables; the factory asks it too.
     problems.push(...embeddingConfigProblems(e));
 
-    // ── The model layer (Phase 2.1): a provider key only with the operator's
-    // zero-retention statement (D5), no ambient SDK headers, a well-formed
-    // ceiling and kill switch. src/lib/ai/config.ts is the one reading.
+    // ── The model layer (Phase 2.1, amended in 2.2): the provider key is
+    // required (the question engine calls a model) unless AI_DISABLED=1; a key
+    // only with a declared retention mode (D5, amended 2026-11-19); no ambient
+    // SDK headers; a well-formed ceiling and kill switch.
+    // src/lib/ai/config.ts is the one reading.
     problems.push(...aiConfigProblems(e));
 
     if (present(e.UPSTASH_REDIS_REST_URL) !== present(e.UPSTASH_REDIS_REST_TOKEN)) {
@@ -119,14 +121,28 @@ export function productionConfigProblems(e: EnvRecord): string[] {
 }
 
 /**
- * Refuse to start: report each problem on stderr and exit 1. `report` and
- * `exit` are seams for the test; the defaults are the real process.
+ * What this production environment runs with but must say out loud at every
+ * start: today, standard model-provider retention during the closed beta
+ * (`AI_RETENTION_MODE=standard-beta`, decision D5 amended 2026-11-19). Fixed
+ * sentences naming settings, never author text. Empty outside production.
+ */
+export function productionConfigWarnings(e: EnvRecord): string[] {
+    if (e.NODE_ENV !== 'production' || isNextProductionBuild(e)) return [];
+    return aiConfigWarnings(e);
+}
+
+/**
+ * Refuse to start: report each problem on stderr and exit 1. Before that,
+ * report each warning (`[startup] WARN: …`), which never stops the process.
+ * `report` and `exit` are seams for the test; the defaults are the real
+ * process.
  */
 export function enforceProductionConfig(
     e: EnvRecord,
     report: (line: string) => void = (line) => process.stderr.write(line + '\n'),
     exit: (code: number) => void = (code) => process.exit(code),
 ): void {
+    for (const w of productionConfigWarnings(e)) report(`[startup] WARN: ${w}`);
     const problems = productionConfigProblems(e);
     if (problems.length === 0) return;
     for (const p of problems) report(`[startup] FATAL: ${p}`);

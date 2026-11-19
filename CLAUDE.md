@@ -196,6 +196,20 @@ src/app-layer/repositories/ai-call.repository.ts, prisma/schema/ai.prisma → Ai
 tests/helpers/fake-anthropic.ts → the fake Messages API the SDK is handed as its fetch
 ```
 
+Phase 2.2 (the question engine) added:
+
+```
+prisma/schema/interview.prisma → InterviewSession, InterviewRound, Question, Answer (append-only)
+src/lib/interview/           → the pure core: frontier, plan, candidates (output schema + validation), dedupe, text
+                               (normalise, grounding), round (produceRound), stop, dials, packs (+ packs/**), prompt
+                               (the 2.1 template + data blocks), storage, generator (interface, GenerationStop),
+                               model-seam.ts (THE wiring to 2.1's callStructured), evals/ (coverage set + runner)
+prisma/migrations/…_ai_retention_mode → AiCallLog's RETENTION_MODE_UNDECLARED code (D5 amended)
+tests/helpers/fake-question-model.ts → the fake Messages API turn that answers the engine's prompt
+src/app-layer/usecases/      → interviews, interview-answers, interview-rounds, interview-state, question-embeddings
+src/app/api/w/[workspaceSlug]/books/[bookId]/interviews/** → start, list, read, next round, close, stop, answer, skip, decide later
+```
+
 ## Rules every change obeys
 
 These are `docs/ROADMAP.md` section 3, restated. The roadmap is authoritative
@@ -214,7 +228,8 @@ if the two ever differ.
 And the owner's standing positions: the AI never writes manuscript prose (D3);
 one workspace per author with OWNER / EDITOR / READER memberships and
 row-level security from day one (D4); author text reaches the model provider
-only under zero-retention terms (D5).
+only under zero-retention terms, standard retention being permitted during a
+closed beta with an explicit operator flag (D5, amended 2026-11-19).
 
 ## Conventions
 
@@ -487,7 +502,7 @@ only under zero-retention terms (D5).
   author text in a template, a system prompt or an output schema (the API
   caches schemas outside zero retention). Every exit records one `AiCallLog`
   row (numbers and names, never text; append-only) and settles its cost; the
-  workspace's monthly ceiling (`AI_MONTHLY_CEILING_USD_DEFAULT`, $25) is
+  workspace's monthly ceiling (`AI_MONTHLY_CEILING_USD_DEFAULT`, $50, D10) is
   checked against the call's worst case BEFORE it is sent, under a
   per-workspace advisory lock plus a reservation row; `AI_DISABLED=1` refuses
   everything. Only `src/lib/ai/client.ts` loads the SDK or names the
@@ -499,11 +514,26 @@ only under zero-retention terms (D5).
   `PERMITTED_SERVER_TOOL_TYPES` (empty until 2.6) and nowhere else. An output
   schema the structured-output feature cannot take (a record, recursion, a
   non-object root, past the optional / union limits) is refused when the
-  request is built. Production
-  refuses `ANTHROPIC_API_KEY` without `ANTHROPIC_ZDR_CONFIRMED=1` (ZDR is an
-  organization arrangement with Anthropic, not a request option; D5). Tests
-  hand the SDK `tests/helpers/fake-anthropic.ts` as its fetch; no test reaches
-  a provider.
+  request is built. Calling a model is NOT a permission of its own: it runs
+  under the calling feature's key, checked by its usecase first (`bible.edit`
+  for an interview; issue #30, item 1). Production REQUIRES
+  `ANTHROPIC_API_KEY` unless `AI_DISABLED=1`, and a key requires a declared
+  retention mode, `AI_RETENTION_MODE` (D5, amended 2026-11-19): `zdr` (an
+  organization arrangement with Anthropic, not a request option; 2.1's
+  `ANTHROPIC_ZDR_CONFIRMED=1` still reads as it) or `standard-beta` (standard
+  retention, the closed beta only: `[startup] WARN` at every start of the web
+  tier and the worker, `aiConfigWarnings`); never a default, and `zdr` is the
+  Phase 7 launch gate. `aiUnavailableReason` (`src/lib/ai/config.ts`) is the
+  one reading of "no call can be made" (kill switch, no key, ambient headers,
+  no mode in production): `clientForRun` refuses by it and a feature asks it
+  BEFORE writing (`modelUnavailableReason`, 503 `AI_UNAVAILABLE` naming the
+  reason). A template may carry its per-call cost budget
+  (`costBudgetMicroUsd`, rule 9; logged `overBudget`, not a gate). A failed
+  call's tokens and cost are on its error (`AiCallError.tokensUsed`,
+  `.costMicroUsd`), a successful one's on the
+  result (`tokensUsed`, `costMicroUsd`). Tests hand the SDK
+  `tests/helpers/fake-anthropic.ts` as its fetch (scripted, `respond` and
+  `repeat` turns); no test reaches a provider.
 - **Hardening the bible (Phase 1.H).** CONCURRENT EDITS: every element
   change, fields save and restore MUST name `baseVersion` (an omitted one is a
   400, so no request skips the check); under the element's
@@ -537,6 +567,71 @@ only under zero-retention terms (D5).
   indexes, indexed foreign keys). A page's reads live in `bible-pages.ts`, and
   the load test (`bible-load.test.ts`) holds them to 300 ms at p95.
   EXPORT downloads go through `bibleDownload` (a refusal is shown, never saved).
+- **The question engine (Phase 2.2).** An interview asks, each round, the
+  whole FRONTIER (`computeFrontier`): every open field whose `dependsOn` is
+  satisfied, within the depth dial, after the already-answered checks remove
+  what the book holds — the bible's stored values always first (rule 5), then
+  any pluggable `AlreadyAnsweredCheck` (a concept seed, a 4.1 fact). An
+  ANSWERED answer of THIS session satisfies its fields; SKIPPED / DECIDE_LATER
+  touch them (not asked again, dependants wait); earlier sessions' answers do
+  not count. Core fields lead the frontier, optional ones follow. The model
+  only WORDS questions, behind `QuestionGenerator`; code validates every
+  candidate (`validateCandidate`: targets, kind by detail, options, text,
+  challenge quote; a bad recommendation is stripped, never fatal),
+  deduplicates (`dedupe`: lexical signals, a keyed `dedupeKey`, and the 2.0
+  vector store's neighbours, and the book's index asked for the round's own
+  candidates; a question about another element is never a repeat), asks each
+  field once a round (so a round never passes its cap), fills gaps from the
+  craft pack's examples, orders and numbers.
+  `produceRound` is that whole step, run by the usecase AND the coverage
+  evaluation. The model call is OUTSIDE every transaction: claim the round
+  (GENERATING, under the session's advisory lock), generate, persist — and
+  persist re-reads the book, dropping a question whose field was filled or
+  whose element was deleted meanwhile (rule 5). A call returns
+  `{ output, tokensUsed }`, and the tokens are charged to the session's
+  budget whatever becomes of the round. Every
+  stop records a reason (`InterviewStopReason`; FRONTIER_EMPTY vs
+  NOTHING_AT_DEPTH vs ROUND_BUDGET, and `stopDetail` in ids, keys and 2.1
+  error codes), in ONE precedence (`decideStop`, `src/lib/interview/stop.ts`:
+  the frontier first — a session with nothing left to ask FINISHES even with
+  the kill switch on — then the kill switch and the ceiling, which pause only
+  a session that would need the model, then the token and round budgets); a
+  session that asked nothing is NOT_ASSESSED, and a scope with no element is
+  refused (`SCOPE_EMPTY`). THE MODEL STEP is wired in
+  `src/lib/interview/model-seam.ts` and nowhere else:
+  `defaultQuestionGenerator(ctx)` calls 2.1's `callStructured(ctx, …)` with
+  the request `buildGenerationRequest` makes — a `definePrompt` template
+  (`QUESTION_PROMPT`: version, tier `balanced`, output and cost budgets; its
+  system prompt the engine's instructions plus the round's product guidance,
+  dials and packs, never author text) and the author text as labelled data
+  blocks (`element.N`, `targets.N`, …; 2.1 fences and guard-scans them) — and
+  returns the call's real `tokensUsed`. Each 2.1 outcome maps to a named
+  call failure (GUARD, TIMEOUT, ABORTED, PROVIDER, INVALID_OUTPUT: that
+  persona's fields go to the pack fallback; a round left empty pauses
+  GUARD_REFUSED / PROVIDER_FAILURE / NO_ACCEPTABLE_QUESTION) or a
+  `GenerationStop` (KILLED → KILL_SWITCH, CEILING → WORKSPACE_CEILING: the
+  round is abandoned, its tokens charged, the session paused); the table is
+  the seam's header. A request that would generate first asks
+  `unavailableReason()` and refuses 503 `AI_UNAVAILABLE` naming 2.1's reason
+  (no key: CREDENTIAL_NOT_CONFIGURED) before writing; `modelBudgetSignals`
+  reads the kill switch and the month's spend before a claim. Nothing fakes
+  model output, and nothing answers 500 for a model condition. The output
+  schema (`GeneratedQuestionsSchema`) is code within 2.1's structured-output
+  limits (`tests/unit/interview/model-seam.test.ts`). `bible.edit` runs an
+  interview, `bible.view` reads one. Answers are append-only (a re-answer is
+  the next revision, while the round is open, at most `ANSWER_REVISIONS_MAX`;
+  a session's bounded reads must hold every question and revision it can
+  have, `session-bounds.test.ts`). Question and answer text are
+  in the encrypted manifest; a question passes `sanitiseQuestionForStorage`
+  before it is judged and again as it is written. `Question` is the vector
+  store's first source table: its vectors go with it, and
+  `vector_embedding_require_source` refuses (or, in a rebuild, skips) a vector
+  whose question is gone or being deleted, taking its lock SKIP LOCKED so a
+  vector write never waits on (and so never deadlocks with) a delete (issue
+  #23 item 1). Packs (`src/lib/interview/packs/`, original content) are
+  validated with Zod at load and read from disk at `process.cwd()` (the
+  Dockerfile copies the directory); a production server loads them at boot
+  and exits 1 when they do not; 2.3 mounts them.
 - **Sanitising author text.** Every author-text write sanitises at the
   usecase layer before it is stored: plain text through `plainLine` /
   `plainBlock` (`src/lib/bible/text.ts`, over `sanitizePlainText`), rich text

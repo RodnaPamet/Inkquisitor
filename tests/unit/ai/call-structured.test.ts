@@ -96,7 +96,7 @@ describe('the happy path', () => {
         const { ledger, promise } = run([{ kind: 'text', text: GOOD }]);
         await promise;
         const [reservation] = ledger.reserveRequests;
-        expect(reservation.ceilingMicroUsd).toBe(25_000_000);
+        expect(reservation.ceilingMicroUsd).toBe(50_000_000);
         expect(reservation.amountMicroUsd).toBeGreaterThanOrEqual(worstCaseCostMicroUsd('claude-sonnet-5-5', { inputTokens: 0, outputTokens: 16_000 }));
         expect(ledger.records[0].worstCaseMicroUsd).toBe(reservation.amountMicroUsd);
     });
@@ -249,11 +249,11 @@ describe('refusals before anything is sent', () => {
     });
 
     it('over the ceiling: refused with the month’s figures, before a request is sent', async () => {
-        const ledger = memoryLedger({ alreadySpent: 24_990_000 });
+        const ledger = memoryLedger({ alreadySpent: 49_990_000 });
         const { api, promise } = run([{ kind: 'text', text: GOOD }], { ledger });
         const err = await promise.catch((e: unknown) => e);
         expect(err).toBeInstanceOf(AiSpendCeilingError);
-        expect((err as AiSpendCeilingError).details).toMatchObject({ reason: 'SPEND_CEILING', spentMicroUsd: 24_990_000, ceilingMicroUsd: 25_000_000 });
+        expect((err as AiSpendCeilingError).details).toMatchObject({ reason: 'SPEND_CEILING', spentMicroUsd: 49_990_000, ceilingMicroUsd: 50_000_000 });
         expect(api.requests).toHaveLength(0);
         expect(ledger.records[0]).toMatchObject({ outcome: 'CEILING', errorCode: 'SPEND_CEILING', attempts: 0, costMicroUsd: 0 });
     });

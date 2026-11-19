@@ -24,9 +24,10 @@
  *   no ANTHROPIC_API_KEY        CREDENTIAL_NOT_CONFIGURED: the product runs
  *                               with AI unavailable
  *   ANTHROPIC_CUSTOM_HEADERS    SDK_AMBIENT_HEADERS_SET (below)
- *   production, no ANTHROPIC_ZDR_CONFIRMED=1
- *                               ZDR_NOT_CONFIRMED: decision D5. The start-up
- *                               check refuses the process first (`./config.ts`)
+ *   production, no AI_RETENTION_MODE (nor ANTHROPIC_ZDR_CONFIRMED=1)
+ *                               RETENTION_MODE_UNDECLARED: decision D5 (amended
+ *                               2026-11-19). The start-up check refuses the
+ *                               process first (`./config.ts`)
  *
  * ── WHAT THE SDK WOULD OTHERWISE TAKE FROM THE ENVIRONMENT ─────────────────
  *
@@ -91,7 +92,7 @@ import { z } from 'zod';
 
 import { env } from '@/env';
 import { logger } from '@/lib/observability/logger';
-import { aiDisabled, zdrConfirmed } from './config';
+import { aiUnavailableReason } from './config';
 import { AiPromptError, AiRequestRefusedError, type AiUnavailableReason } from './errors';
 
 /** The Messages API's origin. Pinned, so the environment cannot move the traffic. */
@@ -323,11 +324,11 @@ export interface ClientOptions {
 
 /** A new client for one call, or the named reason there is none. Never cached. */
 export function clientForRun(opts: ClientOptions = {}): ClientChoice {
-    if (aiDisabled(env)) return { ok: false, reason: 'AI_DISABLED' };
-    const apiKey = env.ANTHROPIC_API_KEY?.trim();
-    if (!apiKey) return { ok: false, reason: 'CREDENTIAL_NOT_CONFIGURED' };
-    if (env.ANTHROPIC_CUSTOM_HEADERS?.trim()) return { ok: false, reason: 'SDK_AMBIENT_HEADERS_SET' };
-    if (env.NODE_ENV === 'production' && !zdrConfirmed(env)) return { ok: false, reason: 'ZDR_NOT_CONFIRMED' };
+    // One reading of the configuration's refusals, shared with the features'
+    // own pre-checks (`aiUnavailableReason`, `./config.ts`).
+    const refusal = aiUnavailableReason(env);
+    if (refusal) return { ok: false, reason: refusal };
+    const apiKey = env.ANTHROPIC_API_KEY!.trim();
 
     const allowed: readonly string[] = (opts.serverTools ?? []).filter((t) =>
         (PERMITTED_SERVER_TOOL_TYPES as readonly string[]).includes(t),

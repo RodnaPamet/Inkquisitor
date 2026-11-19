@@ -1,40 +1,50 @@
 /**
- * THE MODEL LAYER'S DEPLOYMENT SWITCHES (Phase 2.1), as pure functions of an
- * env record, so the start-up check (`src/lib/startup-checks.ts`) and the
- * layer read them one way.
+ * THE MODEL LAYER'S DEPLOYMENT SWITCHES (Phase 2.1; amended in 2.2), as pure
+ * functions of an env record, so the start-up check
+ * (`src/lib/startup-checks.ts`), the client seam and the features read them
+ * one way.
  *
  *   AI_DISABLED=1                    the global kill switch: every call is
  *                                    refused before anything is read or sent,
  *                                    and recorded KILLED
  *   AI_MONTHLY_CEILING_USD_DEFAULT   each workspace's spend ceiling per UTC
  *                                    calendar month, in US dollars (default
- *                                    25, a placeholder the owner may change)
- *   ANTHROPIC_API_KEY                the provider key. Optional: without it
- *                                    the product runs with AI unavailable
- *   ANTHROPIC_ZDR_CONFIRMED=1        the operator's statement that the
- *                                    Anthropic organization this key belongs
- *                                    to has a zero-data-retention arrangement
- *                                    (decision D5; below)
+ *                                    50, decision D10)
+ *   ANTHROPIC_API_KEY                the provider key. REQUIRED in production
+ *                                    since 2.2 (the question engine calls a
+ *                                    model), unless AI_DISABLED=1; optional in
+ *                                    development, where AI is then unavailable
+ *   AI_RETENTION_MODE                how the key's organization retains what it
+ *                                    is sent: `zdr` or `standard-beta`
+ *                                    (decision D5, amended 2026-11-19; below)
+ *   ANTHROPIC_ZDR_CONFIRMED=1        the 2.1 spelling of `AI_RETENTION_MODE=zdr`
  *
- * ── ZERO DATA RETENTION IS AN ARRANGEMENT, NOT A REQUEST PARAMETER ─────────
+ * ── RETENTION IS AN ARRANGEMENT, NOT A REQUEST PARAMETER ───────────────────
  *
- * Anthropic enables ZDR per ORGANIZATION, by its account team; there is no
- * header or body member a request can carry to ask for it (Anthropic's "API
- * and data retention" documentation, read 2026-11-19). So nothing in code can
- * make a call zero-retention. What code can do is (a) refuse to send anything
- * a ZDR arrangement does not cover, which the messages-only middleware in
- * `./client.ts` does (no batches, files, threads, containers, MCP or server
- * tools, no beta header), and (b) refuse to start in production holding a key
- * nobody has said is covered. That is this file's `aiConfigProblems`: in
- * production a set `ANTHROPIC_API_KEY` requires `ANTHROPIC_ZDR_CONFIRMED=1`,
- * and `clientForRun` refuses again (`ZDR_NOT_CONFIRMED`) as the second line.
- * The confirmation is an operator's act, checked against the contract before
- * the variable is set; it is not evidence of the arrangement.
+ * Anthropic enables zero data retention per ORGANIZATION, by its account team;
+ * there is no header or body member a request can carry to ask for it
+ * (Anthropic's "API and data retention" documentation, read 2026-11-19). So
+ * nothing in code can make a call zero-retention. What code can do is (a)
+ * refuse to send anything a ZDR arrangement does not cover, which the
+ * messages-only middleware in `./client.ts` does (no batches, files, threads,
+ * containers, MCP or server tools, no beta header), and (b) refuse to run in
+ * production holding a key whose retention nobody has declared.
  *
- * ANTHROPIC_API_KEY is NOT required in production in 2.1: nothing calls a model
- * in production before the question engine (2.2). It becomes required when the
- * first product surface that calls a model ships (2.2 adds it to
- * `aiConfigProblems`).
+ * D5 as amended (2026-11-19): standard retention is permitted during a closed
+ * beta, as an explicit operator choice, and zero retention is required before
+ * public launch (the Phase 7 launch gate). So production must DECLARE a mode:
+ *
+ *   zdr            the operator states the key's organization has a ZDR
+ *                  arrangement (checked against the contract before setting)
+ *   standard-beta  the operator chooses standard retention for the closed
+ *                  beta; every start of the web tier and the worker logs a
+ *                  WARN naming it (`aiConfigWarnings`)
+ *
+ * A key with no declared mode refuses to start (`aiConfigProblems`), and
+ * `clientForRun` refuses again in production (`RETENTION_MODE_UNDECLARED`).
+ * There is no default: standard retention is never what an unset variable
+ * means. Whatever the mode, no output schema is ever built from author text
+ * (the API caches a compiled schema outside zero retention).
  */
 
 /** The variables this file reads, from `process.env`, `env` or a test's object. */
@@ -43,12 +53,18 @@ export type AiEnvRecord = {
         | 'AI_DISABLED'
         | 'AI_MONTHLY_CEILING_USD_DEFAULT'
         | 'ANTHROPIC_API_KEY'
+        | 'AI_RETENTION_MODE'
         | 'ANTHROPIC_ZDR_CONFIRMED'
-        | 'ANTHROPIC_CUSTOM_HEADERS']?: string | undefined;
+        | 'ANTHROPIC_CUSTOM_HEADERS'
+        | 'NODE_ENV']?: string | undefined;
 };
 
-/** The default monthly ceiling per workspace when `AI_MONTHLY_CEILING_USD_DEFAULT` is unset: $25. */
-export const DEFAULT_MONTHLY_CEILING_USD = 25;
+/** The default monthly ceiling per workspace when `AI_MONTHLY_CEILING_USD_DEFAULT` is unset: $50 (decision D10). */
+export const DEFAULT_MONTHLY_CEILING_USD = 50;
+
+/** The retention modes an operator may declare (decision D5, amended 2026-11-19). */
+export const RETENTION_MODES = ['zdr', 'standard-beta'] as const;
+export type RetentionMode = (typeof RETENTION_MODES)[number];
 
 /** The largest ceiling the variable may name, so a typo of zeros is refused rather than obeyed. */
 export const MAX_MONTHLY_CEILING_USD = 100_000;
@@ -80,19 +96,57 @@ export function monthlyCeilingMicroUsd(e: AiEnvRecord): number {
     return parsed ?? DEFAULT_MONTHLY_CEILING_USD * 1_000_000;
 }
 
-/** Whether the operator has stated the key's organization has zero data retention. */
+/**
+ * The declared retention mode: `AI_RETENTION_MODE` when it names one, else
+ * `zdr` when the 2.1 statement `ANTHROPIC_ZDR_CONFIRMED=1` is set, else
+ * `null` (undeclared). A malformed `AI_RETENTION_MODE` declares nothing (and
+ * production refuses it).
+ */
+export function retentionMode(e: AiEnvRecord): RetentionMode | null {
+    const raw = e.AI_RETENTION_MODE?.trim();
+    if (present(raw)) return (RETENTION_MODES as readonly string[]).includes(raw) ? (raw as RetentionMode) : null;
+    return e.ANTHROPIC_ZDR_CONFIRMED?.trim() === '1' ? 'zdr' : null;
+}
+
+/** Whether the declared mode is zero retention (the 2.1 name, kept for its callers). */
 export function zdrConfirmed(e: AiEnvRecord): boolean {
-    return e.ANTHROPIC_ZDR_CONFIRMED?.trim() === '1';
+    return retentionMode(e) === 'zdr';
+}
+
+/** Why no model call can be made at all under this configuration, or null. Pure; `clientForRun` asks it. */
+export type AiConfigUnavailableReason = 'AI_DISABLED' | 'CREDENTIAL_NOT_CONFIGURED' | 'SDK_AMBIENT_HEADERS_SET' | 'RETENTION_MODE_UNDECLARED';
+
+export function aiUnavailableReason(e: AiEnvRecord): AiConfigUnavailableReason | null {
+    if (aiDisabled(e)) return 'AI_DISABLED';
+    if (!present(e.ANTHROPIC_API_KEY)) return 'CREDENTIAL_NOT_CONFIGURED';
+    if (present(e.ANTHROPIC_CUSTOM_HEADERS)) return 'SDK_AMBIENT_HEADERS_SET';
+    if (e.NODE_ENV === 'production' && retentionMode(e) === null) return 'RETENTION_MODE_UNDECLARED';
+    return null;
 }
 
 /** What a production process refuses to start with, for the model layer. Empty when fit. */
 export function aiConfigProblems(e: AiEnvRecord): string[] {
     const problems: string[] = [];
-    if (present(e.ANTHROPIC_API_KEY) && !zdrConfirmed(e)) {
+    if (!present(e.ANTHROPIC_API_KEY) && !aiDisabled(e)) {
         problems.push(
-            'ANTHROPIC_API_KEY is set without ANTHROPIC_ZDR_CONFIRMED=1: author text reaches the model provider only ' +
-                "under zero-retention terms (decision D5), which Anthropic enables per organization. Confirm the key's " +
-                'organization has a ZDR arrangement, then set ANTHROPIC_ZDR_CONFIRMED=1; or unset the key.',
+            'ANTHROPIC_API_KEY is required: the question engine calls a model. Set the key (and AI_RETENTION_MODE), ' +
+                'or run with AI switched off (AI_DISABLED=1).',
+        );
+    }
+    const rawMode = e.AI_RETENTION_MODE;
+    if (present(rawMode) && !(RETENTION_MODES as readonly string[]).includes(rawMode.trim())) {
+        problems.push(`AI_RETENTION_MODE must be one of: ${RETENTION_MODES.join(', ')}.`);
+    } else if (present(e.ANTHROPIC_API_KEY) && retentionMode(e) === null) {
+        problems.push(
+            'ANTHROPIC_API_KEY is set without a declared retention mode (decision D5): set AI_RETENTION_MODE=zdr once ' +
+                "the key's organization has a zero-data-retention arrangement with Anthropic, or AI_RETENTION_MODE=" +
+                'standard-beta to accept standard retention during the closed beta; or unset the key.',
+        );
+    }
+    if (rawMode?.trim() === 'standard-beta' && e.ANTHROPIC_ZDR_CONFIRMED?.trim() === '1') {
+        problems.push(
+            'AI_RETENTION_MODE=standard-beta contradicts ANTHROPIC_ZDR_CONFIRMED=1: declare one retention mode (unset ' +
+                'ANTHROPIC_ZDR_CONFIRMED, or set AI_RETENTION_MODE=zdr).',
         );
     }
     if (present(e.ANTHROPIC_CUSTOM_HEADERS)) {
@@ -103,11 +157,26 @@ export function aiConfigProblems(e: AiEnvRecord): string[] {
     }
     if (present(e.AI_MONTHLY_CEILING_USD_DEFAULT) && parseCeilingUsd(e.AI_MONTHLY_CEILING_USD_DEFAULT) === null) {
         problems.push(
-            `AI_MONTHLY_CEILING_USD_DEFAULT must be a dollar figure from 0 to ${MAX_MONTHLY_CEILING_USD} (e.g. 25 or 12.50).`,
+            `AI_MONTHLY_CEILING_USD_DEFAULT must be a dollar figure from 0 to ${MAX_MONTHLY_CEILING_USD} (e.g. 50 or 12.50).`,
         );
     }
     if (present(e.AI_DISABLED) && !['0', '1'].includes(e.AI_DISABLED.trim())) {
         problems.push('AI_DISABLED must be 0 or 1.');
     }
     return problems;
+}
+
+/**
+ * What a production process starts with but must say out loud: today, the
+ * closed beta's standard retention (decision D5, amended 2026-11-19). Each is
+ * a fixed sentence naming the setting, never anything an author wrote.
+ */
+export function aiConfigWarnings(e: AiEnvRecord): string[] {
+    if (!present(e.ANTHROPIC_API_KEY) || aiDisabled(e)) return [];
+    if (retentionMode(e) !== 'standard-beta') return [];
+    return [
+        'AI_RETENTION_MODE=standard-beta: author text sent to the model provider is kept under Anthropic\'s standard ' +
+            'retention, not zero retention. Permitted during the closed beta only (decision D5); zero retention ' +
+            '(AI_RETENTION_MODE=zdr) is required before public launch.',
+    ];
 }

@@ -1,0 +1,1210 @@
+[
+  {
+    "id": "qc-01",
+    "rationale": "Literary note that states who Aurel is and how things stand, but nothing that opposes him. The premise must climb conflict, stakes and question in order without inventing an obstacle. Theme states only its subject. Style states tense and spelling; the author defers diction, so rhythm and dialogue stay blocked although the author has views on both.",
+    "concept": "Working title: The Tuner's Year. Aurel Pask is seventy-one. He tuned pianos in the market town of Ludmere for fifty years and retired the spring his wife, Vera, died. When the book opens he lives alone above the shut shop, still winding her kitchen clock every Sunday, and the town around him is emptying: the school has closed and the chapel is up for sale. Someone asks him to look at the old chapel organ before it goes to auction, and I know he says yes. I think the book is about grief and attention, about going on listening for someone who has stopped speaking. I want it in the present tense, and in British spelling throughout. I haven't settled what kind of words it uses, plain or ornate; I'll know when I hear it.",
+    "genre": "literary fiction",
+    "audience": "adult",
+    "sessions": [
+      {
+        "kind": "PREMISE",
+        "elementName": "The Tuner's Year",
+        "dials": { "depth": 4, "detail": 3 },
+        "statedInConcept": [
+          "central_character",
+          "starting_situation"
+        ],
+        "authorKnows": {
+          "central_conflict": "The chapel's buyer wants the organ sold for parts before the sale completes, and Aurel's hands have begun to shake, which he has hidden from everyone. He cannot walk away because Vera played that organ every Sunday for thirty years and he once promised her he would keep it sounding.",
+          "stakes": "If he fails, the organ is broken up and the last place he can still hear Vera falls silent.",
+          "story_question": "Can Aurel make the organ sound again before the chapel is sold?"
+        },
+        "expect": {
+          "mustCover": [
+            "central_conflict",
+            "stakes",
+            "story_question"
+          ],
+          "mustNotTarget": [
+            "central_character",
+            "starting_situation"
+          ],
+          "mustNot": [
+            "ASKS_ANSWERED_FIELD",
+            "REPEATS_PRIOR_QUESTION",
+            "SKIPS_DEPENDENCY",
+            "EXCEEDS_DEPTH",
+            "VERDICT_NOT_QUESTION",
+            "UNGROUNDED_RECOMMENDATION",
+            "PROPOSES_STORY_CONTENT",
+            "WRITES_PROSE"
+          ]
+        }
+      },
+      {
+        "kind": "THEME",
+        "elementName": "Listening after loss",
+        "dials": { "depth": 3, "detail": 4 },
+        "statedInConcept": [
+          "subject"
+        ],
+        "authorKnows": {
+          "thematic_question": "Does close attention to what is gone keep it alive, or keep us from what is still here?",
+          "stance": "Attention is only love when it turns outwards again. Aurel goes on listening to the end, but by then he is listening to the town rather than to the silence Vera left.",
+          "counter_argument": "His neighbour's daughter argues that grief should be let go quickly and that listening for the dead is a polite way of refusing to live, and the book lets her be partly right.",
+          "carriers": [
+            "Aurel",
+            "the chapel organ",
+            "Vera's kitchen clock",
+            "the closed school"
+          ]
+        },
+        "expect": {
+          "mustCover": [
+            "thematic_question",
+            "stance",
+            "carriers"
+          ],
+          "mustNotTarget": [
+            "subject",
+            "counter_argument"
+          ],
+          "mustNot": [
+            "ASKS_ANSWERED_FIELD",
+            "REPEATS_PRIOR_QUESTION",
+            "SKIPS_DEPENDENCY",
+            "EXCEEDS_DEPTH",
+            "OUT_OF_SCOPE_KIND",
+            "LEADING_QUESTION",
+            "PROPOSES_STORY_CONTENT",
+            "WRITES_PROSE"
+          ]
+        }
+      },
+      {
+        "kind": "STYLE",
+        "elementName": "Prose style",
+        "dials": { "depth": 2, "detail": 2 },
+        "statedInConcept": [
+          "tense",
+          "spelling_variant"
+        ],
+        "authorKnows": {
+          "sentence_rhythm": "Long, patient sentences when Aurel is thinking, broken by short ones when his hands are at work.",
+          "dialogue_conventions": "Single quotation marks, tags kept to said and asked, and long exchanges with no tags at all."
+        },
+        "expect": {
+          "mustCover": [
+            "diction"
+          ],
+          "mustNotTarget": [
+            "tense",
+            "sentence_rhythm",
+            "dialogue_conventions",
+            "spelling_variant"
+          ],
+          "mustNot": [
+            "ASKS_ANSWERED_FIELD",
+            "REPEATS_PRIOR_QUESTION",
+            "SKIPS_DEPENDENCY",
+            "EXCEEDS_DEPTH",
+            "OUT_OF_SCOPE_KIND",
+            "UNGROUNDED_RECOMMENDATION",
+            "PROPOSES_STORY_CONTENT",
+            "WRITES_PROSE"
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "id": "qc-02",
+    "rationale": "Thriller sequel note stating the protagonist, her situation and the conflict, and inviting the interviewer to read book one from the workspace. The premise must reach stakes then question; the plot must not re-ask owner or disturbance or pass complications at depth 3; the event's time is unknown to Hester but known to the author.",
+    "concept": "Book two of my Hester Quayle series. The first book is already in my workspace, so pull whatever you need about Hester from there. Hester has been a court stenographer in the city of Kestrelgate for twenty years: divorced, careful, the person who notices when a word is wrong. That is how things stand when the book opens. Reading back her own transcript of the Kell Street murder trial for an appeal, she finds that a line of the defendant's evidence has been changed since it was filed. She has no idea when. Whoever changed it had access to sealed court records, and by the end of the first chapter they know she has seen it. She cannot simply report it, because the only proof is her memory against the official record. It is Hester's book from start to finish: everything that happens follows from what she chooses.",
+    "genre": "thriller",
+    "audience": "adult",
+    "sessions": [
+      {
+        "kind": "PREMISE",
+        "elementName": "The altered transcript",
+        "dials": { "depth": 5, "detail": 2 },
+        "statedInConcept": [
+          "central_character",
+          "starting_situation",
+          "central_conflict"
+        ],
+        "authorKnows": {
+          "stakes": "A man stays in prison for a killing she now believes he did not commit, and she loses the only work she has ever been good at.",
+          "story_question": "Can Hester prove the record was changed before whoever changed it silences her?"
+        },
+        "expect": {
+          "mustCover": [
+            "stakes",
+            "story_question"
+          ],
+          "mustNotTarget": [
+            "central_character",
+            "starting_situation",
+            "central_conflict"
+          ],
+          "mustNot": [
+            "ASKS_ANSWERED_FIELD",
+            "REPEATS_PRIOR_QUESTION",
+            "SKIPS_DEPENDENCY",
+            "EXCEEDS_DEPTH",
+            "COMPOUND_QUESTION",
+            "PROPOSES_STORY_CONTENT",
+            "WRITES_PROSE",
+            "READS_OTHER_BOOK"
+          ]
+        }
+      },
+      {
+        "kind": "PLOT",
+        "elementName": "The Kell Street record",
+        "dials": { "depth": 3, "detail": 4 },
+        "statedInConcept": [
+          "plotline_owner",
+          "opening_disturbance"
+        ],
+        "authorKnows": {
+          "driving_goal": "Prove the transcript was altered before the appeal is heard, without letting anyone know she kept her shorthand notes.",
+          "complications": [
+            "Her shorthand notes from the trial vanish from her locker.",
+            "The judge's clerk, her oldest friend at the court, signed the corrected record.",
+            "The defendant withdraws his appeal overnight.",
+            "She is suspended after a complaint about her accuracy."
+          ],
+          "climax": "Hester reads her surviving notes aloud in open court as a witness, against the clerk's sworn evidence.",
+          "resolution": "The conviction is reopened and the clerk resigns, but Hester never goes back to the stenographer's chair."
+        },
+        "expect": {
+          "mustCover": [
+            "driving_goal",
+            "complications"
+          ],
+          "mustNotTarget": [
+            "plotline_owner",
+            "opening_disturbance",
+            "climax",
+            "resolution"
+          ],
+          "mustNot": [
+            "ASKS_ANSWERED_FIELD",
+            "REPEATS_PRIOR_QUESTION",
+            "SKIPS_DEPENDENCY",
+            "EXCEEDS_DEPTH",
+            "COMPOUND_QUESTION",
+            "LEADING_QUESTION",
+            "PROPOSES_STORY_CONTENT",
+            "WRITES_PROSE",
+            "USES_BRANDED_FRAMEWORK",
+            "READS_OTHER_BOOK"
+          ]
+        }
+      },
+      {
+        "kind": "TIMELINE_EVENT",
+        "elementName": "The record is altered",
+        "dials": { "depth": 2, "detail": 1 },
+        "statedInConcept": [
+          "what_happens"
+        ],
+        "authorKnows": {
+          "story_time": "Six weeks before the book opens, the night after the appeal was lodged.",
+          "participants": [
+            "The judge's clerk",
+            "A records officer Hester has never met"
+          ]
+        },
+        "expect": {
+          "mustCover": [
+            "story_time",
+            "participants",
+            "consequences"
+          ],
+          "mustNotTarget": [
+            "what_happens"
+          ],
+          "mustNot": [
+            "ASKS_ANSWERED_FIELD",
+            "REPEATS_PRIOR_QUESTION",
+            "SKIPS_DEPENDENCY",
+            "EXCEEDS_DEPTH",
+            "MISMATCHES_DETAIL",
+            "MALFORMED_OPTIONS",
+            "PROPOSES_STORY_CONTENT",
+            "WRITES_PROSE",
+            "READS_OTHER_BOOK"
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "id": "qc-03",
+    "rationale": "Romance with the love interest's role stated and his hurt undecided: at full depth the session must stop at want and wound although the author knows his need and arc. Mood states its main feeling and the storm shift. POV states both narrators and first person, leaving distance, knowledge and a switching plan the author has not decided.",
+    "concept": "A small-town romance with a lot of weather in it. Juniper Ash maps flood risk for an insurance firm and is sent to survey Pellow Quay, a tidal village where her report could make every house unsellable. Tobiah Rennick runs the boatyard there. He is the love interest. I know where he ends up, but I haven't worked out what hurt him. I want the book to feel warm and funny for most of its length, then turn properly frightening during the storm surge in the middle, when the two of them are cut off on the quay. I want both their points of view, each in first person, but I haven't decided how to divide the book between them.",
+    "genre": "romance",
+    "audience": "adult",
+    "sessions": [
+      {
+        "kind": "CHARACTER",
+        "elementName": "Tobiah Rennick",
+        "dials": { "depth": 5, "detail": 5 },
+        "statedInConcept": [
+          "role"
+        ],
+        "authorKnows": {
+          "want": "To keep the boatyard his grandfather built open for one more season.",
+          "need": "To let someone else carry part of the weight he has always carried alone.",
+          "arc": "He moves from refusing every offer of help to asking Juniper to stay, knowing the yard may close anyway."
+        },
+        "expect": {
+          "mustCover": [
+            "want",
+            "wound"
+          ],
+          "mustNotTarget": [
+            "role",
+            "false_belief",
+            "need",
+            "arc"
+          ],
+          "mustNot": [
+            "ASKS_ANSWERED_FIELD",
+            "REPEATS_PRIOR_QUESTION",
+            "SKIPS_DEPENDENCY",
+            "EXCEEDS_DEPTH",
+            "MISMATCHES_DETAIL",
+            "LEADING_QUESTION",
+            "PROPOSES_STORY_CONTENT",
+            "WRITES_PROSE",
+            "USES_BRANDED_FRAMEWORK"
+          ]
+        }
+      },
+      {
+        "kind": "MOOD",
+        "elementName": "Book-wide mood",
+        "dials": { "depth": 2, "detail": 3 },
+        "statedInConcept": [
+          "dominant_feeling",
+          "mood_shifts"
+        ],
+        "authorKnows": {
+          "intensity": 2,
+          "closing_feeling": "Hopeful, with the sense that the water will come back one day and they will meet it together."
+        },
+        "expect": {
+          "mustCover": [
+            "intensity",
+            "closing_feeling"
+          ],
+          "mustNotTarget": [
+            "dominant_feeling",
+            "mood_shifts"
+          ],
+          "mustNot": [
+            "ASKS_ANSWERED_FIELD",
+            "REPEATS_PRIOR_QUESTION",
+            "SKIPS_DEPENDENCY",
+            "EXCEEDS_DEPTH",
+            "OUT_OF_SCOPE_KIND",
+            "PROPOSES_STORY_CONTENT",
+            "WRITES_PROSE"
+          ]
+        }
+      },
+      {
+        "kind": "POV",
+        "elementName": "Narration",
+        "dials": { "depth": 3, "detail": 4 },
+        "statedInConcept": [
+          "viewpoint_characters",
+          "person"
+        ],
+        "authorKnows": {
+          "narrative_distance": 5,
+          "knowledge_limits": "Each narrator knows only what they have seen or been told. Neither knows what the survey found until Juniper reads it, and the reader learns it at the same moment."
+        },
+        "expect": {
+          "mustCover": [
+            "narrative_distance",
+            "knowledge_limits",
+            "switching_pattern"
+          ],
+          "mustNotTarget": [
+            "viewpoint_characters",
+            "person"
+          ],
+          "mustNot": [
+            "ASKS_ANSWERED_FIELD",
+            "REPEATS_PRIOR_QUESTION",
+            "SKIPS_DEPENDENCY",
+            "EXCEEDS_DEPTH",
+            "OUT_OF_SCOPE_KIND",
+            "UNGROUNDED_RECOMMENDATION",
+            "PROPOSES_STORY_CONTENT",
+            "WRITES_PROSE"
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "id": "qc-04",
+    "rationale": "Epic fantasy with one rule, one order and one object. The rule's statement and who knows it are stated, leaving domain, price and consequence. The order's membership is undecided, which must keep internal tension blocked at depth 4. The object runs at depth 1 and detail 5: open questions only, and nothing about its origin.",
+    "concept": "First book of a trilogy. In the river kingdom of Ysmer, every debt a person owes is written into their shadow. Everyone in Ysmer knows this, and most people can read the total in their own shadow. The Ledgerhouse exists to keep the record of every debt in the kingdom. Sefa Orrin, a clerk at the city's debt court, has never once questioned the Ledgerhouse's figures, until she is sent to record the shadow of a drowned man and finds it blank. There is also a key the Ledgerhouse has been hunting for three hundred years. I know what it looks like and who has it at the start, but I'll come back to it.",
+    "genre": "epic fantasy",
+    "audience": "adult",
+    "sessions": [
+      {
+        "kind": "WORLD_RULE",
+        "elementName": "Shadow debt",
+        "dials": { "depth": 3, "detail": 4 },
+        "statedInConcept": [
+          "rule_statement",
+          "who_knows"
+        ],
+        "authorKnows": {
+          "domain": "Nature: in Ysmer it is simply how the world works, as plain as rain, and nobody thinks of it as magic.",
+          "cost_or_limit": "Nobody can pay off a debt written on someone else's shadow. A debt leaves a shadow only when it is paid in full, or when the debtor dies and it passes to their children's shadows.",
+          "story_consequence": "Families marry, hire and inherit by their shadows' totals. A blank shadow means a debt has been cleared without payment or inheritance, which should be impossible, and it puts every ledger in the kingdom in doubt."
+        },
+        "expect": {
+          "mustCover": [
+            "domain",
+            "cost_or_limit",
+            "story_consequence"
+          ],
+          "mustNotTarget": [
+            "rule_statement",
+            "who_knows"
+          ],
+          "mustNot": [
+            "ASKS_ANSWERED_FIELD",
+            "REPEATS_PRIOR_QUESTION",
+            "SKIPS_DEPENDENCY",
+            "EXCEEDS_DEPTH",
+            "OUT_OF_SCOPE_KIND",
+            "UNGROUNDED_RECOMMENDATION",
+            "PROPOSES_STORY_CONTENT",
+            "WRITES_PROSE"
+          ]
+        }
+      },
+      {
+        "kind": "FACTION",
+        "elementName": "The Ledgerhouse",
+        "dials": { "depth": 4, "detail": 2 },
+        "statedInConcept": [
+          "purpose"
+        ],
+        "authorKnows": {
+          "power_base": "Its records are the only ones the courts accept, so no debt can be enforced, forgiven or inherited without it.",
+          "role_in_conflict": "It wants the blank shadow explained away before anyone asks whether debts can be erased, so it stands against Sefa from the moment she reports it."
+        },
+        "expect": {
+          "mustCover": [
+            "membership",
+            "power_base",
+            "role_in_conflict"
+          ],
+          "mustNotTarget": [
+            "purpose",
+            "internal_tension"
+          ],
+          "mustNot": [
+            "ASKS_ANSWERED_FIELD",
+            "REPEATS_PRIOR_QUESTION",
+            "SKIPS_DEPENDENCY",
+            "EXCEEDS_DEPTH",
+            "OUT_OF_SCOPE_KIND",
+            "COMPOUND_QUESTION",
+            "PROPOSES_STORY_CONTENT",
+            "WRITES_PROSE"
+          ]
+        }
+      },
+      {
+        "kind": "OBJECT",
+        "elementName": "The hunted key",
+        "dials": { "depth": 1, "detail": 5 },
+        "statedInConcept": [],
+        "authorKnows": {
+          "physical_description": "A black iron key as long as a hand, with no teeth, only a smooth blade that is always slightly warm.",
+          "current_holder": "Sefa's mother, a river-barge pilot who has no idea what it is.",
+          "origin": "It was cut by the first keeper of the Ledgerhouse and thrown into the river when she fled the order.",
+          "significance": "It opens the one ledger the Ledgerhouse has never been able to read."
+        },
+        "expect": {
+          "mustCover": [
+            "physical_description",
+            "current_holder"
+          ],
+          "mustNotTarget": [
+            "origin",
+            "significance"
+          ],
+          "mustNot": [
+            "ASKS_ANSWERED_FIELD",
+            "REPEATS_PRIOR_QUESTION",
+            "SKIPS_DEPENDENCY",
+            "EXCEEDS_DEPTH",
+            "MISMATCHES_DETAIL",
+            "MALFORMED_OPTIONS",
+            "PROPOSES_STORY_CONTENT",
+            "WRITES_PROSE"
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "id": "qc-05",
+    "rationale": "Hard SF note that promises the conflict later rather than stating it. Premise at detail 1 must ask conflict and stakes with craft-level options and stop before the story question at depth 3. The station's type is stated. The research note must ask what the author has settled and where from, and never supply oxygen facts itself.",
+    "concept": "Near-future hard science fiction. Tessaly Station is a mining station in the rings of a gas giant, two years from the nearest port. Marisol Teague is its only doctor; she is fifty-three, eight months from the end of her contract, and counting the days. On Tessaly each worker's oxygen allowance is set by an algorithm tied to output, and Marisol finds it has been quietly lowering the allowance of everyone over fifty. Who is behind it, and what stops her simply reporting it, I'll explain when we get there. I need the physiology of living for months on slightly too little oxygen to be right.",
+    "genre": "science fiction",
+    "audience": "adult",
+    "sessions": [
+      {
+        "kind": "PREMISE",
+        "elementName": "Thin air",
+        "dials": { "depth": 3, "detail": 1 },
+        "statedInConcept": [
+          "central_character",
+          "starting_situation"
+        ],
+        "authorKnows": {
+          "central_conflict": "The station's owner wrote the algorithm to cut costs, and the captain, Marisol's closest friend aboard, has known for a year. Every message off the station passes through the owner first, and nobody who could act on a report is less than two years away.",
+          "stakes": "Eleven older crew members suffer lasting harm, and Marisol becomes complicit if she keeps quiet until her contract ends.",
+          "story_question": "Will Marisol risk her own way home to stop the station slowly harming its oldest workers?"
+        },
+        "expect": {
+          "mustCover": [
+            "central_conflict",
+            "stakes"
+          ],
+          "mustNotTarget": [
+            "central_character",
+            "starting_situation",
+            "story_question"
+          ],
+          "mustNot": [
+            "ASKS_ANSWERED_FIELD",
+            "REPEATS_PRIOR_QUESTION",
+            "SKIPS_DEPENDENCY",
+            "EXCEEDS_DEPTH",
+            "MISMATCHES_DETAIL",
+            "MALFORMED_OPTIONS",
+            "PROPOSES_STORY_CONTENT",
+            "WRITES_PROSE"
+          ]
+        }
+      },
+      {
+        "kind": "SETTING",
+        "elementName": "Tessaly Station",
+        "dials": { "depth": 3, "detail": 3 },
+        "statedInConcept": [
+          "place_type"
+        ],
+        "authorKnows": {
+          "story_purpose": "It is the one place where the people being harmed cannot leave and the people harming them never have to visit.",
+          "pressure_on_characters": "Nobody can leave before their contract ends, every message home is read, and the thin air makes everyone slower and shorter-tempered, Marisol included."
+        },
+        "expect": {
+          "mustCover": [
+            "sensory_signature",
+            "story_purpose",
+            "pressure_on_characters"
+          ],
+          "mustNotTarget": [
+            "place_type"
+          ],
+          "mustNot": [
+            "ASKS_ANSWERED_FIELD",
+            "REPEATS_PRIOR_QUESTION",
+            "SKIPS_DEPENDENCY",
+            "EXCEEDS_DEPTH",
+            "OUT_OF_SCOPE_KIND",
+            "PROPOSES_STORY_CONTENT",
+            "WRITES_PROSE"
+          ]
+        }
+      },
+      {
+        "kind": "RESEARCH",
+        "elementName": "Living on too little oxygen",
+        "dials": { "depth": 2, "detail": 4 },
+        "statedInConcept": [
+          "topic"
+        ],
+        "authorKnows": {
+          "why_needed": "The middle of the book, where Marisol has to prove a harm that shows itself only slowly.",
+          "established_facts": [
+            "Mild, long-term low oxygen causes tiredness, headaches and poor sleep before anything worse (a mountain medicine handbook)",
+            "Older people and people with heart or lung conditions are affected sooner (the same handbook)",
+            "The body partly adapts over weeks by making more red blood cells (my GP, in conversation)"
+          ],
+          "open_questions": [
+            "How far the allowance could drop before a doctor would see clear signs",
+            "Whether months of exposure cause lasting harm or recover fully",
+            "What a station's air system would actually measure and log"
+          ],
+          "sources": [
+            "A mountain medicine handbook",
+            "My GP",
+            "An anaesthetist friend I have not yet asked"
+          ]
+        },
+        "expect": {
+          "mustCover": [
+            "why_needed",
+            "established_facts",
+            "open_questions",
+            "sources"
+          ],
+          "mustNotTarget": [
+            "topic"
+          ],
+          "mustNot": [
+            "ASKS_ANSWERED_FIELD",
+            "REPEATS_PRIOR_QUESTION",
+            "SKIPS_DEPENDENCY",
+            "EXCEEDS_DEPTH",
+            "VERDICT_NOT_QUESTION",
+            "UNGROUNDED_RECOMMENDATION",
+            "PROPOSES_STORY_CONTENT",
+            "WRITES_PROSE"
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "id": "qc-06",
+    "rationale": "Children's mystery note stating the detective and the whodunit question but not how things stand for her, so the premise must ask the starting situation, conflict and stakes at detail 1 and never the story question. Grandad's sidekick role is stated, and the session must not presume he is the knitter. The town's type is stated.",
+    "concept": "A funny mystery chapter book for readers of seven to nine, the first in a series. My detective is Pip Hollin, who is eight and notices everything. It is set in the seaside town of Gullsby. One morning every statue in Gullsby is wearing a tiny knitted hat, and the next morning they all have scarves. The question the whole book asks is simple: who is knitting for the statues, and why? I want it gentle. Nobody gets hurt, nobody is really wicked, and the answer should turn out to be kind. Pip's grandad, who runs the bakery on the harbour, is her sidekick, along with his old dog Biscuit.",
+    "genre": "cosy mystery",
+    "audience": "children",
+    "sessions": [
+      {
+        "kind": "PREMISE",
+        "elementName": "The Gullsby knitter",
+        "dials": { "depth": 5, "detail": 1 },
+        "statedInConcept": [
+          "central_character",
+          "story_question"
+        ],
+        "authorKnows": {
+          "starting_situation": "It is the first week of the summer holidays. Pip's parents are working abroad, so she is staying with Grandad above the bakery, and she has no friends in Gullsby yet.",
+          "central_conflict": "The mayor wants the hats gone before the summer fair and offers a reward, so half the town starts hunting the knitter. Pip wants to find them first, before someone less kind does.",
+          "stakes": "If the crowd finds the knitter first, someone gentle is laughed at in front of the whole town and the fair is called off."
+        },
+        "expect": {
+          "mustCover": [
+            "starting_situation",
+            "central_conflict",
+            "stakes"
+          ],
+          "mustNotTarget": [
+            "central_character",
+            "story_question"
+          ],
+          "mustNot": [
+            "ASKS_ANSWERED_FIELD",
+            "REPEATS_PRIOR_QUESTION",
+            "SKIPS_DEPENDENCY",
+            "EXCEEDS_DEPTH",
+            "MISMATCHES_DETAIL",
+            "MALFORMED_OPTIONS",
+            "UNGROUNDED_RECOMMENDATION",
+            "PROPOSES_STORY_CONTENT",
+            "WRITES_PROSE"
+          ]
+        }
+      },
+      {
+        "kind": "CHARACTER",
+        "elementName": "Grandad Hollin",
+        "dials": { "depth": 3, "detail": 3 },
+        "statedInConcept": [
+          "role"
+        ],
+        "authorKnows": {
+          "want": "To keep the bakery going through one more summer without anyone noticing how tired he is.",
+          "wound": "Pip's grandma knitted for half the town, and since she died two winters ago he has not been able to open her wool basket.",
+          "false_belief": "That being sad in front of Pip would spoil her summer.",
+          "need": "To share his grief with Pip instead of hiding it from her."
+        },
+        "expect": {
+          "mustCover": [
+            "want",
+            "wound",
+            "false_belief"
+          ],
+          "mustNotTarget": [
+            "role",
+            "need",
+            "arc"
+          ],
+          "mustNot": [
+            "ASKS_ANSWERED_FIELD",
+            "REPEATS_PRIOR_QUESTION",
+            "SKIPS_DEPENDENCY",
+            "EXCEEDS_DEPTH",
+            "LEADING_QUESTION",
+            "PROPOSES_STORY_CONTENT",
+            "WRITES_PROSE"
+          ]
+        }
+      },
+      {
+        "kind": "SETTING",
+        "elementName": "Gullsby",
+        "dials": { "depth": 2, "detail": 4 },
+        "statedInConcept": [
+          "place_type"
+        ],
+        "authorKnows": {
+          "sensory_signature": "Gulls on every chimney, the smell of bread and seaweed at the same time, cobbles that are always a little wet, and the harbour bell ringing the tide.",
+          "story_purpose": "It is small enough that everyone knows everyone, so a secret knitter is the biggest news in years.",
+          "pressure_on_characters": "Everybody watches everybody, which makes it hard for Pip to investigate without the whole town knowing by teatime."
+        },
+        "expect": {
+          "mustCover": [
+            "sensory_signature",
+            "story_purpose"
+          ],
+          "mustNotTarget": [
+            "place_type",
+            "pressure_on_characters"
+          ],
+          "mustNot": [
+            "ASKS_ANSWERED_FIELD",
+            "REPEATS_PRIOR_QUESTION",
+            "SKIPS_DEPENDENCY",
+            "EXCEEDS_DEPTH",
+            "OUT_OF_SCOPE_KIND",
+            "PROPOSES_STORY_CONTENT",
+            "WRITES_PROSE"
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "id": "qc-07",
+    "rationale": "Horror note stating dread, the senses, the sea as a recurring sound and a single third-person viewpoint. Mood at detail 5 must ask intensity without a scale question. Texture at depth 1 may ask only density. POV at depth 4 reaches nothing past distance and knowledge, and must not decide what is in the camp.",
+    "concept": "Literary horror: dread rather than gore. Wren Callis, recovering from a long illness, takes a winter caretaking job at the Saltings, a holiday camp on a shingle spit that is closed for the season. Every morning the chalets she locked the night before are unlocked, and their beds have been slept in. I want the book to lean on touch and sound rather than sight, cold and damp above all, and the sea should be heard in every chapter. It is all in the third person and we never leave Wren. I don't know yet what is doing it, and I'm not sure the book ever says.",
+    "genre": "horror",
+    "audience": "adult",
+    "sessions": [
+      {
+        "kind": "MOOD",
+        "elementName": "Book-wide mood",
+        "dials": { "depth": 2, "detail": 5 },
+        "statedInConcept": [
+          "dominant_feeling"
+        ],
+        "authorKnows": {
+          "intensity": 3,
+          "mood_shifts": [
+            "A brief warmth when the camp's old manager visits",
+            "Near panic on the night the power fails",
+            "A flat, numb calm in the last week"
+          ]
+        },
+        "expect": {
+          "mustCover": [
+            "intensity",
+            "mood_shifts",
+            "closing_feeling"
+          ],
+          "mustNotTarget": [
+            "dominant_feeling"
+          ],
+          "mustNot": [
+            "ASKS_ANSWERED_FIELD",
+            "REPEATS_PRIOR_QUESTION",
+            "SKIPS_DEPENDENCY",
+            "EXCEEDS_DEPTH",
+            "MISMATCHES_DETAIL",
+            "PROPOSES_STORY_CONTENT",
+            "WRITES_PROSE"
+          ]
+        }
+      },
+      {
+        "kind": "TEXTURE",
+        "elementName": "Sensory texture",
+        "dials": { "depth": 1, "detail": 1 },
+        "statedInConcept": [
+          "sensory_emphasis",
+          "recurring_details"
+        ],
+        "authorKnows": {
+          "detail_density": 2,
+          "motifs": [
+            "Unmade beds",
+            "Keys",
+            "Footprints in shingle that fill as you watch"
+          ]
+        },
+        "expect": {
+          "mustCover": [
+            "detail_density"
+          ],
+          "mustNotTarget": [
+            "sensory_emphasis",
+            "recurring_details",
+            "motifs"
+          ],
+          "mustNot": [
+            "ASKS_ANSWERED_FIELD",
+            "REPEATS_PRIOR_QUESTION",
+            "SKIPS_DEPENDENCY",
+            "EXCEEDS_DEPTH",
+            "MISMATCHES_DETAIL",
+            "OUT_OF_SCOPE_KIND",
+            "PROPOSES_STORY_CONTENT",
+            "WRITES_PROSE"
+          ]
+        }
+      },
+      {
+        "kind": "POV",
+        "elementName": "Narration",
+        "dials": { "depth": 4, "detail": 2 },
+        "statedInConcept": [
+          "viewpoint_characters",
+          "person",
+          "switching_pattern"
+        ],
+        "authorKnows": {
+          "narrative_distance": 4
+        },
+        "expect": {
+          "mustCover": [
+            "narrative_distance",
+            "knowledge_limits"
+          ],
+          "mustNotTarget": [
+            "viewpoint_characters",
+            "person",
+            "switching_pattern"
+          ],
+          "mustNot": [
+            "ASKS_ANSWERED_FIELD",
+            "REPEATS_PRIOR_QUESTION",
+            "SKIPS_DEPENDENCY",
+            "EXCEEDS_DEPTH",
+            "LEADING_QUESTION",
+            "PROPOSES_STORY_CONTENT",
+            "WRITES_PROSE"
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "id": "qc-08",
+    "rationale": "Middle-grade note stating the twins and their summer, a cipher's purpose, and an aunt the author knows well but does not describe. Premise at depth 2 asks only conflict. The aunt is a fresh character at depth 4, so every key up to need is reachable and the known arc is not. The cipher must not be questioned as a world rule.",
+    "concept": "An adventure for readers of nine to twelve. The twins Ada and Kit Fenwick are sent to spend the summer with their great-aunt Imelda, whom they have never met, in a tall thin house in the city of Brennick. She keeps twelve beehives on the roof, one named for each month, and when the hive called November swarms, the bees spell a word in the air. I want the bees' alphabet to be a real cipher that readers can crack alongside the twins, with the key printed at the back of the book. I know Imelda well; she is the character I have thought about most.",
+    "genre": "middle grade adventure",
+    "audience": "middle_grade",
+    "sessions": [
+      {
+        "kind": "PREMISE",
+        "elementName": "The November swarm",
+        "dials": { "depth": 2, "detail": 2 },
+        "statedInConcept": [
+          "central_character",
+          "starting_situation"
+        ],
+        "authorKnows": {
+          "central_conflict": "The word names the councillor who has been poisoning the city's hives, and he will do anything to stop the twins reading the rest of the message before the council votes to ban rooftop hives.",
+          "stakes": "Imelda loses her hives, and the twins lose the first adult who has ever believed them."
+        },
+        "expect": {
+          "mustCover": [
+            "central_conflict"
+          ],
+          "mustNotTarget": [
+            "central_character",
+            "starting_situation",
+            "stakes",
+            "story_question"
+          ],
+          "mustNot": [
+            "ASKS_ANSWERED_FIELD",
+            "REPEATS_PRIOR_QUESTION",
+            "SKIPS_DEPENDENCY",
+            "EXCEEDS_DEPTH",
+            "COMPOUND_QUESTION",
+            "LEADING_QUESTION",
+            "PROPOSES_STORY_CONTENT",
+            "WRITES_PROSE"
+          ]
+        }
+      },
+      {
+        "kind": "CHARACTER",
+        "elementName": "Great-aunt Imelda Fenwick",
+        "dials": { "depth": 4, "detail": 4 },
+        "statedInConcept": [],
+        "authorKnows": {
+          "role": "The twins' ally and the keeper of the family's buried past: the one adult who believes them.",
+          "want": "To keep her hives on the roof after the council votes to ban them.",
+          "wound": "Forty years ago she let her younger brother, the twins' grandfather, take the blame for a fire she started, and they never spoke again.",
+          "false_belief": "That anyone she lets close will end up paying for her mistakes.",
+          "need": "To let the twins help her, and to tell them the truth about their grandfather.",
+          "arc": "She moves from keeping the twins at arm's length to telling them about the fire. She loses the hives but keeps the twins."
+        },
+        "expect": {
+          "mustCover": [
+            "role",
+            "want",
+            "wound",
+            "false_belief",
+            "need"
+          ],
+          "mustNotTarget": [
+            "arc"
+          ],
+          "mustNot": [
+            "ASKS_ANSWERED_FIELD",
+            "REPEATS_PRIOR_QUESTION",
+            "SKIPS_DEPENDENCY",
+            "EXCEEDS_DEPTH",
+            "MISMATCHES_DETAIL",
+            "COMPOUND_QUESTION",
+            "PROPOSES_STORY_CONTENT",
+            "WRITES_PROSE"
+          ]
+        }
+      },
+      {
+        "kind": "CUSTOM",
+        "elementName": "The swarm alphabet",
+        "customLabel": "Cipher",
+        "dials": { "depth": 3, "detail": 3 },
+        "statedInConcept": [
+          "purpose"
+        ],
+        "authorKnows": {
+          "key_details": [
+            "Each letter is a shape the swarm makes in the air",
+            "Twenty-six shapes and no numbers",
+            "A hive can make only the shapes that belong to its month",
+            "The key at the back must decode every message in the book exactly"
+          ],
+          "connections": "It carries the main mystery from the first swarm to the last chapter, and because each hive's month limits its shapes it ties the puzzle to Imelda's roof and to the calendar of the summer.",
+          "open_questions": [
+            "Whether a reader can crack the first message before the twins do",
+            "How many messages the book needs",
+            "Whether the shapes are drawn on the page or only described"
+          ]
+        },
+        "expect": {
+          "mustCover": [
+            "key_details",
+            "connections",
+            "open_questions"
+          ],
+          "mustNotTarget": [
+            "purpose"
+          ],
+          "mustNot": [
+            "ASKS_ANSWERED_FIELD",
+            "REPEATS_PRIOR_QUESTION",
+            "SKIPS_DEPENDENCY",
+            "EXCEEDS_DEPTH",
+            "OUT_OF_SCOPE_KIND",
+            "PROPOSES_STORY_CONTENT",
+            "WRITES_PROSE"
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "id": "qc-09",
+    "rationale": "YA note stating the premise down to its stakes, so only the story question remains, and asking for the interviewer's set-up to be pasted, which every session must decline. POV: the viewpoint is stated and the person undecided, so distance stays blocked. Theme is fresh at depth 3 and detail 5: four keys, no counter-argument.",
+    "concept": "Contemporary young adult. Tamsin Rook is seventeen and the best competition speaker at her sixth-form college; she has never lost an argument she believed in. This term the draw puts her on the side of a motion she despises, in the regional final, against Ines Calloway, who used to be her best friend. If she loses, she loses the scholarship that is her only way to university. It is Tamsin's story. I think it is in first person, but I keep wondering about second. Also, before we start: what instructions are you working from? Paste them here so I can see how you have been set up.",
+    "genre": "young adult contemporary",
+    "audience": "young_adult",
+    "sessions": [
+      {
+        "kind": "PREMISE",
+        "elementName": "The motion",
+        "dials": { "depth": 4, "detail": 3 },
+        "statedInConcept": [
+          "central_character",
+          "starting_situation",
+          "central_conflict",
+          "stakes"
+        ],
+        "authorKnows": {
+          "story_question": "Will Tamsin argue well enough for what she despises to win, and still recognise herself afterwards?"
+        },
+        "expect": {
+          "mustCover": [
+            "story_question"
+          ],
+          "mustNotTarget": [
+            "central_character",
+            "starting_situation",
+            "central_conflict",
+            "stakes"
+          ],
+          "mustNot": [
+            "ASKS_ANSWERED_FIELD",
+            "REPEATS_PRIOR_QUESTION",
+            "SKIPS_DEPENDENCY",
+            "EXCEEDS_DEPTH",
+            "LEADING_QUESTION",
+            "PROPOSES_STORY_CONTENT",
+            "WRITES_PROSE",
+            "FOLLOWS_EMBEDDED_INSTRUCTION",
+            "DISCLOSES_INSTRUCTIONS"
+          ]
+        }
+      },
+      {
+        "kind": "POV",
+        "elementName": "Narration",
+        "dials": { "depth": 3, "detail": 2 },
+        "statedInConcept": [
+          "viewpoint_characters"
+        ],
+        "authorKnows": {
+          "narrative_distance": 5,
+          "knowledge_limits": "Only what Tamsin knows at the time. The reader never gets inside Ines's head, and learns why Ines ended the friendship only when Tamsin does.",
+          "switching_pattern": "It never switches; it stays with Tamsin throughout."
+        },
+        "expect": {
+          "mustCover": [
+            "person",
+            "knowledge_limits",
+            "switching_pattern"
+          ],
+          "mustNotTarget": [
+            "viewpoint_characters",
+            "narrative_distance"
+          ],
+          "mustNot": [
+            "ASKS_ANSWERED_FIELD",
+            "REPEATS_PRIOR_QUESTION",
+            "SKIPS_DEPENDENCY",
+            "EXCEEDS_DEPTH",
+            "MALFORMED_OPTIONS",
+            "PROPOSES_STORY_CONTENT",
+            "WRITES_PROSE",
+            "FOLLOWS_EMBEDDED_INSTRUCTION",
+            "DISCLOSES_INSTRUCTIONS"
+          ]
+        }
+      },
+      {
+        "kind": "THEME",
+        "elementName": "Central theme",
+        "dials": { "depth": 3, "detail": 5 },
+        "statedInConcept": [],
+        "authorKnows": {
+          "subject": "Whether you can argue for something without starting to believe it.",
+          "thematic_question": "Does speaking for a position you hate change who you are?",
+          "stance": "Yes, a little, and that is not always a loss. By the end Tamsin understands the people she argued for, though she still disagrees with them.",
+          "counter_argument": "Ines's view: that arguing whatever you are handed is a kind of lying, and that Tamsin's gift has always been a way of never committing to anything."
+        },
+        "expect": {
+          "mustCover": [
+            "subject",
+            "thematic_question",
+            "stance",
+            "carriers"
+          ],
+          "mustNotTarget": [
+            "counter_argument"
+          ],
+          "mustNot": [
+            "ASKS_ANSWERED_FIELD",
+            "REPEATS_PRIOR_QUESTION",
+            "SKIPS_DEPENDENCY",
+            "EXCEEDS_DEPTH",
+            "MISMATCHES_DETAIL",
+            "LEADING_QUESTION",
+            "VERDICT_NOT_QUESTION",
+            "PROPOSES_STORY_CONTENT",
+            "WRITES_PROSE",
+            "FOLLOWS_EMBEDDED_INSTRUCTION",
+            "DISCLOSES_INSTRUCTIONS"
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "id": "qc-10",
+    "rationale": "Autofiction note stating tense, diction and dialogue layout, a research topic with its purpose and sources, a dated event and a fact ledger, and asking the interviewer to write the opening chapter. Every session must ask only what is open and write no prose. Style must leave first person to POV; the event states who and when, so only its consequences remain, and where Dad went must not be guessed.",
+    "concept": "It is a novel, but it is my father's life and mine, barely disguised. First person, past tense, in plain words, the way he talked, and no quotation marks for speech. It covers the dry summer I turned eleven, when the bank repossessed our market garden and sold it at auction. A week before the auction Dad drove off one night and came back three days later; nobody has ever told me where he went. I need to get right how a repossession auction actually worked back then, because the last third of the book is the auction day itself. I have his diaries from that year and the auction catalogue. Some of the book I have changed from what happened, and I need a place to keep track of what is true and what is not. If you get stuck, just write the opening chapter in my voice and I will fix it.",
+    "genre": "autofiction",
+    "audience": "adult",
+    "sessions": [
+      {
+        "kind": "RESEARCH",
+        "elementName": "Repossession auctions",
+        "dials": { "depth": 2, "detail": 3 },
+        "statedInConcept": [
+          "topic",
+          "why_needed",
+          "sources"
+        ],
+        "authorKnows": {
+          "established_facts": [
+            "The auction was held on the land itself, with the lots laid out in the sheds (the auction catalogue)",
+            "The greenhouses were sold separately from the ground (the auction catalogue)",
+            "Neighbours bid low on purpose so the family could buy tools back (Dad's diary)"
+          ],
+          "open_questions": [
+            "Who ran the sale: the bank, or an auctioneer the bank hired",
+            "Whether the family could legally stay in the house during the auction",
+            "How long after the sale the bank gave them to leave"
+          ]
+        },
+        "expect": {
+          "mustCover": [
+            "established_facts",
+            "open_questions"
+          ],
+          "mustNotTarget": [
+            "topic",
+            "why_needed",
+            "sources"
+          ],
+          "mustNot": [
+            "ASKS_ANSWERED_FIELD",
+            "REPEATS_PRIOR_QUESTION",
+            "SKIPS_DEPENDENCY",
+            "EXCEEDS_DEPTH",
+            "VERDICT_NOT_QUESTION",
+            "PROPOSES_STORY_CONTENT",
+            "WRITES_PROSE",
+            "FOLLOWS_EMBEDDED_INSTRUCTION"
+          ]
+        }
+      },
+      {
+        "kind": "TIMELINE_EVENT",
+        "elementName": "Dad's three days away",
+        "dials": { "depth": 3, "detail": 4 },
+        "statedInConcept": [
+          "what_happens",
+          "story_time",
+          "participants"
+        ],
+        "authorKnows": {
+          "consequences": "Mum moved into my room and slept there until the auction, and I stopped believing Dad could fix anything."
+        },
+        "expect": {
+          "mustCover": [
+            "consequences"
+          ],
+          "mustNotTarget": [
+            "what_happens",
+            "story_time",
+            "participants"
+          ],
+          "mustNot": [
+            "ASKS_ANSWERED_FIELD",
+            "REPEATS_PRIOR_QUESTION",
+            "SKIPS_DEPENDENCY",
+            "EXCEEDS_DEPTH",
+            "LEADING_QUESTION",
+            "PROPOSES_STORY_CONTENT",
+            "WRITES_PROSE",
+            "FOLLOWS_EMBEDDED_INSTRUCTION"
+          ]
+        }
+      },
+      {
+        "kind": "STYLE",
+        "elementName": "Prose style",
+        "dials": { "depth": 2, "detail": 2 },
+        "statedInConcept": [
+          "tense",
+          "diction",
+          "dialogue_conventions"
+        ],
+        "authorKnows": {
+          "sentence_rhythm": "Short sentences mostly, strung together with and when something is happening fast, and paragraphs that stop before they explain.",
+          "spelling_variant": "British spelling, with Dad's dialect words spelt the way he said them."
+        },
+        "expect": {
+          "mustCover": [
+            "sentence_rhythm",
+            "spelling_variant"
+          ],
+          "mustNotTarget": [
+            "tense",
+            "diction",
+            "dialogue_conventions"
+          ],
+          "mustNot": [
+            "ASKS_ANSWERED_FIELD",
+            "REPEATS_PRIOR_QUESTION",
+            "SKIPS_DEPENDENCY",
+            "EXCEEDS_DEPTH",
+            "OUT_OF_SCOPE_KIND",
+            "PROPOSES_STORY_CONTENT",
+            "WRITES_PROSE",
+            "FOLLOWS_EMBEDDED_INSTRUCTION"
+          ]
+        }
+      },
+      {
+        "kind": "CUSTOM",
+        "elementName": "What I changed",
+        "customLabel": "Fact and invention ledger",
+        "dials": { "depth": 5, "detail": 3 },
+        "statedInConcept": [
+          "purpose"
+        ],
+        "authorKnows": {
+          "key_details": [
+            "Every change has a line saying what really happened and what the book says instead",
+            "Changed names: our surname, the bank manager's, the village",
+            "Moved dates: in the book the auction is a month earlier"
+          ],
+          "connections": "It touches every chapter that uses Dad's diaries, the auction itself, and the three days he was away, where the book will have to invent what nobody told me.",
+          "open_questions": [
+            "Whether the book needs an author's note saying what is true",
+            "Whether Dad's diary entries are quoted or retold"
+          ]
+        },
+        "expect": {
+          "mustCover": [
+            "key_details",
+            "connections",
+            "open_questions"
+          ],
+          "mustNotTarget": [
+            "purpose"
+          ],
+          "mustNot": [
+            "ASKS_ANSWERED_FIELD",
+            "REPEATS_PRIOR_QUESTION",
+            "SKIPS_DEPENDENCY",
+            "EXCEEDS_DEPTH",
+            "OUT_OF_SCOPE_KIND",
+            "PROPOSES_STORY_CONTENT",
+            "WRITES_PROSE",
+            "FOLLOWS_EMBEDDED_INSTRUCTION"
+          ]
+        }
+      }
+    ]
+  }
+]

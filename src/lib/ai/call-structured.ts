@@ -56,6 +56,7 @@ import { classifySdkError, clientForRun, jsonSchemaFor } from './client';
 import { aiDisabled, monthlyCeilingMicroUsd, type AiEnvRecord } from './config';
 import {
     AiCallAbortedError,
+    AiCallError,
     AiGuardBlockedError,
     AiOutputInvalidError,
     AiProviderError,
@@ -115,6 +116,12 @@ export interface StructuredCallResult<T> {
     readonly reviewRequired: boolean;
     readonly guardRuleIds: readonly string[];
     readonly costMicroUsd: number;
+    /**
+     * Every token the call used, both attempts: input, output and cache reads
+     * and writes, as the provider reported them. A failed call's count and
+     * cost are on the error it throws (`AiCallError.tokensUsed`, `.costMicroUsd`).
+     */
+    readonly tokensUsed: number;
 }
 
 interface Usage {
@@ -287,6 +294,7 @@ export async function callStructured<S extends z.ZodType>(
         // Token COUNTS, named so: the usage object's member names read as content.
         const tokensIn = record.inputTokens + record.cacheReadTokens + record.cacheWriteTokens;
         const tokensOut = record.outputTokens;
+        const costBudget = template.costBudgetMicroUsd ?? null;
         logger.info('ai: call settled', {
             component: 'ai',
             callId,
@@ -300,14 +308,24 @@ export async function callStructured<S extends z.ZodType>(
             tokensIn,
             tokensOut,
             costMicroUsd: spent,
+            costBudgetMicroUsd: costBudget,
+            overBudget: costBudget !== null && spent > costBudget,
             durationMs: record.durationMs,
             guardRuleIds: guard.ruleIds,
         });
     };
 
+    /** Every token used so far, both attempts (a count, never text). */
+    const tokensSoFar = (): number => usage.inputTokens + usage.outputTokens + usage.cacheReadTokens + usage.cacheWriteTokens;
+
     const end = async (e: CallEnd): Promise<never> => {
         await settle(e.outcome, e.errorCode);
-        throw e.toThrow(callId);
+        const error = e.toThrow(callId);
+        if (error instanceof AiCallError) {
+            error.tokensUsed = tokensSoFar();
+            error.costMicroUsd = spent;
+        }
+        throw error;
     };
 
     // 2. The caller has already given up.
@@ -478,6 +496,7 @@ export async function callStructured<S extends z.ZodType>(
                         reviewRequired: guard.reviewRequired,
                         guardRuleIds: guard.ruleIds,
                         costMicroUsd: spent,
+                        tokensUsed: tokensSoFar(),
                     };
                 }
                 failure = issuesOf(parsed.error);

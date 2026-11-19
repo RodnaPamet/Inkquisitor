@@ -26,6 +26,7 @@ import { GLOBAL_MODELS, workspaceScopedModelNames } from '@/lib/db/rls-tripwire'
 import { isolationColumn, rlsProblems, type TableRlsFacts } from '../helpers/rls-coverage';
 import { seedBible } from '../helpers/bible';
 import { seedVectors } from '../helpers/vectors';
+import { seedInterview } from '../helpers/interview';
 import { seedAiCall, seedReservation } from '../helpers/ai-calls';
 import { createAccount, workspaceCtx } from '../helpers/workspaces';
 
@@ -106,14 +107,18 @@ let a: Awaited<ReturnType<typeof createAccount>>;
 let b: Awaited<ReturnType<typeof createAccount>>;
 beforeAll(async () => {
     // Each account brings a Workspace, an OWNER membership and audit rows,
-    // a seeded bible (a book, elements, fields, a relation and versions) and
-    // a vector (2.0): a row in every scoped table, for both workspaces.
+    // a seeded bible (a book, elements, fields, a relation and versions), a
+    // vector (2.0) and an interview (2.2): a row in every scoped table, for
+    // both workspaces.
     a = await createAccount({ workspaceName: 'RLS A' });
     b = await createAccount({ workspaceName: 'RLS B' });
     const aBook = await seedBible(workspaceCtx(a), 'rls-a');
     const bBook = await seedBible(workspaceCtx(b), 'rls-b');
     await seedVectors(workspaceCtx(a), aBook.bookId, 'rls-a');
     await seedVectors(workspaceCtx(b), bBook.bookId, 'rls-b');
+    // An interview with a round, its questions and an answer (Phase 2.2).
+    await seedInterview(workspaceCtx(a), aBook.bookId, aBook.characterId, 'rls-a');
+    await seedInterview(workspaceCtx(b), bBook.bookId, bBook.characterId, 'rls-b');
     // The model layer's ledger (2.1): a settled call and a live reservation.
     await seedAiCall(workspaceCtx(a), aBook.bookId, 'rls-a');
     await seedAiCall(workspaceCtx(b), bBook.bookId, 'rls-b');
@@ -134,6 +139,10 @@ it('there is something to cover: zero tables is never complete coverage', () => 
             'BibleRelation',
             'BibleEntryVersion',
             'VectorEmbedding',
+            'InterviewSession',
+            'InterviewRound',
+            'Question',
+            'Answer',
             'AiCallLog',
             'AiSpendMonth',
             'AiSpendReservation',

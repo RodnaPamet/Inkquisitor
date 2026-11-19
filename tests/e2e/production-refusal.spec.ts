@@ -3,7 +3,9 @@ import { expect, test } from '@playwright/test';
 
 /**
  * The production WEB server refuses to start without DATA_ENCRYPTION_KEY and
- * AUTH_SECRET (Phase 0.H, brief item 2). The worker's twin is
+ * AUTH_SECRET (Phase 0.H, brief item 2), and — since 2.2, when the question
+ * engine made a model call a production feature — without ANTHROPIC_API_KEY
+ * unless AI is switched off (issue #30, item 1). The worker's twin is
  * tests/unit/platform/production-refusal.test.ts.
  *
  * Starts the built app (`next start`, so `src/instrumentation.ts` runs its
@@ -30,6 +32,9 @@ function startServer(overrides: Record<string, string | undefined>): Promise<{ c
         NEXTAUTH_URL: 'https://inkquisitor.example.test',
         AUTH_SECRET: fake('auth'),
         DATA_ENCRYPTION_KEY: fake('kek'),
+        // Required since 2.2 (the question engine calls a model), with a declared retention mode.
+        ANTHROPIC_API_KEY: fake('model'),
+        AI_RETENTION_MODE: 'zdr',
         ...overrides,
     })) {
         if (v !== undefined) env[k] = v;
@@ -63,4 +68,11 @@ test('and with only the key missing, it names the key', async () => {
     const { code, stderr } = await startServer({ DATA_ENCRYPTION_KEY: undefined });
     expect(code).toBe(1);
     expect(fatal(stderr)).toEqual([expect.stringContaining('DATA_ENCRYPTION_KEY is required')]);
+});
+
+test('without the model key (AI not switched off), it names the missing key', async () => {
+    test.setTimeout(90_000);
+    const { code, stderr } = await startServer({ ANTHROPIC_API_KEY: undefined, AI_RETENTION_MODE: undefined });
+    expect(code).toBe(1);
+    expect(fatal(stderr)).toEqual([expect.stringContaining('ANTHROPIC_API_KEY is required')]);
 });

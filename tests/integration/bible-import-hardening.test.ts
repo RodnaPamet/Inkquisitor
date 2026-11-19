@@ -18,6 +18,24 @@ import { writeZip } from '@/lib/archive/zip';
 import type { ScanResult } from '@/lib/storage/av-scan';
 import { createAccount, workspaceCtx } from '../helpers/workspaces';
 
+/**
+ * The parse of each file's frontmatter, observed: each call records the event
+ * loop turn it ran in (the "yields between files" case counts them). The real
+ * parser runs every time.
+ */
+const mockParseTurns: number[] = [];
+const mockTurnOf: { current: (() => number) | null } = { current: null };
+jest.mock('@/lib/bible/bundle-format', () => {
+    const actual = jest.requireActual('@/lib/bible/bundle-format');
+    return {
+        ...actual,
+        parseYamlFrontmatter: (source: string) => {
+            if (mockTurnOf.current) mockParseTurns.push(mockTurnOf.current());
+            return actual.parseYamlFrontmatter(source);
+        },
+    };
+});
+
 afterAll(() => prisma.$disconnect());
 
 const clean: ImportDeps = { scan: async (): Promise<ScanResult> => ({ status: 'CLEAN', engine: 'test', durationMs: 0 }) };
@@ -53,38 +71,40 @@ it('refuses a file past 2 MiB and a bundle past 24 MiB inflated, before parsing'
     expect(await problemsOf(importBibleBundle(ctx, bookId, writeZip(many), {}, clean))).toEqual([{ path: '', reason: 'ARCHIVE_TOO_LARGE' }]);
 });
 
-it('yields between files: a bundle of dense files never holds the event loop for the whole parse', async () => {
-    // 16 files of ~130 KB of dense YAML structure under a key no element has:
-    // each takes ~0.25 s to parse, the whole ~4 s, and each file is refused
-    // (one UNKNOWN_KEY) only after it is parsed, so the parse runs in full.
-    // Random keys, so the files do not compress past the bomb ratio and get
-    // refused unparsed.
-    const dense = () => Array.from({ length: 6_000 }, () => `  k${randomBytes(5).toString('hex')}: [a, {b: 1}]`).join('\n');
+it('yields between files: a bundle never holds the event loop for more than one file\'s parse', async () => {
+    // 16 files of dense YAML structure under a key no element has: each is
+    // refused (one UNKNOWN_KEY) only after it is parsed, so every file IS
+    // parsed. Random keys, so the files do not compress past the bomb ratio
+    // and get refused unparsed.
+    const dense = () => Array.from({ length: 300 }, () => `  k${randomBytes(5).toString('hex')}: [a, {b: 1}]`).join('\n');
     const files = new Map<string, string>([['manifest.json', manifest]]);
     for (let i = 0; i < 16; i++) files.set(`theme/d${i}.md`, `---\nkind: THEME\nname: D${i}\nslug: d${i}\nstatus: DRAFT\nextra:\n${dense()}\n---\n`);
     const bytes = writeZip(files);
-    // A 5 ms ticker: the longest gap between two ticks is the longest the loop was held.
-    let last = performance.now();
-    let longestStallMs = 0;
-    const ticker = setInterval(() => {
-        const now = performance.now();
-        longestStallMs = Math.max(longestStallMs, now - last);
-        last = now;
-    }, 5);
-    const started = performance.now();
+    // Counted, not timed: a chain of setImmediate callbacks counts the event
+    // loop's turns (each turn of the check phase runs exactly one link), and
+    // each parse records the count it ran at. Two parses in one turn mean the
+    // import ran from one file into the next without letting the loop serve
+    // anything else in between.
+    let turns = 0;
+    let ticking = true;
+    const tick = () => {
+        turns++;
+        if (ticking) setImmediate(tick);
+    };
+    setImmediate(tick);
+    mockParseTurns.length = 0;
+    mockTurnOf.current = () => turns;
     let problems: Array<{ path: string; reason: string }>;
     try {
         problems = await problemsOf(importBibleBundle(ctx, bookId, bytes, {}, clean));
     } finally {
-        // One more tick first: a stall that ran to the end is recorded by the tick after it.
-        await new Promise((resolve) => setTimeout(resolve, 20));
-        clearInterval(ticker);
+        ticking = false;
+        mockTurnOf.current = null;
     }
-    const total = performance.now() - started;
     // Refused for what each file says, so every file WAS parsed.
     expect(problems).toHaveLength(16);
     expect(new Set(problems.map((p) => p.reason))).toEqual(new Set(['UNKNOWN_KEY']));
-    // The whole parse took far longer than any single stall: the loop ran between files.
-    expect(total).toBeGreaterThan(longestStallMs * 3);
-    expect(longestStallMs).toBeLessThan(1_000);
+    expect(mockParseTurns).toHaveLength(16);
+    // The loop turned between every two files' parses.
+    for (let i = 1; i < mockParseTurns.length; i++) expect(mockParseTurns[i]).toBeGreaterThan(mockParseTurns[i - 1]);
 });

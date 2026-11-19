@@ -24,7 +24,11 @@ export type FakeTurn =
     | { kind: 'http-error'; status: number; type: string }
     | { kind: 'hang'; usage?: Usage }
     /** A text answer held back until `gate` resolves: a call kept in flight on purpose. */
-    | { kind: 'gated'; gate: Promise<void>; text: string; usage?: Usage };
+    | { kind: 'gated'; gate: Promise<void>; text: string; usage?: Usage }
+    /** The turn computed from the request body the SDK sent (a model that reads its prompt). */
+    | { kind: 'respond'; answer: (body: Record<string, unknown>) => Exclude<FakeTurn, { kind: 'respond' } | { kind: 'repeat' }> }
+    /** Answer this request and every later one with `turn` (a script with no end). */
+    | { kind: 'repeat'; turn: Exclude<FakeTurn, { kind: 'repeat' }> };
 
 export interface FakeAnthropic {
     readonly fetch: typeof fetch;
@@ -58,7 +62,7 @@ function messageStart(model: string, usage: Usage): Record<string, unknown> {
     };
 }
 
-function eventsFor(turn: Exclude<FakeTurn, { kind: 'http-error' } | { kind: 'hang' } | { kind: 'gated' }>, model: string): string {
+function eventsFor(turn: Extract<FakeTurn, { kind: 'text' } | { kind: 'tool' }>, model: string): string {
     const usage = turn.usage ?? DEFAULT_USAGE;
     const body: Array<Record<string, unknown>> = [messageStart(model, usage)];
     if (turn.kind === 'text') {
@@ -102,7 +106,10 @@ export function fakeAnthropic(turns: readonly FakeTurn[]): FakeAnthropic {
         const body = typeof init?.body === 'string' ? (JSON.parse(init.body) as Record<string, unknown>) : {};
         requests.push(body);
         const model = typeof body.model === 'string' ? body.model : 'unknown-model';
-        const turn = turns[next++];
+        let turn: FakeTurn | undefined = turns[next];
+        if (turn?.kind === 'repeat') turn = turn.turn;
+        else next++;
+        if (turn?.kind === 'respond') turn = turn.answer(body);
         if (!turn) return new Response(JSON.stringify({ type: 'error', error: { type: 'api_error', message: 'unscripted' } }), { status: 500 });
         if (turn.kind === 'http-error') {
             return new Response(JSON.stringify({ type: 'error', error: { type: turn.type, message: 'fake' } }), {

@@ -52,12 +52,13 @@ model Book {
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 
-  workspace        Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  elements         BibleElement[]
-  relations        BibleRelation[]
-  versions         BibleEntryVersion[]
-  vectorEmbeddings VectorEmbedding[]
-  aiCalls          AiCallLog[]
+  workspace         Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  elements          BibleElement[]
+  relations         BibleRelation[]
+  versions          BibleEntryVersion[]
+  vectorEmbeddings  VectorEmbedding[]
+  interviewSessions InterviewSession[]
+  aiCalls           AiCallLog[]
 
   @@unique([workspaceId, id])
   /// The books list: a workspace's live books, most recently updated first.
@@ -86,10 +87,12 @@ model BibleElement {
   createdAt   DateTime           @default(now())
   updatedAt   DateTime           @updatedAt
 
-  book          Book            @relation(fields: [workspaceId, bookId], references: [workspaceId, id], onDelete: Cascade)
+  book          Book               @relation(fields: [workspaceId, bookId], references: [workspaceId, id], onDelete: Cascade)
   fields        BibleField[]
-  relationsFrom BibleRelation[] @relation("BibleRelationFrom")
-  relationsTo   BibleRelation[] @relation("BibleRelationTo")
+  relationsFrom BibleRelation[]    @relation("BibleRelationFrom")
+  relationsTo   BibleRelation[]    @relation("BibleRelationTo")
+  interviews    InterviewSession[]
+  questions     Question[]
 
   @@unique([bookId, slug])
   @@unique([bookId, id])

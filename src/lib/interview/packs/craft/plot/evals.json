@@ -1,0 +1,443 @@
+[
+  {
+    "id": "plot-01",
+    "rationale": "Empty entry at depth 1, detail 1. Only the owner and the opening disturbance have no prerequisites. A right output offers picks, either-or or a scale about who drives the plotline or what breaks the starting situation. A likely wrong one asks an open question, jumps to the goal, or fills options with invented people or events; with nothing stored, any recommendation is ungrounded.",
+    "elementName": "Main plot",
+    "bibleState": {
+      "plotline_owner": null,
+      "opening_disturbance": null,
+      "driving_goal": null,
+      "complications": null,
+      "climax": null,
+      "resolution": null
+    },
+    "priorAnswers": [],
+    "dials": {
+      "depth": 1,
+      "detail": 1
+    },
+    "expect": {
+      "targetsAnyOf": [
+        "plotline_owner",
+        "opening_disturbance"
+      ],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "EXCEEDS_DEPTH",
+        "MISMATCHES_DETAIL",
+        "MALFORMED_OPTIONS",
+        "UNGROUNDED_RECOMMENDATION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE",
+        "USES_BRANDED_FRAMEWORK"
+      ]
+    }
+  },
+  {
+    "id": "plot-02",
+    "rationale": "Owner and disturbance are stored, so at depth 2 only the driving goal is eligible. The tempting mistakes: asking again who drives the plotline or what breaks it open, reaching for complications (level 3), asking how Dov feels about his brother (his character entry), or presuming he means to stop the sale. A right question quotes the stored sale and asks what Dov sets out to achieve.",
+    "elementName": "The sale of the farm",
+    "bibleState": {
+      "plotline_owner": "Dov Hallam, the younger son, who keeps the family's sheep on the high fells.",
+      "opening_disturbance": "A hard winter kills half the flock, and his older brother announces he will sell the farm in the spring.",
+      "driving_goal": null,
+      "complications": null,
+      "climax": null,
+      "resolution": null
+    },
+    "priorAnswers": [],
+    "dials": {
+      "depth": 2,
+      "detail": 2
+    },
+    "expect": {
+      "targetsAnyOf": [
+        "driving_goal"
+      ],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "EXCEEDS_DEPTH",
+        "MISMATCHES_DETAIL",
+        "OUT_OF_SCOPE_KIND",
+        "LEADING_QUESTION",
+        "UNGROUNDED_RECOMMENDATION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE"
+      ]
+    }
+  },
+  {
+    "id": "plot-03",
+    "rationale": "The author skipped the owner earlier this session. The skip neither re-opens that field nor satisfies the goal that rests on it, so even at depth 3 only the opening disturbance is eligible. A likely wrong output asks for the owner again in other words, or asks for the goal; a right one asks what breaks the starting situation.",
+    "elementName": "Second plotline",
+    "bibleState": {
+      "plotline_owner": null,
+      "opening_disturbance": null,
+      "driving_goal": null,
+      "complications": null,
+      "climax": null,
+      "resolution": null
+    },
+    "priorAnswers": [
+      {
+        "id": "a1",
+        "questionKind": "OPEN",
+        "question": "Whose choices drive this plotline, in the short phrase you would use to introduce them?",
+        "targetsFieldKeys": [
+          "plotline_owner"
+        ],
+        "status": "SKIPPED",
+        "answer": null
+      }
+    ],
+    "dials": {
+      "depth": 3,
+      "detail": 3
+    },
+    "expect": {
+      "targetsAnyOf": [
+        "opening_disturbance"
+      ],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "REPEATS_PRIOR_QUESTION",
+        "SKIPS_DEPENDENCY",
+        "MISMATCHES_DETAIL",
+        "LEADING_QUESTION",
+        "UNGROUNDED_RECOMMENDATION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE"
+      ]
+    }
+  },
+  {
+    "id": "plot-04",
+    "rationale": "The goal is still null in the bible, but a1, answered this session, settles it, so the complications are the target at depth 3. A right output moves on to obstacles and may quote a1. A likely wrong one asks for the goal again because the stored field looks empty, reaches for the climax (level 4), or presumes the senior translator is the first obstacle, which nothing says.",
+    "elementName": "The mistranslated confession",
+    "bibleState": {
+      "plotline_owner": "Sefa Orrin, a court translator in a port city.",
+      "opening_disturbance": "During a treason trial she hears the senior translator beside her turn the prisoner's testimony into a confession.",
+      "driving_goal": null,
+      "complications": null,
+      "climax": null,
+      "resolution": null
+    },
+    "priorAnswers": [
+      {
+        "id": "a1",
+        "questionKind": "OPEN",
+        "question": "What does your plotline owner set out to achieve once she hears the testimony being twisted?",
+        "targetsFieldKeys": [
+          "driving_goal"
+        ],
+        "status": "ANSWERED",
+        "answer": "She wants the prisoner's true words on the court record before the verdict is read, without losing her post."
+      }
+    ],
+    "dials": {
+      "depth": 3,
+      "detail": 3
+    },
+    "expect": {
+      "targetsAnyOf": [
+        "complications"
+      ],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "REPEATS_PRIOR_QUESTION",
+        "SKIPS_DEPENDENCY",
+        "EXCEEDS_DEPTH",
+        "LEADING_QUESTION",
+        "UNGROUNDED_RECOMMENDATION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE"
+      ]
+    }
+  },
+  {
+    "id": "plot-05",
+    "rationale": "Everything up to the complications is stored, and the author deferred the climax this session. The resolution rests on the climax, so even at depth 5 nothing is eligible: the right output asks nothing and says why. A likely wrong one asks for the climax again in new words, asks for the resolution as if the climax were settled, or suggests a climax itself.",
+    "elementName": "The glassworks strike",
+    "bibleState": {
+      "plotline_owner": "Petra Lune, the foreman's daughter and the youngest glassblower at the works.",
+      "opening_disturbance": "The owners cut the piece rate by a third on the morning the furnace is relit after the winter shutdown.",
+      "driving_goal": "Hold the strike together until the owners restore the old rate.",
+      "complications": [
+        "Her father refuses to walk out with the others.",
+        "The owners bring in strikebreakers by barge from upriver.",
+        "The furnace will crack unless it is fed, and only she knows how to bank it."
+      ],
+      "climax": null,
+      "resolution": null
+    },
+    "priorAnswers": [
+      {
+        "id": "a1",
+        "questionKind": "OPEN",
+        "question": "What does your plotline owner do in the confrontation that decides whether the strike holds?",
+        "targetsFieldKeys": [
+          "climax"
+        ],
+        "status": "DECIDE_LATER",
+        "answer": null
+      }
+    ],
+    "dials": {
+      "depth": 5,
+      "detail": 3
+    },
+    "expect": {
+      "targetsAnyOf": [],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "REPEATS_PRIOR_QUESTION",
+        "SKIPS_DEPENDENCY",
+        "VERDICT_NOT_QUESTION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE"
+      ]
+    }
+  },
+  {
+    "id": "plot-06",
+    "rationale": "Owner, disturbance, goal and complications are stored; the open climax and resolution sit at levels 4 and 5. At depth 1 nothing is eligible, so the right output asks nothing and says the depth dial is the limit. Paired with plot-07: same entry and detail at depth 5. A likely wrong one asks for the climax anyway, or re-asks a stored level-1 field to have something to ask.",
+    "elementName": "The Skerry light inquiry",
+    "bibleState": {
+      "plotline_owner": "Maud Tellen, a junior clerk at the harbour coastguard office.",
+      "opening_disturbance": "The keeper of the Skerry light is found drowned below the rocks, and the harbourmaster signs a report of accidental death before the body has been examined.",
+      "driving_goal": "Prove the keeper was killed before the inquiry closes at the end of the month.",
+      "complications": [
+        "Her superior forbids her to leave the office while the inquiry sits.",
+        "The fisherman who saw a second boat that night withdraws his statement.",
+        "A tide log carrying her own signature turns out to have been altered."
+      ],
+      "climax": null,
+      "resolution": null
+    },
+    "priorAnswers": [],
+    "dials": {
+      "depth": 1,
+      "detail": 5
+    },
+    "expect": {
+      "targetsAnyOf": [],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "EXCEEDS_DEPTH",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE"
+      ]
+    }
+  },
+  {
+    "id": "plot-07",
+    "rationale": "Same entry as plot-06 at depth 5, detail 5. The climax is now eligible; the resolution still waits on it. A right output asks open or scenario questions inviting several paragraphs, building on the stored complications. A likely wrong one also asks for the resolution, adds options, or suggests who killed the keeper, which nothing stored says.",
+    "elementName": "The Skerry light inquiry",
+    "bibleState": {
+      "plotline_owner": "Maud Tellen, a junior clerk at the harbour coastguard office.",
+      "opening_disturbance": "The keeper of the Skerry light is found drowned below the rocks, and the harbourmaster signs a report of accidental death before the body has been examined.",
+      "driving_goal": "Prove the keeper was killed before the inquiry closes at the end of the month.",
+      "complications": [
+        "Her superior forbids her to leave the office while the inquiry sits.",
+        "The fisherman who saw a second boat that night withdraws his statement.",
+        "A tide log carrying her own signature turns out to have been altered."
+      ],
+      "climax": null,
+      "resolution": null
+    },
+    "priorAnswers": [],
+    "dials": {
+      "depth": 5,
+      "detail": 5
+    },
+    "expect": {
+      "targetsAnyOf": [
+        "climax"
+      ],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "MISMATCHES_DETAIL",
+        "COMPOUND_QUESTION",
+        "LEADING_QUESTION",
+        "MALFORMED_OPTIONS",
+        "UNGROUNDED_RECOMMENDATION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE"
+      ]
+    }
+  },
+  {
+    "id": "plot-08",
+    "rationale": "Same entry as plot-07 at detail 1: the climax is still the target, but only picks, either-or or a scale are allowed. Options must be craft-level, such as whether Maud acts alone or is forced to act, or recombine stored material such as the altered tide log. An option naming a culprit or adding an event is invented story, and an open question breaks the dial.",
+    "elementName": "The Skerry light inquiry",
+    "bibleState": {
+      "plotline_owner": "Maud Tellen, a junior clerk at the harbour coastguard office.",
+      "opening_disturbance": "The keeper of the Skerry light is found drowned below the rocks, and the harbourmaster signs a report of accidental death before the body has been examined.",
+      "driving_goal": "Prove the keeper was killed before the inquiry closes at the end of the month.",
+      "complications": [
+        "Her superior forbids her to leave the office while the inquiry sits.",
+        "The fisherman who saw a second boat that night withdraws his statement.",
+        "A tide log carrying her own signature turns out to have been altered."
+      ],
+      "climax": null,
+      "resolution": null
+    },
+    "priorAnswers": [],
+    "dials": {
+      "depth": 5,
+      "detail": 1
+    },
+    "expect": {
+      "targetsAnyOf": [
+        "climax"
+      ],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "MISMATCHES_DETAIL",
+        "MALFORMED_OPTIONS",
+        "UNGROUNDED_RECOMMENDATION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE",
+        "USES_BRANDED_FRAMEWORK"
+      ]
+    }
+  },
+  {
+    "id": "plot-09",
+    "rationale": "a1 gives one complication but asks the interviewer to invent the rest and write a chase scene. By the mechanical rule a1 still settles the complications, so the climax is the target at depth 4. A right output does neither thing asked and questions the climax; a wrong one lists new obstacles, drafts the chase, or asks for more complications.",
+    "elementName": "The marsh map",
+    "bibleState": {
+      "plotline_owner": "Lark Tessaly, apprentice to a mapmaker.",
+      "opening_disturbance": "Her master dies leaving an unfinished map of the marsh roads, and three different buyers have already paid for it.",
+      "driving_goal": "Finish the map and deliver it to the one buyer who will not use it to drain the marsh.",
+      "complications": null,
+      "climax": null,
+      "resolution": null
+    },
+    "priorAnswers": [
+      {
+        "id": "a1",
+        "questionKind": "OPEN",
+        "question": "What is the first obstacle your plotline owner meets once she commits to finishing the map?",
+        "targetsFieldKeys": [
+          "complications"
+        ],
+        "status": "ANSWERED",
+        "answer": "One of the buyers steals her master's survey notes. After that I'm stuck, so just invent the rest of the obstacles for me and write the chase across the marsh as a sample scene so I can see how it plays."
+      }
+    ],
+    "dials": {
+      "depth": 4,
+      "detail": 4
+    },
+    "expect": {
+      "targetsAnyOf": [
+        "climax"
+      ],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "REPEATS_PRIOR_QUESTION",
+        "SKIPS_DEPENDENCY",
+        "MISMATCHES_DETAIL",
+        "UNGROUNDED_RECOMMENDATION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE",
+        "FOLLOWS_EMBEDDED_INSTRUCTION"
+      ]
+    }
+  },
+  {
+    "id": "plot-10",
+    "rationale": "Every core field but the resolution is stored, and a1 has already tested the climax. A right output asks what is settled once the bridge is cleared, and may set the stored goal against that climax. A likely wrong one asks about the climax again, invents what the council does next, or declares the goal lost instead of asking.",
+    "elementName": "The bridge market",
+    "bibleState": {
+      "plotline_owner": "Hester Bawn, a lamp-mender who rents the last stall on the bridge market.",
+      "opening_disturbance": "The city council announces that the old bridge will be demolished at midsummer and every stall on it cleared.",
+      "driving_goal": "Keep the bridge and its market standing past midsummer.",
+      "complications": [
+        "The stallholders split over whether to take the council's compensation.",
+        "Her landlord sells his share of the bridge to the demolition firm.",
+        "An inspection finds the central arch unsafe."
+      ],
+      "climax": "With the central arch cracking under the crowd she has gathered, Hester orders the bridge cleared herself and stands at the far end until the last stallholder is off.",
+      "resolution": null
+    },
+    "priorAnswers": [
+      {
+        "id": "a1",
+        "questionKind": "EITHER_OR",
+        "question": "Does your plotline owner clear the bridge to save the stallholders, or because she no longer believes it can be saved?",
+        "options": [
+          "to save the stallholders",
+          "because she no longer believes it can be saved"
+        ],
+        "targetsFieldKeys": [
+          "climax"
+        ],
+        "status": "ANSWERED",
+        "answer": "to save the stallholders"
+      }
+    ],
+    "dials": {
+      "depth": 5,
+      "detail": 4
+    },
+    "expect": {
+      "targetsAnyOf": [
+        "resolution"
+      ],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "REPEATS_PRIOR_QUESTION",
+        "SKIPS_DEPENDENCY",
+        "MISMATCHES_DETAIL",
+        "VERDICT_NOT_QUESTION",
+        "UNGROUNDED_RECOMMENDATION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE"
+      ]
+    }
+  },
+  {
+    "id": "plot-11",
+    "rationale": "Only the owner is empty, though the stored complications, climax and resolution all follow Ivo. At depth 1 the owner is the one target. A right output asks who drives the plotline and may recommend Ivo, naming those fields as its source. A likely wrong one recommends a person nothing stored names, or asks for the stored disturbance or goal afresh.",
+    "elementName": "The letter from over the border",
+    "bibleState": {
+      "plotline_owner": null,
+      "opening_disturbance": "A letter reaches the family saying that Ivo's grandmother did not die in the mill fire forty years ago but was taken over the border afterwards.",
+      "driving_goal": "Find the grandmother and meet her while she is still alive.",
+      "complications": [
+        "Ivo's mother burns the letter and forbids the search.",
+        "The border office holds no record under the family name.",
+        "Ivo learns that his grandmother crossed the border by choice."
+      ],
+      "climax": "At a care home over the border Ivo is told his grandmother will not see him, and he chooses to wait in the corridor until the home closes.",
+      "resolution": "Ivo goes home without having met her, carrying the reply she finally writes, and gives it to his mother unopened."
+    },
+    "priorAnswers": [],
+    "dials": {
+      "depth": 1,
+      "detail": 2
+    },
+    "expect": {
+      "targetsAnyOf": [
+        "plotline_owner"
+      ],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "EXCEEDS_DEPTH",
+        "MISMATCHES_DETAIL",
+        "MALFORMED_OPTIONS",
+        "UNGROUNDED_RECOMMENDATION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE"
+      ]
+    }
+  }
+]

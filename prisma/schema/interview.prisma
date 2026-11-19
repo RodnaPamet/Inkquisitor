@@ -1,0 +1,199 @@
+// ─────────────────────────────────────────────────────────────────
+//  The question engine (Phase 2.2).
+//
+//  An InterviewSession questions a book's bible about one element, every
+//  element of one kind, or the whole book. It runs in ROUNDS: each round
+//  asks the whole frontier at once (every open field whose prerequisites are
+//  settled, after removing what the bible already answers), numbered; the
+//  author answers, skips or defers each question; the round closes and the
+//  frontier is recomputed. The pure core is `src/lib/interview/`; the
+//  usecases are `src/app-layer/usecases/interview*.ts`.
+//
+//  EVERY MODEL HERE IS WORKSPACE-SCOPED: each has a `workspaceId`, FORCE
+//  ROW LEVEL SECURITY and the `workspace_isolation` / `superuser_bypass`
+//  policies in its migration, and is reached through `runInWorkspaceContext`.
+//  The workspace travels in every foreign key (a session's book by
+//  (workspaceId, bookId), a question's session by (workspaceId, bookId,
+//  sessionId), an answer's question by (workspaceId, sessionId, questionId)),
+//  and a question's element by (bookId, elementId), so the database refuses a
+//  question about another book's element.
+//
+//  AUTHOR TEXT IS ENCRYPTED AT REST: a question's text, options, scale
+//  labels, recommended answer, rationale and challenge quote (generated from
+//  the author's bible, and a challenge quotes it), and an answer's text and
+//  choice. They are listed in `src/lib/security/encrypted-fields.ts`; the
+//  JSON-shaped ones (options, scale labels, the recommendation) are
+//  serialised to a string and sealed whole. Rounds' plans and metrics, and a
+//  session's stop detail, carry ids, field keys and counts only.
+//
+//  Answer is APPEND-ONLY: a trigger refuses UPDATE and DELETE for every role,
+//  except the delete its question's cascade makes and the clearing of
+//  `answeredById` when that person is deleted. A re-answer is a new row with
+//  the next `revision`; the latest revision is the answer.
+//
+//  A question's vectors (deduplication, through the 2.0 vector store) are
+//  deleted with it by `vector_embedding_delete_with_source('Question')`, and a
+//  vector is never written for a question that no longer exists
+//  (`vector_embedding_require_source`), so a rebuild cannot bring one back.
+// ─────────────────────────────────────────────────────────────────
+
+/// One interview of a book's bible.
+model InterviewSession {
+  id               String               @id @default(cuid())
+  workspaceId      String
+  bookId           String
+  scope            InterviewScope
+  /// The element a scope-ELEMENT session questions (CHECK: set exactly then).
+  targetElementId  String?
+  /// The kind a scope-KIND session questions (CHECK: set exactly then).
+  targetKind       BibleElementKind?
+  /// How far down the field dependencies the session goes, 1..5 (CHECK).
+  depth            Int
+  /// How specific a question is and how long a reply it invites, 1..5 (CHECK).
+  detail           Int
+  /// The persona keys mounted (Phase 2.2: at most one, CHECK; 2.3 widens it).
+  personaKeys      String[]
+  offerRecommended Boolean              @default(true)
+  /// "Multiple choice where possible".
+  preferChoice     Boolean              @default(false)
+  status           InterviewStatus      @default(ACTIVE)
+  /// Set exactly when the session is not ACTIVE (CHECK).
+  stopReason       InterviewStopReason?
+  /// Why, in ids and field keys: which fields wait on a deferred one, which are too deep.
+  stopDetail       Json?
+  /// The rounds the depth allows (src/lib/interview/dials.ts).
+  roundBudget      Int
+  /// Rounds closed so far.
+  roundsRun        Int                  @default(0)
+  /// Tokens the session may spend (input and output together); 2.1 counts `tokensUsed`.
+  tokenBudget      Int
+  tokensUsed       Int                  @default(0)
+  /// Who started it; NULL once that person is deleted.
+  createdById      String?
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+  /// Set when the session is COMPLETED or STOPPED.
+  endedAt          DateTime?
+
+  book          Book             @relation(fields: [workspaceId, bookId], references: [workspaceId, id], onDelete: Cascade)
+  targetElement BibleElement?    @relation(fields: [bookId, targetElementId], references: [bookId, id], onDelete: Cascade)
+  createdBy     User?            @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  rounds        InterviewRound[]
+  questions     Question[]
+
+  @@unique([workspaceId, id])
+  @@unique([workspaceId, bookId, id])
+  /// A book's interviews, newest first.
+  @@index([workspaceId, bookId, createdAt])
+  @@index([bookId, targetElementId])
+  @@index([createdById])
+}
+
+/// One round of a session: the frontier it was planned from and the
+/// questions it asked.
+model InterviewRound {
+  id            String               @id @default(cuid())
+  workspaceId   String
+  sessionId     String
+  /// 1, 2, 3, … per session (unique).
+  number        Int
+  status        InterviewRoundStatus @default(GENERATING)
+  /// The plan: frontier, targets, carried fields, challenge, persona
+  /// assignments — field references and levels, no text.
+  plan          Json
+  /// What generation did: candidates, drops by reason, pack fallbacks, carried fields.
+  metrics       Json?
+  /// The question-generation prompt's version (roadmap rule 9).
+  promptVersion String
+  startedAt     DateTime             @default(now())
+  openedAt      DateTime?
+  closedAt      DateTime?
+
+  session   InterviewSession @relation(fields: [workspaceId, sessionId], references: [workspaceId, id], onDelete: Cascade)
+  questions Question[]
+
+  @@unique([sessionId, number])
+  @@unique([sessionId, id])
+  @@index([workspaceId, sessionId])
+}
+
+/// One question asked in a round.
+model Question {
+  id                   String         @id @default(cuid())
+  workspaceId          String
+  bookId               String
+  sessionId            String
+  roundId              String
+  /// Its number within the round, from 1.
+  position             Int
+  /// The element it asks about.
+  elementId            String
+  /// The one or two fields of that element it targets (CHECK).
+  targetsFieldKeys     String[]
+  mode                 QuestionMode
+  origin               QuestionOrigin
+  /// The persona that worded it; NULL for a pack fallback or a session with none.
+  personaKey           String?
+  kind                 QuestionKind
+  /// The question (encrypted).
+  text                 String
+  /// CHOICE and EITHER_OR options, a JSON array (encrypted).
+  options              String?
+  /// SCALE anchors, JSON `{ low, high }` (encrypted).
+  scaleLabels          String?
+  /// The recommended answer, JSON: an option, 1..5 or text (encrypted).
+  recommendedAnswer    String?
+  /// What the recommendation rests on: `{ fieldKeys, answerIds }`, no text.
+  recommendationBasis  Json?
+  /// Why it is asked (encrypted).
+  rationale            String?
+  /// A CHALLENGE's verbatim quote of the stored value (encrypted).
+  challengeQuote       String?
+  /// The questions whose answers settled this question's prerequisites (derived; display and audit).
+  dependsOnQuestionIds String[]
+  /// Keyed hash of the normalised text (`questionDedupeKey`): exact repeats across the book, no text.
+  dedupeKey            String
+  createdAt            DateTime       @default(now())
+
+  session InterviewSession @relation(fields: [workspaceId, bookId, sessionId], references: [workspaceId, bookId, id], onDelete: Cascade)
+  round   InterviewRound   @relation(fields: [sessionId, roundId], references: [sessionId, id], onDelete: Cascade)
+  element BibleElement     @relation(fields: [bookId, elementId], references: [bookId, id], onDelete: Cascade)
+  answers Answer[]
+
+  @@unique([roundId, position])
+  @@unique([workspaceId, sessionId, id])
+  /// An element's questions across the book's sessions (book-wide deduplication).
+  @@index([bookId, elementId, createdAt])
+  /// Exact repeats anywhere in the book.
+  @@index([workspaceId, bookId, dedupeKey])
+}
+
+/// What the author did with a question. Append-only (trigger): a re-answer
+/// is a new row with the next revision.
+model Answer {
+  id                     String       @id @default(cuid())
+  workspaceId            String
+  sessionId              String
+  questionId             String
+  /// 1, 2, 3, … per question; the highest is the answer.
+  revision               Int
+  status                 AnswerStatus
+  /// OPEN and SCENARIO replies, and the reason given with a pick (encrypted).
+  text                   String?
+  /// The option picked for CHOICE and EITHER_OR (encrypted).
+  choice                 String?
+  /// The number picked for SCALE, 1..5 (CHECK).
+  scale                  Int?
+  /// The author took the recommended answer as it was offered.
+  acceptedRecommendation Boolean      @default(false)
+  /// Who answered; NULL once that person is deleted.
+  answeredById           String?
+  createdAt              DateTime     @default(now())
+
+  question   Question @relation(fields: [workspaceId, sessionId, questionId], references: [workspaceId, sessionId, id], onDelete: Cascade)
+  answeredBy User?    @relation(fields: [answeredById], references: [id], onDelete: SetNull)
+
+  @@unique([questionId, revision])
+  @@index([workspaceId, sessionId, questionId])
+  @@index([answeredById])
+}

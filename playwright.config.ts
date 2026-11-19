@@ -83,6 +83,14 @@ export default defineConfig({
                   // The specs call no outside service: no breached-password
                   // lookup at sign-up.
                   PASSWORD_BREACH_CHECK: process.env.PASSWORD_BREACH_CHECK || 'off',
+                  // No test reaches a model provider, so the server holds no
+                  // ANTHROPIC_API_KEY; production refuses to start without
+                  // one unless AI is switched off (src/lib/ai/config.ts). So
+                  // the operator's kill switch is on: a session that would
+                  // need the model pauses KILL_SWITCH, named, and nothing is
+                  // faked. The start-up refusal for the missing key is
+                  // production-refusal.spec.ts.
+                  AI_DISABLED: process.env.AI_DISABLED || '1',
                   // Every spec signs up and in from one address within a
                   // minute, which the auth tier (10 a minute) and the sign-up
                   // budget (5 an hour) would refuse. The tiers are covered by

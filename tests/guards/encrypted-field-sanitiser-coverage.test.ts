@@ -58,6 +58,15 @@ const COVERAGE: Readonly<Record<string, Classification>> = {
             'The snapshot is serialised from the element and field rows as they stand in the same transaction, every one of which ' +
             'came through the sanitisers above; a restore re-sanitises each value it applies.',
     },
+    // Phase 2.2: a generated question is model output built from author text, sanitised as author text.
+    'Question.text': { repository: 'QuestionRepository', writeMethods: ['create'], sanitiser: 'sanitiseQuestionForStorage' },
+    'Question.options': { repository: 'QuestionRepository', writeMethods: ['create'], sanitiser: 'sanitiseQuestionForStorage' },
+    'Question.scaleLabels': { repository: 'QuestionRepository', writeMethods: ['create'], sanitiser: 'sanitiseQuestionForStorage' },
+    'Question.recommendedAnswer': { repository: 'QuestionRepository', writeMethods: ['create'], sanitiser: 'sanitiseQuestionForStorage' },
+    'Question.rationale': { repository: 'QuestionRepository', writeMethods: ['create'], sanitiser: 'sanitiseQuestionForStorage' },
+    'Question.challengeQuote': { repository: 'QuestionRepository', writeMethods: ['create'], sanitiser: 'sanitiseQuestionForStorage' },
+    'Answer.text': { repository: 'AnswerRepository', writeMethods: ['create'], sanitiser: 'plainBlock' },
+    'Answer.choice': { repository: 'AnswerRepository', writeMethods: ['create'], sanitiser: 'plainLine' },
 };
 
 /** Each repository object and the one file allowed to write its model through Prisma. */
@@ -67,6 +76,8 @@ const REPOSITORIES: Readonly<Record<string, { file: string; model: string }>> = 
     BibleFieldRepository: { file: 'src/app-layer/repositories/bible.repository.ts', model: 'BibleField' },
     BibleRelationRepository: { file: 'src/app-layer/repositories/bible.repository.ts', model: 'BibleRelation' },
     BibleVersionRepository: { file: 'src/app-layer/repositories/bible.repository.ts', model: 'BibleEntryVersion' },
+    QuestionRepository: { file: 'src/app-layer/repositories/interview.repository.ts', model: 'Question' },
+    AnswerRepository: { file: 'src/app-layer/repositories/interview.repository.ts', model: 'Answer' },
 };
 
 /** Wrappers, where each is defined and what it must call; the chain must end at a primitive. */
@@ -77,6 +88,7 @@ const WRAPPERS: Readonly<Record<string, { file: string; calls: readonly string[]
     plainBlock: { file: 'src/lib/bible/text.ts', calls: ['sanitizePlainText'] },
     plainLine: { file: 'src/lib/bible/text.ts', calls: ['sanitizePlainText'] },
     normaliseFieldValue: { file: 'src/lib/bible/field-values.ts', calls: ['plainLine', 'sanitizeRichTextHtml'] },
+    sanitiseQuestionForStorage: { file: 'src/lib/interview/storage.ts', calls: ['plainLine', 'plainBlock'] },
 };
 
 const WRITE_OPS = ['create', 'createMany', 'createManyAndReturn', 'update', 'updateMany', 'updateManyAndReturn', 'upsert'];

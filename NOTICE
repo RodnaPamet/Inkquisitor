@@ -56,6 +56,20 @@ MIT License
     TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
     SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
+  mattpocock/skills (the grilling skill: grill-me, grill-with-docs)
+  https://github.com/mattpocock/skills
+  Copyright (c) 2026 Matt Pocock
+
+  The interview algorithm of the question engine (Phase 2.2,
+  src/lib/interview/): treat the bible as a decision tree; each round, ask
+  the whole frontier of questions whose prerequisites are settled, after
+  first removing whatever the document already answers; offer a recommended
+  answer with each question; recompute after the answers. Re-implemented for
+  Inkquisitor (frontier.ts, plan.ts, round.ts); no code or text from the
+  project is copied, and every question text in the packs is written for
+  Inkquisitor. The project is distributed under the MIT License, whose text
+  is reproduced above.
+
 Apache License, Version 2.0
 
   tianon/gosu (release 1.19, commit 6456aaa0f3c854d199d0f037f068eb97515b7513)

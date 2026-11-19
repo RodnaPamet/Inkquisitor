@@ -2,7 +2,7 @@
  * Production refuses to start while something it requires is missing; every
  * other environment starts on its defaults.
  */
-import { enforceProductionConfig, productionConfigProblems } from '@/lib/startup-checks';
+import { enforceProductionConfig, productionConfigProblems, productionConfigWarnings } from '@/lib/startup-checks';
 import { isNextProductionBuild } from '@/lib/build-phase';
 import { DEV_FALLBACK_AUTH_SECRET } from '@/lib/auth/auth-constants';
 import { DEV_FALLBACK_DATA_ENCRYPTION_KEY } from '@/lib/security/encryption-constants';
@@ -19,6 +19,8 @@ const GOOD = {
     AUTH_SECRET: longValue('auth'),
     NEXTAUTH_URL: 'https://app.example',
     DATA_ENCRYPTION_KEY: longValue('kek'),
+    ANTHROPIC_API_KEY: longValue('key'),
+    AI_RETENTION_MODE: 'zdr',
 };
 
 it('development and test need nothing beyond their defaults', () => {
@@ -54,8 +56,11 @@ it.each([
         { EMBEDDING_PROVIDER: 'tei', EMBEDDING_TEI_BASE_URL: 'https://93.184.216.34', EMBEDDING_TEI_MODEL: 'm', EMBEDDING_TEI_DIMENSIONS: '384' },
         /EMBEDDING_TEI_BASE_URL must name a service inside the deployment/,
     ],
-    ['a model key without the zero-retention statement (D5)', { ANTHROPIC_API_KEY: longValue('key') }, /ANTHROPIC_ZDR_CONFIRMED=1/],
-    ['a model key with ZDR stated as 0', { ANTHROPIC_API_KEY: longValue('key'), ANTHROPIC_ZDR_CONFIRMED: '0' }, /ANTHROPIC_ZDR_CONFIRMED=1/],
+    ['no model key (2.2: the question engine calls a model; issue #30 item 1)', { ANTHROPIC_API_KEY: undefined }, /ANTHROPIC_API_KEY is required/],
+    ['a model key with no declared retention mode (D5)', { AI_RETENTION_MODE: undefined }, /declared retention mode/],
+    ['a model key with ZDR stated as 0 and no mode', { AI_RETENTION_MODE: undefined, ANTHROPIC_ZDR_CONFIRMED: '0' }, /declared retention mode/],
+    ['an unknown retention mode', { AI_RETENTION_MODE: 'standard' }, /AI_RETENTION_MODE must be one of/],
+    ['standard-beta contradicting the ZDR statement', { AI_RETENTION_MODE: 'standard-beta', ANTHROPIC_ZDR_CONFIRMED: '1' }, /contradicts/],
     ['ambient SDK headers', { ANTHROPIC_CUSTOM_HEADERS: 'anthropic-beta: x' }, /ANTHROPIC_CUSTOM_HEADERS must be unset/],
     ['a malformed AI ceiling', { AI_MONTHLY_CEILING_USD_DEFAULT: '25 dollars' }, /AI_MONTHLY_CEILING_USD_DEFAULT/],
     ['a ceiling past the bound', { AI_MONTHLY_CEILING_USD_DEFAULT: '1000000' }, /AI_MONTHLY_CEILING_USD_DEFAULT/],
@@ -82,10 +87,22 @@ it('embeddings: unset is no problem yet (nothing embeds before 2.1), and a whole
     ).toEqual([]);
 });
 
-it('the model layer: no key is no problem in 2.1 (nothing calls a model in production before 2.2); a key with ZDR stated passes', () => {
+it('the model layer: a key with a declared retention mode passes (either mode, or the 2.1 statement); AI switched off needs no key', () => {
     expect(productionConfigProblems(GOOD)).toEqual([]);
-    expect(productionConfigProblems({ ...GOOD, ANTHROPIC_API_KEY: longValue('key'), ANTHROPIC_ZDR_CONFIRMED: '1' })).toEqual([]);
-    expect(productionConfigProblems({ ...GOOD, AI_DISABLED: '1', AI_MONTHLY_CEILING_USD_DEFAULT: '12.50' })).toEqual([]);
+    expect(productionConfigProblems({ ...GOOD, AI_RETENTION_MODE: 'standard-beta' })).toEqual([]);
+    expect(productionConfigProblems({ ...GOOD, AI_RETENTION_MODE: undefined, ANTHROPIC_ZDR_CONFIRMED: '1' })).toEqual([]);
+    expect(productionConfigProblems({ ...GOOD, ANTHROPIC_API_KEY: undefined, AI_RETENTION_MODE: undefined, AI_DISABLED: '1', AI_MONTHLY_CEILING_USD_DEFAULT: '12.50' })).toEqual([]);
+});
+
+it('standard-beta retention starts, with one WARN naming it at every start; zero retention starts quietly', () => {
+    expect(productionConfigWarnings(GOOD)).toEqual([]);
+    expect(productionConfigWarnings({ ...GOOD, AI_RETENTION_MODE: 'standard-beta' })).toEqual([expect.stringMatching(/^AI_RETENTION_MODE=standard-beta: /)]);
+    expect(productionConfigWarnings({ NODE_ENV: 'development', ANTHROPIC_API_KEY: 'k', AI_RETENTION_MODE: 'standard-beta' })).toEqual([]);
+    const lines: string[] = [];
+    const exit = jest.fn();
+    enforceProductionConfig({ ...GOOD, AI_RETENTION_MODE: 'standard-beta' }, (l) => lines.push(l), exit);
+    expect(exit).not.toHaveBeenCalled();
+    expect(lines).toEqual([expect.stringMatching(/^\[startup\] WARN: AI_RETENTION_MODE=standard-beta: .*decision D5/)]);
 });
 
 it('scanning disabled needs no scanner', () => {
