@@ -6,6 +6,11 @@
  */
 export const APP_ROUTES = {
     books: (workspaceSlug: string) => `/w/${encodeURIComponent(workspaceSlug)}/books`,
+    /** A book's home: the board of element kinds. */
+    book: (workspaceSlug: string, bookId: string) => `/w/${encodeURIComponent(workspaceSlug)}/books/${encodeURIComponent(bookId)}`,
+    /** One bible element of a book. */
+    bibleElement: (workspaceSlug: string, bookId: string, elementId: string) =>
+        `/w/${encodeURIComponent(workspaceSlug)}/books/${encodeURIComponent(bookId)}/elements/${encodeURIComponent(elementId)}`,
     settings: (workspaceSlug: string) => `/w/${encodeURIComponent(workspaceSlug)}/settings`,
 } as const;
 

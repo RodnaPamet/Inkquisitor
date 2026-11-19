@@ -131,6 +131,19 @@ export const BibleFieldRepository = {
         return db.bibleField.findMany({ where: { workspaceId, elementId }, orderBy: [{ order: 'asc' }, { key: 'asc' }], take: 200, select: FIELD_SELECT });
     },
 
+    /**
+     * Which keys each element has a stored value for (no values: nothing is
+     * decrypted). Bounded by the elements asked for times `perElement`.
+     */
+    keysForElements(db: Db, workspaceId: string, elementIds: readonly string[], perElement: number) {
+        if (elementIds.length === 0) return Promise.resolve([]);
+        return db.bibleField.findMany({
+            where: { workspaceId, elementId: { in: [...elementIds] } },
+            select: { elementId: true, key: true },
+            take: elementIds.length * perElement,
+        });
+    },
+
     /** Set one field's stored value (JSON), creating its row if it has none. */
     upsert(db: Db, workspaceId: string, elementId: string, field: { key: string; value: string; order: number }) {
         return db.bibleField.upsert({
