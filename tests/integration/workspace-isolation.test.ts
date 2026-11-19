@@ -109,8 +109,18 @@ describe('workspace A cannot WRITE workspace B', () => {
     });
 
     it('an own row cannot be moved into B (WITH CHECK)', async () => {
-        await expect(inA((db) => db.workspaceMembership.update({ where: { id: aMembershipId }, data: { workspaceId: b.workspaceId } }))).rejects.toThrow(
+        // A non-owner row: moving A's only OWNER out is refused earlier, by the
+        // last-owner trigger (tests/integration/last-owner-guard.test.ts), and
+        // this case is about the policy.
+        const editor = await createBareUser();
+        const editorRowId = (await prisma.workspaceMembership.create({ data: { workspaceId: a.workspaceId, userId: editor.id, role: 'EDITOR' } })).id;
+        await expect(inA((db) => db.workspaceMembership.update({ where: { id: editorRowId }, data: { workspaceId: b.workspaceId } }))).rejects.toThrow(
             /row-level security|violates/i,
+        );
+        expect((await prisma.workspaceMembership.findUniqueOrThrow({ where: { id: editorRowId } })).workspaceId).toBe(a.workspaceId);
+        // A's OWNER row cannot be moved either, whichever layer says so first.
+        await expect(inA((db) => db.workspaceMembership.update({ where: { id: aMembershipId }, data: { workspaceId: b.workspaceId } }))).rejects.toThrow(
+            /row-level security|violates|LAST_OWNER_GUARD/i,
         );
         expect((await prisma.workspaceMembership.findUniqueOrThrow({ where: { id: aMembershipId } })).workspaceId).toBe(a.workspaceId);
     });

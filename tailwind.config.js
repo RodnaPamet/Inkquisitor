@@ -152,12 +152,12 @@ module.exports = {
             // Three semantic ceilings for `truncate` callsites. The
             // unit is `ch` so the visible character count stays
             // stable across font weight / size variants — the same
-            // 14-character tenant name reads the same in the
+            // 14-character workspace name reads the same in the
             // sidebar identity pill (text-sm) and in a sheet header
             // (text-base).
             //
-            //   trunc-tight    14 ch — identity labels (tenant name,
-            //                          org name), code chips, badges.
+            //   trunc-tight    14 ch — identity labels (workspace name,
+            //                          author name), code chips, badges.
             //   trunc-default  28 ch — typical truncated copy
             //                          (justification cells, copy-text).
             //   trunc-loose    40 ch — breadcrumb crumbs, long-prose

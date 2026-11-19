@@ -13,7 +13,7 @@
  *      load-bearing geometry + surface classes.
  *
  *   2. **Brand mark in left slot** — `<NavBarBrand>` with a
- *      tenant href. Asserts the Link element, aria-label, and
+ *      workspace href. Asserts the Link element, aria-label, and
  *      brand recipe (gradient + glow + pulse).
  *
  *   3. **Mobile menu button in left slot** — `<NavBarMobileMenu>`

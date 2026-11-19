@@ -9,13 +9,13 @@
  *
  * The preset (`API_READ_LIMIT`, 120/min) lives with the others in
  * `src/lib/security/rate-limit.ts`; this module enforces it from
- * `src/middleware.ts`.
+ * `src/proxy.ts`.
  *
  * Keyed (workspace, IP, user):
  *   rl:api-read:w:<workspaceSlug|none>:ip:<ip>:u:<userId|anon>
  * The workspace is read from a `/api/w/<slug>/…` path when there is one, so
  * one author's runaway tab in one workspace does not spend their budget in
- * another. `userId` is null until Phase 0.3 authenticates in the middleware;
+ * another. `userId` is null for a signed-out caller;
  * passing it then gives each signed-in author their own bucket behind a NAT.
  *
  * Lifted from inflect-compliance's `src/lib/rate-limit/apiReadRateLimit.ts`
@@ -49,6 +49,7 @@ export async function checkApiReadRateLimit(
     req: NextRequest,
     workspaceSlug: string | null,
     userId: string | null = null,
+    requestId?: string,
 ): Promise<{ ok: boolean; response?: NextResponse }> {
     if (edgeRateLimitBypassed()) return { ok: true };
     const key = buildReadKey(workspaceSlug, edgeClientIp(req.headers), userId);
@@ -59,7 +60,7 @@ export async function checkApiReadRateLimit(
             windowMs: API_READ_LIMIT.windowMs,
         });
     } catch (err) {
-        edgeLogger.error('API read rate limit exception, failing open', { component: 'rate-limit', err: String(err) });
+        edgeLogger.error('API read rate limit exception, failing open', { component: 'rate-limit', requestId, err: String(err) });
         return { ok: true };
     }
     if (check.ok) return { ok: true };
@@ -68,6 +69,7 @@ export async function checkApiReadRateLimit(
     edgeLogger.warn('API read rate limit exceeded', {
         component: 'rate-limit',
         scope: 'api-read',
+        requestId,
         workspaceSlug: workspaceSlug ?? '(none)',
     });
     return {

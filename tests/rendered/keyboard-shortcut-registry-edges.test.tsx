@@ -303,7 +303,7 @@ describe('useKeyboardShortcut — editable-target boundaries', () => {
     it('DOES fire from contenteditable="false"', () => {
         // The attribute is present but explicitly disabled — treating it
         // as editable would make every shortcut dead inside a read-only
-        // rich-text surface (policy viewer, evidence preview).
+        // rich-text surface (a read-only bible entry or manuscript preview).
         const { spy, getByTestId } = renderWithTarget(
             <div data-testid="target" contentEditable={false} />,
         );

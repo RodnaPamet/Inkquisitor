@@ -83,44 +83,66 @@ function tagReplacement(inner: string): string {
     return '';
 }
 
-/** One left-to-right pass: every tag (from a tag-starting `<` to the next
- *  `>`, or to the end of the input when it is unterminated) is replaced by
- *  `tagReplacement`; every other character is kept. */
-function stripTagsOnce(html: string): string {
-    let out = '';
+/** How much of a tag's text is kept to name it (`tagReplacement` reads the name only). */
+const TAG_NAME_PREFIX = 16;
+
+/**
+ * Remove every tag in ONE linear pass, leaving no `<` that begins a tag.
+ *
+ * The input is scanned once: a tag (a tag-starting `<` to the next `>`, or to
+ * the end when it is unterminated) becomes `tagReplacement`; every other
+ * character is kept. Removing a tag can join a stray `<` to the text after it
+ * (`<<b>script>` → `<script>`), so the decision is taken on the OUTPUT being
+ * built, not only on the input: a character that would start a tag after a
+ * `<` already in the output turns that `<` into the start of a tag, which is
+ * then removed up to the next `>` the output receives, exactly as a second
+ * strip of the output would remove it. Every `<` left in the output is
+ * therefore followed by something that cannot start a tag.
+ *
+ * It replaces a strip-until-nothing-changes loop, which was quadratic on
+ * crafted nesting (`'<'.repeat(k) + '<b>' + 's>'.repeat(k)`: k passes over the
+ * whole string; 60 KB took about five seconds, issue #6). Each input
+ * character is visited a bounded number of times here.
+ */
+function stripTags(html: string): string {
+    const out: string[] = [];
+    /** Inside a tag that formed in the output: the start of its text, or null. */
+    let formed: string | null = null;
+
+    const emit = (ch: string): void => {
+        if (formed !== null) {
+            if (ch === '>') {
+                const replacement = tagReplacement(formed);
+                formed = null;
+                for (const r of replacement) emit(r);
+            } else if (formed.length < TAG_NAME_PREFIX) {
+                formed += ch;
+            }
+            return;
+        }
+        if (TAG_START.test(ch) && out[out.length - 1] === '<') {
+            out.pop();
+            formed = ch;
+            return;
+        }
+        out.push(ch);
+    };
+
     let i = 0;
     while (i < html.length) {
-        const lt = html.indexOf('<', i);
-        if (lt === -1) {
-            out += html.slice(i);
-            break;
-        }
-        out += html.slice(i, lt);
-        if (!TAG_START.test(html.charAt(lt + 1))) {
-            out += '<';
-            i = lt + 1;
+        const ch = html.charAt(i);
+        if (ch === '<' && TAG_START.test(html.charAt(i + 1))) {
+            const gt = html.indexOf('>', i + 1);
+            const end = gt === -1 ? html.length : gt;
+            for (const r of tagReplacement(html.slice(i + 1, Math.min(end, i + 1 + TAG_NAME_PREFIX)))) emit(r);
+            i = end + 1;
             continue;
         }
-        const gt = html.indexOf('>', lt + 1);
-        const end = gt === -1 ? html.length : gt;
-        out += tagReplacement(html.slice(lt + 1, end));
-        i = end + 1;
+        emit(ch);
+        i += 1;
     }
-    return out;
-}
-
-/** Strip until nothing changes. Removing one tag can join a stray `<` to
- *  the text after it (`<<b>script>` → `<script>`), so a single pass is not
- *  enough; at the fixed point no `<` that starts a tag remains. Every pass
- *  that changes the string shortens it, so the loop ends. */
-function stripTags(html: string): string {
-    let previous: string;
-    let current = html;
-    do {
-        previous = current;
-        current = stripTagsOnce(previous);
-    } while (current !== previous);
-    return current;
+    // A tag still open at the end of the output was unterminated: it is dropped.
+    return out.join('');
 }
 
 const ENTITIES: ReadonlyMap<string, string> = new Map([

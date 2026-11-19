@@ -216,7 +216,7 @@ function PopoverRoot({
           side={side}
           className={cn(
             // B3-follow (2026-06-08): popover surfaces (user menu,
-            // notifications, tenant/org switchers, comboboxes) share the
+            // notifications, workspace switcher, comboboxes) share the
             // same brand-tinted focal-glow texture as modals/sheets/toast
             // — `.surface-popup-texture` owns background + border + the
             // glass-edge/drop-shadow, so no flat bg-bg-default/border here.

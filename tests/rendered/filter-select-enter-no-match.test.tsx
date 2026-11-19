@@ -17,7 +17,7 @@ jest.mock('next/navigation', () => ({
     useRouter: () => ({ push: jest.fn(), replace: jest.fn(), back: jest.fn(), forward: jest.fn(), refresh: jest.fn(), prefetch: jest.fn() }),
     usePathname: () => '/t/acme/risks',
     useSearchParams: () => new URLSearchParams(),
-    useParams: () => ({ tenantSlug: 'acme' }),
+    useParams: () => ({ workspaceSlug: 'acme' }),
 }));
 
 import { CheckCircle } from 'lucide-react';

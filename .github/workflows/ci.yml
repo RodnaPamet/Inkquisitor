@@ -135,7 +135,17 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
       - run: npm ci
-      - run: npm run build
+      # Next's build cache, keyed on the lockfile and the sources.
+      - uses: actions/cache@v4
+        with:
+          path: .next/cache
+          key: next-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-${{ hashFiles('src/**', 'packages/**', 'next.config.mjs') }}
+          restore-keys: |
+            next-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-
+      # `next build --webpack`, then BLOCKING on any warning it printed, a
+      # Node-only module in the proxy bundle, or a server env variable named
+      # in a client chunk (scripts/check-build.js, Phase 0.H).
+      - run: npm run build:check
       # The worker ships as its own bundle; a broken import fails here, not
       # at the first deploy.
       - run: npm run build:worker
@@ -289,6 +299,13 @@ jobs:
           echo "Redis did not come up"; exit 1
       - name: Apply migrations
         run: npm run migrate:deploy
+      # Next's build cache, keyed on the lockfile and the sources.
+      - uses: actions/cache@v4
+        with:
+          path: .next/cache
+          key: next-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-${{ hashFiles('src/**', 'packages/**', 'next.config.mjs') }}
+          restore-keys: |
+            next-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-
       - run: npm run build
       # playwright.config.ts starts `next start` on :3100 and waits for
       # /api/health before the specs run.

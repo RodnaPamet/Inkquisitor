@@ -1,10 +1,9 @@
 /**
  * Behavioural test — `<DataTable>` renders a spanning column-GROUP header
  * (TanStack grouped column defs) in the non-virtualized `<table>` path.
- * This is the mechanism behind the Evidence table's "Actions" header that
- * spans its four right-most icon/action columns (edit/archive/download/
- * submit). The virtualized CSS-grid header can't colSpan, so grouped
- * headers require `virtualize={false}` (which Evidence sets).
+ * The mechanism a table uses for an "Actions" header spanning several
+ * right-most icon/action columns. The virtualized CSS-grid header can't
+ * colSpan, so grouped headers require `virtualize={false}`.
  */
 import * as React from 'react';
 import { render } from '@testing-library/react';
@@ -21,7 +20,7 @@ jest.mock('next/navigation', () => ({
     }),
     usePathname: () => '/t/acme/things',
     useSearchParams: () => new URLSearchParams(),
-    useParams: () => ({ tenantSlug: 'acme' }),
+    useParams: () => ({ workspaceSlug: 'acme' }),
 }));
 
 interface Row {

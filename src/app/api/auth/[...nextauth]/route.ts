@@ -3,7 +3,7 @@
  * /callback/*, /signout.
  *
  * Rate limits, three layers deep for a credential guess:
- *   - the edge auth tier (src/lib/rate-limit/authRateLimit.ts), per IP + UA;
+ *   - the edge auth tier (src/lib/rate-limit/authRateLimit.ts), per client address;
  *   - here, `LOGIN_LIMIT` (10 per 15 minutes, then a 15-minute lockout) on the
  *     POSTs that carry a credential — the credentials callback and the sign-in
  *     starts — keyed on the IP (the body is NextAuth's to parse); every other

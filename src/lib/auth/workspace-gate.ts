@@ -5,7 +5,7 @@
  * `/w/<slug>/…` (pages) and `/api/w/<slug>/…` (API) require `<slug>` to be in
  * the JWT's `memberships[]`. A mismatch sends a page to `/no-workspace` and
  * answers an API request 403; no session at all sends a page to `/login` and
- * answers 401 (`src/middleware.ts`). The claim list is capped at
+ * answers 401 (`src/proxy.ts`). The claim list is capped at
  * `MAX_JWT_MEMBERSHIPS`; when it was capped (`membershipsTruncated`), a slug
  * missing from it is deferred to the DB-backed server gate (`getWorkspaceCtx`,
  * the workspace layout) instead of denied.
@@ -19,7 +19,7 @@
  *
  * The same care as `src/lib/rate-limit/edge-tier.ts`: Next routes a dynamic
  * segment from the RAW path split on raw `/`, each param decoded on its own,
- * and runs the middleware when the raw or the decoded path matches. So the
+ * and runs the proxy when the raw or the decoded path matches. So the
  * gate collects the slug from EVERY spelling a route could read — the
  * per-segment decoded view, the fully decoded view (an encoded `%2F` becomes a
  * separator, `\` reads as `/`), and that view with `.`/`..` resolved — and

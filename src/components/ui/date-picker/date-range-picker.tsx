@@ -3,8 +3,8 @@
 /**
  * Epic 58 — canonical date-range picker.
  *
- * The workhorse for reporting filters, evidence-retention windows,
- * audit cycles, and any UI that asks the user for a "from / to"
+ * The workhorse for reporting filters, writing-session windows,
+ * deadline ranges, and any UI that asks the user for a "from / to"
  * date window. Composes the Epic 58 foundation:
  *
  *   - `<Trigger>` token-backed opener.

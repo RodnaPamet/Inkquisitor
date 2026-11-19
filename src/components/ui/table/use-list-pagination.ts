@@ -3,7 +3,7 @@
 /**
  * Epic 52 — adapter that bridges flat-list APIs to `<DataTable>` paginated mode.
  *
- * This app's list APIs currently return a full array per tenant (no server
+ * This app's list APIs return a full array per workspace (no server
  * cursor navigation). TanStack's `Table` runs in `manualPagination: true`
  * mode, expecting the consumer to slice `data` per page and report
  * `rowCount`. `useListPagination` owns that slicing, syncs the active page

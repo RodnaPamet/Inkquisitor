@@ -63,6 +63,10 @@ export class LocalStorageProvider implements StorageProvider {
         const hash = crypto.createHash('sha256');
         const maxSize = opts?.maxSizeBytes ?? DEFAULT_MAX_SIZE;
         let sizeBytes = 0;
+        // Kept so a refusal can wait for it to close: the stream opens its
+        // file asynchronously, and unlinking before that open completes would
+        // miss a temp file the open creates a moment later.
+        let writeStream: ReturnType<typeof createWriteStream> | undefined;
 
         try {
             if (Buffer.isBuffer(source)) {
@@ -73,7 +77,7 @@ export class LocalStorageProvider implements StorageProvider {
                 }
                 await fs.writeFile(tmpPath, source, { flag: 'wx', mode: 0o600 });
             } else {
-                const writeStream = createWriteStream(tmpPath, { flags: 'wx', mode: 0o600 });
+                writeStream = createWriteStream(tmpPath, { flags: 'wx', mode: 0o600 });
                 await pipeline(
                     source,
                     async function* (src) {
@@ -99,6 +103,9 @@ export class LocalStorageProvider implements StorageProvider {
                 sizeBytes,
             };
         } catch (err) {
+            if (writeStream && !writeStream.closed) {
+                await new Promise<void>((resolve) => writeStream!.once('close', () => resolve()));
+            }
             try { await fs.unlink(tmpPath); } catch { /* ignore cleanup failure */ }
             throw err;
         }

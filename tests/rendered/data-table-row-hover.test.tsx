@@ -41,7 +41,7 @@ jest.mock('next/navigation', () => ({
     }),
     usePathname: () => '/t/acme/things',
     useSearchParams: () => new URLSearchParams(),
-    useParams: () => ({ tenantSlug: 'acme' }),
+    useParams: () => ({ workspaceSlug: 'acme' }),
 }));
 
 interface ThingRow {

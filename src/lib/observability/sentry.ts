@@ -15,16 +15,29 @@
  *     (not through `captureError`) is held to the same rule (`./safe-error`);
  *   - 4xx errors are not reported (`captureError`).
  *
+ * THE SDK IS LOADED ONLY WHEN IT IS USED (Phase 0.H, issue #9). Importing
+ * `@sentry/nextjs` is not free: at module load it takes an
+ * `AsyncLocalStorage.snapshot()` for its id generator, an async resource that
+ * lives as long as the process. Every module that can report an error (the
+ * route wrapper, the job runner) imports this one, so a static import put that
+ * resource into every test suite and every process with no DSN, where it can
+ * never send anything (`jest --detectOpenHandles` named it). `initSentry`
+ * imports the SDK when SENTRY_DSN is set and never otherwise; until it has,
+ * every function here is the no-op it would be without a client.
+ *
  * Adapted from inflect-compliance's `src/lib/observability/sentry.ts`.
  */
 
-import * as Sentry from '@sentry/nextjs';
 import type { ErrorEvent, EventHint } from '@sentry/nextjs';
 import { env } from '@/env';
 import { getRequestContext } from './context';
 import { WITHHELD_MESSAGE, isPrismaErrorName, mayReportMessage, toReportableError } from './safe-error';
 
+type SentrySdk = typeof import('@sentry/nextjs');
+
 let initialized = false;
+/** The SDK, once `initSentry` has loaded it (only with a DSN). */
+let sdk: SentrySdk | null = null;
 
 const SENSITIVE_PARAMS = new Set([
     'code', 'state', 'token', 'access_token', 'refresh_token', 'id_token', 'client_secret', 'secret',
@@ -95,13 +108,15 @@ export function scrubEvent(event: ErrorEvent, hint?: EventHint): ErrorEvent | nu
     return event;
 }
 
-/** Initialise Sentry once. A no-op without SENTRY_DSN. */
-export function initSentry(): void {
+/** Initialise Sentry once. A no-op without SENTRY_DSN, which never loads the SDK. */
+export async function initSentry(): Promise<void> {
     if (initialized) return;
     initialized = true;
     const dsn = env.SENTRY_DSN;
     if (!dsn) return;
 
+    const Sentry = await import('@sentry/nextjs');
+    sdk = Sentry;
     Sentry.init({
         dsn,
         environment: env.SENTRY_ENVIRONMENT || env.NODE_ENV,
@@ -126,14 +141,21 @@ export function initSentry(): void {
     });
 }
 
+/** @internal test-only: forget the SDK and allow `initSentry` again. */
+export function _resetSentryForTests(): void {
+    initialized = false;
+    sdk = null;
+}
+
 /** True when this process has a live Sentry client. */
 export function isSentryInitialized(): boolean {
-    return Sentry.getClient() !== undefined;
+    return sdk !== null && sdk.getClient() !== undefined;
 }
 
 /** Flush and close the client, bounded by `timeoutMs`. Never throws. */
 export async function shutdownSentry(timeoutMs = 2_000): Promise<void> {
-    if (!Sentry.getClient()) return;
+    const Sentry = sdk;
+    if (!Sentry?.getClient()) return;
     await Promise.race([
         Sentry.close(timeoutMs).then(() => undefined, () => undefined),
         new Promise<void>((resolve) => setTimeout(resolve, timeoutMs + 100).unref()),
@@ -149,7 +171,8 @@ export function captureError(
     extra?: { requestId?: string; route?: string; method?: string; status?: number; errorCode?: string },
 ): string | undefined {
     if (extra?.status && extra.status < 500) return undefined;
-    if (!Sentry.getClient()) return undefined;
+    const Sentry = sdk;
+    if (!Sentry?.getClient()) return undefined;
     const ctx = getRequestContext();
     let eventId: string | undefined;
     Sentry.withScope((scope) => {

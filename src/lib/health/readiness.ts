@@ -20,7 +20,7 @@
  */
 import Redis from 'ioredis';
 import { prisma } from '@/lib/db';
-import { resolveRedisUrl } from '@/lib/redis';
+import { closeRedisClient, resolveRedisUrl } from '@/lib/redis';
 
 export const CHECK_TIMEOUT_MS = 2_000;
 
@@ -114,9 +114,9 @@ export function defaultReadinessChecks(): Record<string, ReadinessCheck> {
     };
 }
 
-/** @internal test-only */
+/** Close the probe's client completely (tests; graceful shutdown). */
 export async function _closeReadinessClients(): Promise<void> {
     const client = probeRedis;
     probeRedis = null;
-    client?.disconnect();
+    if (client) await closeRedisClient(client);
 }

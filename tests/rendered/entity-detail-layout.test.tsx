@@ -23,9 +23,9 @@ describe('EntityDetailLayout — header', () => {
     it('renders back link, title, meta, actions when all supplied', () => {
         render(
             <EntityDetailLayout
-                back={{ href: '/t/acme/controls', label: 'Controls' }}
-                title="AC-1: Access Control"
-                meta={<span data-testid="meta-badge">Implemented</span>}
+                back={{ href: '/w/acme/books', label: 'Books' }}
+                title="The Orchard: draft two"
+                meta={<span data-testid="meta-badge">Drafting</span>}
                 actions={
                     <button type="button" data-testid="action-btn">
                         Action
@@ -39,11 +39,11 @@ describe('EntityDetailLayout — header', () => {
         // v2-PR-5 — EntityDetailLayout now delegates to <PageHeader>;
         // assert via the canonical page-header-* test ids.
         const back = screen.getByTestId('page-header-back');
-        expect(back).toHaveAttribute('href', '/t/acme/controls');
-        expect(back.textContent).toContain('Controls');
+        expect(back).toHaveAttribute('href', '/w/acme/books');
+        expect(back.textContent).toContain('Books');
 
         expect(screen.getByTestId('page-header-title').textContent).toBe(
-            'AC-1: Access Control',
+            'The Orchard: draft two',
         );
         expect(screen.getByTestId('meta-badge')).toBeInTheDocument();
         expect(screen.getByTestId('action-btn')).toBeInTheDocument();
@@ -82,11 +82,11 @@ describe('EntityDetailLayout — tabs', () => {
         const onTabChange = jest.fn();
         render(
             <EntityDetailLayout
-                title="Control"
+                title="Book"
                 tabs={[
                     { key: 'overview', label: 'Overview' },
                     { key: 'tasks', label: 'Tasks', count: 3 },
-                    { key: 'evidence', label: 'Evidence' },
+                    { key: 'scenes', label: 'Scenes' },
                 ]}
                 activeTab={activeTab}
                 onTabChange={onTabChange}
@@ -136,7 +136,7 @@ describe('EntityDetailLayout — tabs', () => {
         const onTabChange = jest.fn();
         render(
             <EntityDetailLayout
-                title="Control"
+                title="Book"
                 tabs={[
                     { key: 'overview', label: 'Overview' },
                     { key: 'tests', label: 'Tests', disabled: true },
@@ -192,7 +192,7 @@ describe('EntityDetailLayout — lifecycle states', () => {
     it('empty replaces the body with the supplied message', () => {
         render(
             <EntityDetailLayout
-                empty={{ message: 'Control not found.' }}
+                empty={{ message: 'Book not found.' }}
                 title=""
             >
                 <div data-testid="body-content">should not render</div>
@@ -200,7 +200,7 @@ describe('EntityDetailLayout — lifecycle states', () => {
         );
         expect(
             screen.getByTestId('entity-detail-empty').textContent,
-        ).toBe('Control not found.');
+        ).toBe('Book not found.');
         expect(screen.queryByTestId('body-content')).toBeNull();
     });
 });

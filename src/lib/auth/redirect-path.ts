@@ -3,7 +3,7 @@
  * nowhere in particular.
  *
  * Client-safe (no imports): the sign-in page is a client component and needs
- * the same rule as the middleware, which bounces a signed-out visitor to
+ * the same rule as the proxy, which bounces a signed-out visitor to
  * `/login?callbackUrl=…`.
  *
  * Lifted from inflect-compliance's `src/lib/auth/redirect-path.ts` (see

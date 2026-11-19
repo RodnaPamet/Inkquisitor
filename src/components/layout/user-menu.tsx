@@ -4,7 +4,7 @@
  * Roadmap-14 PR-5 — `<UserMenu>` — right-slot avatar + dropdown.
  *
  * Mounts to the right of every workspace-aware top-bar surface
- * (tenant or org variant). Provides the canonical home for
+ * (one per workspace). Provides the canonical home for
  * account-scoped verbs:
  *
  *   • Theme toggle (light / dark)

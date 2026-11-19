@@ -30,21 +30,22 @@ import {
     progressiveKeyFor,
     settleSignInFailureAudits,
 } from '@/lib/auth/credentials';
-import { LOGIN_PROGRESSIVE_POLICY, resetProgressiveFailures } from '@/lib/security/rate-limit';
+import { LOGIN_PROGRESSIVE_POLICY } from '@/lib/security/rate-limit';
+import { lockoutFor } from '@/lib/security/progressive-lockout';
 
 const EMAIL = 'victim@example.test';
 const USER = { id: 'user-victim', email: EMAIL, name: null, passwordHash: 'stored-hash' };
 const noSleep = { sleepImpl: async () => undefined };
 
 let now: number;
-beforeEach(() => {
+beforeEach(async () => {
     now = Date.UTC(2026, 10, 19, 12, 0, 0);
     jest.spyOn(Date, 'now').mockImplementation(() => now);
     findUnique.mockReset().mockResolvedValue(USER);
     recordUserAuthEvent.mockReset().mockResolvedValue(undefined);
     verifyPassword.mockClear();
     dummyVerify.mockClear();
-    resetProgressiveFailures(progressiveKeyFor(EMAIL));
+    await lockoutFor(LOGIN_PROGRESSIVE_POLICY).reset(progressiveKeyFor(EMAIL));
     _resetSignInFailureAuditWindow();
     delete process.env.RATE_LIMIT_ENABLED;
 });
@@ -58,7 +59,11 @@ const attempt = (password = 'wrong') => authenticateWithPassword({ email: EMAIL,
 describe('timing: the failure path does not wait for the audit write', () => {
     it('a known email with a wrong password answers while its audit append is still pending', async () => {
         recordUserAuthEvent.mockImplementation(() => new Promise(() => undefined)); // never settles
-        const answer = await Promise.race([attempt(), new Promise((r) => setTimeout(() => r('BLOCKED'), 1_000))]);
+        // The timer is cleared: one left running outlives the file in its Jest
+        // worker, which is then force-exited at the end of the run.
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        const blocked = new Promise((r) => (timer = setTimeout(() => r('BLOCKED'), 1_000)));
+        const answer = await Promise.race([attempt(), blocked]).finally(() => clearTimeout(timer));
         expect(answer).toEqual({ ok: false, reason: 'credentials_invalid' });
         expect(recordUserAuthEvent).toHaveBeenCalledTimes(1);
     });
@@ -123,5 +128,35 @@ describe('volume: the trail is bounded per user', () => {
         await attempt();
         expect(recordUserAuthEvent).toHaveBeenCalledTimes(2);
         expect(recordUserAuthEvent.mock.calls[1][0]).toMatchObject({ userId: 'user-other' });
+    });
+});
+
+describe('concurrency: the lockout gates the verify, not a read taken before it', () => {
+    // The pre-review flow read the count, verified, then recorded the failure:
+    // twenty guesses sent together at nine failures all read nine and all
+    // verified. The attempt is now counted atomically BEFORE the verify.
+    it('twenty concurrent wrong passwords at nine failures: one verify, nineteen refusals, one compare each', async () => {
+        process.env.RATE_LIMIT_ENABLED = '1';
+        for (let i = 0; i < LOGIN_PROGRESSIVE_POLICY.lockoutAtFailures - 1; i++) await attempt(`wrong-${i}`);
+        verifyPassword.mockClear();
+        dummyVerify.mockClear();
+        // A verify that takes real time, so every attempt is in flight at once.
+        verifyPassword.mockImplementation(() => new Promise((r) => setImmediate(() => r(false))));
+
+        const results = await Promise.all(Array.from({ length: 20 }, (_, i) => attempt(`guess-${i}`)));
+
+        expect(verifyPassword).toHaveBeenCalledTimes(1);
+        expect(results.filter((r) => !r.ok && r.reason === 'rate_limited')).toHaveLength(19);
+        // Timing: every refusal still paid one compare.
+        expect(verifyPassword.mock.calls.length + dummyVerify.mock.calls.length).toBe(20);
+        verifyPassword.mockImplementation(async () => false);
+    });
+
+    it('from zero, forty concurrent guesses verify at most the lockout count', async () => {
+        process.env.RATE_LIMIT_ENABLED = '1';
+        verifyPassword.mockImplementation(() => new Promise((r) => setImmediate(() => r(false))));
+        await Promise.all(Array.from({ length: 40 }, (_, i) => attempt(`guess-${i}`)));
+        expect(verifyPassword).toHaveBeenCalledTimes(LOGIN_PROGRESSIVE_POLICY.lockoutAtFailures);
+        verifyPassword.mockImplementation(async () => false);
     });
 });

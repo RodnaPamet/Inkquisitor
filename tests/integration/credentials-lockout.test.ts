@@ -16,7 +16,8 @@ import bcrypt from 'bcrypt';
 import { prisma } from '@/lib/db';
 import { _resetSignInFailureAuditWindow, authenticateWithPassword, progressiveKeyFor, settleSignInFailureAudits } from '@/lib/auth/credentials';
 import { hashPassword } from '@/lib/auth/passwords';
-import { resetProgressiveFailures, LOGIN_PROGRESSIVE_POLICY } from '@/lib/security/rate-limit';
+import { LOGIN_PROGRESSIVE_POLICY } from '@/lib/security/rate-limit';
+import { lockoutFor } from '@/lib/security/progressive-lockout';
 import { createAccount, uniqueEmail } from '../helpers/workspaces';
 
 const compare = bcrypt.compare as unknown as jest.Mock;
@@ -31,10 +32,10 @@ beforeAll(async () => {
 });
 afterAll(() => prisma.$disconnect());
 
-beforeEach(() => {
+beforeEach(async () => {
     process.env.RATE_LIMIT_ENABLED = '1';
     sleeps = [];
-    resetProgressiveFailures(progressiveKeyFor(account.email));
+    await lockoutFor(LOGIN_PROGRESSIVE_POLICY).reset(progressiveKeyFor(account.email));
     compare.mockClear();
 });
 afterEach(() => {

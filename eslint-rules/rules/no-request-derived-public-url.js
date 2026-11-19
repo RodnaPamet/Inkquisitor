@@ -18,7 +18,7 @@
  * req.nextUrl`. This matches the member access itself.
  *
  * SCOPE. Only `src/app/api/**` — route handlers are where these strings are
- * built and handed out. `middleware.ts` may inspect the host for routing
+ * built and handed out. `proxy.ts` may inspect the host for routing
  * decisions that never leave the process, and the helper itself must read
  * `nextUrl.origin` to implement the fallback.
  *

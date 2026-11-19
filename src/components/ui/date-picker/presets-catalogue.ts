@@ -12,7 +12,7 @@
  * `YYYY-MM-DD` boundaries, so URL-synced filters stay stable.
  *
  * Why these presets?
- *   - **Today / Yesterday** — evidence expiry checks, daily digests.
+ *   - **Today / Yesterday** — "what changed today", daily digests.
  *   - **Last N days** — dashboard trendlines.
  *   - **Month / Quarter / Year to date** — reporting periods.
  *   - **Previous month / quarter / year** — period-over-period comparisons.
@@ -20,7 +20,7 @@
  * What's NOT here:
  *   - Anything locale-specific ("this work week") — the app is UTC-first.
  *   - "All time" — callers pass an explicit null-ended range for that.
- *   - Calendar exotica (fiscal quarters, 4-5-4) — per-tenant presets
+ *   - Calendar exotica (fiscal quarters, 4-5-4) — per-workspace presets
  *     can be layered on later; the catalogue stays small by design.
  */
 

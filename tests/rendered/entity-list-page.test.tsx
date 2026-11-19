@@ -26,7 +26,7 @@ jest.mock('next/navigation', () => ({
     }),
     usePathname: () => '/t/acme/controls',
     useSearchParams: () => new URLSearchParams(),
-    useParams: () => ({ tenantSlug: 'acme' }),
+    useParams: () => ({ workspaceSlug: 'acme' }),
 }));
 
 import { CheckCircle } from 'lucide-react';

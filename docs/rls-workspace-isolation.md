@@ -66,3 +66,19 @@ the app role: reading, updating and deleting the other's rows, inserting with
 the other's `workspaceId`, and moving an own row into the other workspace are
 all refused by the database, with queries that carry no `workspaceId` filter
 of their own.
+
+## Triggers that hold a rule RLS cannot
+
+Row-level security decides which rows a role may touch, not what a workspace
+must keep. One rule needs the database's own backstop, beside the usecase:
+
+- **`workspace_membership_last_owner_guard`** (Phase 0.H) refuses, with
+  SQLSTATE P0001, any UPDATE or DELETE on `WorkspaceMembership` that would
+  leave a workspace with no OWNER, for every role. It takes the usecase's
+  advisory lock key (`hashtext('workspace-owner:' || workspaceId)`) before it
+  counts, so two concurrent demotions serialise; its function must stay
+  VOLATILE, or the count reads a snapshot from before the lock. A workspace's
+  own deletion cascades past it. Under `app_user` the count is complete: the
+  caller can only touch memberships of the workspace its context names, and
+  sees every other membership of that workspace.
+  `tests/integration/last-owner-guard.test.ts` holds it.

@@ -31,8 +31,8 @@ describe('local/no-request-derived-public-url', () => {
                 code: 'const p = req.nextUrl.pathname; const q = req.nextUrl.searchParams.get("x");',
             },
             {
-                name: 'middleware may read the host for routing decisions',
-                filename: '/repo/src/middleware.ts',
+                name: 'the proxy may read the host for routing decisions',
+                filename: '/repo/src/proxy.ts',
                 code: 'const h = req.nextUrl.host;',
             },
             {

@@ -1,7 +1,7 @@
 /**
  * The membership claims the JWT carries, read from the database.
  *
- * The edge middleware authorizes `/w/<slug>/…` from these claims with no
+ * The proxy (`src/proxy.ts`) authorizes `/w/<slug>/…` from these claims with no
  * database hit (`./workspace-gate.ts`), so they are the fast path, not the
  * source of truth: every workspace route re-checks the membership in the
  * database (`getWorkspaceCtx`). Capped at `MAX_JWT_MEMBERSHIPS` so the cookie

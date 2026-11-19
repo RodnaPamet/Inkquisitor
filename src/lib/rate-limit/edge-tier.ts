@@ -4,11 +4,11 @@
  *
  * ── WHY NOT THE RAW PATH, AND WHY NOT ONE NORMALISED PATH EITHER ─────
  *
- * The middleware used to ask two predicates of the RAW `req.nextUrl.pathname`
+ * The edge used to ask two predicates of the RAW `req.nextUrl.pathname`
  * (`isAuthRateLimited`, `isApiReadRateLimited`) and call a limiter only when
  * one said yes. The raw path is not the path Next routes:
  *
- *   - Next 16 runs the middleware when the raw OR the percent-decoded path
+ *   - Next 16 runs the proxy when the raw OR the percent-decoded path
  *     matches `/api/:path*`, and matches static routes on the decoded path, so
  *     `/api/%61uth/callback/x` and `/%61pi/auth/…` reach the `/api/auth`
  *     handlers while `pathname` still reads `%61uth` — and escaped both tiers.
@@ -44,7 +44,7 @@
  *   no dot segment, same case. Any other spelling of a probe is counted as a
  *   read, which a monitor never sends and an attacker gains nothing from.
  *
- * Every request gets a tier, and the middleware calls `enforceEdgeRateLimit`
+ * Every request gets a tier, and the proxy calls `enforceEdgeRateLimit`
  * for every request, unconditionally, with the tier as an argument: no
  * condition on the request decides whether a limiter runs, only which budget
  * it counts against.
@@ -205,18 +205,25 @@ export function classifyEdgeRequest(method: string, rawPathname: string): EdgeTi
 }
 
 type TierOf<K extends EdgeTierKind> = Extract<EdgeTier, { kind: K }>;
-type Limiter<K extends EdgeTierKind> = (req: NextRequest, tier: TierOf<K>, userId: string | null) => Promise<EdgeVerdict>;
+
+/** Who is asking: the signed-in user (keys the read tier) and the proxy's request id (every log line). */
+export interface EdgeCaller {
+    userId: string | null;
+    requestId: string;
+}
+
+type Limiter<K extends EdgeTierKind> = (req: NextRequest, tier: TierOf<K>, caller: EdgeCaller) => Promise<EdgeVerdict>;
 
 const ALLOWED: EdgeVerdict = { ok: true };
 
 /** One limiter per tier, chosen by lookup rather than by a branch. */
 const LIMITERS: { readonly [K in EdgeTierKind]: Limiter<K> } = {
-    auth: async (req, tier) => {
-        const rl = await checkAuthRateLimit(req, tier.level, tier.path);
+    auth: async (req, tier, caller) => {
+        const rl = await checkAuthRateLimit(req, tier.level, tier.path, caller.requestId);
         return rl.ok || !rl.response ? ALLOWED : { ok: false, response: rl.response };
     },
-    read: async (req, tier, userId) => {
-        const rl = await checkApiReadRateLimit(req, tier.workspaceSlug, userId);
+    read: async (req, tier, caller) => {
+        const rl = await checkApiReadRateLimit(req, tier.workspaceSlug, caller.userId, caller.requestId);
         return rl.ok || !rl.response ? ALLOWED : { ok: false, response: rl.response };
     },
     // Charged by withApiErrorHandling inside the route (API_MUTATION_LIMIT).
@@ -225,15 +232,18 @@ const LIMITERS: { readonly [K in EdgeTierKind]: Limiter<K> } = {
     exempt: async () => ALLOWED,
 };
 
-function chargeTo<K extends EdgeTierKind>(req: NextRequest, tier: TierOf<K> & { kind: K }, userId: string | null) {
+function chargeTo<K extends EdgeTierKind>(req: NextRequest, tier: TierOf<K> & { kind: K }, caller: EdgeCaller) {
     const limiter: Limiter<K> = LIMITERS[tier.kind];
-    return limiter(req, tier, userId);
+    return limiter(req, tier, caller);
 }
 
 /**
- * Charge a request to its tier. The middleware calls this for every request;
- * the tier, never a condition around the call, decides the budget.
+ * Charge a request to its tier. The proxy calls this for every request; the
+ * tier, never a condition around the call, decides the budget. The caller's
+ * request id is the one the proxy stamps on the response, so a tier's log
+ * line names the request the client was answered for (issue #7: it used to
+ * read "unknown").
  */
-export function enforceEdgeRateLimit(req: NextRequest, tier: EdgeTier, userId: string | null = null): Promise<EdgeVerdict> {
-    return chargeTo(req, tier, userId);
+export function enforceEdgeRateLimit(req: NextRequest, tier: EdgeTier, caller: EdgeCaller): Promise<EdgeVerdict> {
+    return chargeTo(req, tier, caller);
 }

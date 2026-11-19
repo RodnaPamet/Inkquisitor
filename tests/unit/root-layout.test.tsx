@@ -16,7 +16,11 @@ import { renderToStaticMarkup } from 'react-dom/server';
 
 const cookieValue: { current: string | undefined } = { current: undefined };
 const cookieGet = jest.fn((name: string) => (cookieValue.current === undefined ? undefined : { name, value: cookieValue.current }));
-jest.mock('next/headers', () => ({ cookies: async () => ({ get: cookieGet }) }));
+const nonceValue: { current: string | null } = { current: null };
+jest.mock('next/headers', () => ({
+    cookies: async () => ({ get: cookieGet }),
+    headers: async () => new Headers(nonceValue.current ? { 'x-csp-nonce': nonceValue.current } : {}),
+}));
 const getLocale = jest.fn(async () => 'en');
 jest.mock('next-intl/server', () => ({ getLocale: () => getLocale(), getMessages: async () => ({}) }));
 // The client providers are not under test here.
@@ -32,6 +36,7 @@ async function htmlTag(): Promise<string> {
 
 afterEach(() => {
     cookieValue.current = undefined;
+    nonceValue.current = null;
     cookieGet.mockClear();
 });
 
@@ -62,5 +67,26 @@ describe('root layout', () => {
     it('renders the page inside the body', async () => {
         const markup = renderToStaticMarkup(await RootLayout({ children: <p>page</p> }));
         expect(markup).toMatch(/<body[^>]*>[\s\S]*<p>page<\/p>[\s\S]*<\/body>/);
+    });
+});
+
+describe('the CSP nonce', () => {
+    const NONCE = 'dGhpcyBpcyBhIG5vbmNlIQ==';
+
+    it('every inline script the layout renders carries the request nonce, and the webpack bridge sets it', async () => {
+        nonceValue.current = NONCE;
+        const markup = renderToStaticMarkup(await RootLayout({ children: <p>page</p> }));
+        // Each opening <script ...> tag, cut at its first '>' (React escapes '>'
+        // inside attribute values), rather than a regex over whole elements.
+        const openingTags = markup.split('<script').slice(1).map((rest) => rest.slice(0, rest.indexOf('>')));
+        expect(openingTags.length).toBe(2);
+        for (const tag of openingTags) expect(tag).toContain(`nonce="${NONCE}"`);
+        expect(markup).toContain(`window.__webpack_nonce__="${NONCE}"`);
+    });
+
+    it('without a nonce (no proxy in front) there is no bridge, and nothing claims one', async () => {
+        const markup = renderToStaticMarkup(await RootLayout({ children: <p>page</p> }));
+        expect(markup).not.toContain('__webpack_nonce__');
+        expect(markup).not.toContain('nonce=');
     });
 });

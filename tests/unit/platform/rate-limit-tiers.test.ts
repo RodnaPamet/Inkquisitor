@@ -1,7 +1,7 @@
 /**
  * The three rate-limit tiers and their storage.
  *
- *   auth tier   /api/auth/**  at the edge, keyed (IP, UA hash), 10/30/60 per min
+ *   auth tier   /api/auth/**  at the edge, keyed on the client address alone, 10/30/60 per min
  *   read tier   GET/HEAD/…    at the edge, keyed (workspace, IP, user), 120/min
  *               (crafted spellings of both: edge-rate-limit-crafted-paths.test.ts)
  *   mutation    in the route  (covered in api-error-handling.test.ts)
@@ -10,14 +10,14 @@
  * configures Upstash, so none reaches the network.
  */
 // These suites measure the rate-limit tiers, not the workspace gate (its own
-// suite is tests/unit/auth/middleware-workspace-gate.test.ts): every request
+// suite is tests/unit/auth/proxy-workspace-gate.test.ts): every request
 // carries a session whose capped claim list defers any slug to the server.
 jest.mock('next-auth/jwt', () => ({
     getToken: jest.fn(async () => ({ userId: 'user_rl', memberships: [{ slug: '_', workspaceId: 'ws_', role: 'OWNER' }], membershipsTruncated: true })),
 }));
 
 import { NextRequest } from 'next/server';
-import { middleware, requestIdFor } from '@/middleware';
+import { proxy, requestIdFor } from '@/proxy';
 import { _clearAuthRateLimitMemory, classifyAuthEndpoint, AUTH_TIER_POLICIES } from '@/lib/rate-limit/authRateLimit';
 import { _clearApiReadRateLimitMemory, buildReadKey } from '@/lib/rate-limit/apiReadRateLimit';
 import {
@@ -124,22 +124,22 @@ describe('auth tier', () => {
     it('blocks the 11th sign-in attempt in a minute from one client, with a request id', async () => {
         const limit = AUTH_TIER_POLICIES.high.limit;
         for (let i = 0; i < limit; i++) {
-            expect((await middleware(req('/api/auth/callback/credentials', 'POST'))).status).toBe(200);
+            expect((await proxy(req('/api/auth/callback/credentials', 'POST'))).status).toBe(200);
         }
-        const blocked = await middleware(req('/api/auth/callback/credentials', 'POST'));
+        const blocked = await proxy(req('/api/auth/callback/credentials', 'POST'));
         expect(blocked.status).toBe(429);
         expect(blocked.headers.get('Retry-After')).toBeTruthy();
         expect(blocked.headers.get('x-request-id')).toBeTruthy();
         const body = await blocked.json();
         expect(JSON.stringify(body)).not.toContain('203.0.113.7');
         // A different client is unaffected.
-        expect((await middleware(req('/api/auth/callback/credentials', 'POST', '198.51.100.1'))).status).toBe(200);
+        expect((await proxy(req('/api/auth/callback/credentials', 'POST', '198.51.100.1'))).status).toBe(200);
     });
 
     it('is off when RATE_LIMIT_ENABLED=0', async () => {
         process.env.RATE_LIMIT_ENABLED = '0';
         for (let i = 0; i < 30; i++) {
-            expect((await middleware(req('/api/auth/signin', 'POST'))).status).toBe(200);
+            expect((await proxy(req('/api/auth/signin', 'POST'))).status).toBe(200);
         }
     });
 });
@@ -249,11 +249,11 @@ describe('read tier', () => {
 
     it('blocks past API_READ_LIMIT per workspace', async () => {
         for (let i = 0; i < API_READ_LIMIT.maxAttempts; i++) {
-            expect((await middleware(req('/api/w/a/things'))).status).toBe(200);
+            expect((await proxy(req('/api/w/a/things'))).status).toBe(200);
         }
-        expect((await middleware(req('/api/w/a/things'))).status).toBe(429);
+        expect((await proxy(req('/api/w/a/things'))).status).toBe(429);
         // Another workspace has its own budget.
-        expect((await middleware(req('/api/w/b/things'))).status).toBe(200);
+        expect((await proxy(req('/api/w/b/things'))).status).toBe(200);
     });
 
     it('never the health probes, even with the bucket they would share exhausted', async () => {
@@ -261,11 +261,11 @@ describe('read tier', () => {
         // `w:none:ip:<ip>:u:anon` — the bucket of every non-workspace GET
         // from this IP. Exhaust exactly that bucket first.
         for (let i = 0; i < API_READ_LIMIT.maxAttempts; i++) {
-            expect((await middleware(req('/api/books'))).status).toBe(200);
+            expect((await proxy(req('/api/books'))).status).toBe(200);
         }
-        expect((await middleware(req('/api/books'))).status).toBe(429);
+        expect((await proxy(req('/api/books'))).status).toBe(429);
         for (const probe of ['/api/readyz', '/api/livez', '/api/health']) {
-            expect([probe, (await middleware(req(probe))).status]).toEqual([probe, 200]);
+            expect([probe, (await proxy(req(probe))).status]).toEqual([probe, 200]);
         }
     });
 });
