@@ -1,10 +1,20 @@
 /**
  * Edge middleware — the auth and read rate-limit tiers, and the request id.
  *
- *   /api/auth/**          → auth tier   (src/lib/rate-limit/authRateLimit.ts)
- *   GET /api/** (else)    → read tier   (src/lib/rate-limit/apiReadRateLimit.ts)
- *   POST/PUT/PATCH/DELETE → mutation tier, inside the route handler
- *                           (withApiErrorHandling), not here
+ * Every request is classified once (`classifyEdgeRequest`, over every
+ * spelling Next could route the path by) and charged to its tier by one
+ * unconditional call (`enforceEdgeRateLimit`):
+ *
+ *   any spelling under /api/auth → auth tier   (src/lib/rate-limit/authRateLimit.ts)
+ *   a canonically spelled probe  → exempt
+ *   POST/PUT/PATCH/DELETE (else) → mutation tier, inside the route handler
+ *                                  (withApiErrorHandling), not here
+ *   anything else (GET, HEAD, …) → read tier   (src/lib/rate-limit/apiReadRateLimit.ts)
+ *
+ * See `src/lib/rate-limit/edge-tier.ts` for why: the raw pathname let
+ * `/api/%61uth/…`, `//api/…` and HEAD requests escape both tiers, and a
+ * single decode-and-resolve path let `…/x%2F..%2F..%2Fapi%2Fhealth` pass as
+ * a probe.
  *
  * Every API response carries `x-request-id`: the caller's own when it sent
  * one, a new UUID otherwise, forwarded to the handler on the request so the
@@ -18,8 +28,7 @@
  * rate-limit tiers.
  */
 import { NextResponse, type NextRequest } from 'next/server';
-import { checkAuthRateLimit, isAuthRateLimited } from '@/lib/rate-limit/authRateLimit';
-import { checkApiReadRateLimit, isApiReadRateLimited } from '@/lib/rate-limit/apiReadRateLimit';
+import { classifyEdgeRequest, enforceEdgeRateLimit } from '@/lib/rate-limit/edge-tier';
 
 const REQUEST_ID_HEADER = 'x-request-id';
 /** A caller-supplied id is accepted only in this shape, so a header cannot inject into a log line. */
@@ -36,16 +45,11 @@ function withRequestId(res: NextResponse, requestId: string): NextResponse {
 }
 
 export async function middleware(req: NextRequest): Promise<NextResponse> {
-    const { pathname } = req.nextUrl;
     const requestId = requestIdFor(req);
 
-    if (isAuthRateLimited(pathname)) {
-        const rl = await checkAuthRateLimit(req);
-        if (!rl.ok && rl.response) return withRequestId(rl.response, requestId);
-    } else if (isApiReadRateLimited(req.method, pathname)) {
-        const rl = await checkApiReadRateLimit(req, null);
-        if (!rl.ok && rl.response) return withRequestId(rl.response, requestId);
-    }
+    const tier = classifyEdgeRequest(req.method, req.nextUrl.pathname);
+    const verdict = await enforceEdgeRateLimit(req, tier, null);
+    if (!verdict.ok) return withRequestId(verdict.response, requestId);
 
     const headers = new Headers(req.headers);
     headers.set(REQUEST_ID_HEADER, requestId);

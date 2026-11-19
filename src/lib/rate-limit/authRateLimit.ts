@@ -1,7 +1,10 @@
 /**
- * The auth tier — edge rate limiting for `/api/auth/**`.
+ * The auth tier — edge rate limiting for `/api/auth/**`, every method.
  *
- * Runs in `src/middleware.ts` before authentication, so it is keyed on the
+ * `./edge-tier.ts` decides that a request is in this tier (when ANY spelling
+ * Next could route it by is below `/api/auth`, so `/api/%61uth/…`,
+ * `//api/auth/…` and `/api/auth/x/..%2F..%2Fhealth` are too) and at which
+ * level; this module counts it. Runs in `src/middleware.ts` before authentication, so it is keyed on the
  * caller's IP plus a short hash of the User-Agent (to soften the shared
  * bucket behind a NAT), never on a user. Three strictness levels:
  *
@@ -34,11 +37,12 @@ export const AUTH_TIER_POLICIES: Readonly<Record<AuthEndpointTier, WindowPolicy>
     low: { limit: 60, windowMs: 60_000 },
 };
 
-/** True when a path belongs to the auth tier. */
-export function isAuthRateLimited(pathname: string): boolean {
-    return pathname === '/api/auth' || pathname.startsWith('/api/auth/');
-}
-
+/**
+ * The strictness level of one auth-tier spelling. Takes a lowercased spelling
+ * from `edgePathSpellings` in `./edge-tier.ts`; `classifyEdgeRequest` asks it
+ * of every spelling and keeps the strictest answer. Whether a request is in
+ * the auth tier at all is that function's decision, not this module's.
+ */
 export function classifyAuthEndpoint(pathname: string): AuthEndpointTier {
     if (
         pathname.startsWith('/api/auth/signin') ||
@@ -74,11 +78,20 @@ export function _clearAuthRateLimitMemory(): void {
     memory.clear();
 }
 
-export async function checkAuthRateLimit(req: NextRequest): Promise<{ ok: boolean; response?: NextResponse; headers?: Headers }> {
+/**
+ * Count one request against the auth tier at `tier`. The level is the
+ * strictest any spelling of the path names (`classifyEdgeRequest`), so a
+ * crafted spelling never picks a looser one. `pathname` is the undecoded,
+ * lowercased spelling, logged as is: the URL parser has already escaped
+ * anything that could break a line.
+ */
+export async function checkAuthRateLimit(
+    req: NextRequest,
+    tier: AuthEndpointTier,
+    pathname: string,
+): Promise<{ ok: boolean; response?: NextResponse; headers?: Headers }> {
     if (edgeRateLimitBypassed()) return { ok: true };
     try {
-        const { pathname } = req.nextUrl;
-        const tier = classifyAuthEndpoint(pathname);
         const check = await checkWindow(memory, `rl:auth:${tier}`, await clientKey(req), AUTH_TIER_POLICIES[tier]);
         const headers = new Headers({
             'X-RateLimit-Limit': String(check.limit),

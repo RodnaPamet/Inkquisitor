@@ -134,6 +134,33 @@ describe('htmlToLines', () => {
     it('strips arbitrary HTML tags', () => {
         expect(htmlToLines('<strong>bold</strong> text')).toBe('bold text');
     });
+    it('decodes entities once, so text written as "&lt;" stays "&lt;"', () => {
+        // The author typed the literal characters "&lt;b&gt;"; the editor
+        // stored them as "&amp;lt;b&amp;gt;". One decode, not two.
+        expect(htmlToLines('<p>&amp;lt;b&amp;gt;</p>')).toBe('&lt;b&gt;');
+        expect(htmlToLines('&amp;amp;')).toBe('&amp;');
+        expect(htmlToLines('a&nbsp;&quot;b&quot;&#39;c&#39;')).toBe('a "b"\'c\'');
+    });
+    it('leaves an unknown entity as written', () => {
+        expect(htmlToLines('&copy; &bogus;')).toBe('&copy; &bogus;');
+    });
+    it('leaves no tag behind when tags are nested inside tag text', () => {
+        const out = htmlToLines('<<b>script>alert(1)<</b>/script>');
+        expect(out).not.toMatch(/<script/i);
+        expect(out).not.toMatch(/<[A-Za-z/!?]/);
+    });
+    it('removes an unterminated tag at the end of the input', () => {
+        expect(htmlToLines('<p>x</p><script src=y')).toBe('x');
+    });
+    it('keeps a "<" that does not start a tag as text', () => {
+        expect(htmlToLines('<p>a < b</p>')).toBe('a < b');
+    });
+    it('removes a tag re-formed by a first strip', () => {
+        // "<scr<b>ipt>" — stripping "<b>" once leaves "<script>".
+        const out = htmlToLines('<scr<i>ipt>x</scr<i>ipt>');
+        expect(out).not.toMatch(/<[A-Za-z/!?]/);
+        expect(out).toContain('x');
+    });
     it('ends a line at every block, so a heading never glues to the paragraph after it (#5309)', () => {
         const out = htmlToLines(
             '<h2>Scope</h2><p>Applies to staff.</p><ul><li>One</li><li>Two</li></ul><blockquote>Quoted</blockquote><hr><p>End</p>',

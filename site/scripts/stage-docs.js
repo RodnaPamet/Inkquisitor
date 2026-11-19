@@ -188,21 +188,38 @@ function stagePage(markdown, fromPath, published) {
 
 /**
  * A published doc's text, or null. Only a REGULAR file under `docs/user/` is
- * read: a symbolic link is refused (lstat), because its target can be any
- * file on the runner, and so is any path that resolves outside the folder.
+ * read: a symbolic link is refused, because its target can be any file on the
+ * runner, and so is any path that resolves outside the folder.
+ *
+ * The file is opened ONCE, with O_NOFOLLOW, and everything after that is done
+ * on the descriptor: the regular-file check is an fstat of what was opened and
+ * the read is from the same descriptor. A check by path followed by a read by
+ * path (lstat, then readFile) could be answered by one file and the read by
+ * another, if the file were swapped for a link between the two calls. With
+ * O_NOFOLLOW a link in the final component fails the open (ELOOP), and a swap
+ * after the open cannot change what the descriptor names.
  */
 function readRepoFile(repoPath) {
     if (entryShapeRefusal(repoPath)) return null;
     const abs = path.resolve(REPO_ROOT, repoPath);
     if (!isInside(path.join(REPO_ROOT, PUBLISHED_FOLDER), abs)) return null;
-    let st;
+    // A platform without O_NOFOLLOW would OR in `undefined` (0) and follow
+    // links silently, so it stops the build instead.
+    if (typeof fs.constants.O_NOFOLLOW !== 'number') {
+        throw new Error('docs site: this platform has no O_NOFOLLOW; refusing to read docs');
+    }
+    let fd;
     try {
-        st = fs.lstatSync(abs);
+        fd = fs.openSync(abs, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
     } catch {
         return null;
     }
-    if (!st.isFile()) return null;
-    return fs.readFileSync(abs, 'utf8');
+    try {
+        if (!fs.fstatSync(fd).isFile()) return null;
+        return fs.readFileSync(fd, 'utf8');
+    } finally {
+        fs.closeSync(fd);
+    }
 }
 
 /** True when `child` is `parent` or below it. */

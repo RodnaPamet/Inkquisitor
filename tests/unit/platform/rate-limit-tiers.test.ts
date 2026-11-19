@@ -2,7 +2,8 @@
  * The three rate-limit tiers and their storage.
  *
  *   auth tier   /api/auth/**  at the edge, keyed (IP, UA hash), 10/30/60 per min
- *   read tier   GET /api/**   at the edge, keyed (workspace, IP, user), 120/min
+ *   read tier   GET/HEAD/…    at the edge, keyed (workspace, IP, user), 120/min
+ *               (crafted spellings of both: edge-rate-limit-crafted-paths.test.ts)
  *   mutation    in the route  (covered in api-error-handling.test.ts)
  *
  * Storage is in-memory unless both Upstash variables are set; no test here
@@ -11,13 +12,14 @@
 import { NextRequest } from 'next/server';
 import { middleware, requestIdFor } from '@/middleware';
 import { _clearAuthRateLimitMemory, classifyAuthEndpoint, AUTH_TIER_POLICIES } from '@/lib/rate-limit/authRateLimit';
+import { _clearApiReadRateLimitMemory, buildReadKey } from '@/lib/rate-limit/apiReadRateLimit';
 import {
-    READ_TIER_EXCLUDED_PATHS,
-    _clearApiReadRateLimitMemory,
-    buildReadKey,
-    extractWorkspaceSlug,
-    isApiReadRateLimited,
-} from '@/lib/rate-limit/apiReadRateLimit';
+    RATE_LIMIT_EXEMPT_PATHS,
+    classifyEdgeRequest,
+    edgePathSpellings,
+    isCanonicalProbe,
+    workspaceSlugOf,
+} from '@/lib/rate-limit/edge-tier';
 import { MemoryWindowStore, usesUpstash } from '@/lib/rate-limit/window-store';
 import { API_READ_LIMIT, checkRateLimit, clearAllRateLimits, rateLimitKeyCount } from '@/lib/security/rate-limit';
 
@@ -135,23 +137,105 @@ describe('auth tier', () => {
     });
 });
 
-describe('read tier', () => {
-    it('applies to GETs under /api/ except the probes and the auth tier', () => {
-        expect(isApiReadRateLimited('GET', '/api/w/my-book/bible')).toBe(true);
-        expect(isApiReadRateLimited('GET', '/api/books')).toBe(true);
-        expect(isApiReadRateLimited('POST', '/api/books')).toBe(false);
-        for (const p of ['/api/health', '/api/livez', '/api/readyz', '/api/auth/session']) {
-            expect(isApiReadRateLimited('GET', p)).toBe(false);
+describe('the edge classifier', () => {
+    const kind = (method: string, path: string) => classifyEdgeRequest(method, path).kind;
+
+    it('gives every request a tier: reads, mutations, the auth tier and the probes', () => {
+        expect(kind('GET', '/api/w/my-book/bible')).toBe('read');
+        expect(kind('GET', '/api/books')).toBe('read');
+        expect(kind('HEAD', '/api/books')).toBe('read');
+        expect(kind('OPTIONS', '/api/books')).toBe('read');
+        expect(kind('PROPFIND', '/api/books')).toBe('read');
+        for (const m of ['POST', 'PUT', 'PATCH', 'DELETE', 'patch']) expect(kind(m, '/api/books')).toBe('mutation');
+        for (const m of ['GET', 'HEAD', 'POST']) expect(kind(m, '/api/auth/session')).toBe('auth');
+        for (const p of ['/api/health', '/api/livez', '/api/readyz']) {
+            expect(kind('GET', p)).toBe('exempt');
+            expect(kind('HEAD', p)).toBe('exempt');
         }
-        expect(isApiReadRateLimited('GET', '/api/healthcheck')).toBe(true);
+        expect(kind('GET', '/api/healthcheck')).toBe('read');
+        expect(kind('GET', '/api/authx')).toBe('read');
         // No route is exempt for a page Inkquisitor does not ship.
-        expect(isApiReadRateLimited('GET', '/api/docs')).toBe(true);
-        expect(READ_TIER_EXCLUDED_PATHS).toEqual(['/api/health', '/api/livez', '/api/readyz', '/api/auth']);
+        expect(kind('GET', '/api/docs')).toBe('read');
+        expect(RATE_LIMIT_EXEMPT_PATHS).toEqual(['/api/health', '/api/livez', '/api/readyz']);
     });
 
+    it('picks the STRICTEST auth level any spelling names', () => {
+        expect(classifyEdgeRequest('POST', '/api/%61uth/callback/credentials')).toMatchObject({ kind: 'auth', level: 'high' });
+        expect(classifyEdgeRequest('GET', '/API/Auth/Session')).toMatchObject({ kind: 'auth', level: 'medium' });
+        expect(classifyEdgeRequest('GET', '/api/auth/csrf')).toMatchObject({ kind: 'auth', level: 'low' });
+        // Raw says csrf (low), resolved says callback (high): high.
+        expect(classifyEdgeRequest('POST', '/api/auth/csrf/..%2Fcallback/credentials')).toMatchObject({ kind: 'auth', level: 'high' });
+        // Raw says callback (high), resolved says csrf (low): still high.
+        expect(classifyEdgeRequest('POST', '/api/auth/callback/..%2Fcsrf')).toMatchObject({ kind: 'auth', level: 'high' });
+    });
+
+    it('spells a path every way Next could route it, without resolving `..` inside a segment', () => {
+        const crafted = edgePathSpellings('/api/auth/callback/credentials/z%2F..%2F..%2F..%2F..%2F..%2Fapi%2Fhealth');
+        // The dynamic-route view: split on raw `/`, each segment decoded on its own.
+        expect(crafted.segments).toEqual(['api', 'auth', 'callback', 'credentials', 'z/../../../../../api/health']);
+        expect(crafted.raw).toBe('/api/auth/callback/credentials/z%2f..%2f..%2f..%2f..%2f..%2fapi%2fhealth');
+        // The static-route view: decoded, `..` kept.
+        expect(crafted.decoded).toBe('/api/auth/callback/credentials/z/../../../../../api/health');
+        // Resolved is only one spelling among three, never the deciding one.
+        expect(crafted.resolved).toBe('/api/health');
+
+        expect(edgePathSpellings('//api///auth/./x/')).toMatchObject({ raw: '/api/auth/./x', resolved: '/api/auth/x' });
+        expect(edgePathSpellings('/api\\auth').decoded).toBe('/api/auth');
+        expect(edgePathSpellings('/API/Auth').decoded).toBe('/api/auth');
+        // Decoded exactly once, as Next decodes it.
+        expect(edgePathSpellings('/api/%2561uth').decoded).toBe('/api/%61uth');
+        // A segment that does not decode stays raw; the others still decode.
+        expect(edgePathSpellings('/api/%61uth/%E0%A4%A').decoded).toBe('/api/auth/%e0%a4%a');
+        expect(classifyEdgeRequest('GET', '/api/%61uth/%E0%A4%A').kind).toBe('auth');
+        expect(edgePathSpellings('/../..').resolved).toBe('/');
+    });
+
+    it('exempts only a probe spelled exactly', () => {
+        for (const probe of ['/api/health', '/api/readyz/', '//api//livez']) {
+            expect([probe, kind('GET', probe)]).toEqual([probe, 'exempt']);
+        }
+        for (const notQuite of [
+            '/api/%68ealth',
+            '/API/livez',
+            '/api/x/%2e%2e/health',
+            '/api/./health',
+            '/api\\health',
+            '/api/w/acme/docs/x%2F..%2F..%2F..%2F..%2F..%2Fapi%2Fhealth',
+        ]) {
+            expect([notQuite, kind('GET', notQuite)]).toEqual([notQuite, 'read']);
+        }
+        expect(isCanonicalProbe('/api/health', '/api/health')).toBe(true);
+        expect(isCanonicalProbe('/api/health/x', '/api/health')).toBe(false);
+        expect(isCanonicalProbe('/api/x/../health', '/api/health')).toBe(false);
+    });
+
+    it('lets no spelling move a request out of the auth tier', () => {
+        // Each of these resolves to somewhere else; a catch-all under
+        // /api/auth would still answer it. The auth tier wins over both
+        // `exempt` and `mutation`.
+        expect(classifyEdgeRequest('POST', '/api/auth/callback/credentials/z%2F..%2F..%2F..%2F..%2F..%2Fapi%2Fhealth')).toMatchObject({
+            kind: 'auth',
+            level: 'high',
+        });
+        expect(classifyEdgeRequest('POST', '/api/auth/signin/x%2F..%2F..%2F..%2Fw%2Fa')).toMatchObject({ kind: 'auth', level: 'high' });
+        expect(classifyEdgeRequest('GET', '/api/auth/session/%2E%2E%2F%2E%2E%2Freadyz')).toMatchObject({ kind: 'auth', level: 'medium' });
+        // And a spelling that only RESOLVES into the auth tier is in it too.
+        expect(classifyEdgeRequest('POST', '/api/books/..%2Fauth/callback/credentials')).toMatchObject({ kind: 'auth', level: 'high' });
+    });
+});
+
+describe('read tier', () => {
     it('keys on the workspace slug and the optional user', () => {
-        expect(extractWorkspaceSlug('/api/w/my-book/x')).toBe('my-book');
-        expect(extractWorkspaceSlug('/api/books')).toBeNull();
+        expect(workspaceSlugOf(['api', 'w', 'my-book', 'x'])).toBe('my-book');
+        expect(workspaceSlugOf(['api', 'books'])).toBeNull();
+        expect(workspaceSlugOf(['api', 'w'])).toBeNull();
+        // Read from the raw segment, as a /api/w/[slug] route reads it: a
+        // `%2F..%2F` in a later segment cannot move the workspace.
+        expect(classifyEdgeRequest('GET', '/api/w/acme/docs/x%2F..%2F..%2F..%2Fw%2Fother')).toMatchObject({
+            kind: 'read',
+            workspaceSlug: 'acme',
+        });
+        expect(classifyEdgeRequest('GET', '/api/w/My-Book/x')).toMatchObject({ kind: 'read', workspaceSlug: 'my-book' });
         expect(buildReadKey('my-book', '1.2.3.4', null)).toBe('w:my-book:ip:1.2.3.4:u:anon');
         expect(buildReadKey(null, '1.2.3.4', 'u1')).toBe('w:none:ip:1.2.3.4:u:u1');
     });
