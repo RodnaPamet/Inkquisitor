@@ -115,3 +115,22 @@ PostgreSQL License
     ON AN "AS IS" BASIS, AND THE UNIVERSITY OF CALIFORNIA HAS NO OBLIGATIONS
     TO PROVIDE MAINTENANCE, SUPPORT, UPDATES, ENHANCEMENTS, OR
     MODIFICATIONS.
+
+SIL Open Font License, Version 1.1
+
+  Noto Sans (version 2.015), regular and bold
+  https://github.com/notofonts/latin-greek-cyrillic
+  Copyright 2022 The Noto Project Authors
+
+  The font the bible's PDF export embeds (issue #24): fonts/noto-sans/
+  NotoSans-Regular.ttf (sha256
+  f3961a9cde016d41a4879aecda1474d3a36d6bf54fa0e4643de029cc2248b0e8) and
+  NotoSans-Bold.ttf (sha256
+  87cb2d84472a7d66da659ee47b6cdb9552326e8c128245231f191b6ac72529d9),
+  unmodified, the unhinted builds published at
+  github.com/notofonts/notofonts.github.io (commit
+  ebbf5a34c2aaac39770e02d24afcfe9a8ad55e3e, fonts/NotoSans/unhinted/ttf/),
+  release NotoSans-v2.015 of the project above. A PDF carries a subset of
+  each. The fonts are distributed under the SIL Open Font License, Version
+  1.1, whose full text is fonts/noto-sans/OFL.txt and
+  https://openfontlicense.org.

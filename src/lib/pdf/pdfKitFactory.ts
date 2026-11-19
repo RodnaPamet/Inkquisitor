@@ -10,14 +10,14 @@
  * tests/unit/pdf/pdf-palette.test.ts); the metadata names the workspace and
  * Inkquisitor.
  *
- * Fonts are PDFKit's standard Helvetica family, read at run time from
- * `pdfkit/js/data/*.afm`. `pdfkit` is a server external package
- * (next.config.mjs), so Next loads it from node_modules rather than bundling
- * it and losing the font files; the worker bundle keeps every package
- * external already. The standard fonts carry WinAnsi only: text is passed
- * through `toWinAnsi` (./win-ansi.ts) first.
+ * Fonts: Noto Sans, embedded and subset (./fonts.ts; issue #24). The document
+ * is created with NO default font, so PDFKit's standard Helvetica is never
+ * read or embedded, and both Noto Sans weights are registered on it before
+ * anything is drawn. Text is passed through `drawableText` first.
+ * `pdfkit` (and `fontkit`) are server external packages (next.config.mjs).
  */
 import PDFDocument from 'pdfkit';
+import { registerPdfFonts } from './fonts';
 import type { ReportMeta } from './types';
 
 // ─── Palette (light-theme design tokens) ───
@@ -66,9 +66,12 @@ export const PAGE_WIDTH = 595.28; // A4 portrait width (pt)
 export const PAGE_HEIGHT = 841.89; // A4 portrait height (pt)
 export const CONTENT_WIDTH = PAGE_WIDTH - MARGINS.left - MARGINS.right;
 
-/** A new PDFKit document with the defaults. */
+/** A new PDFKit document with the defaults, its fonts registered and the regular one selected. */
 export function createPdfDocument(meta: ReportMeta): PDFKit.PDFDocument {
-    return new PDFDocument({
+    const doc = new PDFDocument({
+        // No default font: PDFKit would otherwise load Helvetica (an empty
+        // string is the one value its constructor skips loading for).
+        font: '',
         size: 'A4',
         margins: { ...MARGINS },
         bufferPages: true, // enables page counting for footers
@@ -81,4 +84,6 @@ export function createPdfDocument(meta: ReportMeta): PDFKit.PDFDocument {
             CreationDate: new Date(meta.generatedAt),
         },
     });
+    registerPdfFonts(doc);
+    return doc;
 }

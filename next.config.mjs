@@ -20,7 +20,8 @@ import createNextIntlPlugin from 'next-intl/plugin';
  * they use worker_threads, dynamic `require` or optional native modules that
  * do not survive bundling. BullMQ `require`s the optional
  * `@valkey/valkey-glide` inside a try/catch, which Node tolerates and webpack
- * refuses. PDFKit (Phase 1.3) reads its font metrics from its own directory.
+ * refuses. PDFKit (Phase 1.3) and fontkit (#24), which embeds the PDF's font,
+ * are loaded as published.
  *
  * `next build` runs with `--webpack` (see package.json), not Next 16's default
  * Turbopack, matching inflect-compliance: the strict CSP that Phase 0.H adds
@@ -78,9 +79,13 @@ const nextConfig = {
         'bullmq',
         'ioredis',
         'nodemailer',
-        // Phase 1.3: PDFKit reads its standard fonts' metrics (`js/data/*.afm`)
-        // from beside its own module at run time; bundled, the files are lost.
+        // Phase 1.3: PDFKit, loaded from node_modules as published. Since #24
+        // it embeds Noto Sans (read from <cwd>/fonts/noto-sans, which the
+        // image copies) through fontkit, which src/lib/pdf/fonts.ts also
+        // reads to know what the font covers: external too, so both use the
+        // one copy in node_modules.
         'pdfkit',
+        'fontkit',
     ],
 };
 

@@ -49,11 +49,13 @@ import {
 import { runInWorkspaceContext, type PrismaTx } from '@/lib/db/rls-middleware';
 import { NotFoundError, ValidationError } from '@/lib/errors/types';
 import { BIBLE_KINDS } from '@/lib/bible/kinds';
-import { slugCandidates, slugify } from '@/lib/bible/slug';
+import { slugify } from '@/lib/bible/slug';
 import { getFieldDef, getRelationType } from '@/lib/bible/templates';
 import {
     assertBaseVersion,
+    DERIVED_SLUG_ATTEMPTS,
     fieldViews,
+    freeSlug,
     customLabelFor,
     isUniqueViolation,
     normaliseFieldEntries,
@@ -299,30 +301,6 @@ export async function getElement(ctx: WorkspaceRequestContext, bookId: string, e
 }
 
 // ─── Writes ─────────────────────────────────────────────────────────
-
-/** Candidates checked per query when deriving a slug. */
-const SLUG_CANDIDATE_BATCH = 50;
-/** Batches tried before giving up (2,500 elements of one name in one book). */
-const SLUG_CANDIDATE_BATCHES = 50;
-/**
- * Attempts at a create whose slug was DERIVED. Two creates of one name read
- * the same free slug and the second insert breaks the unique index; it is
- * retried in a fresh transaction, which reads the slug the first one took and
- * moves on. Each retry is lost to a concurrent create of the same name, so
- * this bounds how many may race at once before one is refused.
- */
-const DERIVED_SLUG_ATTEMPTS = 8;
-
-/** The first free candidate slug for `base` in the book, asked by the candidates themselves. */
-async function freeSlug(db: PrismaTx, ctx: WorkspaceRequestContext, bookId: string, base: string): Promise<string> {
-    for (let batch = 0; batch < SLUG_CANDIDATE_BATCHES; batch++) {
-        const candidates = slugCandidates(base, 1 + batch * SLUG_CANDIDATE_BATCH, SLUG_CANDIDATE_BATCH);
-        const taken = await BibleElementRepository.slugsTaken(db, ctx.workspaceId, bookId, candidates);
-        const free = candidates.find((c) => !taken.has(c));
-        if (free) return free;
-    }
-    throw slugConflict();
-}
 
 export async function createElement(ctx: WorkspaceRequestContext, bookId: string, input: unknown): Promise<ElementView> {
     await assertPermission(ctx, 'bible.edit');

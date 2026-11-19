@@ -2,16 +2,19 @@
  * The bible as a PDF (src/lib/bible/bible-pdf.ts on the lifted helpers in
  * src/lib/pdf/, Phase 1.3): a valid PDF whose text names the book, every
  * kind with entries, every element, its fields under their labels (a choice
- * by its option label), and its relations; with characters the standard
- * fonts cannot draw shown as `?`, never as another letter.
+ * by its option label), and its relations; in the embedded Noto Sans
+ * (issue #24), so Cyrillic, Greek and accented Latin come back out of the
+ * text layer exactly, and what the font cannot draw (CJK, emoji) is one `�`
+ * per character, never a wrong letter or nothing.
  */
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { breakLongRuns, renderBiblePdf } from '@/lib/bible/bible-pdf';
 import { createPdfDocument, PALETTE, PALETTE_TOKENS } from '@/lib/pdf/pdfKitFactory';
-import { toWinAnsi } from '@/lib/pdf/win-ansi';
+import { PDF_FONT } from '@/lib/pdf/fonts';
+import { REPLACEMENT_CHARACTER } from '@/lib/pdf/text';
 import { sampleBundle } from '../../helpers/bible-bundle-fixture';
-import { pdfText, pdfTextRuns } from '../../helpers/pdf-text';
+import { pdfFonts, pdfText, pdfTextRuns } from '../../helpers/pdf-text';
 import { REPO_ROOT } from '../../helpers/repo-files';
 
 const META = { workspaceName: 'Mara’s desk', generatedAt: '2026-11-19T10:00:00.000Z' };
@@ -50,10 +53,45 @@ describe('renderBiblePdf', () => {
         expect(text).toContain('No entries yet');
     });
 
-    it('shows a character the standard fonts cannot draw as ?, never another letter', async () => {
+    it('prints Cyrillic, Greek and accented Latin exactly, and CJK and emoji as one � per character', async () => {
         const bundle = sampleBundle();
-        const pdf = await renderBiblePdf({ ...bundle, elements: [{ ...bundle.elements[2], name: 'Ωmega Ålder' }] }, META);
-        expect(pdfText(pdf)).toContain('?mega Ålder');
+        const bulgarian = 'Щастливата жена на фериботчика — ъгъл, юг, ябълка, ѝ';
+        const greek = 'Ωκεανός και θάλασσα: ψυχή, ζωή, ξένος';
+        const latin = 'Ålder Łódź Ærøskøbing naïve façade Dvořák ǅ';
+        const pdf = await renderBiblePdf(
+            {
+                ...bundle,
+                book: { ...bundle.book, title: 'Солените пътища' },
+                elements: [
+                    { ...bundle.elements[2], name: bulgarian, summary: `${greek}\n\n${latin}` },
+                    { ...bundle.elements[3], name: 'Тайфун 台風 notes 😀 and 👨‍👩‍👧 here' },
+                ],
+            },
+            { ...META, workspaceName: 'Работно място' },
+        );
+        const runs = pdfTextRuns(pdf);
+        for (const exact of [bulgarian, greek, latin, 'Солените пътища', 'Работно място']) expect([exact, runs.includes(exact)]).toEqual([exact, true]);
+        // Two CJK characters are two marks; a family emoji (five code points) is one.
+        const R = REPLACEMENT_CHARACTER;
+        expect(runs).toContain(`Тайфун ${R}${R} notes ${R} and ${R} here (Almanac)`);
+        expect(pdfText(pdf)).not.toMatch(/[\u4e00-\u9fff]|\p{Extended_Pictographic}/u);
+    });
+
+    it('embeds only subsets of Noto Sans, never a standard font or a whole font file', async () => {
+        const pdf = await renderBiblePdf(sampleBundle(), META);
+        const fonts = pdfFonts(pdf);
+        expect(fonts).toHaveLength(2);
+        expect(fonts[0]).toMatch(/^[A-Z]{6}\+NotoSans-Regular$/);
+        expect(fonts[1]).toMatch(/^[A-Z]{6}\+NotoSans-Bold$/);
+        expect(Buffer.from(pdf).toString('latin1')).not.toContain('Helvetica');
+        // Each font file is about 430 KB; the subsets this bible needs are a few.
+        expect(pdf.length).toBeLessThan(60_000);
+    });
+
+    it('is the same bytes for the same bible', async () => {
+        const a = await renderBiblePdf(sampleBundle(), META);
+        const b = await renderBiblePdf(sampleBundle(), META);
+        expect(Buffer.compare(a, b)).toBe(0);
     });
 });
 
@@ -75,7 +113,7 @@ describe('a long unbroken run', () => {
 
     it('breakLongRuns breaks only what does not fit, at the width, and loses nothing', () => {
         const doc = createPdfDocument({ workspaceName: 'w', reportTitle: 't', generatedAt: META.generatedAt });
-        doc.font('Helvetica').fontSize(10);
+        doc.font(PDF_FONT.regular).fontSize(10);
         const width = 200;
         const long = 'W'.repeat(300);
         const broken = breakLongRuns(doc, `short words stay ${long} as they are`, width);
@@ -90,14 +128,17 @@ describe('a long unbroken run', () => {
         expect(breakLongRuns(doc, 'nothing here is long', width)).toBe('nothing here is long');
         doc.end();
     });
-});
 
-describe('toWinAnsi', () => {
-    it('keeps Latin-1 and the WinAnsi punctuation, composes accents, and replaces the rest', () => {
-        expect(toWinAnsi('café — “quoted” … €5')).toBe('café — “quoted” … €5');
-        expect(toWinAnsi('é')).toBe('é');
-        expect(toWinAnsi('Ж中😀')).toBe('???');
-        expect(toWinAnsi('a\u0000b\tc\nd\u0085')).toBe('ab\tc\nd');
+    it('breakLongRuns never cuts inside a user-perceived character', () => {
+        const doc = createPdfDocument({ workspaceName: 'w', reportTitle: 't', generatedAt: META.generatedAt });
+        doc.font(PDF_FONT.regular).fontSize(10);
+        const cluster = 'e\u0301\u0323'; // e with two combining marks: one character, three code points
+        const broken = breakLongRuns(doc, cluster.repeat(200), 100);
+        const lines = broken.split('\n');
+        expect(lines.length).toBeGreaterThan(1);
+        for (const line of lines) expect(line.length % cluster.length).toBe(0);
+        expect(lines.join('')).toBe(cluster.repeat(200));
+        doc.end();
     });
 });
 

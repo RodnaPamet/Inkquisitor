@@ -139,7 +139,7 @@ export const ConceptNoteInput = z
     .object({
         /** The element's name; derived from the note's first line when absent. */
         name: raw(ELEMENT_NAME_MAX).nullish(),
-        /** The element's slug; derived from the name when absent. Importing again under one slug updates that element. */
+        /** The element's slug, refused when taken; when absent, the first free slug derived from the name (a note never updates an element). */
         slug: slug.optional(),
         text: raw(CONCEPT_NOTE_MAX).min(1),
     })
