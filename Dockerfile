@@ -91,6 +91,10 @@ COPY --from=builder /app/dist ./dist
 # src/lib/interview/packs.ts: readable Markdown, so what the interviewer was
 # told stays a file a reviewer can open.
 COPY --from=builder /app/src/lib/interview/packs ./src/lib/interview/packs
+# The PDF export's font (Noto Sans and its OFL licence, issue #24), read at run
+# time from <cwd>/fonts/noto-sans (src/lib/pdf/fonts.ts); the working
+# directory is /app.
+COPY --from=builder /app/fonts ./fonts
 
 RUN chmod +x ./scripts/entrypoint.sh && chown -R nextjs:nodejs /app
 

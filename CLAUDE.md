@@ -164,7 +164,8 @@ Phase 1.3 (bible import and export) added:
 ```
 src/lib/archive/zip.ts       → writeZip (fflate, deterministic) and readZip (bounded, refuses by name)
 src/lib/bible/bundle-format.ts → the Markdown bundle's files; frontmatter split and safe YAML read
-src/lib/bible/bible-pdf.ts, src/lib/pdf/ → the bible as a PDF on the lifted pdfkit helpers (pdfKitFactory, layout, win-ansi)
+src/lib/bible/bible-pdf.ts, src/lib/pdf/ → the bible as a PDF on the lifted pdfkit helpers (pdfKitFactory, layout; fonts and text since #24)
+fonts/noto-sans/             → the PDF's embedded font (Noto Sans 2.015, OFL), read from <cwd> at run time
 src/app-layer/usecases/      → bible-export (bundle, PDF), bible-import (bundle, concept note)
 src/app/api/w/[workspaceSlug]/books/[bookId]/export/{bundle,pdf}, import/{bundle,concept-note}
 src/lib/http/bounded-body.ts → readBoundedBytes: the bounded body read readJsonBody shares
@@ -472,11 +473,25 @@ closed beta with an explicit operator flag (D5, amended 2026-11-19).
   the central directory; `book.md` is read only when its details are applied.
   Export refuses (`EXPORT_TOO_LARGE`) a bundle `readZip`
   would refuse under the import's limits, so every export imports back. A
-  concept note is a RESEARCH element's `notes`. Uploads are never stored as
+  concept note is a RESEARCH element's `notes` (an owner-approved field), and
+  ALWAYS makes a new element: a derived slug that is taken goes to the next
+  free one (`freeSlug`, `my-idea-2`), so the same note twice is two elements;
+  a supplied slug that is taken is a 409 `SLUG_TAKEN`; only the bundle is
+  idempotent per slug (#27 item 3). Uploads are never stored as
   files. A new refusal code goes in `IMPORT_REASONS` and
   `bible.transfer.reasons` (`tests/unit/bible/import-reasons.test.ts`).
-  `pdfkit` is a server external package (its font metrics load from
-  node_modules); PDF text goes through `toWinAnsi` and `breakLongRuns`.
+  THE PDF FONT (#24) is Noto Sans 2.015 regular and bold (OFL, `fonts/noto-sans/`
+  with `OFL.txt`, credited in NOTICE, sha256 pinned by
+  `tests/unit/pdf/pdf-fonts.test.ts`), embedded as a subset; no standard font
+  is loaded (`createPdfDocument` passes `font: ''` and registers `PDF_FONT`).
+  Draw text only through `drawableText` (`src/lib/pdf/fonts.ts`): what the
+  font covers (Latin, Latin Extended, Greek, Cyrillic) is drawn as itself;
+  each other user-perceived character (CJK, emoji) is one `�`, never a box or
+  nothing. The files are read from `<cwd>/fonts/noto-sans`, which the image's
+  runner stage COPYs into `/app`; `pdfkit` and `fontkit` are server external
+  packages. `breakLongRuns` cuts long runs between grapheme clusters.
+  `tests/helpers/pdf-text.ts` reads text back through each font's ToUnicode
+  map.
 - **Model calls (Phase 2.1).** A feature calls a model only through
   `callStructured(ctx, { template, data, schema, bookId, signal })`
   (`src/app-layer/usecases/model-calls.ts`), from its own usecase after its own

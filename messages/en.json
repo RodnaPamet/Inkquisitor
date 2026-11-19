@@ -468,7 +468,7 @@
             "exportPdf": "Export PDF",
             "import": "Import",
             "importTitle": "Import into this book",
-            "importDescription": "Bring in a Markdown bundle exported from a book, or a concept note. Entries are matched by their address: a bundle updates the entries it names and adds the rest.",
+            "importDescription": "Bring in a Markdown bundle exported from a book, or a concept note. Entries are matched by their address: a bundle updates the entries it names and adds the rest; a concept note always adds a new research entry.",
             "modeAria": "What to import",
             "modeBundle": "Markdown bundle",
             "modeNote": "Concept note",
@@ -504,9 +504,7 @@
                 "unchanged": "Unchanged"
             },
             "noteOutcome": {
-                "created": "Created the research note “{name}”.",
-                "updated": "Updated the research note “{name}”.",
-                "unchanged": "The research note “{name}” already holds this text."
+                "created": "Created the research note “{name}”."
             },
             "reasons": {
                 "generic": "The import was refused ({reason}).",

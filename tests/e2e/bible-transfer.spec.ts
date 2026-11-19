@@ -1,5 +1,6 @@
 import * as fs from 'node:fs';
 import { expect, test } from '@playwright/test';
+import { pdfTextRuns } from '../helpers/pdf-text';
 import { signUp } from './helpers';
 
 /**
@@ -8,7 +9,10 @@ import { signUp } from './helpers';
  * Markdown zip (a real browser download), import that zip into another book
  * through the import modal, see the report and the elements on the board;
  * export the second book and get the same bytes; download the PDF; bring in
- * a concept note.
+ * a concept note, twice (two elements: a note never updates one, #27 item 3).
+ * And a bible in Cyrillic, Greek and accented Latin exported as a PDF by the
+ * production server, whose text comes back exactly (the embedded Noto Sans,
+ * read from the server's working directory, #24).
  */
 
 test('an author exports a bible, imports it into another book, and sees the elements', async ({ page }, testInfo) => {
@@ -88,4 +92,29 @@ test('an author exports a bible, imports it into another book, and sees the elem
     await expect(dialog.getByTestId('import-report')).toContainText('Created the research note “First pitch”.');
     await dialog.locator('#import-done').click();
     await expect(main.locator('[data-kind="RESEARCH"]')).toContainText('First pitch');
+
+    // The same note again is a second element, beside the first.
+    await main.locator('#import-open').click();
+    await dialog.getByRole('radio', { name: 'Concept note' }).click();
+    await dialog.locator('#import-note-name').fill('First pitch');
+    await dialog.locator('#import-note-text').fill('A ferrywoman crosses a drowned country.\n\nShe owes the guild.');
+    await dialog.locator('#import-submit').click();
+    await expect(dialog.getByTestId('import-report')).toContainText('Created the research note “First pitch”.');
+    await dialog.locator('#import-done').click();
+    const notes = (await (await api.get(`${base}/${target}/elements?kind=RESEARCH`)).json()).elements as Array<{ slug: string }>;
+    expect(notes.map((n) => n.slug).sort()).toEqual(['first-pitch', 'first-pitch-2']);
+});
+
+test('a bible in Cyrillic, Greek and accented Latin exports as a PDF whose text is intact', async ({ page }) => {
+    const slug = await signUp(page);
+    const api = page.request;
+    const base = `/api/w/${slug}/books`;
+    const book = (await (await api.post(base, { data: { title: 'Солените пътища' } })).json()).book.id as string;
+    for (const name of ['Мара Вел', 'Ωκεανός', 'Ærøskøbing Dvořák', 'Тайфун 台風 😀']) {
+        expect((await api.post(`${base}/${book}/elements`, { data: { kind: 'CHARACTER', name } })).status()).toBe(201);
+    }
+    const pdf = await api.get(`${base}/${book}/export/pdf`);
+    expect(pdf.status()).toBe(200);
+    const runs = pdfTextRuns(await pdf.body());
+    for (const exact of ['Солените пътища', 'Мара Вел', 'Ωκεανός', 'Ærøskøbing Dvořák', 'Тайфун \uFFFD\uFFFD \uFFFD']) expect([exact, runs.includes(exact)]).toEqual([exact, true]);
 });

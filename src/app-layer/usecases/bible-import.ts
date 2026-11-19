@@ -58,9 +58,12 @@
  * A CONCEPT NOTE is pasted or uploaded plain text, stored as a RESEARCH
  * element: the text as paragraphs in its `notes` field (rich text), the name
  * given or taken from the note's first line. It is not parsed (Phase 2 may
- * read it with a model). It is idempotent per slug as a bundle element is: a
- * slug a RESEARCH element already holds updates that element's notes, and a
- * slug another kind holds is `KIND_CONFLICT`.
+ * read it with a model). A note ALWAYS makes a new element and never touches
+ * an existing one (#27 item 3, owner decision 2026-11-19): its derived slug
+ * is the first free candidate (`freeSlug`: `my-idea`, then `my-idea-2`, …),
+ * whatever kind holds the taken ones, so importing one note twice makes two
+ * elements. A slug the author SUPPLIES that is taken is a 409 `SLUG_TAKEN`.
+ * Only the bundle is idempotent per slug.
  *
  * Nothing uploaded is stored as a file: the bytes are read, checked and
  * applied in memory, and only the resulting rows (author text encrypted at
@@ -103,11 +106,13 @@ import { SLUG_PATTERN, slugify } from '@/lib/bible/slug';
 import { getRelationType, getTemplate, isSymmetric, relationAllowed } from '@/lib/bible/templates';
 import { plainBlock } from '@/lib/bible/text';
 import { runInWorkspaceContext, type PrismaTx } from '@/lib/db/rls-middleware';
-import { AppError, ConflictError, DomainError, ValidationError } from '@/lib/errors/types';
+import { AppError, DomainError, ValidationError } from '@/lib/errors/types';
 import { logger } from '@/lib/observability/logger';
 import { scanBuffer, scanMode, type ScanResult } from '@/lib/storage/av-scan';
 import {
     customLabelFor,
+    DERIVED_SLUG_ATTEMPTS,
+    freeSlug,
     isUniqueViolation,
     normaliseFieldEntries,
     optionalBlock,
@@ -640,11 +645,14 @@ export async function importBibleBundle(
 export const CONCEPT_NOTE_FIELD = 'notes';
 /** The name of a note whose text gives none. */
 const CONCEPT_NOTE_FALLBACK_NAME = 'Concept note';
+/** The slug base of a note whose name gives none (a name of no Latin letters or digits). */
+const CONCEPT_NOTE_FALLBACK_SLUG = 'concept-note';
 
 export interface ConceptNoteReport {
     element: { id: string; kind: 'RESEARCH'; slug: string; name: string };
-    outcome: ImportOutcome;
-    versionNumber: number | null;
+    /** Always a new element: a note never updates one (#27 item 3). */
+    outcome: 'created';
+    versionNumber: number;
 }
 
 function escapeHtml(s: string): string {
@@ -682,7 +690,6 @@ export async function importConceptNote(ctx: WorkspaceRequestContext, bookId: st
     if (text === '') throw new ValidationError('The concept note is empty.', { reason: 'EMPTY', field: 'Text' });
     if (text.length > CONCEPT_NOTE_MAX) throw new ValidationError('The concept note is too long.', { reason: 'TOO_LONG', field: 'Text' });
     const name = parsed.name ? requiredLine(parsed.name, ELEMENT_NAME_MAX, 'Name') : requiredLine(conceptNoteName(text), ELEMENT_NAME_MAX, 'Name');
-    const slug = parsed.slug ?? (slugify(name) || 'concept-note');
     const fields: FieldEntry[] = [{ key: CONCEPT_NOTE_FIELD, value: conceptNoteHtml(text) }];
     // Refuse a value the field will not take before anything is written. The
     // only way a sanitised note within CONCEPT_NOTE_MAX can fail is its
@@ -699,53 +706,45 @@ export async function importConceptNote(ctx: WorkspaceRequestContext, bookId: st
         throw err;
     }
 
-    try {
-        return await runInWorkspaceContext(ctx, async (db) => {
-            await requireBook(db, ctx, bookId);
-            const [found] = await BibleElementRepository.findBySlugs(db, ctx.workspaceId, bookId, [slug]);
-            if (found && found.kind !== 'RESEARCH') {
-                throw new ConflictError('Another kind of element of this book already uses that slug.', { reason: 'KIND_CONFLICT' });
-            }
-            // Compared under the element's lock, as the bundle's elements are
-            // (a save in between must not make the name look already equal).
-            let held: typeof found | undefined = found;
-            if (found) {
-                await BibleElementRepository.lock(db, found.id);
-                held = (await BibleElementRepository.find(db, ctx.workspaceId, bookId, found.id)) ?? undefined;
-            }
-            let report: ConceptNoteReport;
-            if (!held) {
+    // A supplied slug that is taken is the author's to change; a derived one
+    // that a concurrent create took between the lookup and the insert is ours
+    // to move on from, in a fresh transaction (as `createElement` does).
+    const attempts = parsed.slug ? 1 : DERIVED_SLUG_ATTEMPTS;
+    for (let attempt = 1; ; attempt++) {
+        try {
+            return await runInWorkspaceContext(ctx, async (db) => {
+                await requireBook(db, ctx, bookId);
+                let slug: string;
+                if (parsed.slug) {
+                    if (await BibleElementRepository.slugTaken(db, ctx.workspaceId, bookId, parsed.slug)) throw slugConflict();
+                    slug = parsed.slug;
+                } else {
+                    slug = await freeSlug(db, ctx, bookId, slugify(name) || CONCEPT_NOTE_FALLBACK_SLUG);
+                }
                 const element = await BibleElementRepository.create(db, ctx.workspaceId, bookId, { kind: 'RESEARCH', name, slug });
                 await BibleElementRepository.lock(db, element.id);
                 await writeFieldValues(db, ctx, element, fields);
                 const version = await recordVersion(db, ctx, bookId, element.id, { source: 'IMPORT' });
-                report = { element: { id: element.id, kind: 'RESEARCH', slug, name }, outcome: 'created', versionNumber: version.versionNumber };
-            } else {
-                const renamed = held.name !== name;
-                if (renamed) await BibleElementRepository.update(db, ctx.workspaceId, bookId, held.id, { name });
-                const changed = await writeFieldValues(db, ctx, held, fields);
-                if (!renamed && changed.length === 0) {
-                    report = { element: { id: held.id, kind: 'RESEARCH', slug, name }, outcome: 'unchanged', versionNumber: null };
-                } else {
-                    if (!renamed) await BibleElementRepository.touch(db, ctx.workspaceId, bookId, held.id);
-                    const version = await recordVersion(db, ctx, bookId, held.id, { source: 'IMPORT' });
-                    report = { element: { id: held.id, kind: 'RESEARCH', slug, name }, outcome: 'updated', versionNumber: version.versionNumber };
-                }
-            }
-            await logEvent(
-                ctx,
-                {
-                    action: 'BIBLE_CONCEPT_NOTE_IMPORTED',
-                    entityType: 'BibleElement',
-                    entityId: report.element.id,
-                    details: { bookId, outcome: report.outcome, versionNumber: report.versionNumber, length: text.length },
-                },
-                { db },
-            );
-            return report;
-        });
-    } catch (err) {
-        if (isUniqueViolation(err)) throw slugConflict();
-        throw err;
+                const report: ConceptNoteReport = {
+                    element: { id: element.id, kind: 'RESEARCH', slug, name },
+                    outcome: 'created',
+                    versionNumber: version.versionNumber,
+                };
+                await logEvent(
+                    ctx,
+                    {
+                        action: 'BIBLE_CONCEPT_NOTE_IMPORTED',
+                        entityType: 'BibleElement',
+                        entityId: element.id,
+                        details: { bookId, outcome: report.outcome, versionNumber: report.versionNumber, length: text.length },
+                    },
+                    { db },
+                );
+                return report;
+            });
+        } catch (err) {
+            if (!isUniqueViolation(err)) throw err;
+            if (attempt >= attempts) throw slugConflict();
+        }
     }
 }
