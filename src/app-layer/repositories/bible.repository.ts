@@ -85,12 +85,12 @@ export const BibleElementRepository = {
         return db.bibleElement.findFirst({ where: { id: elementId, workspaceId }, select: { id: true, bookId: true, kind: true } });
     },
 
-    /** Slugs in the book equal to `base` or starting `base-`, for picking a free one. */
-    async slugsLike(db: Db, workspaceId: string, bookId: string, base: string) {
+    /** Which of `slugs` elements of the book already hold. */
+    async slugsTaken(db: Db, workspaceId: string, bookId: string, slugs: readonly string[]) {
         const rows = await db.bibleElement.findMany({
-            where: { workspaceId, bookId, OR: [{ slug: base }, { slug: { startsWith: `${base}-` } }] },
+            where: { workspaceId, bookId, slug: { in: [...slugs] } },
             select: { slug: true },
-            take: 1_000,
+            take: slugs.length,
         });
         return new Set(rows.map((r) => r.slug));
     },
@@ -183,7 +183,12 @@ export const BibleRelationRepository = {
         });
     },
 
-    create(db: Db, workspaceId: string, bookId: string, data: { fromElementId: string; toElementId: string; type: string; note: string | null }) {
+    create(
+        db: Db,
+        workspaceId: string,
+        bookId: string,
+        data: { fromElementId: string; toElementId: string; type: string; symmetric: boolean; note: string | null },
+    ) {
         return db.bibleRelation.create({ data: { ...data, workspaceId, bookId }, select: RELATION_SELECT });
     },
 

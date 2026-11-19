@@ -69,6 +69,7 @@ CREATE TABLE "BibleRelation" (
     "fromElementId" TEXT NOT NULL,
     "toElementId" TEXT NOT NULL,
     "type" TEXT NOT NULL,
+    "symmetric" BOOLEAN NOT NULL DEFAULT false,
     "note" TEXT,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
@@ -226,12 +227,17 @@ CREATE POLICY superuser_bypass ON "BibleEntryVersion"
 -- Shape the database holds whoever writes
 -- ═══════════════════════════════════════════════════════════════════
 --
--- Bounds on the readable columns only: an encrypted column's stored length is
--- the envelope's, so its bound lives in the usecase's schema
--- (src/app-layer/schemas/bible.ts).
+-- Bounds on the readable columns only (title, genre, audience, name, slug,
+-- custom label, keys and types), each trimmed as the usecase stores it. An
+-- encrypted column's stored length is the envelope's, so its bound lives in
+-- the usecase's schema (src/app-layer/schemas/bible.ts).
 
 ALTER TABLE "Book" ADD CONSTRAINT "Book_title_bounded"
     CHECK (char_length(btrim("title")) BETWEEN 1 AND 200 AND "title" = btrim("title"));
+ALTER TABLE "Book" ADD CONSTRAINT "Book_genre_bounded"
+    CHECK ("genre" IS NULL OR (char_length("genre") BETWEEN 1 AND 80 AND "genre" = btrim("genre")));
+ALTER TABLE "Book" ADD CONSTRAINT "Book_audience_bounded"
+    CHECK ("audience" IS NULL OR (char_length("audience") BETWEEN 1 AND 80 AND "audience" = btrim("audience")));
 ALTER TABLE "Book" ADD CONSTRAINT "Book_targetLength_positive"
     CHECK ("targetLength" IS NULL OR "targetLength" BETWEEN 1 AND 5000000);
 
@@ -255,6 +261,25 @@ ALTER TABLE "BibleRelation" ADD CONSTRAINT "BibleRelation_not_to_itself"
     CHECK ("fromElementId" <> "toElementId");
 ALTER TABLE "BibleRelation" ADD CONSTRAINT "BibleRelation_type_shape"
     CHECK (char_length("type") <= 32 AND "type" ~ '^[a-z][a-z0-9]*(_[a-z0-9]+)*$');
+-- The built-in `related_to` reads the same both ways, whoever writes it.
+ALTER TABLE "BibleRelation" ADD CONSTRAINT "BibleRelation_related_to_symmetric"
+    CHECK ("type" <> 'related_to' OR "symmetric");
+
+-- A SYMMETRIC relation (its type reads the same both ways: `related_to`, a
+-- template's `sibling_of`, `allied_with`, …) is one fact whichever end it was
+-- written from, so A→B and B→A of one type are the same relation. The
+-- (fromElementId, toElementId, type) unique index cannot see that; this one
+-- compares the unordered pair, so of two concurrent creations of A→B and B→A
+-- one commits and the other breaks the index (P2002, answered 409
+-- RELATION_EXISTS). The usecase's read-first check is the friendly answer;
+-- this is the one that holds under concurrency. A DIRECTED type (mentor of /
+-- mentored by) is not covered: both directions are different facts.
+--
+-- An expression and a predicate Prisma's schema cannot spell, so it lives only
+-- here; `prisma migrate diff` leaves it alone. Do not add a @@unique for it.
+CREATE UNIQUE INDEX "BibleRelation_symmetric_pair_key" ON "BibleRelation"
+    ("bookId", "type", LEAST("fromElementId", "toElementId"), GREATEST("fromElementId", "toElementId"))
+    WHERE "symmetric";
 
 ALTER TABLE "BibleEntryVersion" ADD CONSTRAINT "BibleEntryVersion_versionNumber_positive"
     CHECK ("versionNumber" >= 1);

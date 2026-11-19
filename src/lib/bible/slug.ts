@@ -24,14 +24,27 @@ export function slugify(name: string): string {
 }
 
 /**
- * The first of `base`, `base-2`, `base-3`, … that `taken` does not hold, each
- * kept within SLUG_MAX by shortening the base.
+ * The `n`th candidate for `base`: `base` itself for 1, else `base-n`, the base
+ * shortened (at a hyphen-free end) to keep the whole within SLUG_MAX. A long
+ * base is shortened for its suffixes, so the stem a candidate is built on is
+ * not always `base`: a lookup of what is taken must ask for the candidates
+ * themselves (`slugCandidates`), never for slugs starting `base-`.
  */
+export function slugCandidate(base: string, n: number): string {
+    if (n <= 1) return base;
+    const suffix = `-${n}`;
+    return `${trimHyphens(base.slice(0, SLUG_MAX - suffix.length))}${suffix}`;
+}
+
+/** Candidates `from` … `from + count - 1` for `base`, in order. */
+export function slugCandidates(base: string, from: number, count: number): string[] {
+    return Array.from({ length: count }, (_, i) => slugCandidate(base, from + i));
+}
+
+/** The first candidate for `base` that `taken` does not hold. */
 export function firstFreeSlug(base: string, taken: ReadonlySet<string>): string {
-    if (!taken.has(base)) return base;
-    for (let n = 2; ; n++) {
-        const suffix = `-${n}`;
-        const candidate = `${trimHyphens(base.slice(0, SLUG_MAX - suffix.length))}${suffix}`;
+    for (let n = 1; ; n++) {
+        const candidate = slugCandidate(base, n);
         if (!taken.has(candidate)) return candidate;
     }
 }

@@ -14,7 +14,9 @@
  * `writeFieldValues` (`normaliseFieldValue`). A field the kind's template no
  * longer has, or whose stored value its current type refuses, is left out and
  * counted (`skippedFieldKeys`); the slug is restored only while no other
- * element of the book has taken it (`slugKept`).
+ * element of the book has taken it (`slugKept`), including one that takes it
+ * between the check and the write (the restore is retried once, and keeps
+ * the current slug).
  */
 import type { WorkspaceRequestContext } from '@/app-layer/types';
 import { logEvent } from '@/app-layer/events/audit';
@@ -26,7 +28,7 @@ import { ConflictError, NotFoundError } from '@/lib/errors/types';
 import { normaliseFieldValue } from '@/lib/bible/field-values';
 import { parseSnapshot, type BibleSnapshot } from '@/lib/bible/snapshot';
 import { getFieldDef, getTemplate } from '@/lib/bible/templates';
-import { optionalBlock, readFieldValues, recordVersion, requireElement, requiredLine, writeFieldValues } from './bible-common';
+import { isUniqueViolation, optionalBlock, readFieldValues, recordVersion, requireElement, requiredLine, slugConflict, writeFieldValues } from './bible-common';
 
 export interface VersionMetaView {
     versionNumber: number;
@@ -64,9 +66,11 @@ export async function listVersions(
 ): Promise<VersionMetaView[]> {
     await assertPermission(ctx, 'bible.view');
     const take = Math.min(Math.max(options.take ?? 50, 1), VERSION_PAGE_MAX);
+    // A version number, so within PostgreSQL's integer: past it the query fails P2020 (a 500).
+    const before = VersionNumberParam.optional().parse(options.before);
     return runInWorkspaceContext(ctx, async (db) => {
         await requireElement(db, ctx, bookId, elementId);
-        const rows = await BibleVersionRepository.list(db, ctx.workspaceId, bookId, elementId, { take, beforeVersion: options.before });
+        const rows = await BibleVersionRepository.list(db, ctx.workspaceId, bookId, elementId, { take, beforeVersion: before });
         return rows.map(metaView);
     });
 }
@@ -99,61 +103,77 @@ export async function restoreVersion(
     await assertPermission(ctx, 'bible.edit');
     const n = VersionNumberParam.parse(versionNumber);
     const { changeSummary } = RestoreInput.parse(input ?? {});
-    return runInWorkspaceContext(ctx, async (db) => {
-        await BibleElementRepository.lock(db, elementId);
-        const element = await requireElement(db, ctx, bookId, elementId);
-        const row = await BibleVersionRepository.find(db, ctx.workspaceId, bookId, elementId, n);
-        if (!row) throw new NotFoundError('Version not found.');
-        const snapshot = parseSnapshot(row.snapshot);
-        if (snapshot.element.kind !== element.kind) {
-            throw new ConflictError('That version belongs to an element of another kind.', { reason: 'KIND_MISMATCH' });
-        }
+    const restore = () =>
+        runInWorkspaceContext(ctx, async (db) => {
+            await BibleElementRepository.lock(db, elementId);
+            const element = await requireElement(db, ctx, bookId, elementId);
+            const row = await BibleVersionRepository.find(db, ctx.workspaceId, bookId, elementId, n);
+            if (!row) throw new NotFoundError('Version not found.');
+            const snapshot = parseSnapshot(row.snapshot);
+            if (snapshot.element.kind !== element.kind) {
+                throw new ConflictError('That version belongs to an element of another kind.', { reason: 'KIND_MISMATCH' });
+            }
 
-        // The element's own columns, through the same sanitisers as a manual save.
-        const slugFree = !(await BibleElementRepository.slugTaken(db, ctx.workspaceId, bookId, snapshot.element.slug, elementId));
-        await BibleElementRepository.update(db, ctx.workspaceId, bookId, elementId, {
-            name: requiredLine(snapshot.element.name, ELEMENT_NAME_MAX, 'Name'),
-            ...(slugFree ? { slug: snapshot.element.slug } : {}),
-            status: snapshot.element.status,
-            summary: optionalBlock(snapshot.element.summary, ELEMENT_SUMMARY_MAX, 'Summary') ?? null,
-            customLabel: element.kind === 'CUSTOM' ? requiredLine(snapshot.element.customLabel ?? '', CUSTOM_LABEL_MAX, 'Custom label') : null,
-        });
+            // The element's own columns, through the same sanitisers as a manual save.
+            const slugFree = !(await BibleElementRepository.slugTaken(db, ctx.workspaceId, bookId, snapshot.element.slug, elementId));
+            await BibleElementRepository.update(db, ctx.workspaceId, bookId, elementId, {
+                name: requiredLine(snapshot.element.name, ELEMENT_NAME_MAX, 'Name'),
+                ...(slugFree ? { slug: snapshot.element.slug } : {}),
+                status: snapshot.element.status,
+                summary: optionalBlock(snapshot.element.summary, ELEMENT_SUMMARY_MAX, 'Summary') ?? null,
+                customLabel: element.kind === 'CUSTOM' ? requiredLine(snapshot.element.customLabel ?? '', CUSTOM_LABEL_MAX, 'Custom label') : null,
+            });
 
-        // The fields: every template field set to the snapshot's value, or cleared.
-        const restorable = new Map<string, unknown>();
-        const skippedFieldKeys: string[] = [];
-        for (const f of snapshot.fields) {
-            const def = getFieldDef(element.kind, f.key);
-            if (!def || !normaliseFieldValue(def, f.value).ok) skippedFieldKeys.push(f.key);
-            else restorable.set(f.key, f.value);
-        }
-        const current = await readFieldValues(db, ctx, elementId);
-        const entries = getTemplate(element.kind)
-            .fields.filter((f) => restorable.has(f.key) || current.has(f.key))
-            .map((f) => ({ key: f.key, value: restorable.has(f.key) ? restorable.get(f.key) : null }));
-        await writeFieldValues(db, ctx, element, entries);
+            // The fields: every template field set to the snapshot's value, or cleared.
+            const restorable = new Map<string, unknown>();
+            const skippedFieldKeys: string[] = [];
+            for (const f of snapshot.fields) {
+                const def = getFieldDef(element.kind, f.key);
+                if (!def || !normaliseFieldValue(def, f.value).ok) skippedFieldKeys.push(f.key);
+                else restorable.set(f.key, f.value);
+            }
+            const current = await readFieldValues(db, ctx, elementId);
+            const entries = getTemplate(element.kind)
+                .fields.filter((f) => restorable.has(f.key) || current.has(f.key))
+                .map((f) => ({ key: f.key, value: restorable.has(f.key) ? restorable.get(f.key) : null }));
+            await writeFieldValues(db, ctx, element, entries);
 
-        const version = await recordVersion(db, ctx, bookId, elementId, {
-            source: 'MANUAL',
-            changeSummary: changeSummary ?? `Restored version ${n}`,
-            restoredFromVersion: n,
-        });
-        await logEvent(
-            ctx,
-            {
-                action: 'BIBLE_VERSION_RESTORED',
-                entityType: 'BibleElement',
-                entityId: elementId,
-                details: {
-                    bookId,
-                    restoredFromVersion: n,
-                    versionNumber: version.versionNumber,
-                    skippedFieldCount: skippedFieldKeys.length,
-                    slugKept: !slugFree,
+            const version = await recordVersion(db, ctx, bookId, elementId, {
+                source: 'MANUAL',
+                changeSummary: changeSummary ?? `Restored version ${n}`,
+                restoredFromVersion: n,
+            });
+            await logEvent(
+                ctx,
+                {
+                    action: 'BIBLE_VERSION_RESTORED',
+                    entityType: 'BibleElement',
+                    entityId: elementId,
+                    details: {
+                        bookId,
+                        restoredFromVersion: n,
+                        versionNumber: version.versionNumber,
+                        skippedFieldCount: skippedFieldKeys.length,
+                        slugKept: !slugFree,
+                    },
                 },
-            },
-            { db },
-        );
-        return { version: metaView(version), restoredFromVersion: n, skippedFieldKeys, slugKept: !slugFree };
-    });
+                { db },
+            );
+            return { version: metaView(version), restoredFromVersion: n, skippedFieldKeys, slugKept: !slugFree };
+        });
+    // The slug is checked, then written: another element can take it in
+    // between. That write breaks the unique index and rolls the whole restore
+    // back; the second attempt reads the slug as taken and keeps the current
+    // one (`slugKept`), as a restore that found it taken would have.
+    try {
+        return await restore();
+    } catch (err) {
+        if (!isUniqueViolation(err)) throw err;
+        try {
+            return await restore();
+        } catch (again) {
+            if (isUniqueViolation(again)) throw slugConflict();
+            throw again;
+        }
+    }
 }

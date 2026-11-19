@@ -6,6 +6,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { withApiErrorHandling } from '@/lib/errors/api';
 import { requirePermission } from '@/lib/security/permission-middleware';
+import { VersionNumberParam } from '@/app-layer/schemas/bible';
 import { listVersions } from '@/app-layer/usecases/bible-versions';
 
 type Params = { workspaceSlug: string; bookId: string; elementId: string };
@@ -13,7 +14,8 @@ type Params = { workspaceSlug: string; bookId: string; elementId: string };
 const Query = z
     .object({
         take: z.coerce.number().int().min(1).max(100).optional(),
-        before: z.coerce.number().int().min(1).optional(),
+        // A version number: within PostgreSQL's integer, or the query fails P2020 (a 500).
+        before: VersionNumberParam.optional(),
     })
     .strict();
 

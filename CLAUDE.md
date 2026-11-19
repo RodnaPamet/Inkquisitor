@@ -303,11 +303,22 @@ only under zero-retention terms (D5).
   by type, after `normaliseFieldValue` has checked it against the template
   (choice from the options, scale 1..5, list of strings) and sanitised it.
   An element's kind is fixed; a CUSTOM element carries a `customLabel` and no
-  other kind may (CHECK). Slugs are unique per book. A relation is stored
+  other kind may (CHECK). Slugs are unique per book; a derived slug is the
+  first free candidate asked by the candidates themselves (`slugCandidates`,
+  never a `startsWith` on the base, which misses a shortened stem), and a
+  create that loses a race for it is retried with the next suffix, while a
+  supplied slug that is taken is a 409. A relation is stored
   ONCE, from the element whose kind declares the type (or the built-in
   `related_to`), and read from both ends with the inverse label; cross-book
   and self relations are refused, and the composite `(bookId, elementId)` keys
-  refuse them in the database too. **Every save of an element or its fields
+  refuse them in the database too. A SYMMETRIC type (label = inverse label)
+  is one fact from either end: the row carries `symmetric`, and the partial
+  unique index `BibleRelation_symmetric_pair_key` over the unordered pair
+  (migration only; Prisma cannot spell it, so never add a `@@unique` for it)
+  refuses the reverse under concurrency, answered 409 RELATION_EXISTS. A
+  read-then-write check in a usecase is the friendly answer, never the
+  guarantee: what must hold under concurrency is a constraint, and the
+  usecase maps its violation. **Every save of an element or its fields
   writes exactly one `BibleEntryVersion` in the same transaction**
   (`bible-common.ts`: `BibleElementRepository.lock` — a per-element advisory
   lock — then the change, then `recordVersion`); a save that changes nothing
@@ -320,6 +331,12 @@ only under zero-retention terms (D5).
   usecase layer before it is stored: plain text through `plainLine` /
   `plainBlock` (`src/lib/bible/text.ts`, over `sanitizePlainText`), rich text
   through `sanitizeRichTextHtml`, field values through `normaliseFieldValue`.
+  Raw input is bounded BEFORE it is sanitised (at most `RAW_INPUT_FACTOR`, 4,
+  times the stored bound: the request schema for every input, and each field
+  type's own raw bound in `normaliseFieldValue`), so refusing a huge value
+  costs a length check, not a parse. Control characters (C0 but tab, LF, CR;
+  and DEL) are stripped from what the sanitiser returns: PostgreSQL refuses a
+  NUL in a text column, and `&#0;` decodes to one.
   An encrypted-manifest field must be classified in
   `tests/guards/encrypted-field-sanitiser-coverage.test.ts` with the sanitiser
   its writers call; that guard fails for a field, or a new caller of its
@@ -327,7 +344,12 @@ only under zero-retention terms (D5).
   `sanitize-html` and its parser are ESM: the unit and integration Jest
   projects transform them (`NODE_ESM_ALLOW_LIST` in `jest.config.js`).
 - **Request bodies.** A route reads its body with `readJsonBody(req)`
-  (`src/lib/http/json-body.ts`), so a malformed body is a 400.
+  (`src/lib/http/json-body.ts`), never `req.json()` / `req.text()`: a malformed
+  body is a 400, and a body past `JSON_BODY_MAX_BYTES` (2 MiB) is a 413
+  without being read in full (refused on its `content-length`, or cut off
+  once the streamed bytes pass the cap). A numeric query or path parameter
+  that reaches an `Int` column is bounded to PostgreSQL's integer
+  (`VersionNumberParam`), or an out-of-range value is a P2020 500.
 - **Security headers.** The proxy stamps a per-request-nonce CSP (script-src
   `'nonce-…' 'strict-dynamic'`, no `unsafe-inline`; style-src `unsafe-inline`
   and no nonce) and `SECURITY_HEADERS` (`src/lib/security/csp.ts`) on every

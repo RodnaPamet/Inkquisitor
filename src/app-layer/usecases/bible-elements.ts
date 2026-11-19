@@ -16,7 +16,9 @@
  *
  * A CUSTOM element carries a `customLabel`; no other kind may (the database
  * holds the same rule). An element's kind is fixed at creation. Slugs are
- * unique per book, derived from the name unless given.
+ * unique per book, derived from the name unless given; a derived slug that
+ * a concurrent create takes first is retried with the next free suffix, never
+ * refused (`DERIVED_SLUG_ATTEMPTS`).
  */
 import type { BibleElementKind } from '@prisma/client';
 import type { WorkspaceRequestContext } from '@/app-layer/types';
@@ -34,7 +36,7 @@ import {
 } from '@/app-layer/schemas/bible';
 import { runInWorkspaceContext, type PrismaTx } from '@/lib/db/rls-middleware';
 import { NotFoundError, ValidationError } from '@/lib/errors/types';
-import { firstFreeSlug, slugify } from '@/lib/bible/slug';
+import { slugCandidates, slugify } from '@/lib/bible/slug';
 import { getRelationType } from '@/lib/bible/templates';
 import {
     fieldViews,
@@ -153,6 +155,30 @@ function customLabelFor(kind: BibleElementKind, input: string | null | undefined
     return requiredLine(input, CUSTOM_LABEL_MAX, 'Custom label');
 }
 
+/** Candidates checked per query when deriving a slug. */
+const SLUG_CANDIDATE_BATCH = 50;
+/** Batches tried before giving up (2,500 elements of one name in one book). */
+const SLUG_CANDIDATE_BATCHES = 50;
+/**
+ * Attempts at a create whose slug was DERIVED. Two creates of one name read
+ * the same free slug and the second insert breaks the unique index; it is
+ * retried in a fresh transaction, which reads the slug the first one took and
+ * moves on. Each retry is lost to a concurrent create of the same name, so
+ * this bounds how many may race at once before one is refused.
+ */
+const DERIVED_SLUG_ATTEMPTS = 8;
+
+/** The first free candidate slug for `base` in the book, asked by the candidates themselves. */
+async function freeSlug(db: PrismaTx, ctx: WorkspaceRequestContext, bookId: string, base: string): Promise<string> {
+    for (let batch = 0; batch < SLUG_CANDIDATE_BATCHES; batch++) {
+        const candidates = slugCandidates(base, 1 + batch * SLUG_CANDIDATE_BATCH, SLUG_CANDIDATE_BATCH);
+        const taken = await BibleElementRepository.slugsTaken(db, ctx.workspaceId, bookId, candidates);
+        const free = candidates.find((c) => !taken.has(c));
+        if (free) return free;
+    }
+    throw slugConflict();
+}
+
 export async function createElement(ctx: WorkspaceRequestContext, bookId: string, input: unknown): Promise<ElementView> {
     await assertPermission(ctx, 'bible.edit');
     const parsed = ElementCreateInput.parse(input);
@@ -162,43 +188,47 @@ export async function createElement(ctx: WorkspaceRequestContext, bookId: string
     const entries = parsed.fields ?? [];
     // Refuse bad field values before anything is written.
     normaliseFieldEntries(parsed.kind, entries);
-    try {
-        return await runInWorkspaceContext(ctx, async (db) => {
-            await requireBook(db, ctx, bookId);
-            let slug: string;
-            if (parsed.slug) {
-                if (await BibleElementRepository.slugTaken(db, ctx.workspaceId, bookId, parsed.slug)) throw slugConflict();
-                slug = parsed.slug;
-            } else {
-                const base = slugify(name) || parsed.kind.toLowerCase().replace(/_/g, '-');
-                slug = firstFreeSlug(base, await BibleElementRepository.slugsLike(db, ctx.workspaceId, bookId, base));
-            }
-            const element = await BibleElementRepository.create(db, ctx.workspaceId, bookId, {
-                kind: parsed.kind,
-                name,
-                slug,
-                status: parsed.status,
-                summary,
-                customLabel,
+    const attempts = parsed.slug ? 1 : DERIVED_SLUG_ATTEMPTS;
+    for (let attempt = 1; ; attempt++) {
+        try {
+            return await runInWorkspaceContext(ctx, async (db) => {
+                await requireBook(db, ctx, bookId);
+                let slug: string;
+                if (parsed.slug) {
+                    if (await BibleElementRepository.slugTaken(db, ctx.workspaceId, bookId, parsed.slug)) throw slugConflict();
+                    slug = parsed.slug;
+                } else {
+                    slug = await freeSlug(db, ctx, bookId, slugify(name) || parsed.kind.toLowerCase().replace(/_/g, '-'));
+                }
+                const element = await BibleElementRepository.create(db, ctx.workspaceId, bookId, {
+                    kind: parsed.kind,
+                    name,
+                    slug,
+                    status: parsed.status,
+                    summary,
+                    customLabel,
+                });
+                await BibleElementRepository.lock(db, element.id);
+                const changed = await writeFieldValues(db, ctx, element, entries);
+                const version = await recordVersion(db, ctx, bookId, element.id, { source: 'MANUAL', changeSummary: parsed.changeSummary ?? null });
+                await logEvent(
+                    ctx,
+                    {
+                        action: 'BIBLE_ELEMENT_CREATED',
+                        entityType: 'BibleElement',
+                        entityId: element.id,
+                        details: { bookId, kind: parsed.kind, fieldCount: changed.length, versionNumber: version.versionNumber },
+                    },
+                    { db },
+                );
+                return elementView(db, ctx, bookId, element.id);
             });
-            await BibleElementRepository.lock(db, element.id);
-            const changed = await writeFieldValues(db, ctx, element, entries);
-            const version = await recordVersion(db, ctx, bookId, element.id, { source: 'MANUAL', changeSummary: parsed.changeSummary ?? null });
-            await logEvent(
-                ctx,
-                {
-                    action: 'BIBLE_ELEMENT_CREATED',
-                    entityType: 'BibleElement',
-                    entityId: element.id,
-                    details: { bookId, kind: parsed.kind, fieldCount: changed.length, versionNumber: version.versionNumber },
-                },
-                { db },
-            );
-            return elementView(db, ctx, bookId, element.id);
-        });
-    } catch (err) {
-        if (isUniqueViolation(err)) throw slugConflict();
-        throw err;
+        } catch (err) {
+            if (!isUniqueViolation(err)) throw err;
+            // A supplied slug someone else holds is the author's to change; a
+            // derived one is ours to move on from.
+            if (attempt >= attempts) throw slugConflict();
+        }
     }
 }
 

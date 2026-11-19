@@ -13,6 +13,7 @@
 import { z } from 'zod';
 import { BIBLE_ELEMENT_STATUSES, BIBLE_KINDS, BOOK_STAGES, IDENTIFIER_MAX, IDENTIFIER_PATTERN } from '@/lib/bible/kinds';
 import { SLUG_MAX, SLUG_PATTERN } from '@/lib/bible/slug';
+import { LIST_ITEMS_MAX, RAW_INPUT_FACTOR, rawListItemMax, rawStringMax } from '@/lib/bible/field-values';
 
 export const BOOK_TITLE_MAX = 200;
 export const BOOK_LOGLINE_MAX = 2_000;
@@ -26,7 +27,7 @@ export const RELATION_NOTE_MAX = 2_000;
 export const FIELDS_PER_SAVE_MAX = 50;
 
 /** Raw text may carry markup the sanitiser removes; allow it some room before the post-sanitise bound. */
-const raw = (max: number) => z.string().max(max * 4);
+const raw = (max: number) => z.string().max(max * RAW_INPUT_FACTOR);
 const id = z.string().min(1).max(64);
 const identifier = z.string().max(IDENTIFIER_MAX).regex(IDENTIFIER_PATTERN);
 
@@ -54,7 +55,20 @@ export type BookUpdateInput = z.infer<typeof BookUpdateInput>;
 
 // ─── Elements and fields ────────────────────────────────────────────
 
-export const FieldValueInput = z.union([z.string(), z.number(), z.array(z.string()), z.null()]);
+/**
+ * A field value's RAW shape, bounded before anything sanitises it. The schema
+ * cannot see the field's type (that needs the element's kind), so a string is
+ * held to the largest type's raw bound (rich text); `normaliseFieldValue` then
+ * holds it to its own type's raw bound, still before sanitising. Without
+ * these, a megabytes-long value was sanitised in full before being refused
+ * TOO_LONG.
+ */
+export const FieldValueInput = z.union([
+    z.string().max(rawStringMax()),
+    z.number(),
+    z.array(z.string().max(rawListItemMax())).max(LIST_ITEMS_MAX),
+    z.null(),
+]);
 
 export const FieldEntryInput = z.object({ key: identifier, value: FieldValueInput }).strict();
 export type FieldEntryInput = z.infer<typeof FieldEntryInput>;

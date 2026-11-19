@@ -15,6 +15,13 @@
  *   the same relation twice (for a type that reads the same    409 RELATION_EXISTS
  *   both ways, in either direction)
  *
+ * The duplicate check is a read before the insert, so it alone would let two
+ * concurrent creations of A→B and B→A of a symmetric type both through. The
+ * database holds it: a symmetric relation is stored with `symmetric = true`,
+ * and a partial unique index over the unordered pair
+ * (`BibleRelation_symmetric_pair_key`) refuses the second; its P2002 is
+ * answered 409 RELATION_EXISTS like the read's.
+ *
  * Relations are not part of an element's version snapshot (a snapshot is the
  * element and its fields); they are audited. The note is author text,
  * sanitised (`optionalBlock`) and encrypted at rest.
@@ -68,13 +75,15 @@ export async function addRelation(ctx: WorkspaceRequestContext, bookId: string, 
                 });
             }
             const type = getRelationType(from.kind, parsed.type)!;
-            if (isSymmetric(type) && (await BibleRelationRepository.findPair(db, ctx.workspaceId, bookId, from.id, to.id, parsed.type))) {
+            const symmetric = isSymmetric(type);
+            if (symmetric && (await BibleRelationRepository.findPair(db, ctx.workspaceId, bookId, from.id, to.id, parsed.type))) {
                 throw new ConflictError('These two elements are already related that way.', RELATION_EXISTS);
             }
             const created = await BibleRelationRepository.create(db, ctx.workspaceId, bookId, {
                 fromElementId: from.id,
                 toElementId: to.id,
                 type: parsed.type,
+                symmetric,
                 note,
             });
             await logEvent(

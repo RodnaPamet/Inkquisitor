@@ -30,6 +30,8 @@ import { createElement, updateElementFields } from '@/app-layer/usecases/bible-e
 import { addRelation, removeRelation } from '@/app-layer/usecases/bible-relations';
 import { restoreVersion } from '@/app-layer/usecases/bible-versions';
 import { ForbiddenError } from '@/lib/errors/types';
+import { rawStringMax } from '@/lib/bible/field-values';
+import { JSON_BODY_MAX_BYTES } from '@/lib/http/json-body';
 import { addMember, createAccount, createBareUser, workspaceCtx } from '../helpers/workspaces';
 import { seedBible } from '../helpers/bible';
 
@@ -194,6 +196,26 @@ describe('malformed requests', () => {
         const el = await createElement(workspaceCtx(owner), bookId, { kind: 'PLOT', name: 'Main' });
         expect((await call(version.GET, 'GET', { bookId, elementId: el.id, versionNumber: 'one' })).status).toBe(400);
         expect((await call(version.GET, 'GET', { bookId, elementId: el.id, versionNumber: '9' })).status).toBe(404);
+    });
+
+    it('a version cursor past PostgreSQL\'s integer is a 400, not a 500', async () => {
+        session.userId = owner.userId;
+        const el = await createElement(workspaceCtx(owner), bookId, { kind: 'PLOT', name: 'Cursor' });
+        expect((await call(versions.GET, 'GET', { bookId, elementId: el.id }, undefined, '?before=2147483647')).status).toBe(200);
+        expect((await call(versions.GET, 'GET', { bookId, elementId: el.id }, undefined, '?before=2147483648')).status).toBe(400);
+        expect((await call(versions.GET, 'GET', { bookId, elementId: el.id }, undefined, '?before=99999999999999999999')).status).toBe(400);
+    });
+
+    it('a body past the cap is a 413, and an oversized field value a 400, with nothing written', async () => {
+        session.userId = owner.userId;
+        const el = await createElement(workspaceCtx(owner), bookId, { kind: 'CHARACTER', name: 'Big' });
+        const huge = { fields: [{ key: 'wound', value: 'x'.repeat(JSON_BODY_MAX_BYTES) }] };
+        const tooBig = await call(fields.PUT, 'PUT', { bookId, elementId: el.id }, huge);
+        expect(tooBig.status).toBe(413);
+        expect(at(tooBig.json, 'error.details')).toMatchObject({ reason: 'BODY_TOO_LARGE' });
+        const oversizedValue = { fields: [{ key: 'wound', value: 'x'.repeat(rawStringMax() + 1) }] };
+        expect((await call(fields.PUT, 'PUT', { bookId, elementId: el.id }, oversizedValue)).status).toBe(400);
+        expect(await prisma.bibleEntryVersion.count({ where: { elementId: el.id } })).toBe(1);
     });
 
     it('a refused field batch names every refusal', async () => {

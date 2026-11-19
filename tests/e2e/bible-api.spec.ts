@@ -53,3 +53,18 @@ test('an author keeps a versioned bible through the API, and nobody else can rea
     }
     await other.close();
 });
+
+test('the production server refuses an oversized body 413 and a NUL-bearing title cleanly', async ({ page }) => {
+    const slug = await signUp(page);
+    const base = `/api/w/${slug}/books`;
+    const huge = await page.request.post(base, {
+        headers: { 'content-type': 'application/json' },
+        data: JSON.stringify({ title: 'x'.repeat(3 * 1024 * 1024) }),
+    });
+    expect(huge.status()).toBe(413);
+    expect((await huge.json()).error.details).toMatchObject({ reason: 'BODY_TOO_LARGE' });
+
+    const nul = await page.request.post(base, { data: { title: 'Salt&#0;\u0000 Roads', genre: '&#0;' } });
+    expect(nul.status()).toBe(201);
+    expect((await nul.json()).book).toMatchObject({ title: 'Salt Roads', genre: null });
+});

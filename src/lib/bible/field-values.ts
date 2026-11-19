@@ -23,7 +23,7 @@
  */
 import { sanitizePlainText, sanitizeRichTextHtml } from '@/lib/security/sanitize';
 import type { FieldDef } from './template-schema';
-import { plainLine } from './text';
+import { plainLine, stripControlChars } from './text';
 
 export const TEXT_MAX = 2_000;
 export const RICHTEXT_MAX = 100_000;
@@ -31,6 +31,24 @@ export const LIST_ITEMS_MAX = 50;
 export const LIST_ITEM_MAX = 500;
 export const SCALE_MIN = 1;
 export const SCALE_MAX = 5;
+
+/**
+ * Raw input may be up to this many times a stored bound: the room markup
+ * (and entities) the sanitiser removes may take. Past it a value is refused
+ * BEFORE it is sanitised, so the cost of refusing a huge value is a length
+ * check, not a parse.
+ */
+export const RAW_INPUT_FACTOR = 4;
+
+/** The largest raw string any field type accepts (rich text's). */
+export function rawStringMax(): number {
+    return Math.max(TEXT_MAX, RICHTEXT_MAX) * RAW_INPUT_FACTOR;
+}
+
+/** The largest raw list item. */
+export function rawListItemMax(): number {
+    return LIST_ITEM_MAX * RAW_INPUT_FACTOR;
+}
 
 export type FieldValue = string | number | string[];
 
@@ -57,29 +75,36 @@ function hasText(html: string): boolean {
 /**
  * The value to store for `field`, or why it is refused. Length limits apply to
  * the SANITISED value, the one stored; an input over the limit only because
- * of markup the sanitiser drops is accepted.
+ * of markup the sanitiser drops is accepted, up to RAW_INPUT_FACTOR times the
+ * limit. Past that the RAW value is refused before the sanitiser sees it.
  */
 export function normaliseFieldValue(field: FieldDef, input: unknown): FieldValueResult {
     if (input === null || input === undefined) return { ok: true, value: null };
     switch (field.type) {
         case 'text': {
             if (typeof input !== 'string') return refuse('NOT_A_STRING');
+            if (input.length > TEXT_MAX * RAW_INPUT_FACTOR) return refuse('TOO_LONG');
             const value = plainLine(input);
             if (value.length > TEXT_MAX) return refuse('TOO_LONG');
             return { ok: true, value: value.length === 0 ? null : value };
         }
         case 'richtext': {
             if (typeof input !== 'string') return refuse('NOT_A_STRING');
-            const value = sanitizeRichTextHtml(input).trim();
+            if (input.length > RICHTEXT_MAX * RAW_INPUT_FACTOR) return refuse('TOO_LONG');
+            const value = stripControlChars(sanitizeRichTextHtml(input)).trim();
             if (value.length > RICHTEXT_MAX) return refuse('TOO_LONG');
             return { ok: true, value: hasText(value) ? value : null };
         }
         case 'list': {
             if (!Array.isArray(input)) return refuse('NOT_A_LIST');
             if (input.length > LIST_ITEMS_MAX) return refuse('TOO_MANY_ITEMS');
-            const items: string[] = [];
+            // Every item's type and raw length first, so nothing is sanitised for a list refused anyway.
             for (const item of input) {
                 if (typeof item !== 'string') return refuse('ITEM_NOT_A_STRING');
+                if (item.length > rawListItemMax()) return refuse('ITEM_TOO_LONG');
+            }
+            const items: string[] = [];
+            for (const item of input as string[]) {
                 const value = plainLine(item);
                 if (value.length > LIST_ITEM_MAX) return refuse('ITEM_TOO_LONG');
                 if (value.length > 0) items.push(value);

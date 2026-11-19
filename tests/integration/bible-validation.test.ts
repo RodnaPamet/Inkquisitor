@@ -247,4 +247,34 @@ describe('sanitising on every author-text write path', () => {
         const rel = await addRelation(ctx, bookId, { fromElementId: el.id, toElementId: target.id, type: 'related_to', note: `Note ${XSS}` });
         expect(rel.note).toBe('Note');
     });
+
+    it('control characters, raw or as entities, never reach a text column (a NUL was a 500)', async () => {
+        const book = await createBook(ctx, {
+            title: 'Ti\u0000de&#0;',
+            logline: 'Line\u0000 one&#0;',
+            genre: 'Sa&#0;ga\u0001',
+            audience: 'Ad\u0000ult',
+        });
+        expect(book).toMatchObject({ title: 'Tide', logline: 'Line one', genre: 'Saga', audience: 'Adult' });
+        const updated = await updateBook(ctx, book.id, { title: '&#0;Renamed\u0000', genre: '\u0000', audience: '&#0;' });
+        expect(updated).toMatchObject({ title: 'Renamed', genre: null, audience: null });
+
+        const el = await createElement(ctx, bookId, {
+            kind: 'CUSTOM',
+            name: 'Re&#0;lic\u0000',
+            customLabel: 'Arte\u0000fact&#0;',
+            summary: 'Sum\u0000mary',
+            fields: [
+                { key: 'purpose', value: 'Pur&#0;pose' },
+                { key: 'key_details', value: ['de\u0000tail'] },
+            ],
+        });
+        expect(el).toMatchObject({ name: 'Relic', customLabel: 'Artefact', summary: 'Summary' });
+        const values = Object.fromEntries(el.fields.map((f) => [f.key, f.value]));
+        expect(values).toMatchObject({ purpose: 'Purpose', key_details: ['detail'] });
+        const renamed = await updateElement(ctx, bookId, el.id, { name: '\u0000Relic two&#0;' });
+        expect(renamed.name).toBe('Relic two');
+        const raw = await prisma.bibleElement.findUniqueOrThrow({ where: { id: el.id }, select: { name: true, customLabel: true } });
+        expect(raw).toEqual({ name: 'Relic two', customLabel: 'Artefact' });
+    });
 });
