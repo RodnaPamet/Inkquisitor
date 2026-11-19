@@ -29,6 +29,9 @@ model Workspace {
   memberships      WorkspaceMembership[]
   books            Book[]
   vectorEmbeddings VectorEmbedding[]
+  aiCalls          AiCallLog[]
+  aiSpendMonths    AiSpendMonth[]
+  aiReservations   AiSpendReservation[]
 }
 
 /// A person's role in a workspace. One per (workspace, user).

@@ -142,14 +142,31 @@ describe('reading frontmatter', () => {
     });
 
     it('reads a huge mapping in linear time, a duplicate at its end still refused (1.H: the library check was quadratic)', () => {
-        // 60,000 keys: the library's own uniqueness check took ~4.9 s for 20,000 and grows with the square.
-        const keys = Array.from({ length: 60_000 }, (_, i) => `k${i}: [a, {x: 1}]`);
-        let started = Date.now();
-        expect(Object.keys(parseYamlFrontmatter(keys.join('\n')) as object)).toHaveLength(60_000);
-        expect(Date.now() - started).toBeLessThan(4_000);
-        started = Date.now();
+        const mapping = (n: number): string[] => Array.from({ length: n }, (_, i) => `k${i}: [a, {x: 1}]`);
+
+        // Correctness, untimed: every key read, and a duplicate at the very end refused.
+        const keys = mapping(20_000);
+        expect(Object.keys(parseYamlFrontmatter(keys.join('\n')) as object)).toHaveLength(20_000);
         expect(refusal(() => parseYamlFrontmatter([...keys, 'k7: again'].join('\n')))).toBe('YAML_INVALID');
-        expect(Date.now() - started).toBeLessThan(4_000);
+
+        // Growth, not a wall-clock bound: four times the keys must cost far less
+        // than the sixteen times a quadratic check (the library's `uniqueKeys`,
+        // ~4.9 s at 20,000 keys) would. Both sizes run on the same machine under
+        // the same load, so the ratio holds where an absolute limit did not; the
+        // median of five runs damps a stray pause.
+        const medianMs = (text: string): number => {
+            const runs: number[] = [];
+            for (let i = 0; i < 5; i += 1) {
+                const started = process.hrtime.bigint();
+                parseYamlFrontmatter(text);
+                runs.push(Number(process.hrtime.bigint() - started) / 1e6);
+            }
+            return runs.sort((a, b) => a - b)[2];
+        };
+        const small = mapping(2_500).join('\n');
+        const large = mapping(10_000).join('\n');
+        medianMs(small); // warm the parser and the JIT before measuring
+        expect(medianMs(large) / medianMs(small)).toBeLessThan(8);
     });
 
     it('reads plain values with the core schema: no YAML 1.1 surprises', () => {

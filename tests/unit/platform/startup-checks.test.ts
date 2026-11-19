@@ -54,6 +54,12 @@ it.each([
         { EMBEDDING_PROVIDER: 'tei', EMBEDDING_TEI_BASE_URL: 'https://93.184.216.34', EMBEDDING_TEI_MODEL: 'm', EMBEDDING_TEI_DIMENSIONS: '384' },
         /EMBEDDING_TEI_BASE_URL must name a service inside the deployment/,
     ],
+    ['a model key without the zero-retention statement (D5)', { ANTHROPIC_API_KEY: longValue('key') }, /ANTHROPIC_ZDR_CONFIRMED=1/],
+    ['a model key with ZDR stated as 0', { ANTHROPIC_API_KEY: longValue('key'), ANTHROPIC_ZDR_CONFIRMED: '0' }, /ANTHROPIC_ZDR_CONFIRMED=1/],
+    ['ambient SDK headers', { ANTHROPIC_CUSTOM_HEADERS: 'anthropic-beta: x' }, /ANTHROPIC_CUSTOM_HEADERS must be unset/],
+    ['a malformed AI ceiling', { AI_MONTHLY_CEILING_USD_DEFAULT: '25 dollars' }, /AI_MONTHLY_CEILING_USD_DEFAULT/],
+    ['a ceiling past the bound', { AI_MONTHLY_CEILING_USD_DEFAULT: '1000000' }, /AI_MONTHLY_CEILING_USD_DEFAULT/],
+    ['a malformed kill switch', { AI_DISABLED: 'yes' }, /AI_DISABLED must be 0 or 1/],
 ])('refuses: %s', (_name, override, message) => {
     const problems = productionConfigProblems({ ...GOOD, ...override });
     expect(problems.join(' ')).toMatch(message);
@@ -74,6 +80,12 @@ it('embeddings: unset is no problem yet (nothing embeds before 2.1), and a whole
             EMBEDDING_TEI_DIMENSIONS: '384',
         }),
     ).toEqual([]);
+});
+
+it('the model layer: no key is no problem in 2.1 (nothing calls a model in production before 2.2); a key with ZDR stated passes', () => {
+    expect(productionConfigProblems(GOOD)).toEqual([]);
+    expect(productionConfigProblems({ ...GOOD, ANTHROPIC_API_KEY: longValue('key'), ANTHROPIC_ZDR_CONFIRMED: '1' })).toEqual([]);
+    expect(productionConfigProblems({ ...GOOD, AI_DISABLED: '1', AI_MONTHLY_CEILING_USD_DEFAULT: '12.50' })).toEqual([]);
 });
 
 it('scanning disabled needs no scanner', () => {

@@ -27,6 +27,7 @@ import { isolationColumn, rlsProblems, type TableRlsFacts } from '../helpers/rls
 import { seedBible } from '../helpers/bible';
 import { seedVectors } from '../helpers/vectors';
 import { seedInterview } from '../helpers/interview';
+import { seedAiCall, seedReservation } from '../helpers/ai-calls';
 import { createAccount, workspaceCtx } from '../helpers/workspaces';
 
 afterAll(() => prisma.$disconnect());
@@ -118,6 +119,11 @@ beforeAll(async () => {
     // An interview with a round, its questions and an answer (Phase 2.2).
     await seedInterview(workspaceCtx(a), aBook.bookId, aBook.characterId, 'rls-a');
     await seedInterview(workspaceCtx(b), bBook.bookId, bBook.characterId, 'rls-b');
+    // The model layer's ledger (2.1): a settled call and a live reservation.
+    await seedAiCall(workspaceCtx(a), aBook.bookId, 'rls-a');
+    await seedAiCall(workspaceCtx(b), bBook.bookId, 'rls-b');
+    await seedReservation(workspaceCtx(a), `rls-a-${randomBytes(4).toString('hex')}`);
+    await seedReservation(workspaceCtx(b), `rls-b-${randomBytes(4).toString('hex')}`);
 });
 
 it('there is something to cover: zero tables is never complete coverage', () => {
@@ -137,6 +143,9 @@ it('there is something to cover: zero tables is never complete coverage', () => 
             'InterviewRound',
             'Question',
             'Answer',
+            'AiCallLog',
+            'AiSpendMonth',
+            'AiSpendReservation',
         ]),
     );
 });
