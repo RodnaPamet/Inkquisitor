@@ -35,7 +35,12 @@ describe('the environment, run by Jest', () => {
                  const server = net.createServer();
                  await new Promise((r) => server.listen(0, '127.0.0.1', r));
              });
-             it('starts a timer and never clears it', () => { setInterval(() => undefined, 60_000); });`,
+             // Timers are counted by type only, so a short-lived timer Jest
+             // itself held at the baseline can mask one leaked timer; leak
+             // three so the growth is unambiguous on any machine.
+             it('starts timers and never clears them', () => {
+                 for (let i = 0; i < 3; i++) setInterval(() => undefined, 60_000);
+             });`,
         );
         fs.writeFileSync(
             path.join(dir, 'clean.test.js'),
@@ -73,7 +78,7 @@ describe('the environment, run by Jest', () => {
         expect(run.status).toBe(1);
         expect(run.stderr).toContain('left resources holding the process open');
         expect(run.stderr).toMatch(/TCPServerWrap ×1/);
-        expect(run.stderr).toMatch(/Timeout ×1/);
+        expect(run.stderr).toMatch(/Timeout ×[1-9]/);
     }, 90_000);
 
     it('passes a file that closes what it opened', () => {

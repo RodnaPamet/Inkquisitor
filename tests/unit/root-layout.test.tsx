@@ -76,9 +76,11 @@ describe('the CSP nonce', () => {
     it('every inline script the layout renders carries the request nonce, and the webpack bridge sets it', async () => {
         nonceValue.current = NONCE;
         const markup = renderToStaticMarkup(await RootLayout({ children: <p>page</p> }));
-        const scripts = [...markup.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/g)];
-        expect(scripts.length).toBe(2);
-        for (const [tag] of scripts) expect(tag).toContain(`nonce="${NONCE}"`);
+        // Each opening <script ...> tag, cut at its first '>' (React escapes '>'
+        // inside attribute values), rather than a regex over whole elements.
+        const openingTags = markup.split('<script').slice(1).map((rest) => rest.slice(0, rest.indexOf('>')));
+        expect(openingTags.length).toBe(2);
+        for (const tag of openingTags) expect(tag).toContain(`nonce="${NONCE}"`);
         expect(markup).toContain(`window.__webpack_nonce__="${NONCE}"`);
     });
 

@@ -36,6 +36,9 @@ it('finds both warnings the Phase 0.3 build printed, and not webpack’s cache n
     expect(check.findWarnings('▲ Next.js\n✓ Compiled successfully\n<w> cache notice')).toEqual([]);
     // Colour codes do not hide one.
     expect(check.findWarnings('\u001b[33m⚠\u001b[39m something')).toHaveLength(1);
+    // The cold-cache advice is the one exempt line; anything else with the prefix still counts.
+    expect(check.findWarnings('⚠ No build cache found. Please configure build caching for faster rebuilds. Read more: https://nextjs.org/docs/messages/no-cache')).toEqual([]);
+    expect(check.findWarnings('⚠ No build cache found. Please configure build caching for faster rebuilds.\n⚠ Something else')).toEqual(['⚠ Something else']);
 });
 
 it('names the Node-only modules a proxy bundle carries', () => {

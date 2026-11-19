@@ -34,12 +34,25 @@ const path = require('node:path');
 
 const ROOT = path.resolve(__dirname, '..');
 
+/**
+ * Lines Next prints with its warning prefix that are not warnings about the
+ * build. Each entry is one exact message, with the reason it is not a defect;
+ * nothing else is ever exempt.
+ */
+const NOT_BUILD_WARNINGS = [
+    // Advice to persist .next/cache between CI runs. CI does cache it (ci.yml),
+    // but a cold cache (first run of a key, eviction) still prints this, and
+    // nothing about the build output depends on it.
+    /^\s*⚠ No build cache found\. Please configure build caching for faster rebuilds\./,
+];
+
 /** The lines of build output that are warnings. */
 function findWarnings(output) {
     return output
         .split(/\r?\n/)
         .map((l) => l.replace(/\x1b\[[0-9;]*m/g, ''))
-        .filter((l) => /^\s*⚠/.test(l) || /not supported in the Edge Runtime/.test(l));
+        .filter((l) => /^\s*⚠/.test(l) || /not supported in the Edge Runtime/.test(l))
+        .filter((l) => !NOT_BUILD_WARNINGS.some((re) => re.test(l)));
 }
 
 /** Node-only modules the proxy bundle must not carry, each by a string only it contains. */
