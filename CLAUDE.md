@@ -134,6 +134,16 @@ src/app/api/w/[workspaceSlug]/books/** → books, elements, fields, relations, v
 src/lib/http/json-body.ts    → readJsonBody: a malformed body is a 400, never a 500
 ```
 
+Phase 1.2 (the bible UI) added:
+
+```
+src/app/w/[workspaceSlug]/books/**  → books list, book home (the kind board), element page
+src/components/bible/        → BooksList, BookBoard, ElementPage, FieldEditor, RelationsPanel, HistoryPanel,
+                               the create modals, use-element-autosave
+src/lib/bible/               → api-client (client URL table + fetch), ui-model (template views for pages),
+                               completeness, snapshot-text (a snapshot as diff lines), page-data (404)
+```
+
 ## Rules every change obeys
 
 These are `docs/ROADMAP.md` section 3, restated. The roadmap is authoritative
@@ -327,6 +337,22 @@ only under zero-retention terms (D5).
   only its book's cascade deletes a version, and only an author's deletion
   clears `authorId`; an element's own deletion leaves its history with the
   book. Permissions are `bible.view` (all) and `bible.edit` (OWNER, EDITOR).
+- **The bible UI (Phase 1.2).** A bible page is a server component that
+  reads through the usecases (`getWorkspacePageCtx`, `orNotFound` for a 404)
+  and hands plain data to one client component in `src/components/bible/`;
+  what the viewer may do is `canEdit = ctx.permissions.bible.edit`, passed
+  down, never a role read in the browser, and a reader gets values as text,
+  not disabled controls. Templates reach the client through
+  `src/lib/bible/ui-model.ts`, never by importing the registry into a client
+  component. The client calls the 1.1 routes through
+  `src/lib/bible/api-client.ts` (types only from the usecases), and words a
+  refusal from its `details.reason` (`bible.errors`), never the server's
+  message. Completeness is `completeness()`: no entries is "not started", a
+  template with no fields "not assessed", and only a measured value draws a
+  bar. Edits save through `useElementAutosave`: debounced, one request at a
+  time, a failed batch requeued beneath newer edits; a save's answer never
+  overwrites an input. Deleting an element or removing a relation goes
+  through `useToastWithUndo`.
 - **Sanitising author text.** Every author-text write sanitises at the
   usecase layer before it is stored: plain text through `plainLine` /
   `plainBlock` (`src/lib/bible/text.ts`, over `sanitizePlainText`), rich text

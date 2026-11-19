@@ -71,6 +71,15 @@ describe('<VersionDiff>', () => {
         expect(body.textContent).toContain('Line B-edited');
     });
 
+    it('does not show a last line that stayed as removed and added when lines follow it (Phase 1.2)', () => {
+        const before = { id: 'a', versionNumber: 1, text: 'Line A\nLine B' };
+        const after = { id: 'b', versionNumber: 2, text: 'Line A\nLine B\nLine C' };
+        render(<VersionDiff versions={[before, after]} />);
+        const body = screen.getByTestId('version-diff-body');
+        expect(within(body).queryAllByTestId('version-diff-removed')).toHaveLength(0);
+        expect(within(body).getAllByTestId('version-diff-added').map((n) => n.textContent)).toEqual(['+Line C']);
+    });
+
     it('shows "no textual changes" when the two selected versions are identical', () => {
         render(<VersionDiff versions={[v3, v2]} />);
         // v2 and v3 carry the same text; defaults are v3 → v2.

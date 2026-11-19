@@ -199,12 +199,6 @@
         "reader": "Reader"
     },
     "pages": {
-        "books": {
-            "title": "Books",
-            "description": "Your books will live here.",
-            "signedOut": "Sign in to see your books.",
-            "empty": "No books yet."
-        },
         "settings": {
             "title": "Settings",
             "description": "Workspace and account settings."
@@ -275,6 +269,176 @@
             "undo": "Undo",
             "failed": "The session could not be signed out.",
             "none": "No other sessions."
+        }
+    },
+    "bible": {
+        "meta": {
+            "books": "Books — Inkquisitor",
+            "book": "Book — Inkquisitor",
+            "element": "Bible entry — Inkquisitor"
+        },
+        "stage": {
+            "CONCEPT": "Concept",
+            "PLANNING": "Planning",
+            "DRAFTING": "Drafting",
+            "REVISING": "Revising",
+            "PUBLISHING": "Publishing"
+        },
+        "status": {
+            "DRAFT": "Draft",
+            "IN_PROGRESS": "In progress",
+            "SETTLED": "Settled"
+        },
+        "source": {
+            "MANUAL": "Manual edit",
+            "INTERVIEW": "Interview",
+            "IMPORT": "Import"
+        },
+        "books": {
+            "title": "Books",
+            "description": "Every book in this workspace, each with its bible.",
+            "count": "{count} books",
+            "countOne": "1 book",
+            "create": "Book",
+            "empty": "No books yet.",
+            "emptyHint": "Start one, and keep its bible here.",
+            "resourceSingular": "book",
+            "resourcePlural": "books",
+            "columns": {
+                "title": "Title",
+                "stage": "Stage",
+                "genre": "Genre",
+                "updated": "Updated"
+            }
+        },
+        "createBook": {
+            "title": "New book",
+            "description": "A working title is enough to start; everything else can wait.",
+            "bookTitle": "Working title",
+            "titleRequired": "A book needs a title.",
+            "logline": "Working logline",
+            "loglineHelp": "One or two sentences on what the book is about. Optional.",
+            "cancel": "Cancel",
+            "submit": "Create book"
+        },
+        "board": {
+            "breadcrumbBooks": "Books",
+            "createElement": "Element",
+            "kindsAria": "Bible sections",
+            "noEntries": "No entries yet",
+            "entries": "{count} entries",
+            "entriesOne": "1 entry",
+            "addOfKind": "Add {kind}",
+            "completenessOf": "{kind} completeness",
+            "fieldsFraction": "{filled}/{total}",
+            "notAssessed": "Not assessed"
+        },
+        "completeness": {
+            "notStarted": "Not started",
+            "notAssessed": "Not assessed",
+            "measured": "{percent}% · {filled} of {total} fields filled"
+        },
+        "createElement": {
+            "title": "New bible entry",
+            "description": "Choose what kind of entry it is and give it a name. Its fields come from the kind's template.",
+            "kind": "Kind",
+            "kindPlaceholder": "Choose a kind",
+            "kindSearch": "Search kinds…",
+            "kindRequired": "Choose a kind.",
+            "name": "Name",
+            "nameRequired": "An entry needs a name.",
+            "customLabel": "Custom kind",
+            "customLabelHelp": "What this entry is, in your own word (for example, \"Prophecy\").",
+            "customLabelRequired": "A custom entry needs its own label.",
+            "cancel": "Cancel",
+            "submit": "Create entry"
+        },
+        "element": {
+            "breadcrumbBooks": "Books",
+            "tabFields": "Fields",
+            "tabHistory": "History",
+            "fieldsTitle": "Fields",
+            "enrich": "Enrich",
+            "enrichSoon": "Enrichment arrives with interviews",
+            "delete": "Delete",
+            "deleted": "Deleted {name}",
+            "deleting": "This entry will be deleted when the undo window closes. Editing is paused.",
+            "deleteFailed": "The entry could not be deleted.",
+            "undo": "Undo",
+            "restored": "Restored version {from} as version {to}",
+            "restoreBlocked": "Save your changes before restoring a version."
+        },
+        "details": {
+            "title": "Entry",
+            "name": "Name",
+            "nameRequired": "An entry needs a name; the last saved name is kept.",
+            "customLabel": "Custom kind",
+            "status": "Status",
+            "summary": "Summary",
+            "summaryHelp": "A few sentences on this entry, in your own words.",
+            "noSummary": "No summary yet."
+        },
+        "fields": {
+            "empty": "Not filled in yet.",
+            "refused": "This value was not accepted. Change it and it will save again.",
+            "choose": "Choose…",
+            "searchOptions": "Search options…",
+            "clear": "Clear {field}",
+            "listItem": "{field}, item {index}",
+            "removeItem": "Remove item {index}",
+            "addItem": "Add item",
+            "scaleValue": "{value} of {max} ({low} → {high})",
+            "scaleOf": "{value} of {max}"
+        },
+        "autosave": {
+            "idle": "Changes save automatically",
+            "pending": "Unsaved changes",
+            "saving": "Saving…",
+            "saved": "All changes saved",
+            "error": "Not saved: {reason}",
+            "retry": "Retry"
+        },
+        "relations": {
+            "title": "Relations",
+            "none": "No relations yet.",
+            "type": "Relation",
+            "typePlaceholder": "Choose a relation",
+            "typeSearch": "Search relations…",
+            "other": "With",
+            "otherPlaceholder": "Choose an entry",
+            "otherNeedsType": "Choose a relation first",
+            "otherSearch": "Search entries…",
+            "noCandidates": "No entry of this book can take this relation.",
+            "add": "Link",
+            "remove": "Remove \"{label} {name}\"",
+            "removed": "Removed \"{label} {name}\"",
+            "removeFailed": "The relation could not be removed.",
+            "undo": "Undo"
+        },
+        "history": {
+            "compareTitle": "Compare versions",
+            "compareHelp": "Pick any two versions to see what changed between them.",
+            "loading": "Loading the versions…",
+            "loadFailed": "The versions could not be loaded.",
+            "versionsTitle": "Versions",
+            "versionLabel": "Version {number}",
+            "current": "Current",
+            "restoredFrom": "Restored from version {number}",
+            "restore": "Restore",
+            "restoreAria": "Restore version {number} as a new version",
+            "loadOlder": "Load older versions"
+        },
+        "errors": {
+            "generic": "Something went wrong. Your changes are kept; try again.",
+            "SLUG_TAKEN": "Another entry of this book already uses that name's address.",
+            "RELATION_EXISTS": "These two entries are already related that way.",
+            "RELATION_TYPE_NOT_ALLOWED": "That relation does not fit these two kinds of entry.",
+            "SELF_RELATION": "An entry cannot be related to itself.",
+            "CUSTOM_LABEL_REQUIRED": "A custom entry needs its own label.",
+            "FIELD_VALUES_REFUSED": "Some values were not accepted.",
+            "EMPTY": "A required value is empty.",
+            "TOO_LONG": "A value is too long.",
+            "KIND_MISMATCH": "That version belongs to an entry of another kind."
         }
     }
 }
