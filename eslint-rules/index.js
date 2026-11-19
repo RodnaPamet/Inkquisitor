@@ -27,5 +27,6 @@ module.exports = {
         'no-request-derived-public-url': require('./rules/no-request-derived-public-url'),
         'no-brand-focus-indicator': require('./rules/no-brand-focus-indicator'),
         'no-translucent-focus-indicator': require('./rules/no-translucent-focus-indicator'),
+        'vector-store-single-seam': require('./rules/vector-store-single-seam'),
     },
 };

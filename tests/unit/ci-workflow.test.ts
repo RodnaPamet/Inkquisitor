@@ -1,6 +1,6 @@
 /**
  * The CI workflow keeps its shape: the required checks by exact name (Phase
- * 0.1's four plus Phase 0.4's Security, CodeQL and Docker), the triggers,
+ * 0.1's four, Phase 0.4's Security, CodeQL and Docker, and E2E), the triggers,
  * superseded-run cancellation, Node 24, the security gates at their
  * strictness, and no secret anywhere. A required check is matched by NAME in branch protection,
  * so a renamed job silently stops being required — this test is where that
@@ -120,13 +120,45 @@ describe('.github/workflows/ci.yml', () => {
         }
     });
 
-    it('Test runs unit tests, applies migrations, then integration tests against postgres:16 and Redis', () => {
+    it('Test runs unit tests, applies migrations, then integration tests against Postgres with pgvector and Redis', () => {
         const test = all.test;
-        expect(test).toMatch(/services:\n {6}postgres:\n {8}image: postgres:16\n/);
+        // Postgres is built from deploy/postgres/Dockerfile in the job and
+        // started before anything touches it (subphase 2.0, D7): the
+        // migrations create the vector extension, which postgres:16 lacks.
+        expect(test).not.toMatch(/image: postgres/);
         expect(test).toMatch(/\n {6}redis:\n {8}image: redis:7/);
-        const order = ['run: npm test', 'run: npm run migrate:deploy', 'run: npm run test:integration'].map((s) => test.indexOf(s));
+        const order = [
+            'name: Build the inkquisitor-postgres image (no push)',
+            'run: deploy/postgres/start.sh',
+            'run: npm test',
+            'run: npm run migrate:deploy',
+            'run: npm run test:integration',
+        ].map((s) => test.indexOf(s));
         expect(order.every((i) => i > 0)).toBe(true);
         expect([...order].sort((a, b) => a - b)).toEqual(order);
+    });
+
+    it('E2E drives the build against the same Postgres with pgvector, started before the migrations', () => {
+        const e2e = all.e2e;
+        expect(e2e).not.toMatch(/image: postgres/);
+        const order = ['name: Build the inkquisitor-postgres image (no push)', 'run: deploy/postgres/start.sh', 'run: npm run migrate:deploy', 'run: npm run test:e2e'].map(
+            (s) => e2e.indexOf(s),
+        );
+        expect(order.every((i) => i > 0)).toBe(true);
+        expect([...order].sort((a, b) => a - b)).toEqual(order);
+    });
+
+    it('Docker also builds, smoke-tests and gates the Postgres image (never pushed from CI)', () => {
+        const docker = all.docker;
+        expect(docker).toMatch(/run: deploy\/postgres\/smoke\.sh "inkquisitor-postgres:ci-\$\{\{ github\.sha \}\}"$/m);
+        expect(docker).toMatch(/image-ref: inkquisitor-postgres:ci-\$\{\{ github\.sha \}\}$/m);
+        // Both Trivy gates block on fixable CRITICAL and HIGH with the long deadline.
+        expect(docker.match(/uses: aquasecurity\/trivy-action@/g)).toHaveLength(2);
+        expect(docker.match(/^ {10}severity: CRITICAL,HIGH$/gm)).toHaveLength(2);
+        expect(docker.match(/^ {10}exit-code: '1'$/gm)).toHaveLength(2);
+        expect(docker.match(/^ {10}ignore-unfixed: true$/gm)).toHaveLength(2);
+        expect(docker.match(/^ {10}timeout: '15m'$/gm)).toHaveLength(2);
+        expect(ci).not.toMatch(/push: true/);
     });
 
     it('Build succeeds without secrets', () => {

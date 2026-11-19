@@ -86,6 +86,8 @@ Versions to keep in step with: Node 24, Next 16, React 19, Prisma 7, Tailwind 4,
 | D4 | Tenancy | A workspace per author, with invited collaborators later; keep RLS from day one | Decided (2026-11-18): the recommended default |
 | D5 | May author text be sent to the model provider under zero-retention terms only? | Yes, and say so on the pricing page | Default assumed |
 | D6 | Carve by copy, or share `@inflect/ui` as a package | Copy at a recorded commit; revisit sharing after launch | Decided (2026-11-18): the recommended default |
+| D7 | Postgres image: which image carries pgvector | Carve inflect-compliance's own image (`deploy/postgres/`: `postgres:16-alpine` plus pgvector at a pinned tag and commit, gosu rebuilt) and its publish workflow | Decided (2026-11-19): carved; published as `ghcr.io/rodnapamet/inkquisitor-postgres` (line tag `16-alpine` plus immutable per-build tags), self-contained per D6, with no runtime dependency on inflect's package |
+| D8 | Vector store timing | Land it when 4.1 first needs embeddings | Decided (2026-11-19): its own platform PR now (subphase 2.0), with no domain tables; 2.1 and 4.1 attach their own tables to it |
 
 ## 3. Rules every phase obeys
 
@@ -168,6 +170,12 @@ Harden Phase 1. (1) Sanitise every rich-text write at the usecase layer and add 
 ### Phase 2 — The Inquisition engine
 
 Goal: the core product. Enrich starts an interview; answers become accepted bible changes.
+
+**2.0 Vector store (platform)**
+
+```text
+Port inflect-compliance's pgvector image and vector-store layer as a domain-neutral platform service (decisions D7 and D8). Carve deploy/postgres/ (Dockerfile, smoke.sh) and the publish workflow as Inkquisitor's own ghcr.io/rodnapamet/inkquisitor-postgres (BUILD → SMOKE → SCAN → PUSH, main only, weekly and on an upstream digest move); CI builds the image from the Dockerfile in the Test and E2E jobs instead of pulling it, and the Docker job smoke-tests and gates it. Migration: CREATE EXTENSION vector and one VectorEmbedding table (vectors only, keyed by workspace, revision, sourceModel, sourceId and chunk, with a book scope, a keyed content hash and CHECKs), under the workspace's RLS, with a trigger function a source table attaches so its vectors are deleted with it. Port the vector repository (validation, metrics, rebuild) with an in-process reference backend and the pgvector backend, running on the caller's runInWorkspaceContext transaction; and the embedding seam (types, the self-hosted TEI provider behind the in-deployment dial, the deterministic stub as the development and test default, the revision). No domain tables, no compliance coupling, no reranker. Unit tests over the in-process store, the providers and the config; integration tests against real pgvector for upsert, ordering, isolation under RLS, delete with the source, the CHECKs and idempotence.
+```
 
 **2.1 Model seam, structured output and guard**
 
@@ -365,7 +373,7 @@ Launch hardening. (1) External penetration test and fix of every high and medium
 |---|---|---|
 | 0 Carve-out | D1, D2, D4, D6 | 3 weeks |
 | 1 Bible | 0 | 3 weeks |
-| 2 Inquisition | 1, D3, D5 | 5 weeks |
+| 2 Inquisition | 1, D3, D5, D7, D8 | 5 weeks |
 | 3 Canvas | 1 (2 for 3.3), D1 | 3 weeks |
 | 4 Canon | 2 | 4 weeks |
 | 5 Manuscript | 4 | 4 weeks |

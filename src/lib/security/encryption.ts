@@ -14,9 +14,15 @@
  * iv 12 bytes (fresh per value), tag 16 bytes. The decrypt path dispatches
  * on the prefix, so mixed rows read correctly.
  *
+ * Subphase 2.0 adds `deriveSubkey` (inflect's subkey derivation, cut to one
+ * HKDF call): a purpose-labelled key derived from the same master material,
+ * which the vector store's keyed content hash uses
+ * (`src/lib/ai/embeddings/content-hash.ts`).
+ *
  * Left behind: the lookup-hash key (no encrypted column is looked up by
- * value yet), the subkey derivation, the keyed change digest and the
- * previous-KEK rotation fallback. The master-key rotation arrives with the
+ * value yet), the keyed change digest and the previous-KEK rotation
+ * fallback. When master-key rotation arrives, a subkey's derivation must
+ * survive it (inflect's DERIVED_SUBKEY_KEY), or every derived value moves. The master-key rotation arrives with the
  * first rotation runbook; until then a KEK change re-wraps every DEK
  * offline.
  *
@@ -122,6 +128,27 @@ export function decryptField(ciphertext: string): string {
     return open(masterKey(), ciphertext.slice(VERSION_PREFIX_V1.length), 'decryptField');
 }
 
+// ─── Purpose-labelled subkeys ───────────────────────────────────────
+
+const subkeyCache = new Map<string, { source: string; key: Buffer }>();
+
+/**
+ * A 32-byte key for one named purpose, HKDF-derived from the master key
+ * material under `info`. Never the encryption key itself: the KEK's own label
+ * is refused, and a purpose's label is a literal at its one call site.
+ */
+export function deriveSubkey(info: string): Buffer {
+    if (info === ENCRYPT_INFO || !/^inkquisitor-[a-z0-9-]+\/\d+$/.test(info)) {
+        throw new Error('deriveSubkey: info must be a versioned purpose label (inkquisitor-<purpose>/<n>)');
+    }
+    const raw = rawKeyMaterial();
+    const cached = subkeyCache.get(info);
+    if (cached && cached.source === raw) return cached.key;
+    const key = deriveKey(raw, info);
+    subkeyCache.set(info, { source: raw, key });
+    return key;
+}
+
 // ─── v2: a workspace data key ───────────────────────────────────────
 
 /** Encrypt under a workspace DEK (`v2:`). Never pass the master KEK here. */
@@ -182,4 +209,5 @@ export function getCiphertextVersion(value: unknown): 'v1' | 'v2' | null {
 export function _resetKeyCache(): void {
     cachedKey = null;
     cachedKeySource = null;
+    subkeyCache.clear();
 }

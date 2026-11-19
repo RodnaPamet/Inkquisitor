@@ -5,13 +5,20 @@
 # unbound port would hand them to anyone on the developer's network.
 services:
   postgres:
-    image: ghcr.io/rodnapamet/postgres-pgvector:16-alpine
+    # Postgres with the pgvector extension, which the migrations create
+    # (subphase 2.0): Inkquisitor's own image, deploy/postgres/Dockerfile
+    # (owner decision D7). `docker compose up` builds it here when it is not
+    # present locally; once .github/workflows/postgres-image.yml has published
+    # it, `docker compose pull postgres` fetches the line tag instead. The
+    # POSTGRES_USER below is the image's superuser, which `CREATE EXTENSION
+    # vector` needs (see the header of the 2.0 migration, vector_store).
+    image: ghcr.io/rodnapamet/inkquisitor-postgres:16-alpine
+    build:
+      context: deploy/postgres
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: inkquisitor
-    # Postgres with the pgvector extension (needed from Phase 4.1), built
-    # and published by inflect-compliance; same organisation, same image.
     # Postgres is only directly accessible on port 5436 (for migrations).
     # Application traffic goes through PgBouncer on port 5433. Ports match
     # inflect-compliance's dev stack, so only one of the two runs at a time.
