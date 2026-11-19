@@ -1,8 +1,9 @@
+import { randomUUID } from 'node:crypto';
 import { expect, type Page } from '@playwright/test';
 
 /** A fresh, unique account per call: specs run in parallel against one database. */
 export function newCredentials(label = 'e2e') {
-    const id = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+    const id = `${Date.now().toString(36)}${randomUUID().slice(0, 8)}`;
     return {
         name: `Writer ${id}`,
         email: `${label}-${id}@example.test`,

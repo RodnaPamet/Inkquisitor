@@ -216,7 +216,8 @@ only under zero-retention terms (D5).
   `tests/integration/api-route-authorization.test.ts` calls every handler
   signed out (401), as a stranger (404) and as a READER (403).
 - **Authentication.** Credentials go through `authenticateWithPassword` only
-  (bcrypt over a sha256 pre-hash, progressive lockout per email, one bcrypt
+  (bcrypt over the password itself, which is refused past 72 UTF-8 bytes rather than
+  truncated — never a fast digest of a password first; progressive lockout per email, one bcrypt
   compare on every failure path so timing does not enumerate; the failure's
   audit row is never awaited, at most one per user per lockout window, none for
   a lockout refusal). Sign-up runs the

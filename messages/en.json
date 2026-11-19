@@ -249,7 +249,7 @@
             "generic": "Something went wrong. Try again.",
             "emailTaken": "An account with this email already exists. Sign in instead.",
             "passwordTooShort": "The password must be at least {min} characters.",
-            "passwordTooLong": "The password must be at most {max} characters.",
+            "passwordTooLong": "The password is too long: at most {max} characters (fewer for letters outside the basic Latin alphabet).",
             "passwordBreached": "This password has appeared in a data breach. Choose another.",
             "invalidEmail": "Enter a valid email address."
         }

@@ -4,21 +4,20 @@
  * rate limiting and the audit trail live in `./credentials.ts`.
  *
  * bcrypt (the native `bcrypt` package, on libuv's thread pool, off the main
- * thread) at work factor 12, over `base64(sha256(password))` — so every input,
- * any length and any script, reaches bcrypt as 44 ASCII bytes and nothing is
- * silently truncated at bcrypt's 72-byte limit.
+ * thread) at work factor 12, over the password itself. bcrypt reads at most
+ * 72 bytes, so a password over `MAX_PASSWORD_BYTES` is refused everywhere
+ * (policy, hash, verify) rather than truncated.
  *
  * Lifted from inflect-compliance's `src/lib/auth/passwords.ts` (see
  * docs/carve-manifest.md). Inkquisitor has no legacy hashes, so the
  * two-scheme probe inflect carries for its migration is not: there is one
- * scheme, pre-hashed, from the first row.
+ * scheme from the first row.
  *
- * Never log a password, a hash or a pre-hash.
+ * Never log a password or a hash.
  */
-import { createHash } from 'node:crypto';
-import { MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH } from './password-limits';
+import { MAX_PASSWORD_BYTES, MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH, passwordByteLength } from './password-limits';
 
-export { MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH };
+export { MAX_PASSWORD_BYTES, MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH, passwordByteLength };
 
 // `bcrypt` is CommonJS. Node's ESM-importing-CJS interop may wrap the exports
 // under `.default`; normalise so callers see the module either way. Without
@@ -28,22 +27,19 @@ const bcryptModule = import('bcrypt').then((m) => (m as unknown as { default?: t
 /** The bcrypt work factor (OWASP floor for bcrypt is 10). */
 export const BCRYPT_COST = 12;
 
-/**
- * What bcrypt hashes: base64(sha256(plaintext)). PART OF THE CREDENTIAL
- * SCHEME — changing the digest or the encoding invalidates every stored hash.
- */
-export function prehashForBcrypt(plaintext: string): string {
-    return createHash('sha256').update(plaintext, 'utf8').digest('base64');
+/** True when bcrypt would read the whole password (at most 72 bytes). */
+function fitsBcrypt(plaintext: string): boolean {
+    return passwordByteLength(plaintext) <= MAX_PASSWORD_BYTES;
 }
 
 /** Hash a password for storage. Run `validatePasswordPolicy` first. */
 export async function hashPassword(plaintext: string): Promise<string> {
     if (!plaintext) throw new Error('hashPassword: plaintext is empty');
-    if (plaintext.length > MAX_PASSWORD_LENGTH) {
-        throw new Error(`hashPassword: plaintext exceeds ${MAX_PASSWORD_LENGTH} characters`);
+    if (!fitsBcrypt(plaintext)) {
+        throw new Error(`hashPassword: plaintext exceeds ${MAX_PASSWORD_BYTES} bytes`);
     }
     const bcrypt = await bcryptModule;
-    return bcrypt.hash(prehashForBcrypt(plaintext), BCRYPT_COST);
+    return bcrypt.hash(plaintext, BCRYPT_COST);
 }
 
 /**
@@ -54,13 +50,13 @@ export async function hashPassword(plaintext: string): Promise<string> {
  * which case it was.
  */
 export async function verifyPassword(plaintext: string, hash: string | null | undefined): Promise<boolean> {
-    if (!plaintext || !hash || plaintext.length > MAX_PASSWORD_LENGTH) {
-        await dummyVerify((plaintext ?? '').slice(0, MAX_PASSWORD_LENGTH));
+    if (!plaintext || !hash || !fitsBcrypt(plaintext)) {
+        await dummyVerify(plaintext ?? '');
         return false;
     }
     try {
         const bcrypt = await bcryptModule;
-        return await bcrypt.compare(prehashForBcrypt(plaintext), hash);
+        return await bcrypt.compare(plaintext, hash);
     } catch {
         // A malformed stored hash reads as a failed verify; the record's state is not disclosed.
         await dummyVerify(plaintext);
@@ -84,7 +80,9 @@ function getDummyHash(): Promise<string> {
 export async function dummyVerify(plaintext: string): Promise<false> {
     const [bcrypt, hash] = await Promise.all([bcryptModule, getDummyHash()]);
     try {
-        await bcrypt.compare(prehashForBcrypt(plaintext ?? ''), hash);
+        // bcrypt reads at most 72 bytes; slicing the string first keeps an
+        // over-long input's cost the same as any other compare.
+        await bcrypt.compare((plaintext ?? '').slice(0, MAX_PASSWORD_BYTES), hash);
     } catch {
         // Best-effort timing burn.
     }
@@ -110,6 +108,6 @@ export type PasswordPolicyResult = { ok: true } | { ok: false; reason: PasswordP
 export function validatePasswordPolicy(plaintext: string): PasswordPolicyResult {
     if (!plaintext) return { ok: false, reason: 'empty' };
     if (plaintext.length < MIN_PASSWORD_LENGTH) return { ok: false, reason: 'too_short' };
-    if (plaintext.length > MAX_PASSWORD_LENGTH) return { ok: false, reason: 'too_long' };
+    if (!fitsBcrypt(plaintext)) return { ok: false, reason: 'too_long' };
     return { ok: true };
 }
