@@ -101,9 +101,9 @@ describe('a deleted book', () => {
             const tail = file.replace('src/app/api/w/[workspaceSlug]/books/[bookId]/', '');
             const valid: Record<string, unknown> = {
                 'POST elements/route.ts': { kind: 'THEME', name: 'After deletion' },
-                'PATCH elements/[elementId]/route.ts': { name: 'Renamed' },
-                'PUT elements/[elementId]/fields/route.ts': { fields: [{ key: 'role', value: 'Ghost' }] },
-                'POST elements/[elementId]/versions/[versionNumber]/restore/route.ts': {},
+                'PATCH elements/[elementId]/route.ts': { name: 'Renamed', baseVersion: 1 },
+                'PUT elements/[elementId]/fields/route.ts': { fields: [{ key: 'role', value: 'Ghost' }], baseVersion: 1 },
+                'POST elements/[elementId]/versions/[versionNumber]/restore/route.ts': { baseVersion: 1 },
                 'POST import/concept-note/route.ts': { text: 'A note.' },
                 'POST relations/route.ts': { fromElementId: seeded.characterId, toElementId: seeded.factionId, type: 'related_to' },
                 'PATCH route.ts': { title: 'Renamed book' },
@@ -168,6 +168,33 @@ describe('the database holds the window, whoever deletes', () => {
     });
 });
 
+describe('the database’s window is UTC, whatever the session’s time zone', () => {
+    const HOUR = 60 * 60 * 1000;
+    /** Delete the book for good as the superuser, in a session set to `zone`. */
+    const deleteIn = (zone: string, bookId: string) =>
+        prisma.$transaction(async (tx) => {
+            await tx.$executeRawUnsafe(`SET LOCAL TIME ZONE '${zone}'`);
+            await tx.$executeRaw`DELETE FROM "Book" WHERE "id" = ${bookId}`;
+        });
+    const deletedAgo = (bookId: string, ms: number) => prisma.book.update({ where: { id: bookId }, data: { deletedAt: new Date(Date.now() - ms) } });
+
+    it('a session twelve hours east still may not delete a book three hours short of the window', async () => {
+        const book = await seedBible(ctx, 'tz-east');
+        await deleteBook(ctx, book.bookId);
+        await deletedAgo(book.bookId, 30 * DAY - 3 * HOUR);
+        await expect(deleteIn('Etc/GMT-12', book.bookId)).rejects.toThrow(/BOOK_DELETE_NOT_DUE/);
+        expect(await prisma.book.findUnique({ where: { id: book.bookId }, select: { id: true } })).not.toBeNull();
+    });
+
+    it('a session twelve hours west may delete a book three hours past it', async () => {
+        const book = await seedBible(ctx, 'tz-west');
+        await deleteBook(ctx, book.bookId);
+        await deletedAgo(book.bookId, 30 * DAY + 3 * HOUR);
+        await deleteIn('Etc/GMT+12', book.bookId);
+        expect(await prisma.book.findUnique({ where: { id: book.bookId } })).toBeNull();
+    });
+});
+
 describe('the purge', () => {
     it('deletes for good only what was deleted more than 30 days ago, with everything in it, and audits it as the system', async () => {
         const due = await seedBible(ctx, 'due');
@@ -206,12 +233,42 @@ describe('the purge', () => {
             await deleteBook(ctx, id);
             await deletedDaysAgo(id, 40);
         }
-        // Found due at a cutoff, then restored before its lock: the purge's own re-check leaves it.
-        await prisma.book.update({ where: { id: a.bookId }, data: { deletedAt: null } });
-        const { count } = { count: (await purgeDeletedBooks({ now: new Date(Date.now()) })).purged };
-        expect(count).toBeGreaterThanOrEqual(1);
-        expect(await prisma.book.findUnique({ where: { id: a.bookId } })).not.toBeNull();
+        // A transaction outside the product holds book A's row: the purge FINDS A due,
+        // then waits on A's lock; meanwhile A is restored and the restore commits.
+        let purging: ReturnType<typeof purgeDeletedBooks> | undefined;
+        await prisma.$transaction(
+            async (tx) => {
+                await tx.$queryRaw`SELECT 1 FROM "Book" WHERE "id" = ${a.bookId} FOR UPDATE`;
+                purging = purgeDeletedBooks();
+                purging.catch(() => undefined);
+                await waitForRowLockWait('FOR UPDATE');
+                await tx.$executeRaw`UPDATE "Book" SET "deletedAt" = NULL WHERE "id" = ${a.bookId}`;
+            },
+            { timeout: 20_000 },
+        );
+        const result = await purging!;
+        // The purge's own re-check under the lock leaves A: skipped, not failed (the trigger
+        // would refuse deleting a live book too, but as a failure, logged as an error).
+        expect(result.skipped).toBeGreaterThanOrEqual(1);
+        expect(result.failed).toBe(0);
+        expect(await prisma.book.findUnique({ where: { id: a.bookId }, select: { deletedAt: true } })).toEqual({ deletedAt: null });
+        expect(await contentsOf(a.bookId)).toMatchObject({ elements: 2, versions: 2 });
+        expect(await prisma.auditLog.count({ where: { action: 'BOOK_PURGED', entityId: a.bookId } })).toBe(0);
         expect(await prisma.book.findUnique({ where: { id: b.bookId } })).toBeNull();
+    });
+
+    it('two purges at once (two schedulers) purge each book once, with one audit row', async () => {
+        const books = [await seedBible(ctx, 'twice-a'), await seedBible(ctx, 'twice-b')];
+        for (const { bookId } of books) {
+            await deleteBook(ctx, bookId);
+            await deletedDaysAgo(bookId, 35);
+        }
+        const [one, two] = await Promise.all([purgeDeletedBooks(), purgeDeletedBooks()]);
+        expect(one.failed + two.failed).toBe(0);
+        for (const { bookId } of books) {
+            expect(await prisma.book.findUnique({ where: { id: bookId } })).toBeNull();
+            expect(await prisma.auditLog.count({ where: { action: 'BOOK_PURGED', entityId: bookId } })).toBe(1);
+        }
     });
 
     it('runs as the book-purge job, through the executor registry', async () => {
@@ -224,3 +281,15 @@ describe('the purge', () => {
         expect(await prisma.book.findUnique({ where: { id: doomed.bookId } })).toBeNull();
     });
 });
+
+/** Until another backend waits on a row lock in a statement containing `fragment`. */
+async function waitForRowLockWait(fragment: string): Promise<void> {
+    for (let i = 0; i < 400; i++) {
+        const rows = await prisma.$queryRaw<Array<{ n: bigint }>>`
+            SELECT count(*) AS n FROM pg_stat_activity
+             WHERE wait_event_type = 'Lock' AND datname = current_database() AND query ILIKE ${'%' + fragment + '%'}`;
+        if (Number(rows[0].n) > 0) return;
+        await new Promise((r) => setTimeout(r, 25));
+    }
+    throw new Error('nothing ever waited on the row');
+}

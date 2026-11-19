@@ -72,16 +72,16 @@ describe("A's owner, through the usecases, reaches nothing of B's", () => {
             () => updateBook(actx, b1.bookId, { title: 'taken' }),
             () => deleteBook(actx, b1.bookId),
             () => createElement(actx, b1.bookId, { kind: 'THEME', name: 'Intrusion' }),
-            () => updateElement(actx, b1.bookId, b1.characterId, { name: 'taken' }),
-            () => updateElement(actx, aBible.bookId, b1.characterId, { name: 'taken' }),
-            () => updateElementFields(actx, b1.bookId, b1.characterId, { fields: [{ key: 'want', value: 'taken' }] }),
-            () => updateElementFields(actx, aBible.bookId, b1.characterId, { fields: [{ key: 'want', value: 'taken' }] }),
+            () => updateElement(actx, b1.bookId, b1.characterId, { name: 'taken', baseVersion: 1 }),
+            () => updateElement(actx, aBible.bookId, b1.characterId, { name: 'taken', baseVersion: 1 }),
+            () => updateElementFields(actx, b1.bookId, b1.characterId, { fields: [{ key: 'want', value: 'taken' }], baseVersion: 1 }),
+            () => updateElementFields(actx, aBible.bookId, b1.characterId, { fields: [{ key: 'want', value: 'taken' }], baseVersion: 1 }),
             () => deleteElement(actx, b1.bookId, b1.characterId),
             () => addRelation(actx, b1.bookId, { fromElementId: b1.characterId, toElementId: b1.factionId, type: 'related_to' }),
             () => addRelation(actx, aBible.bookId, { fromElementId: aBible.characterId, toElementId: b1.factionId, type: 'member_of' }),
             () => removeRelation(actx, b1.bookId, b1.relationId),
             () => removeRelation(actx, aBible.bookId, b1.relationId),
-            () => restoreVersion(actx, b1.bookId, b1.characterId, 1),
+            () => restoreVersion(actx, b1.bookId, b1.characterId, 1, { baseVersion: 1 }),
         ];
         for (const attempt of attempts) await expect(attempt()).rejects.toBeInstanceOf(NotFoundError);
         expect(await bState()).toEqual(before);

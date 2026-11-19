@@ -10,6 +10,7 @@ import { prisma } from '@/lib/db';
 import { createElement, getElement, updateElement, updateElementFields } from '@/app-layer/usecases/bible-elements';
 import { restoreVersion } from '@/app-layer/usecases/bible-versions';
 import { createBook } from '@/app-layer/usecases/books';
+import { ZodError } from 'zod';
 import { ConflictError, ValidationError } from '@/lib/errors/types';
 import { addMember, createAccount, createBareUser, workspaceCtx } from '../helpers/workspaces';
 
@@ -105,10 +106,21 @@ describe('two writers from one base version', () => {
         }
     });
 
-    it('a save that names no base is not checked (a writer that does not track versions)', async () => {
+    it('a save that names no base is refused, writing nothing: the check cannot be skipped by leaving it out', async () => {
         const el = await createElement(alice, bookId, { kind: 'SETTING', name: 'Harbour' });
-        await updateElement(alice, bookId, el.id, { summary: 'grey' });
-        await expect(updateElement(bob, bookId, el.id, { summary: 'green' })).resolves.toMatchObject({ summary: 'green', versionNumber: 3 });
+        await updateElement(alice, bookId, el.id, { summary: 'grey', baseVersion: 1 });
+        const [v, a] = [await versions(el.id), await audits(el.id)];
+        for (const omitted of [
+            updateElement(bob, bookId, el.id, { summary: 'green' }),
+            updateElementFields(bob, bookId, el.id, { fields: [{ key: 'era', value: 'later' }] }),
+            restoreVersion(bob, bookId, el.id, 1, {}),
+            restoreVersion(bob, bookId, el.id, 1, undefined),
+        ]) {
+            const err = await omitted.catch((e: unknown) => e);
+            expect(err).toBeInstanceOf(ZodError);
+        }
+        expect([await versions(el.id), await audits(el.id)]).toEqual([v, a]);
+        expect((await getElement(alice, bookId, el.id)).summary).toBe('grey');
     });
 
     it('a base out of range is a 400, never a query error; baseVersion alone is nothing to change', async () => {
@@ -140,5 +152,30 @@ describe('through the route', () => {
         const body = (await res.json()) as { error: { details: unknown } };
         expect(body.error.details).toEqual({ reason: 'VERSION_CONFLICT', currentVersion: 2, baseVersion: 1 });
         expect(await versions(el.id)).toBe(2);
+    });
+
+    it('every saving route refuses a request that names no base (400), writing nothing', async () => {
+        const el = await createElement(alice, bookId, { kind: 'CHARACTER', name: 'Unbased' });
+        session.userId = bob.userId;
+        const base = `http://localhost/api/w/${owner.workspaceSlug}/books/${bookId}/elements/${el.id}`;
+        const params = { workspaceSlug: owner.workspaceSlug, bookId, elementId: el.id };
+        const send = (url: string, method: string, body?: unknown) =>
+            new NextRequest(url, {
+                method,
+                headers: { 'content-type': 'application/json', 'x-forwarded-for': '198.51.100.45' },
+                ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+            });
+        const element = await import('@/app/api/w/[workspaceSlug]/books/[bookId]/elements/[elementId]/route');
+        const fields = await import('@/app/api/w/[workspaceSlug]/books/[bookId]/elements/[elementId]/fields/route');
+        const restore = await import('@/app/api/w/[workspaceSlug]/books/[bookId]/elements/[elementId]/versions/[versionNumber]/restore/route');
+        const statuses = [
+            (await element.PATCH(send(base, 'PATCH', { name: 'Overwritten' }), { params: Promise.resolve(params) })).status,
+            (await fields.PUT(send(`${base}/fields`, 'PUT', { fields: [{ key: 'role', value: 'Overwritten' }] }), { params: Promise.resolve(params) })).status,
+            (await restore.POST(send(`${base}/versions/1/restore`, 'POST', {}), { params: Promise.resolve({ ...params, versionNumber: '1' }) })).status,
+            (await restore.POST(send(`${base}/versions/1/restore`, 'POST'), { params: Promise.resolve({ ...params, versionNumber: '1' }) })).status,
+        ];
+        expect(statuses).toEqual([400, 400, 400, 400]);
+        expect(await versions(el.id)).toBe(1);
+        expect((await getElement(alice, bookId, el.id)).name).toBe('Unbased');
     });
 });

@@ -42,6 +42,12 @@ CREATE INDEX "BibleElement_workspaceId_bookId_kind_name_idx" ON "BibleElement"("
 -- which the trigger recognises by the workspace row being gone already (as the
 -- version table's append-only trigger recognises its book's). Keep the
 -- function VOLATILE: each check reads a fresh snapshot.
+--
+-- `deletedAt` is a `timestamp` WITHOUT time zone holding UTC (Prisma's
+-- convention), so it is compared with the current UTC time as the same type:
+-- compared with `now()` itself it would be read in the SESSION's time zone,
+-- moving the window by that zone's offset (a session at UTC+12 could delete a
+-- book twelve hours early) and by a daylight-saving hour across a change.
 
 CREATE OR REPLACE FUNCTION book_delete_only_when_purge_due() RETURNS trigger
 LANGUAGE plpgsql
@@ -51,7 +57,7 @@ BEGIN
     IF NOT EXISTS (SELECT 1 FROM "Workspace" WHERE "id" = OLD."workspaceId") THEN
         RETURN OLD;
     END IF;
-    IF OLD."deletedAt" IS NOT NULL AND OLD."deletedAt" <= now() - interval '30 days' THEN
+    IF OLD."deletedAt" IS NOT NULL AND OLD."deletedAt" <= (now() AT TIME ZONE 'UTC') - interval '30 days' THEN
         RETURN OLD;
     END IF;
     RAISE EXCEPTION 'BOOK_DELETE_NOT_DUE: a book is deleted for good only 30 days after it was deleted'

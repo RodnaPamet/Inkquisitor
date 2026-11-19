@@ -36,6 +36,13 @@ jest.setTimeout(30 * 60 * 1000);
 
 beforeAll(async () => {
     ctx = workspaceCtx(await createAccount());
+    // The planner's statistics are taken BEFORE the book exists, as they are
+    // in production right after a large import (autoanalyze waits for a tenth
+    // of a table to change). A query whose plan is only fast when the
+    // statistics already know the book (a nested loop chosen on an estimate
+    // of one row, scanning every field of the workspace per element) is
+    // measured here at its worst, not by luck of when autoanalyze last ran.
+    await prisma.$executeRawUnsafe('ANALYZE "Book", "BibleElement", "BibleField", "BibleRelation", "BibleEntryVersion"');
     const started = performance.now();
     book = await seedLoadBook(ctx, { elements: ELEMENTS, versions: VERSIONS });
     process.stderr.write(`bible load: seeded ${ELEMENTS} elements and ${VERSIONS} versions in ${Math.round(performance.now() - started)} ms\n`);

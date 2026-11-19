@@ -35,8 +35,13 @@ const identifier = z.string().max(IDENTIFIER_MAX).regex(IDENTIFIER_PATTERN);
  * The version the writer's edit is based on (Phase 1.H): the element's latest
  * version number when the writer last read or saved it. A save that names one
  * and finds a newer version is refused 409 `VERSION_CONFLICT` (the optimistic
- * check, `assertBaseVersion`). Optional, so a writer that does not track
- * versions (a script, the import) still saves; the bible UI always sends it.
+ * check, `assertBaseVersion`). REQUIRED on every request that saves an
+ * element (a change, a fields save, a restore): the API's only writer is a
+ * client, and a base it could leave out is a check it could skip, so an
+ * omitted one is a 400, never an unchecked save. Writers inside the server
+ * that do not take a request (the bundle and concept-note imports) do not go
+ * through these inputs; they take the element's lock and save over whatever
+ * stands, by design (an import is the file's whole state).
  */
 export const BaseVersionInput = z.number().int().min(1).max(2_147_483_647);
 
@@ -104,7 +109,7 @@ export const ElementUpdateInput = z
         summary: raw(ELEMENT_SUMMARY_MAX).nullable().optional(),
         customLabel: raw(CUSTOM_LABEL_MAX).optional(),
         changeSummary: raw(CHANGE_SUMMARY_MAX).nullish(),
-        baseVersion: BaseVersionInput.optional(),
+        baseVersion: BaseVersionInput,
     })
     .strict()
     .refine(hasSomeKey('changeSummary', 'baseVersion'), { message: 'Nothing to change.' });
@@ -114,7 +119,7 @@ export const FieldsUpdateInput = z
     .object({
         fields: z.array(FieldEntryInput).min(1).max(FIELDS_PER_SAVE_MAX),
         changeSummary: raw(CHANGE_SUMMARY_MAX).nullish(),
-        baseVersion: BaseVersionInput.optional(),
+        baseVersion: BaseVersionInput,
     })
     .strict();
 export type FieldsUpdateInput = z.infer<typeof FieldsUpdateInput>;
@@ -155,5 +160,5 @@ export type RelationCreateInput = z.infer<typeof RelationCreateInput>;
 
 export const VersionNumberParam = z.coerce.number().int().min(1).max(2_147_483_647);
 
-export const RestoreInput = z.object({ changeSummary: raw(CHANGE_SUMMARY_MAX).nullish(), baseVersion: BaseVersionInput.optional() }).strict();
+export const RestoreInput = z.object({ changeSummary: raw(CHANGE_SUMMARY_MAX).nullish(), baseVersion: BaseVersionInput }).strict();
 export type RestoreInput = z.infer<typeof RestoreInput>;

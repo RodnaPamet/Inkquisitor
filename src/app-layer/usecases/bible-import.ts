@@ -450,18 +450,25 @@ async function applyElement(db: PrismaTx, ctx: WorkspaceRequestContext, bookId: 
         return { ...base, id: element.id, outcome: 'created', versionNumber: version.versionNumber };
     }
     await BibleElementRepository.lock(db, existing.id);
+    // Compared with the element as it stands UNDER its lock, never with the
+    // row read before it (Phase 1.H): a save that landed in between would
+    // otherwise make a column look already equal to the file, and the import
+    // would leave that save's value and report the element unchanged. Deleted
+    // in between, the file creates it again.
+    const current = await BibleElementRepository.find(db, ctx.workspaceId, bookId, existing.id);
+    if (!current) return applyElement(db, ctx, bookId, p, undefined);
     const wanted: ElementWrite = { name: p.name, status: p.status, summary: p.summary, customLabel: p.customLabel };
     const data: ElementWrite = {};
     for (const k of Object.keys(wanted) as Array<keyof ElementWrite>) {
-        if (wanted[k] !== existing[k]) Object.assign(data, { [k]: wanted[k] });
+        if (wanted[k] !== current[k]) Object.assign(data, { [k]: wanted[k] });
     }
     const columnsChanged = Object.keys(data).length > 0;
-    if (columnsChanged) await BibleElementRepository.update(db, ctx.workspaceId, bookId, existing.id, data);
-    const changedKeys = await writeFieldValues(db, ctx, existing, p.fields);
-    if (!columnsChanged && changedKeys.length === 0) return { ...base, id: existing.id, outcome: 'unchanged', versionNumber: null };
-    if (!columnsChanged) await BibleElementRepository.touch(db, ctx.workspaceId, bookId, existing.id);
-    const version = await recordVersion(db, ctx, bookId, existing.id, { source: 'IMPORT' });
-    return { ...base, id: existing.id, outcome: 'updated', versionNumber: version.versionNumber };
+    if (columnsChanged) await BibleElementRepository.update(db, ctx.workspaceId, bookId, current.id, data);
+    const changedKeys = await writeFieldValues(db, ctx, current, p.fields);
+    if (!columnsChanged && changedKeys.length === 0) return { ...base, id: current.id, outcome: 'unchanged', versionNumber: null };
+    if (!columnsChanged) await BibleElementRepository.touch(db, ctx.workspaceId, bookId, current.id);
+    const version = await recordVersion(db, ctx, bookId, current.id, { source: 'IMPORT' });
+    return { ...base, id: current.id, outcome: 'updated', versionNumber: version.versionNumber };
 }
 
 /** The bundle's book details as the book's write, sanitised by `bookWrite`, keeping only what differs. */
@@ -695,9 +702,16 @@ export async function importConceptNote(ctx: WorkspaceRequestContext, bookId: st
     try {
         return await runInWorkspaceContext(ctx, async (db) => {
             await requireBook(db, ctx, bookId);
-            const [held] = await BibleElementRepository.findBySlugs(db, ctx.workspaceId, bookId, [slug]);
-            if (held && held.kind !== 'RESEARCH') {
+            const [found] = await BibleElementRepository.findBySlugs(db, ctx.workspaceId, bookId, [slug]);
+            if (found && found.kind !== 'RESEARCH') {
                 throw new ConflictError('Another kind of element of this book already uses that slug.', { reason: 'KIND_CONFLICT' });
+            }
+            // Compared under the element's lock, as the bundle's elements are
+            // (a save in between must not make the name look already equal).
+            let held: typeof found | undefined = found;
+            if (found) {
+                await BibleElementRepository.lock(db, found.id);
+                held = (await BibleElementRepository.find(db, ctx.workspaceId, bookId, found.id)) ?? undefined;
             }
             let report: ConceptNoteReport;
             if (!held) {
@@ -707,7 +721,6 @@ export async function importConceptNote(ctx: WorkspaceRequestContext, bookId: st
                 const version = await recordVersion(db, ctx, bookId, element.id, { source: 'IMPORT' });
                 report = { element: { id: element.id, kind: 'RESEARCH', slug, name }, outcome: 'created', versionNumber: version.versionNumber };
             } else {
-                await BibleElementRepository.lock(db, held.id);
                 const renamed = held.name !== name;
                 if (renamed) await BibleElementRepository.update(db, ctx.workspaceId, bookId, held.id, { name });
                 const changed = await writeFieldValues(db, ctx, held, fields);

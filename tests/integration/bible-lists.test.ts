@@ -10,7 +10,7 @@
  *     books list (`truncated`) and an element's relations (`relationsTruncated`).
  */
 import { prisma } from '@/lib/db';
-import { BOARD_ENTRIES_PER_KIND, createElement, getBookBoard, getElement, listElements, RELATIONS_SHOWN_MAX, updateElementFields } from '@/app-layer/usecases/bible-elements';
+import { BOARD_ENTRIES_PER_KIND, createElement, getBookBoard, getElement, listElements, RELATIONS_SHOWN_MAX } from '@/app-layer/usecases/bible-elements';
 import { BOOK_LIST_MAX, createBook, listBooks } from '@/app-layer/usecases/books';
 import { createAccount, workspaceCtx } from '../helpers/workspaces';
 
@@ -67,9 +67,48 @@ describe('the element list', () => {
         expect(one.nextCursor).not.toBeNull();
     });
 
+    it('searches for what the author typed, literally: `%`, `_` and a backslash are characters, not wildcards', async () => {
+        const literal = (await createBook(ctx, { title: 'Wildcards' })).id;
+        await prisma.bibleElement.createMany({
+            data: ['100% sure', 'a_b', 'axb', 'back\\slash', 'plain'].map((name, i) => ({ workspaceId: owner.workspaceId, bookId: literal, kind: 'SETTING' as const, name, slug: `w-${i}` })),
+        });
+        const names = async (q: string) => (await listElements(ctx, literal, { q })).elements.map((e) => e.name);
+        expect(await names('%')).toEqual(['100% sure']);
+        expect(await names('a_b')).toEqual(['a_b']);
+        expect(await names('\\')).toEqual(['back\\slash']);
+        expect(await names('A')).toEqual(['a_b', 'axb', 'back\\slash', 'plain']);
+    });
+
     it('refuses a cursor it did not give, and a page past the maximum', async () => {
         await expect(listElements(ctx, bookId, { after: 'not-a-cursor' })).rejects.toMatchObject({ details: { reason: 'CURSOR_INVALID' } });
         await expect(listElements(ctx, bookId, { take: 201 })).rejects.toThrow();
+    });
+});
+
+describe('paging when names tie', () => {
+    it('the board’s first page and every later page hold each element exactly once, in a stable order, however many share a name', async () => {
+        const tied = (await createBook(ctx, { title: 'Twins' })).id;
+        // Sixty factions under three names (two differing only in case), across the board's
+        // page boundary and every later page boundary: only the id can order them.
+        await prisma.bibleElement.createMany({
+            data: Array.from({ length: 60 }, (_, i) => ({ workspaceId: owner.workspaceId, bookId: tied, kind: 'FACTION' as const, name: ['Twin', 'twin', 'Twin'][i % 3], slug: `twin-${i}` })),
+        });
+        const read = async () => {
+            const faction = (await getBookBoard(ctx, tied)).find((k) => k.kind === 'FACTION')!;
+            const ids = faction.entries.map((e) => e.id);
+            for (let after = faction.nextCursor, pages = 0; after && pages < 20; pages++) {
+                const page = await listElements(ctx, tied, { kind: 'FACTION', after, take: 7 });
+                ids.push(...page.elements.map((e) => e.id));
+                after = page.nextCursor;
+            }
+            return ids;
+        };
+        const ids = await read();
+        expect(ids).toHaveLength(60);
+        expect(new Set(ids).size).toBe(60);
+        // The same order every time, and the same as one page of all of them.
+        expect(await read()).toEqual(ids);
+        expect((await listElements(ctx, tied, { kind: 'FACTION', take: 60 })).elements.map((e) => e.id)).toEqual(ids);
     });
 });
 
@@ -78,8 +117,10 @@ describe('the board', () => {
         const [first] = (await listElements(ctx, bookId, { kind: 'CHARACTER', take: 1 })).elements;
         // A field on an element past the board's first page, too: the aggregate still counts it.
         const last = (await listElements(ctx, bookId, { kind: 'CHARACTER', q: `Person ${String(CHARACTERS - 1).padStart(3, '0')}` })).elements[0];
-        await updateElementFields(ctx, bookId, first.id, { fields: [{ key: 'role', value: 'Lead' }, { key: 'want', value: 'Home' }] });
-        await updateElementFields(ctx, bookId, last.id, { fields: [{ key: 'role', value: 'Extra' }] });
+        // Field rows straight in, as the elements were (they have no version for a save to be based on);
+        // the board counts keys and decrypts nothing.
+        const field = (elementId: string, key: string, order: number) => ({ workspaceId: owner.workspaceId, elementId, key, value: '"x"', order });
+        await prisma.bibleField.createMany({ data: [field(first.id, 'role', 1), field(first.id, 'want', 2), field(last.id, 'role', 1)] });
         const board = await getBookBoard(ctx, bookId);
         const character = board.find((k) => k.kind === 'CHARACTER')!;
         expect(character.entryCount).toBe(CHARACTERS);

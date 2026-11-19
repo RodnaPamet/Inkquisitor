@@ -84,18 +84,42 @@ export function ElementPage(props: ElementPageProps) {
     const triggerUndo = useToastWithUndo();
 
     const [element, setElement] = useState(props.element);
-    const [details, setDetails] = useState<Details>(() => detailsOf(props.element));
-    const [values, setValues] = useState(() => valuesOf(props.element));
+    const [deleting, setDeleting] = useState(false);
+    const editable = canEdit && !deleting;
+    const autosave = useElementAutosave({
+        workspaceSlug,
+        bookId: book.id,
+        elementId: props.element.id,
+        enabled: editable,
+        initialVersion: props.element.versionNumber,
+        // Keep what the server says about the element (version, relations) without
+        // touching what the author is typing.
+        onSaved: (saved) => setElement((cur) => ({ ...cur, versionNumber: saved.versionNumber, updatedAt: saved.updatedAt, name: saved.name, status: saved.status })),
+        // The page navigated to was rendered before these edits landed.
+        onSavedAfterUnmount: () => router.refresh(),
+        // Leaving by a link while edits are held in a conflict asks first.
+        leaveConflictMessage: t('conflictLeave'),
+    });
+    // The inputs show the element as loaded, under any edits this page held in
+    // a conflict when it was last left (they come back, still unsaved).
+    const [details, setDetails] = useState<Details>(() => {
+        const d = detailsOf(props.element);
+        for (const [key, value] of autosave.restored?.details ?? []) d[key] = value ?? '';
+        return d;
+    });
+    const [values, setValues] = useState(() => {
+        const v = valuesOf(props.element);
+        for (const [key, value] of autosave.restored?.fields ?? []) v.set(key, value);
+        return v;
+    });
     // Bumped when the values are replaced from the server (a restore), so every editor re-reads them.
     const [revision, setRevision] = useState(0);
     const [tab, setTab] = useState<Tab>('fields');
     const [versions, setVersions] = useState(props.initialVersions);
     const [hasOlder, setHasOlder] = useState(props.initialVersions.length >= versionPageSize);
-    const [deleting, setDeleting] = useState(false);
     const [nameError, setNameError] = useState(false);
     const [customLabelError, setCustomLabelError] = useState(false);
 
-    const editable = canEdit && !deleting;
     // Whether this page is still the one shown: a delete's commit, after the
     // undo window, must not take an author who has since gone elsewhere back
     // to this book.
@@ -107,19 +131,6 @@ export function ElementPage(props: ElementPageProps) {
         };
     }, []);
     const ids = { slug: workspaceSlug, bookId: book.id, elementId: element.id };
-
-    const autosave = useElementAutosave({
-        workspaceSlug,
-        bookId: book.id,
-        elementId: element.id,
-        enabled: editable,
-        initialVersion: props.element.versionNumber,
-        // Keep what the server says about the element (version, relations) without
-        // touching what the author is typing.
-        onSaved: (saved) => setElement((cur) => ({ ...cur, versionNumber: saved.versionNumber, updatedAt: saved.updatedAt, name: saved.name, status: saved.status })),
-        // The page navigated to was rendered before these edits landed.
-        onSavedAfterUnmount: () => router.refresh(),
-    });
 
     const loadVersions = useCallback(async () => {
         const { versions: page } = await bibleFetch<{ versions: VersionMetaView[] }>(

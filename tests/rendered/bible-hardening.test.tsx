@@ -25,7 +25,7 @@ import { BookBoard } from '@/components/bible/BookBoard';
 import { BooksList } from '@/components/bible/BooksList';
 import { DeletedBooksList } from '@/components/bible/DeletedBooksList';
 import { ElementPage } from '@/components/bible/ElementPage';
-import { AUTOSAVE_DEBOUNCE_MS } from '@/components/bible/use-element-autosave';
+import { AUTOSAVE_DEBOUNCE_MS, clearHeldEditsForTests } from '@/components/bible/use-element-autosave';
 import type { BookView, ElementListItemView } from '@/lib/bible/api-client';
 import { kindSummaries } from '@/lib/bible/ui-model';
 import { API, boardOf, elementView, mockFetch, pageProps, SLUG } from '../helpers/bible-ui';
@@ -70,6 +70,9 @@ describe('a save overtaken by someone else’s', () => {
 
     beforeEach(() => jest.useFakeTimers());
     afterEach(() => jest.useRealTimers());
+    // A page left in conflict keeps its edits for the tab (module scope); each test starts with none.
+    // (Before, not after: the render's own cleanup, which unmounts and so keeps, runs after every afterEach.)
+    beforeEach(() => clearHeldEditsForTests());
     const elapse = (ms: number) =>
         act(async () => {
             jest.advanceTimersByTime(ms);
@@ -153,6 +156,105 @@ describe('a save overtaken by someone else’s', () => {
         expect(puts[1].body).toEqual({ fields: [{ key: 'role', value: 'Pilot captain' }], baseVersion: 5 });
     });
 
+    describe('leaving the page while edits are held', () => {
+        const LEAVE = 'Someone else saved this entry after your edits began, and your edits are not saved. Leave this page and discard them?';
+        afterEach(() => {
+            document.querySelectorAll('a[data-test-leave]').forEach((a) => a.remove());
+        });
+        /** An in-app link outside the page (the sidebar's, a breadcrumb's). */
+        function inAppLink(href = '/w/ada/books') {
+            const a = document.createElement('a');
+            a.href = href;
+            a.textContent = 'Books';
+            a.setAttribute('data-test-leave', '');
+            document.body.appendChild(a);
+            return a;
+        }
+        async function inConflict() {
+            const fetched = mockFetch({ [`PUT ${FIELDS}`]: conflict });
+            const view = mount();
+            fireEvent.change(role(), { target: { value: 'Ferrywoman' } });
+            await elapse(AUTOSAVE_DEBOUNCE_MS);
+            expect(screen.getByTestId('version-conflict')).toBeInTheDocument();
+            return { ...fetched, ...view };
+        }
+
+        it('a link asks first; staying keeps the page and its edits', async () => {
+            const confirm = jest.spyOn(window, 'confirm').mockReturnValue(false);
+            const { requests } = await inConflict();
+            const followed = fireEvent.click(inAppLink());
+            expect(confirm).toHaveBeenCalledWith(LEAVE);
+            expect(followed).toBe(false); // the navigation was cancelled
+            expect(role().value).toBe('Ferrywoman');
+            expect(requests).toHaveLength(1);
+            confirm.mockRestore();
+        });
+
+        it('leaving on purpose drops the edits: nothing is sent and nothing comes back', async () => {
+            const confirm = jest.spyOn(window, 'confirm').mockReturnValue(true);
+            const { requests, unmount } = await inConflict();
+            expect(fireEvent.click(inAppLink())).toBe(true);
+            unmount();
+            await elapse(AUTOSAVE_DEBOUNCE_MS);
+            expect(requests).toHaveLength(1);
+            mount();
+            expect(screen.queryByTestId('version-conflict')).toBeNull();
+            expect(role().value).toBe('');
+            confirm.mockRestore();
+        });
+
+        it('a link with no conflict held, or opening a new tab, is never asked about', async () => {
+            const confirm = jest.spyOn(window, 'confirm');
+            mockFetch({});
+            mount();
+            fireEvent.change(role(), { target: { value: 'Ferrywoman' } });
+            expect(fireEvent.click(inAppLink())).toBe(true);
+            expect(confirm).not.toHaveBeenCalled();
+            confirm.mockRestore();
+        });
+
+        it('any other way out (back, the palette) keeps the edits, never sends them, and the page comes back with them', async () => {
+            const { requests, unmount } = await inConflict();
+            fireEvent.change(screen.getByTestId('field-input-want'), { target: { value: 'To cross' } });
+            unmount();
+            await elapse(AUTOSAVE_DEBOUNCE_MS * 3);
+            expect(requests).toHaveLength(1); // no doomed save on the way out
+            // Back on the element: the edits and the conflict are there, and "Keep my edits" saves them.
+            const { requests: after } = mockFetch({ [`PUT ${FIELDS}`]: saved(6, { role: 'Ferrywoman', want: 'To cross' }) });
+            mount();
+            expect(screen.getByTestId('version-conflict')).toHaveTextContent('It is now at version 5');
+            expect(role().value).toBe('Ferrywoman');
+            expect((screen.getByTestId('field-input-want') as HTMLInputElement).value).toBe('To cross');
+            await elapse(AUTOSAVE_DEBOUNCE_MS * 3);
+            expect(after).toHaveLength(0);
+            fireEvent.click(screen.getByRole('button', { name: 'Keep my edits' }));
+            await elapse(0);
+            expect(after.map((r) => r.body)).toEqual([
+                {
+                    fields: [
+                        { key: 'role', value: 'Ferrywoman' },
+                        { key: 'want', value: 'To cross' },
+                    ],
+                    baseVersion: 5,
+                },
+            ]);
+            expect(screen.queryByTestId('version-conflict')).toBeNull();
+        });
+
+        it('a save sent on the way out that is overtaken is kept too, not dropped', async () => {
+            const { requests } = mockFetch({ [`PUT ${FIELDS}`]: conflict });
+            const { unmount } = mount();
+            fireEvent.change(role(), { target: { value: 'Smuggler' } });
+            unmount(); // mid-debounce: the way-out save is sent, and refused
+            await elapse(0);
+            expect(requests).toHaveLength(1);
+            mockFetch({});
+            mount();
+            expect(screen.getByTestId('version-conflict')).toBeInTheDocument();
+            expect(role().value).toBe('Smuggler');
+        });
+    });
+
     it('the notice has no axe violations', async () => {
         jest.useRealTimers();
         mockFetch({ [`PUT ${FIELDS}`]: conflict });
@@ -221,6 +323,11 @@ describe('deleting a book', () => {
         expect(submit).toBeDisabled();
         fireEvent.change(confirm, { target: { value: 'the salt roads' } });
         expect(submit).toBeDisabled();
+        fireEvent.change(confirm, { target: { value: 'The Salt  Roads' } });
+        expect(submit).toBeDisabled();
+        // Spaces at the ends are not part of any title (stored titles are trimmed).
+        fireEvent.change(confirm, { target: { value: `  ${BOOK.title} ` } });
+        expect(submit).toBeEnabled();
         fireEvent.change(confirm, { target: { value: BOOK.title } });
         expect(submit).toBeEnabled();
         expect(requests).toHaveLength(0);

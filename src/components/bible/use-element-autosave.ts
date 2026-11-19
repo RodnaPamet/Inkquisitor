@@ -36,6 +36,17 @@
  * version and sends them (overwriting those keys, knowingly), `discardAll()`
  * drops them for a reload. A restore or a reload sets the base itself
  * (`setBaseVersion`). Nothing is ever re-sent over a newer version unasked.
+ *
+ * LEAVING WITH A CONFLICT. The unmount flush cannot save edits held in
+ * conflict (it would be refused 409 and they would be gone without a word),
+ * so while a conflict is held:
+ *   - a click on an in-app link asks first (`leaveConflictMessage`), as a
+ *     browser unload does; leaving on purpose drops the edits;
+ *   - a navigation nothing can ask about (back or forward, the command
+ *     palette, any `router.push`) KEEPS them: they are held in memory for
+ *     this tab (`heldOnLeave`, never storage: they are author text), and the
+ *     element's page, opened again, comes back with them and the conflict
+ *     notice (`restored`); closing the tab meanwhile asks first.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { FieldValue } from '@/lib/bible/field-values';
@@ -51,6 +62,59 @@ export interface AutosaveConflict {
 
 export type DetailKey = 'name' | 'status' | 'summary' | 'customLabel';
 export type DetailValue = string | null;
+
+/** Edits held in a conflict when the page was left without asking (see LEAVING WITH A CONFLICT). */
+export interface HeldEdits {
+    details: ReadonlyMap<DetailKey, DetailValue>;
+    fields: ReadonlyMap<string, FieldValue | null>;
+    /** The version the held edits were based on, and the version the element was at. */
+    baseVersion: number;
+    currentVersion: number;
+}
+
+/**
+ * Conflicting edits of pages left without a prompt, by element id: in memory
+ * for the life of this tab, never in storage (author text). Taken back by the
+ * element's page when it mounts again.
+ */
+const heldOnLeave = new Map<string, HeldEdits>();
+
+/** While edits are held for a page that is gone, closing the tab asks first. */
+function onUnloadWithHeldEdits(e: BeforeUnloadEvent): void {
+    if (heldOnLeave.size > 0) e.preventDefault();
+}
+
+function holdOnLeave(elementId: string, held: HeldEdits): void {
+    heldOnLeave.set(elementId, held);
+    if (typeof window !== 'undefined') window.addEventListener('beforeunload', onUnloadWithHeldEdits);
+}
+
+/** Forget the edits held for `elementId` (the page has them back). */
+function releaseHeld(elementId: string): void {
+    heldOnLeave.delete(elementId);
+    if (heldOnLeave.size === 0 && typeof window !== 'undefined') window.removeEventListener('beforeunload', onUnloadWithHeldEdits);
+}
+
+/** Forget every held edit (tests). */
+export function clearHeldEditsForTests(): void {
+    for (const id of [...heldOnLeave.keys()]) releaseHeld(id);
+}
+
+/**
+ * The in-app link a click would follow, or null: a plain left click, without
+ * a modifier, on an `<a href>` that opens in this tab, to this origin, and
+ * not to the page already shown.
+ */
+function inAppLinkOf(e: MouseEvent): HTMLAnchorElement | null {
+    if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return null;
+    const anchor = e.target instanceof Element ? e.target.closest('a[href]') : null;
+    if (!(anchor instanceof HTMLAnchorElement)) return null;
+    if ((anchor.target && anchor.target !== '_self') || anchor.hasAttribute('download')) return null;
+    const url = new URL(anchor.href, window.location.href);
+    if (url.origin !== window.location.origin) return null;
+    if (url.pathname === window.location.pathname && url.search === window.location.search) return null;
+    return anchor;
+}
 
 export interface AutosaveError {
     /** The API's `details.reason`, or null for a network failure or an unnamed refusal. */
@@ -77,6 +141,12 @@ export interface UseElementAutosaveOptions {
      * re-reads it here (`router.refresh()`).
      */
     onSavedAfterUnmount?: () => void;
+    /**
+     * Asked (`window.confirm`) before an in-app link is followed while a
+     * conflict holds edits; leaving on "OK" drops them. Without it, links are
+     * followed and the edits are kept for the page's return.
+     */
+    leaveConflictMessage?: string;
 }
 
 export interface UseElementAutosaveResult {
@@ -104,6 +174,12 @@ export interface UseElementAutosaveResult {
     keepMine: () => Promise<boolean>;
     /** Drop every edit not yet saved (pending, refused or in conflict), for a reload of the element. */
     discardAll: () => void;
+    /**
+     * The edits this page held in a conflict when it was last left without a
+     * prompt, given back on mount (with `conflict` set): the page shows them in
+     * its inputs. Null when there were none.
+     */
+    restored: HeldEdits | null;
 }
 
 /** Debounce before a save: long enough that steady typing is one version. */
@@ -124,20 +200,26 @@ function refusedKeys(details: unknown): string[] {
 
 export function useElementAutosave(options: UseElementAutosaveOptions): UseElementAutosaveResult {
     const { workspaceSlug, bookId, elementId, enabled, initialVersion, debounceMs = AUTOSAVE_DEBOUNCE_MS } = options;
-    const [state, setState] = useState<AutosaveState>('idle');
+    // Edits held in a conflict when this element's page was last left without
+    // a prompt come back with it, still in conflict (read here, released by
+    // the mount effect, so a render that never mounts loses nothing).
+    const [restored] = useState<HeldEdits | null>(() => (enabled ? (heldOnLeave.get(elementId) ?? null) : null));
+    const [state, setState] = useState<AutosaveState>(restored ? 'conflict' : 'idle');
     const [error, setError] = useState<AutosaveError | null>(null);
-    const [conflict, setConflictState] = useState<AutosaveConflict | null>(null);
-    const conflictRef = useRef<AutosaveConflict | null>(null);
+    const initialConflict = restored ? { currentVersion: restored.currentVersion } : null;
+    const [conflict, setConflictState] = useState<AutosaveConflict | null>(initialConflict);
+    const conflictRef = useRef<AutosaveConflict | null>(initialConflict);
 
-    const details = useRef(new Map<DetailKey, DetailValue>());
-    const fields = useRef(new Map<string, FieldValue | null>());
+    const details = useRef(new Map<DetailKey, DetailValue>(restored?.details ?? []));
+    const fields = useRef(new Map<string, FieldValue | null>(restored?.fields ?? []));
     const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
     const inFlight = useRef<Promise<boolean> | null>(null);
-    const failed = useRef(false);
+    const failed = useRef(restored !== null);
     /** The state to show when nothing is left to send: 'idle' until a save has succeeded. */
     const settled = useRef<'idle' | 'saved'>('idle');
-    const version = useRef(initialVersion);
+    const version = useRef(restored ? restored.baseVersion : initialVersion);
     const onSavedRef = useRef(options.onSaved);
+    const leaveMessageRef = useRef(options.leaveConflictMessage);
     const onSavedAfterUnmountRef = useRef(options.onSavedAfterUnmount);
     const enabledRef = useRef(enabled);
     const mounted = useRef(true);
@@ -148,6 +230,7 @@ export function useElementAutosave(options: UseElementAutosaveOptions): UseEleme
     useEffect(() => {
         onSavedRef.current = options.onSaved;
         onSavedAfterUnmountRef.current = options.onSavedAfterUnmount;
+        leaveMessageRef.current = options.leaveConflictMessage;
         enabledRef.current = enabled;
     });
 
@@ -307,23 +390,60 @@ export function useElementAutosave(options: UseElementAutosaveOptions): UseEleme
 
     // Leaving the page still saves what is unsaved (mid-debounce, in flight, or
     // put back after a failure), then has the page now shown re-read; a
-    // browser unload asks first.
+    // browser unload asks first. Edits held in a conflict are never sent on the
+    // way out: an in-app link asks first, and any other way out keeps them.
     useEffect(() => {
         mounted.current = true;
+        releaseHeld(target.current.elementId);
         const onBeforeUnload = (e: BeforeUnloadEvent) => {
             if (hasPending() || inFlight.current) e.preventDefault();
         };
+        const onLinkClick = (e: MouseEvent) => {
+            const message = leaveMessageRef.current;
+            if (!conflictRef.current || !hasPending() || !message || !inAppLinkOf(e)) return;
+            if (window.confirm(message)) {
+                // Leaving on purpose: the held edits go, as the author agreed.
+                details.current.clear();
+                fields.current.clear();
+                failed.current = false;
+                conflictRef.current = null;
+                return;
+            }
+            e.preventDefault();
+            e.stopPropagation();
+        };
+        // Edits in conflict cannot be saved on the way out (a 409, and gone
+        // unseen): they are kept for the page's return. The queues are read
+        // when this runs, at the way out, not when the effect ran.
+        const keep = (leftId: string) => {
+            const held = conflictRef.current;
+            if (!held || !hasPending()) return false;
+            holdOnLeave(leftId, {
+                details: new Map(details.current),
+                fields: new Map(fields.current),
+                baseVersion: version.current,
+                currentVersion: held.currentVersion,
+            });
+            return true;
+        };
         window.addEventListener('beforeunload', onBeforeUnload);
+        // Capture, on the document: before the link's own handler (the router's) runs.
+        document.addEventListener('click', onLinkClick, true);
         return () => {
             window.removeEventListener('beforeunload', onBeforeUnload);
+            document.removeEventListener('click', onLinkClick, true);
             mounted.current = false;
             if (timer.current) clearTimeout(timer.current);
             timer.current = null;
+            const { elementId: leftId } = target.current;
+            if (keep(leftId)) return;
             if (hasPending() || inFlight.current) {
                 void (async () => {
                     let ok = await run();
                     if (ok && hasPending()) ok = await run();
                     if (ok && !hasPending()) onSavedAfterUnmountRef.current?.();
+                    // The way-out save itself was overtaken: kept, not dropped.
+                    else keep(leftId);
                 })();
             }
         };
@@ -331,5 +451,5 @@ export function useElementAutosave(options: UseElementAutosaveOptions): UseEleme
 
     const baseVersion = useCallback(() => version.current, []);
 
-    return { state, error, setDetail, setField, discardDetail, flush, hasUnsaved, baseVersion, setBaseVersion, conflict, keepMine, discardAll };
+    return { state, error, setDetail, setField, discardDetail, flush, hasUnsaved, baseVersion, setBaseVersion, conflict, keepMine, discardAll, restored };
 }

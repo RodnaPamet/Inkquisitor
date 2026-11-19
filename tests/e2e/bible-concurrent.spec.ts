@@ -72,3 +72,38 @@ test('"Reload their version" drops the refused edit and shows the other writerâ€
     expect(body.element.fields.find((f) => f.key === 'role')?.value).toBe('Pilot captain');
     expect(body.element.versionNumber).toBe(3);
 });
+
+test('leaving by a link while a conflict holds edits asks first: staying keeps them, leaving drops them', async ({ browser }) => {
+    test.setTimeout(90_000);
+    const { a, b, url } = await twoWriters(browser);
+    const roleA = a.getByRole('main').getByTestId('field-input-role');
+    const roleB = b.getByRole('main').getByTestId('field-input-role');
+
+    await roleA.fill('Pilot');
+    await saved(a);
+    await roleB.fill('Stowaway');
+    await expect(b.getByTestId('version-conflict')).toBeVisible({ timeout: 10_000 });
+
+    const books = b.getByRole('link', { name: 'Books', exact: true }).first();
+    const asked: string[] = [];
+    b.once('dialog', (d) => {
+        asked.push(d.message());
+        void d.dismiss();
+    });
+    await books.click();
+    await expect.poll(() => asked.length).toBe(1);
+    expect(asked[0]).toContain('your edits are not saved');
+    // Stayed: the same page, the held edit, the notice.
+    expect(new URL(b.url()).pathname).toBe(url);
+    await expect(roleB).toHaveValue('Stowaway');
+    await expect(b.getByTestId('version-conflict')).toBeVisible();
+
+    b.once('dialog', (d) => void d.accept());
+    await books.click();
+    await expect(b).toHaveURL(/\/books$/);
+    // Left on purpose: nothing was sent over A's save.
+    const api = url.replace('/w/', '/api/w/');
+    const body = (await (await a.request.get(api)).json()) as { element: { versionNumber: number; fields: Array<{ key: string; value: unknown }> } };
+    expect(body.element.fields.find((f) => f.key === 'role')?.value).toBe('Pilot');
+    expect(body.element.versionNumber).toBe(2);
+});

@@ -382,6 +382,7 @@
             "conflictReload": "Reload their version",
             "conflictKeep": "Keep my edits",
             "conflictReloadFailed": "The entry could not be reloaded. Try again.",
+            "conflictLeave": "Someone else saved this entry after your edits began, and your edits are not saved. Leave this page and discard them?",
             "relationsTruncated": "Showing the first 1,000 relations"
         },
         "details": {

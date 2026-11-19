@@ -104,12 +104,13 @@ const TAG_NAME_PREFIX = 16;
  * whole string; 60 KB took about five seconds, issue #6). Each input
  * character is visited a bounded number of times here.
  */
-function stripTags(html: string): string {
+function stripTags(html: string, meter?: { steps: number }): string {
     const out: string[] = [];
     /** Inside a tag that formed in the output: the start of its text, or null. */
     let formed: string | null = null;
 
     const emit = (ch: string): void => {
+        if (meter) meter.steps += 1;
         if (formed !== null) {
             if (ch === '>') {
                 const replacement = tagReplacement(formed);
@@ -130,10 +131,13 @@ function stripTags(html: string): string {
 
     let i = 0;
     while (i < html.length) {
+        if (meter) meter.steps += 1;
         const ch = html.charAt(i);
         if (ch === '<' && TAG_START.test(html.charAt(i + 1))) {
             const gt = html.indexOf('>', i + 1);
             const end = gt === -1 ? html.length : gt;
+            // The scan to the tag's end reads every character up to it.
+            if (meter) meter.steps += end - i;
             for (const r of tagReplacement(html.slice(i + 1, Math.min(end, i + 1 + TAG_NAME_PREFIX)))) emit(r);
             i = end + 1;
             continue;
@@ -143,6 +147,20 @@ function stripTags(html: string): string {
     }
     // A tag still open at the end of the output was unterminated: it is dropped.
     return out.join('');
+}
+
+/**
+ * How much work `stripTags` does on `html`: one step per input character
+ * visited (a scan to a tag's end counts every character it reads) and per
+ * character emitted. A deterministic measure of its cost, so the linear-time
+ * guarantee is tested by counting rather than by the clock (a wall-clock bound
+ * failed under a loaded machine). Keep it honest: a new loop or scan in
+ * `stripTags` adds to the meter.
+ */
+export function stripTagsSteps(html: string): number {
+    const meter = { steps: 0 };
+    stripTags(html, meter);
+    return meter.steps;
 }
 
 const ENTITIES: ReadonlyMap<string, string> = new Map([

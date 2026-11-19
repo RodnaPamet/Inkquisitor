@@ -11,7 +11,8 @@
  * consequence in plain words — the book leaves every list at once, its owner
  * can restore it from "Recently deleted" until the date shown, and after that
  * it and its whole history are deleted for good — and the confirmation:
- * Delete stays disabled until the book's title is typed exactly.
+ * Delete stays disabled until the book's title is typed exactly (case and
+ * all; only spaces at either end are ignored).
  *
  * Offered only to a viewer the server says may delete (`books.delete`, the
  * workspace's OWNER).
@@ -56,7 +57,10 @@ export function DeleteBookModal({ open, setOpen, workspaceSlug, book }: DeleteBo
         setError(null);
     }, [open]);
 
-    const confirmed = typed === book.title;
+    // The title as stored: case and inner spaces exactly, but the spaces a
+    // paste or a keyboard leaves at either end do not count (the stored title
+    // is trimmed, so they never can be part of it).
+    const confirmed = typed.trim() === book.title;
     // The date a deletion now would stop being restorable, as the server computes it.
     const until = formatDate(restorableUntil(new Date()).toISOString());
 

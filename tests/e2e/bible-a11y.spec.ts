@@ -55,7 +55,8 @@ async function bookWithCharacter(page: Page) {
     const el = ((await (await page.request.post(`/api/w/${slug}/books/${book.id}/elements`, { data: { kind: 'CHARACTER', name: 'Mara' } })).json()) as {
         element: { id: string };
     }).element;
-    await page.request.put(`/api/w/${slug}/books/${book.id}/elements/${el.id}/fields`, { data: { fields: [{ key: 'role', value: 'Ferrywoman' }] } });
+    const saved = await page.request.put(`/api/w/${slug}/books/${book.id}/elements/${el.id}/fields`, { data: { fields: [{ key: 'role', value: 'Ferrywoman' }], baseVersion: 1 } });
+    expect(saved.status()).toBe(200);
     return { slug, bookId: book.id, elementId: el.id };
 }
 

@@ -39,7 +39,7 @@ it('counts each element\'s filled template fields, and nothing else', async () =
     const byId = async () => Object.fromEntries((await listElements(ctx, book.id)).elements.map((e) => [e.id, e.filledFieldCount]));
     expect(await byId()).toEqual({ [mara.id]: 3, [guild.id]: 0 });
 
-    await updateElementFields(ctx, book.id, mara.id, { fields: [{ key: 'want', value: null }] });
+    await updateElementFields(ctx, book.id, mara.id, { fields: [{ key: 'want', value: null }], baseVersion: mara.versionNumber });
     expect((await byId())[mara.id]).toBe(2);
 
     // A row whose key the CHARACTER template does not have (a template that

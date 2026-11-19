@@ -551,7 +551,7 @@ describe('updateElementFields still versions MANUAL after an import', () => {
         const book = await createBook(ctx, { title: 'Sources' });
         const report = await importBibleBundle(ctx, book.id, bundleOf({ 'theme/a.md': '---\nkind: THEME\nname: A\nslug: a\nstatus: DRAFT\n---\n' }), {}, clean);
         const id = report.items[0].id;
-        const saved = await updateElementFields(ctx, book.id, id, { fields: [{ key: 'subject', value: 'Debts compound' }] });
+        const saved = await updateElementFields(ctx, book.id, id, { fields: [{ key: 'subject', value: 'Debts compound' }], baseVersion: report.items[0].versionNumber! });
         expect((await getVersion(ctx, book.id, id, saved.versionNumber)).source).toBe('MANUAL');
     });
 });

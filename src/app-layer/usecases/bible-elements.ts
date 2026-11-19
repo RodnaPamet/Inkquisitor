@@ -20,8 +20,8 @@
  * a concurrent create takes first is retried with the next free suffix, never
  * refused (`DERIVED_SLUG_ATTEMPTS`).
  *
- * CONCURRENT EDITS (Phase 1.H): a change or a fields save may name the
- * version its edit is based on (`baseVersion`); under the element's lock, a
+ * CONCURRENT EDITS (Phase 1.H): a change or a fields save names the
+ * version its edit is based on (`baseVersion`, required); under the element's lock, a
  * newer version refuses it 409 `VERSION_CONFLICT` (`assertBaseVersion`), so
  * one writer never silently overwrites another's save.
  */

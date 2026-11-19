@@ -100,7 +100,7 @@ export async function restoreVersion(
     bookId: string,
     elementId: string,
     versionNumber: unknown,
-    input: unknown = {},
+    input: unknown,
 ): Promise<RestoreResult> {
     await assertPermission(ctx, 'bible.edit');
     const n = VersionNumberParam.parse(versionNumber);

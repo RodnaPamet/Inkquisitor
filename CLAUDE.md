@@ -451,23 +451,32 @@ only under zero-retention terms (D5).
   `pdfkit` is a server external package (its font metrics load from
   node_modules); PDF text goes through `toWinAnsi` and `breakLongRuns`.
 - **Hardening the bible (Phase 1.H).** CONCURRENT EDITS: every element
-  change, fields save and restore may name `baseVersion`; under the element's
+  change, fields save and restore MUST name `baseVersion` (an omitted one is a
+  400, so no request skips the check); under the element's
   lock a newer version refuses it 409 `VERSION_CONFLICT` with
-  `currentVersion`, writing nothing (`assertBaseVersion`). The UI always sends
-  it (`useElementAutosave`), holds a refused batch and sends nothing more
+  `currentVersion`, writing nothing (`assertBaseVersion`). The imports save
+  over whatever stands (a file is its element's whole state), but compare
+  with the element read UNDER its lock, never the row looked up before it. The UI
+  (`useElementAutosave`) holds a refused batch and sends nothing more
   until the author reloads or keeps their edits; never retry a save over a
   newer version unasked, and re-base after a restore or reload
-  (`setBaseVersion`). DELETING A BOOK is soft and `books.delete` (OWNER):
+  (`setBaseVersion`). Held edits are never sent on the way out: an in-app link
+  asks first, and any other navigation keeps them in memory for the tab until
+  the element's page is opened again. DELETING A BOOK is soft and `books.delete` (OWNER):
   `deletedAt` hides it from every list and route (`BookRepository.find` and
   `BibleElementRepository.find` read live books only; a usecase reaches a
   book's rows through `requireBook`/`requireElement`), the OWNER restores it
   for `BOOK_RESTORE_DAYS` (30), and only the daily `book-purge` job deletes
   it — the trigger `book_delete_only_when_purge_due` refuses any earlier
-  delete for every role except the workspace's cascade. LISTS are bounded and
+  delete for every role except the workspace's cascade (comparing `deletedAt`,
+  UTC without a zone, with `now() AT TIME ZONE 'UTC'`, never the session's
+  zone). LISTS are bounded and
   honest: every `findMany` has a `take` (`find-many-bounded` guard); a capped
   read asks one more and says it was cut (`truncated`, `relationsTruncated`,
   `nextCursor`); the board reads counts and filled fields by aggregate and the
-  first 25 entries a kind in one query; the element list is a keyset page by
+  first 25 entries a kind in one query (the filled fields per element through
+  a `LATERAL … OFFSET 0` index probe: as a plain join, a book the planner's
+  statistics did not know yet got a quadratic nested loop); the element list is a keyset page by
   name (`listElements`: `kind`/`kinds`, `q`, `after`), which the relation
   picker searches; list rows carry no encrypted column. Every model a list
   query reads has its index curated in `schema-index-coverage` (workspace-led

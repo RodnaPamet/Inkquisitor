@@ -84,7 +84,7 @@ export const BibleElementRepository = {
     /**
      * One page of a book's elements, by name then id (keyset: `after` is the
      * last row of the previous page), optionally of some kinds and whose name
-     * contains `q` (case-insensitive). `take` bounds it; ask one more than you
+     * contains `q` (case-insensitive, literally: `%`, `_` and backslash are escaped). `take` bounds it; ask one more than you
      * show to know whether another page follows. Served by
      * (workspaceId, bookId, kind, name) when kinds are given.
      */
@@ -100,7 +100,9 @@ export const BibleElementRepository = {
                 workspaceId,
                 bookId,
                 ...(kinds ? { kind: { in: [...kinds] } } : {}),
-                ...(q ? { name: { contains: q, mode: 'insensitive' as const } } : {}),
+                // `contains` is an ILIKE whose pattern Prisma does not escape: a
+                // `%` or `_` the author types is a character to find, not a wildcard.
+                ...(q ? { name: { contains: q.replace(/[\\%_]/g, '\\$&'), mode: 'insensitive' as const } } : {}),
                 ...(after ? { OR: [{ name: { gt: after.name } }, { name: after.name, id: { gt: after.id } }] } : {}),
             },
             orderBy: [{ name: 'asc' }, { id: 'asc' }],
@@ -227,12 +229,27 @@ export const BibleFieldRepository = {
      * How many of the book's elements of each kind have a stored value under
      * each key: an aggregate in the database (the board's completeness,
      * Phase 1.H), so nothing is decrypted and no field row is read out.
+     *
+     * The fields are read PER ELEMENT, through the (workspaceId, elementId)
+     * index: the `LATERAL … OFFSET 0` keeps the planner from flattening the
+     * subquery into a plain join. As a plain join its plan rested on the
+     * statistics: for a book they did not yet know (a large import, before
+     * autoanalyze), the book's elements were estimated at one row, and the
+     * planner chose a nested loop that scanned EVERY field of the workspace
+     * once per element — quadratic, 400 ms for 400 elements and growing with
+     * the square of the book. Read this way it is one index probe per
+     * element, whatever the estimate (the load test analyzes before seeding
+     * to hold it to that).
      */
     async filledKeysByKind(db: Db, workspaceId: string, bookId: string): Promise<Array<{ kind: BibleElementKind; key: string; n: number }>> {
         return db.$queryRaw<Array<{ kind: BibleElementKind; key: string; n: number }>>`
             SELECT e."kind" AS "kind", f."key" AS "key", count(*)::int AS "n"
-            FROM "BibleField" f
-            JOIN "BibleElement" e ON e."id" = f."elementId" AND e."workspaceId" = f."workspaceId"
+            FROM "BibleElement" e
+            CROSS JOIN LATERAL (
+                SELECT fi."key" FROM "BibleField" fi
+                WHERE fi."workspaceId" = e."workspaceId" AND fi."elementId" = e."id"
+                OFFSET 0
+            ) f
             WHERE e."workspaceId" = ${workspaceId} AND e."bookId" = ${bookId}
             GROUP BY e."kind", f."key"`;
     },
