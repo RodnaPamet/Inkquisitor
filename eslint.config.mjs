@@ -76,6 +76,24 @@ const config = [
         rules: { 'local/anthropic-client-single-seam': 'off' },
     },
     {
+        // ── One way into the vector store (subphase 2.0, D8) ──
+        //
+        // `src/app-layer/repositories/vector.repository.ts` refuses any record
+        // carrying more than a key, a book scope, a content hash and a vector
+        // (vectors only), refuses a transaction not bound to the workspace a
+        // call names, and bounds every read. So no other file under `src/` may
+        // load a backend under `repositories/vector/`, name the store's table
+        // in a literal, or reach its Prisma delegate.
+        // See eslint-rules/rules/vector-store-single-seam.js.
+        files: ['src/**/*.ts', 'src/**/*.tsx'],
+        rules: { 'local/vector-store-single-seam': 'error' },
+    },
+    {
+        // The seam and its backends.
+        files: ['src/app-layer/repositories/vector.repository.ts', 'src/app-layer/repositories/vector/**/*.ts'],
+        rules: { 'local/vector-store-single-seam': 'off' },
+    },
+    {
         // The edge logger is the console's one legitimate caller: pino does not
         // run in the edge runtime, and it redacts before it writes.
         files: ['src/lib/observability/edge-logger.ts'],

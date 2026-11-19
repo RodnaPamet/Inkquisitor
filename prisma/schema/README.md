@@ -11,6 +11,7 @@ and concatenates them at generate and migrate time.
 | `workspace.prisma` | `Workspace` (with its wrapped data key) and `WorkspaceMembership`. Workspace-scoped. |
 | `audit.prisma` | `AuditLog`, the append-only, hash-chained trail. Workspace-scoped. |
 | `bible.prisma` | The book bible (Phase 1.1): `Book`, `BibleElement`, `BibleField`, `BibleRelation`, `BibleEntryVersion` (append-only). Workspace-scoped; the workspace travels in every foreign key. |
+| `vector.prisma` | The vector store (subphase 2.0): `VectorEmbedding`, vectors only, one table for every embedding revision and source model. Workspace-scoped; the `embedding` column is `Unsupported("vector")` and reached only through `src/app-layer/repositories/vector.repository.ts`. |
 
 Pick the file that matches a new model's
 domain and keep files to about thirty models. A model with a `workspaceId` is

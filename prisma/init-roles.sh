@@ -3,6 +3,12 @@
 # Creates the app_user role that the row-level-security policies of
 # Phase 0.3 are written against. Runs automatically on the first start
 # of the container (fresh volume) from docker-compose.yml.
+#
+# It runs as POSTGRES_USER, the image's superuser, and so does `prisma
+# migrate` in the dev stack and in CI: the 2.0 migration's `CREATE EXTENSION
+# vector` needs a superuser (pgvector is not a trusted extension). Where
+# migrations run as another role, a superuser creates the extension once
+# first; see the header of prisma/migrations/*_vector_store/migration.sql.
 
 set -e
 

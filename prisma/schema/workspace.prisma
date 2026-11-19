@@ -26,8 +26,9 @@ model Workspace {
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
 
-  memberships WorkspaceMembership[]
-  books       Book[]
+  memberships      WorkspaceMembership[]
+  books            Book[]
+  vectorEmbeddings VectorEmbedding[]
 }
 
 /// A person's role in a workspace. One per (workspace, user).

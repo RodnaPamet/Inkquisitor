@@ -47,6 +47,13 @@ it.each([
     ['DATA_ENCRYPTION_KEY too short', { DATA_ENCRYPTION_KEY: 'x'.repeat(31) }, /DATA_ENCRYPTION_KEY is required/],
     ['DATA_ENCRYPTION_KEY is the development fallback', { DATA_ENCRYPTION_KEY: DEV_FALLBACK_DATA_ENCRYPTION_KEY }, /development fallback/],
     ['half a Google configuration', { GOOGLE_CLIENT_ID: 'id.apps.example' }, /GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET/],
+    ['the embedding stub', { EMBEDDING_PROVIDER: 'stub' }, /EMBEDDING_PROVIDER=stub is for development and test/],
+    ['TEI with no URL', { EMBEDDING_PROVIDER: 'tei', EMBEDDING_TEI_MODEL: 'm', EMBEDDING_TEI_DIMENSIONS: '384' }, /EMBEDDING_TEI_BASE_URL is required/],
+    [
+        'TEI outside the deployment',
+        { EMBEDDING_PROVIDER: 'tei', EMBEDDING_TEI_BASE_URL: 'https://93.184.216.34', EMBEDDING_TEI_MODEL: 'm', EMBEDDING_TEI_DIMENSIONS: '384' },
+        /EMBEDDING_TEI_BASE_URL must name a service inside the deployment/,
+    ],
 ])('refuses: %s', (_name, override, message) => {
     const problems = productionConfigProblems({ ...GOOD, ...override });
     expect(problems.join(' ')).toMatch(message);
@@ -54,6 +61,19 @@ it.each([
 
 it('S3 storage needs no FILE_STORAGE_ROOT', () => {
     expect(productionConfigProblems({ ...GOOD, FILE_STORAGE_ROOT: undefined, STORAGE_PROVIDER: 's3', S3_BUCKET: 'b' })).toEqual([]);
+});
+
+it('embeddings: unset is no problem yet (nothing embeds before 2.1), and a whole TEI route inside the deployment passes', () => {
+    expect(productionConfigProblems(GOOD)).toEqual([]);
+    expect(
+        productionConfigProblems({
+            ...GOOD,
+            EMBEDDING_PROVIDER: 'tei',
+            EMBEDDING_TEI_BASE_URL: 'http://tei:80',
+            EMBEDDING_TEI_MODEL: 'BAAI/bge-small-en-v1.5',
+            EMBEDDING_TEI_DIMENSIONS: '384',
+        }),
+    ).toEqual([]);
 });
 
 it('scanning disabled needs no scanner', () => {

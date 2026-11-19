@@ -24,6 +24,7 @@
 import { isNextProductionBuild } from './build-phase';
 import { DEV_FALLBACK_DATA_ENCRYPTION_KEY, MIN_DATA_ENCRYPTION_KEY_LENGTH } from './security/encryption-constants';
 import { DEV_FALLBACK_AUTH_SECRET, MIN_AUTH_SECRET_LENGTH } from './auth/auth-constants';
+import { embeddingConfigProblems } from './ai/embeddings/config';
 
 export { MIN_AUTH_SECRET_LENGTH };
 
@@ -95,6 +96,11 @@ export function productionConfigProblems(e: EnvRecord): string[] {
     if (present(e.GOOGLE_CLIENT_ID) !== present(e.GOOGLE_CLIENT_SECRET)) {
         problems.push('GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET are set together or not at all.');
     }
+
+    // ── Embeddings (subphase 2.0): never the stub, and a TEI route that is
+    // whole and inside the deployment. src/lib/ai/embeddings/config.ts is the
+    // one reading of these variables; the factory asks it too.
+    problems.push(...embeddingConfigProblems(e));
 
     if (present(e.UPSTASH_REDIS_REST_URL) !== present(e.UPSTASH_REDIS_REST_TOKEN)) {
         problems.push(

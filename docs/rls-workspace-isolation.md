@@ -35,6 +35,14 @@ audit trail (`app_user` has no `UPDATE`, `DELETE` or `TRUNCATE`; a trigger
 refuses them for every role), except the deletion its book's cascade makes and
 the clearing of `authorId` when that person is deleted.
 
+The vector store's table (subphase 2.0: `VectorEmbedding`) carries the same
+set. Its book scope is the composite `(workspaceId, bookId)`, so a vector
+cannot be filed under another workspace's book, and its seam
+(`src/app-layer/repositories/vector.repository.ts`) adds one check of its
+own: the pgvector backend refuses a transaction that is not `app_user` bound
+to the workspace the call names (`NOT_IN_WORKSPACE_CONTEXT`), so it never
+runs on the plain client, where the policies would not apply.
+
 With no workspace bound, `app_user` sees nothing: the policy compares with
 `NULL` and fails closed.
 
