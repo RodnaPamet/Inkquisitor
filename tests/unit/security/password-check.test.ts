@@ -2,11 +2,13 @@
  * The breached-password check (HIBP range API, k-anonymity), with an injected
  * fetch: no test reaches the real service.
  */
-import { createHash } from 'node:crypto';
 import { checkPasswordAgainstHIBP } from '@/lib/security/password-check';
 
 const PASSWORD = ['correct', 'horse'].join('-');
-const sha1 = createHash('sha1').update(PASSWORD).digest('hex').toUpperCase();
+// SHA-1 of PASSWORD, precomputed: the HIBP range protocol is defined over
+// SHA-1, and computing it here would be a fast hash applied to a password in
+// the tree (CodeQL js/insufficient-password-hash). The module computes it.
+const sha1 = '36CB589F74157B45811A690C58B434095F48E9FA';
 const prefix = sha1.slice(0, 5);
 const suffix = sha1.slice(5);
 

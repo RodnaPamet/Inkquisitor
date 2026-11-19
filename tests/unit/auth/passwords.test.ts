@@ -2,14 +2,13 @@
  * The password primitives: the policy, the pre-hash that keeps bcrypt from
  * truncating, and verification.
  */
-import { createHash } from 'node:crypto';
 import {
     BCRYPT_COST,
     MAX_PASSWORD_LENGTH,
     MIN_PASSWORD_LENGTH,
     hashPassword,
     needsRehash,
-    prehashForBcrypt,
+    MAX_PASSWORD_BYTES,
     validatePasswordPolicy,
     verifyPassword,
 } from '@/lib/auth/passwords';
@@ -28,15 +27,6 @@ describe('validatePasswordPolicy', () => {
     });
 });
 
-describe('prehashForBcrypt', () => {
-    it('is base64(sha256(password)): 44 ASCII bytes whatever the input', () => {
-        const pw = 'пароль-'.repeat(20);
-        expect(prehashForBcrypt(pw)).toBe(createHash('sha256').update(pw, 'utf8').digest('base64'));
-        expect(Buffer.byteLength(prehashForBcrypt(pw))).toBe(44);
-        expect(Buffer.byteLength(prehashForBcrypt('a'))).toBe(44);
-    });
-});
-
 describe('hash and verify', () => {
     it('round-trips, at the declared cost, and refuses a wrong password', async () => {
         const hash = await hashPassword('a-long-enough-passphrase');
@@ -45,11 +35,18 @@ describe('hash and verify', () => {
         expect(await verifyPassword('a-long-enough-passphrasE', hash)).toBe(false);
     });
 
-    it('does not truncate: two passwords sharing their first 72 bytes are different passwords', async () => {
-        const prefix = 'й'.repeat(36); // 72 UTF-8 bytes
-        const hash = await hashPassword(`${prefix}-one`);
-        expect(await verifyPassword(`${prefix}-two`, hash)).toBe(false);
-        expect(await verifyPassword(`${prefix}-one`, hash)).toBe(true);
+    it('never truncates: a password bcrypt could not read in full is refused, by bytes not characters', async () => {
+        const fits = 'й'.repeat(36); // exactly 72 UTF-8 bytes, 36 characters
+        const over = 'й'.repeat(37); // 74 bytes, only 37 characters
+        expect(MAX_PASSWORD_BYTES).toBe(72);
+        expect(validatePasswordPolicy(fits)).toEqual({ ok: true });
+        expect(validatePasswordPolicy(over)).toEqual({ ok: false, reason: 'too_long' });
+        await expect(hashPassword(over)).rejects.toThrow(/72 bytes/);
+        const hash = await hashPassword(fits);
+        expect(await verifyPassword(fits, hash)).toBe(true);
+        // Without the byte check bcrypt would read only the first 72 bytes and
+        // accept this as the same password.
+        expect(await verifyPassword(`${fits}-and-more`, hash)).toBe(false);
     });
 
     it('answers false, without throwing, for every malformed case', async () => {

@@ -11,9 +11,19 @@
 export const MIN_PASSWORD_LENGTH = 8;
 
 /**
- * Maximum length, in UTF-16 code units: bounds the work a giant body can cost
- * the sign-in route. It is not a guard against bcrypt's 72-byte truncation —
- * the password is pre-hashed before bcrypt sees it (`prehashForBcrypt`), so
- * nothing is truncated whatever the script or length.
+ * Maximum length, in UTF-8 BYTES: bcrypt reads at most 72 bytes of its input
+ * and silently ignores the rest, so a longer password is refused rather than
+ * truncated. The password reaches bcrypt as it is (no pre-hash: a fast digest
+ * of a password is what CodeQL's js/insufficient-password-hash flags, and a
+ * stored hash never has to be migrated off one). 72 bytes is 72 ASCII
+ * characters, or fewer in scripts that take more than one byte per character.
  */
-export const MAX_PASSWORD_LENGTH = 128;
+export const MAX_PASSWORD_BYTES = 72;
+
+/** Character cap for form inputs; the byte limit above is the real rule. */
+export const MAX_PASSWORD_LENGTH = MAX_PASSWORD_BYTES;
+
+/** UTF-8 byte length, client-safe (no Buffer). */
+export function passwordByteLength(plaintext: string): number {
+    return new TextEncoder().encode(plaintext).length;
+}
