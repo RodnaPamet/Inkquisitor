@@ -50,7 +50,10 @@ export function HistoryPanel({ workspaceSlug, bookId, elementId, fieldDefs, vers
     const tDetails = useTranslations('bible.details');
     const tFields = useTranslations('bible.fields');
     const [texts, setTexts] = useState<ReadonlyMap<number, string>>(new Map());
-    const [failed, setFailed] = useState(false);
+    // The versions whose last fetch failed: the comparison says so only while
+    // one of ITS two versions is among them, and picking a version again
+    // fetches it again.
+    const [failedVersions, setFailedVersions] = useState<ReadonlySet<number>>(new Set());
     const [restoring, setRestoring] = useState<number | null>(null);
     const [loadingOlder, setLoadingOlder] = useState(false);
     const requested = useRef(new Set<number>());
@@ -80,13 +83,19 @@ export function HistoryPanel({ workspaceSlug, bookId, elementId, fieldDefs, vers
         async (n: number) => {
             if (requested.current.has(n)) return;
             requested.current.add(n);
+            setFailedVersions((s) => {
+                if (!s.has(n)) return s;
+                const next = new Set(s);
+                next.delete(n);
+                return next;
+            });
             try {
                 const { version } = await bibleFetch<{ version: VersionView }>(BIBLE_API.version(workspaceSlug, bookId, elementId, n));
                 const html = snapshotToDiffHtml(version.snapshot, fieldDefs, labels);
                 setTexts((m) => new Map(m).set(n, html));
             } catch {
                 requested.current.delete(n);
-                setFailed(true);
+                setFailedVersions((s) => new Set(s).add(n));
             }
         },
         [workspaceSlug, bookId, elementId, fieldDefs, labels],
@@ -100,6 +109,7 @@ export function HistoryPanel({ workspaceSlug, bookId, elementId, fieldDefs, vers
     }, [selection, load]);
 
     const ready = texts.has(selection.from) && texts.has(selection.to);
+    const failed = failedVersions.has(selection.from) || failedVersions.has(selection.to);
     const diffVersions = versions.map((v) => ({
         id: String(v.versionNumber),
         versionNumber: v.versionNumber,

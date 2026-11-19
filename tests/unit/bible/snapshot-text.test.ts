@@ -50,3 +50,26 @@ it('renders the element and every filled field under its template label, in temp
         'retired_key: kept',
     ]);
 });
+
+it('keeps a rich-text value that is bare inline text on lines of its own', () => {
+    // The API stores rich text that is not wrapped in a block as it is.
+    const html = snapshotToDiffHtml(
+        {
+            format: 1,
+            element: { kind: 'CHARACTER', name: 'Mara', slug: 'mara', status: 'DRAFT', summary: null, customLabel: null },
+            fields: [
+                { key: 'wound', order: 9, value: 'Lost the <em>boat</em> &amp; the &lt;map&gt;' },
+                { key: 'false_belief', order: 10, value: 'Nobody waits' },
+            ],
+        },
+        getTemplate('CHARACTER').fields,
+        labels,
+    );
+    expect(htmlToLines(html).split('\n')).toEqual([
+        'Name: Mara',
+        'Status: Draft',
+        'Formative wound:',
+        'Lost the boat & the <map>',
+        expect.stringMatching(/: Nobody waits$/),
+    ]);
+});

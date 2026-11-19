@@ -22,7 +22,7 @@
  * and the request is sent when the undo window closes; Undo gives the page
  * back. The book's home opens once the delete is done.
  */
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
@@ -94,8 +94,19 @@ export function ElementPage(props: ElementPageProps) {
     const [hasOlder, setHasOlder] = useState(props.initialVersions.length >= versionPageSize);
     const [deleting, setDeleting] = useState(false);
     const [nameError, setNameError] = useState(false);
+    const [customLabelError, setCustomLabelError] = useState(false);
 
     const editable = canEdit && !deleting;
+    // Whether this page is still the one shown: a delete's commit, after the
+    // undo window, must not take an author who has since gone elsewhere back
+    // to this book.
+    const mounted = useRef(true);
+    useEffect(() => {
+        mounted.current = true;
+        return () => {
+            mounted.current = false;
+        };
+    }, []);
     const ids = { slug: workspaceSlug, bookId: book.id, elementId: element.id };
 
     const autosave = useElementAutosave({
@@ -107,6 +118,8 @@ export function ElementPage(props: ElementPageProps) {
         // Keep what the server says about the element (version, relations) without
         // touching what the author is typing.
         onSaved: (saved) => setElement((cur) => ({ ...cur, versionNumber: saved.versionNumber, updatedAt: saved.updatedAt, name: saved.name, status: saved.status })),
+        // The page navigated to was rendered before these edits landed.
+        onSavedAfterUnmount: () => router.refresh(),
     });
 
     const loadVersions = useCallback(async () => {
@@ -143,12 +156,24 @@ export function ElementPage(props: ElementPageProps) {
 
     function changeDetail<K extends keyof Details>(key: K, value: string) {
         setDetails((d) => ({ ...d, [key]: value }));
+        // A value that may not be saved drops the edit still waiting, so the
+        // last SAVED value stands rather than a keystroke on the way here.
         if (key === 'name') {
             const missing = value.trim() === '';
             setNameError(missing);
-            if (missing) return;
+            if (missing) {
+                autosave.discardDetail('name');
+                return;
+            }
         }
-        if (key === 'customLabel' && value.trim() === '') return;
+        if (key === 'customLabel') {
+            const missing = value.trim() === '';
+            setCustomLabelError(missing);
+            if (missing) {
+                autosave.discardDetail('customLabel');
+                return;
+            }
+        }
         autosave.setDetail(key, key === 'summary' && value.trim() === '' ? null : value);
     }
 
@@ -186,7 +211,9 @@ export function ElementPage(props: ElementPageProps) {
             action: () => bibleFetch(BIBLE_API.element(ids.slug, ids.bookId, ids.elementId), { method: 'DELETE' }),
             undoAction: () => setDeleting(false),
             onCommit: () => {
-                router.push(APP_ROUTES.book(workspaceSlug, book.id));
+                // Only an author still on this page is taken to the book;
+                // one who has left has the page they are on re-read.
+                if (mounted.current) router.push(APP_ROUTES.book(workspaceSlug, book.id));
                 router.refresh();
             },
             onError: () => {
@@ -198,6 +225,8 @@ export function ElementPage(props: ElementPageProps) {
 
     const statusOptions = useMemo(() => BIBLE_ELEMENT_STATUSES.map((s) => ({ value: s, label: tStatus(s) })), [tStatus]);
     const refusedKeys = new Set(autosave.error?.fieldKeys ?? []);
+    // As with the title: what the author has typed, or the saved label while the input is empty.
+    const customLabelShown = details.customLabel.trim() || element.customLabel;
 
     return (
         <EntityDetailLayout<Tab>
@@ -210,7 +239,7 @@ export function ElementPage(props: ElementPageProps) {
             title={details.name || element.name}
             meta={
                 <div className="flex flex-wrap items-center gap-tight">
-                    <StatusBadge variant="info">{element.customLabel ? `${kindLabels[element.kind]} · ${element.customLabel}` : kindLabels[element.kind]}</StatusBadge>
+                    <StatusBadge variant="info">{customLabelShown ? `${kindLabels[element.kind]} · ${customLabelShown}` : kindLabels[element.kind]}</StatusBadge>
                     <StatusBadge variant="neutral">{tStatus(details.status)}</StatusBadge>
                     {canEdit ? <SaveStatus state={autosave.state} error={autosave.error ? errorMessage(autosave.error.reason) : null} onRetry={() => void autosave.flush()} /> : null}
                 </div>
@@ -265,7 +294,7 @@ export function ElementPage(props: ElementPageProps) {
                                     <Input id="element-name" value={details.name} onChange={(e) => changeDetail('name', e.target.value)} autoComplete="off" />
                                 </FormField>
                                 {element.kind === 'CUSTOM' ? (
-                                    <FormField label={tDetails('customLabel')} required>
+                                    <FormField label={tDetails('customLabel')} required error={customLabelError ? tDetails('customLabelRequired') : undefined}>
                                         <Input id="element-custom-label" value={details.customLabel} onChange={(e) => changeDetail('customLabel', e.target.value)} />
                                     </FormField>
                                 ) : null}

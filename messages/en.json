@@ -373,6 +373,7 @@
             "name": "Name",
             "nameRequired": "An entry needs a name; the last saved name is kept.",
             "customLabel": "Custom kind",
+            "customLabelRequired": "A custom entry needs its own label; the last saved label is kept.",
             "status": "Status",
             "summary": "Summary",
             "summaryHelp": "A few sentences on this entry, in your own words.",

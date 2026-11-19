@@ -87,6 +87,18 @@ describe('relations', () => {
         expect(others).toEqual(['The TidewardensFaction']);
     });
 
+    it('tells apart two relation types that read the same from this end, by the kinds each reaches', async () => {
+        mockFetch({});
+        const user = userEvent.setup();
+        // A PLOT "carries" a theme (its own type) and "carries" a premise (the inverse of the premise's).
+        mount(pageProps({ element: elementView({ kind: 'PLOT' }) }));
+        await user.click(document.getElementById('relation-type')!);
+        const carries = (await screen.findAllByRole('option')).filter((o) => o.textContent?.startsWith('carries'));
+        expect(carries.map((o) => o.textContent).sort()).toEqual(['carriesPremise', 'carriesTheme']);
+        // A label no other type shares is shown alone.
+        expect(screen.getByRole('option', { name: 'related to' })).toBeInTheDocument();
+    });
+
     it('adds an outgoing relation from this element, then re-reads the element', async () => {
         const { requests } = mockFetch({
             [`POST ${API}/relations`]: { status: 201, json: { relation: { id: 'rel_2' } } },
@@ -147,6 +159,27 @@ describe('undo-toast removals', () => {
         expect(requests[0]).toMatchObject({ method: 'DELETE', url: `${API}/relations/rel_1` });
     });
 
+    it('a removal whose re-read fails keeps the row hidden and leaves no rejection unhandled', async () => {
+        const unhandled: unknown[] = [];
+        const onUnhandled = (reason: unknown) => unhandled.push(reason);
+        process.on('unhandledRejection', onUnhandled);
+        try {
+            mockFetch({ [`DELETE ${API}/relations/rel_1`]: { json: { id: 'rel_1' } }, [`GET ${EL}`]: { status: 500, json: {} } });
+            mount(pageProps({ element: elementView({ relations: [MEMBER_OF] }) }));
+            fireEvent.click(within(panel()).getByRole('button', { name: 'Remove "member of The Tidewardens"' }));
+            await act(async () => {
+                jest.advanceTimersByTime(6000);
+            });
+            jest.useRealTimers();
+            await new Promise((r) => setTimeout(r, 20));
+            // The relation is gone on the server: it is not shown again.
+            expect(panel().querySelector('[data-relation-id="rel_1"]')).toBeNull();
+            expect(unhandled).toEqual([]);
+        } finally {
+            process.off('unhandledRejection', onUnhandled);
+        }
+    });
+
     it('deleting the element pauses editing, sends nothing on Undo, and deletes then leaves after the window', async () => {
         const { requests } = mockFetch({ [`DELETE ${EL}`]: { json: { id: 'el_1' } } });
         mount();
@@ -170,6 +203,20 @@ describe('undo-toast removals', () => {
         });
         expect(requests).toEqual([{ method: 'DELETE', url: EL, body: undefined }]);
         expect(push).toHaveBeenCalledWith('/w/ada/books/book_1');
+    });
+    it('a delete whose window closes after the author has left deletes, but leaves them where they are', async () => {
+        const { requests } = mockFetch({ [`DELETE ${EL}`]: { json: { id: 'el_1' } } });
+        const view = mount();
+        fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+        // The author follows a link elsewhere during the undo window.
+        view.unmount();
+        await act(async () => {
+            jest.advanceTimersByTime(6000);
+        });
+        expect(requests).toEqual([{ method: 'DELETE', url: EL, body: undefined }]);
+        expect(push).not.toHaveBeenCalled();
+        // The page they are on is re-read, so it no longer shows the entry.
+        expect(refresh).toHaveBeenCalled();
     });
 });
 

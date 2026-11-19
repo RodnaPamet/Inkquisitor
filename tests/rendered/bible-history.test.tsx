@@ -130,3 +130,36 @@ it('restore calls the restore API, then shows the restored values and the new ve
     fireEvent.click(screen.getByRole('tab', { name: 'Fields' }));
     expect(screen.getByTestId('field-input-role')).toHaveValue('Protagonist');
 });
+
+it('a version that failed to load is fetched again when picked, and only its own comparison says it failed', async () => {
+    mockFetch({ ...routes(), [`GET ${EL}/versions/2`]: { status: 500, json: {} } });
+    render(<ElementPage {...pageProps()} />);
+    await openHistory();
+    // The default comparison is 2 → 3, and version 2 does not arrive.
+    expect(await screen.findByText('The versions could not be loaded.')).toBeInTheDocument();
+
+    // Comparing 1 → 3 instead involves no failed version: it loads, and no failure is reported.
+    fireEvent.change(screen.getByTestId('version-diff-from'), { target: { value: '1' } });
+    await waitFor(() => expect(screen.getByTestId('history-diff')).toHaveAttribute('aria-busy', 'false'));
+    expect(screen.queryByText('The versions could not be loaded.')).toBeNull();
+
+    // Picking version 2 again fetches it again; while it loads the page says so, not that it failed.
+    let release: () => void = () => {};
+    const gate = new Promise<void>((r) => (release = r));
+    const slow = mockFetch({
+        ...routes(),
+        [`GET ${EL}/versions/2`]: async () => {
+            await gate;
+            return { json: { version: SNAPSHOTS[2] } };
+        },
+    });
+    fireEvent.change(screen.getByTestId('version-diff-from'), { target: { value: '2' } });
+    await waitFor(() => expect(slow.requests.some((r) => r.url === `${EL}/versions/2`)).toBe(true));
+    expect(screen.getByText('Loading the versions…')).toBeInTheDocument();
+    expect(screen.queryByText('The versions could not be loaded.')).toBeNull();
+    await act(async () => {
+        release();
+    });
+    await waitFor(() => expect(screen.getByTestId('history-diff')).toHaveAttribute('aria-busy', 'false'));
+    expect(screen.queryByText('The versions could not be loaded.')).toBeNull();
+});

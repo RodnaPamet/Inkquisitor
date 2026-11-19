@@ -142,6 +142,62 @@ it('an emptied name is not sent: the field says it needs one', async () => {
     expect(screen.getByText('An entry needs a name; the last saved name is kept.')).toBeInTheDocument();
 });
 
+it('emptying the name drops the keystroke still waiting, so the last saved name stands', async () => {
+    const { requests } = mockFetch({});
+    mount();
+    const name = screen.getByLabelText(/^Name/);
+    // Deleting "Mara" a letter at a time: "M" is queued, then the name is empty.
+    fireEvent.change(name, { target: { value: 'M' } });
+    fireEvent.change(name, { target: { value: '' } });
+    await elapse(AUTOSAVE_DEBOUNCE_MS * 2);
+    expect(requests).toHaveLength(0);
+    expect(status()).not.toHaveAttribute('data-state', 'pending');
+});
+
+it('a custom entry\'s label: the header follows what is typed, and an emptied label is not sent and says why', async () => {
+    const { requests } = mockFetch({ [`PATCH ${API}/elements/el_1`]: { json: { element: elementView({ kind: 'CUSTOM', customLabel: 'Prophecy', versionNumber: 4 }) } } });
+    render(<ElementPage {...pageProps({ element: elementView({ kind: 'CUSTOM', customLabel: 'Omen' }) })} />);
+    const label = screen.getByLabelText(/^Custom kind/);
+    fireEvent.change(label, { target: { value: 'Prophecy' } });
+    expect(screen.getByText('Custom element · Prophecy')).toBeInTheDocument();
+    await elapse(AUTOSAVE_DEBOUNCE_MS);
+    expect(requests).toEqual([{ method: 'PATCH', url: `${API}/elements/el_1`, body: { customLabel: 'Prophecy' } }]);
+
+    fireEvent.change(label, { target: { value: 'P' } });
+    fireEvent.change(label, { target: { value: ' ' } });
+    await elapse(AUTOSAVE_DEBOUNCE_MS * 2);
+    expect(requests).toHaveLength(1);
+    expect(screen.getByText('A custom entry needs its own label; the last saved label is kept.')).toBeInTheDocument();
+});
+
+it('leaving the page mid-debounce saves the edit, then has the page now shown re-read', async () => {
+    const { requests } = mockFetch({ [`PUT ${FIELDS_URL}`]: saved({ role: 'Ferrywoman' }) });
+    const view = mount();
+    fireEvent.change(roleInput(), { target: { value: 'Ferrywoman' } });
+    // A client-side navigation renders the next page, then unmounts this one.
+    view.unmount();
+    await elapse(0);
+    expect(requests).toEqual([{ method: 'PUT', url: FIELDS_URL, body: { fields: [{ key: 'role', value: 'Ferrywoman' }] } }]);
+    expect(refresh).toHaveBeenCalledTimes(1);
+});
+
+it('leaving the page after a failed save sends the kept edit once more', async () => {
+    let fail = true;
+    const { requests } = mockFetch({ [`PUT ${FIELDS_URL}`]: () => (fail ? { status: 500, json: {} } : saved({ role: 'Ferrywoman' })) });
+    const view = mount();
+    fireEvent.change(roleInput(), { target: { value: 'Ferrywoman' } });
+    await elapse(AUTOSAVE_DEBOUNCE_MS);
+    expect(status()).toHaveAttribute('data-state', 'error');
+    expect(requests).toHaveLength(1);
+
+    fail = false;
+    view.unmount();
+    await elapse(0);
+    expect(requests).toHaveLength(2);
+    expect(requests[1]).toEqual(requests[0]);
+    expect(refresh).toHaveBeenCalledTimes(1);
+});
+
 it('rich text written in the editor\'s markdown mode is saved as escaped HTML paragraphs', async () => {
     const { requests } = mockFetch({ [`PUT ${FIELDS_URL}`]: saved() });
     mount();
@@ -151,6 +207,23 @@ it('rich text written in the editor\'s markdown mode is saved as escaped HTML pa
     await elapse(AUTOSAVE_DEBOUNCE_MS);
     const last = requests[requests.length - 1];
     expect(last.body).toEqual({ fields: [{ key: 'wound', value: '<p>Lost the &lt;boat&gt;</p><p>And the map</p>' }] });
+});
+
+it('switching the rich-text editor between its modes saves nothing, and coming back keeps the formatting', async () => {
+    const { requests } = mockFetch({ [`PUT ${FIELDS_URL}`]: saved() });
+    render(<ElementPage {...pageProps({ element: elementView({ values: { wound: '<p><strong>Lost</strong> the boat</p>' } }) })} />);
+    const wound = await screen.findByTestId('field-richtext-wound');
+    const toggle = await within(wound).findByTestId('rich-text-editor-toggle');
+    // Into markdown mode (the editor reports its plain text) and back again.
+    fireEvent.click(toggle);
+    expect(within(wound).getByTestId('rich-text-editor-textarea')).toHaveValue('Lost the boat');
+    await elapse(AUTOSAVE_DEBOUNCE_MS);
+    fireEvent.click(within(wound).getByTestId('rich-text-editor-toggle'));
+    await elapse(AUTOSAVE_DEBOUNCE_MS);
+    expect(requests).toHaveLength(0);
+    expect(within(wound).getByTestId('rich-text-editor-content').querySelector('strong')).toHaveTextContent('Lost');
+    // The keyboard stays where it was: on the mode toggle.
+    expect(within(wound).getByTestId('rich-text-editor-toggle')).toHaveFocus();
 });
 
 it('a choice field saves the option value, and its clear button sends null', async () => {

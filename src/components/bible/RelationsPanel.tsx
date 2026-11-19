@@ -62,6 +62,20 @@ export function RelationsPanel({ workspaceSlug, bookId, element, options, bookEl
         value: o.id,
         label: o.label,
     }));
+    // Two relation types can read the same from this end (a CHARACTER
+    // "opposes" a character or faction, and "opposes" a plot as the inverse
+    // of the plot's own type). Each such option names the kinds it reaches,
+    // so the author can tell them apart.
+    const sharedLabels = useMemo(() => {
+        const seen = new Set<string>();
+        const shared = new Set<string>();
+        for (const o of options) (seen.has(o.label) ? shared : seen).add(o.label);
+        return shared;
+    }, [options]);
+    const describeType = (o: ComboboxOption) => {
+        const opt = options.find((x) => x.id === o.value);
+        return opt && sharedLabels.has(opt.label) ? opt.otherKinds.map((k) => kindLabels[k]).join(', ') : undefined;
+    };
     const option = options.find((o) => o.id === typeId) ?? null;
     const candidates: ComboboxOption[] = useMemo(
         () =>
@@ -106,7 +120,10 @@ export function RelationsPanel({ workspaceSlug, bookId, element, options, bookEl
             action: () => bibleFetch(BIBLE_API.relation(workspaceSlug, bookId, relationId), { method: 'DELETE' }),
             undoAction: unhide,
             onCommit: () => {
-                void onChanged().then(unhide);
+                // Deleted: the row stays hidden until the re-read drops it, and
+                // stays hidden if the re-read fails (it would show a relation
+                // that no longer exists).
+                void onChanged().then(unhide, () => undefined);
             },
             onError: () => {
                 unhide();
@@ -157,6 +174,7 @@ export function RelationsPanel({ workspaceSlug, bookId, element, options, bookEl
                             }}
                             placeholder={t('typePlaceholder')}
                             searchPlaceholder={t('typeSearch')}
+                            optionDescription={describeType}
                             matchTriggerWidth
                         />
                     </FormField>

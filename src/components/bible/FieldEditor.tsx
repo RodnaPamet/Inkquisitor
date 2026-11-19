@@ -17,7 +17,7 @@
  * control that could still emit an edit.
  */
 import dynamic from 'next/dynamic';
-import { useId, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { Plus, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -167,19 +167,55 @@ function ClearButton({ label, onClear }: { label: string; onClear: () => void })
     return <Button variant="secondary" size="sm" icon={<X className="size-3.5" aria-hidden="true" />} aria-label={label} onClick={onClear} />;
 }
 
-/** Labelled by its `FieldShell` group. */
+/**
+ * Labelled by its `FieldShell` group.
+ *
+ * The editor reports a switch between its two modes through `onChange` too,
+ * with the text it switched to: the plain text on the way into markdown mode
+ * (formatting gone) and that text re-seeded as paragraphs on the way back. A
+ * switch is NOT an edit, so it saves nothing; coming back without having
+ * typed in markdown mode puts the field's own HTML back, in a fresh editor
+ * (the editor ignores a new value in the tick it reported a change), with
+ * focus returned to its mode toggle. (The
+ * switch is told apart by the mode it reports, against the mode this render
+ * shows: the editor reports one switch more than once.) A report of the HTML
+ * the field already holds is not an edit either — the editor sends one when
+ * it turns editing off for markdown mode. Only a change saves.
+ */
 function RichTextField({ value, onChange, fieldKey }: { value: string; onChange: (v: string | null) => void; fieldKey: string }) {
     const [draft, setDraft] = useState<{ value: string; type: RichTextContentType }>({ value, type: 'HTML' });
+    // The HTML the field holds: as loaded, then as last sent.
+    const html = useRef(value);
+    const typedInMarkdown = useRef(false);
+    const [generation, setGeneration] = useState(0);
+    const container = useRef<HTMLDivElement>(null);
+    useEffect(() => {
+        if (generation > 0) container.current?.querySelector<HTMLElement>('[data-testid="rich-text-editor-toggle"]')?.focus();
+    }, [generation]);
     return (
-        <div data-testid={`field-richtext-${fieldKey}`}>
+        <div data-testid={`field-richtext-${fieldKey}`} ref={container}>
             <RichTextEditor
+                key={generation}
                 value={draft.value}
                 contentType={draft.type}
                 minHeightPx={140}
                 onChange={(next, type) => {
+                    if (type !== draft.type) {
+                        if (type === 'MARKDOWN') typedInMarkdown.current = false;
+                        if (type === 'HTML' && !typedInMarkdown.current) {
+                            if (draft.value !== html.current) setGeneration((g) => g + 1);
+                            setDraft({ value: html.current, type });
+                        } else {
+                            setDraft({ value: next, type });
+                        }
+                        return;
+                    }
+                    if (type === 'MARKDOWN') typedInMarkdown.current = true;
                     setDraft({ value: next, type });
-                    const html = type === 'HTML' ? next : plainTextToHtml(next);
-                    onChange(htmlToLines(html) === '' ? null : html);
+                    const out = type === 'HTML' ? next : plainTextToHtml(next);
+                    if (out === html.current) return;
+                    html.current = out;
+                    onChange(htmlToLines(out) === '' ? null : out);
                 }}
             />
         </div>

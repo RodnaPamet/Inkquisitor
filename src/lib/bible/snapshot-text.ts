@@ -8,13 +8,16 @@
  * `htmlToLines` strips every tag (block ends become line breaks) before the
  * diff runs, and React renders the lines as TEXT. Plain values are escaped
  * here, so an author's literal `<` stays a character; a rich-text value is
- * the sanitised HTML the API stored, and only its text survives the strip.
+ * the sanitised HTML the API stored, reduced to its text lines
+ * (`htmlToLines`) and escaped like any other text.
  *
  * A field the snapshot holds but the kind's current template no longer has is
  * shown last, under its key, so a diff never hides what a version contained.
  *
- * Client-safe: type imports only.
+ * Client-safe: its one value import is `htmlToLines`, the strip
+ * `<VersionDiff>` itself runs.
  */
+import { htmlToLines } from '@/components/ui/VersionDiff';
 import type { BibleSnapshot } from './snapshot';
 import type { FieldDef } from './template-schema';
 
@@ -59,8 +62,11 @@ export function snapshotToDiffHtml(snapshot: BibleSnapshot, fields: readonly Fie
         if (Array.isArray(value)) {
             out.push(line(`${title}:`), ...value.map((item) => line(`• ${item}`)));
         } else if (def?.type === 'richtext' && typeof value === 'string') {
-            // Sanitised HTML from the API; VersionDiff strips it to text.
-            out.push(line(`${title}:`), value);
+            // Sanitised HTML from the API, reduced to its text lines here, each
+            // a line of its own: inserted as it is, a value that does not end
+            // in a block (bare inline text, which the API accepts) ran into
+            // the next field's line.
+            out.push(line(`${title}:`), paragraphs(htmlToLines(value)));
         } else {
             out.push(line(`${title}: ${valueText(def, value, labels)}`));
         }
