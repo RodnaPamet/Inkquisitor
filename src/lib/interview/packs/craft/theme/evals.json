@@ -1,0 +1,476 @@
+[
+  {
+    "id": "theme-01",
+    "rationale": "Empty entry at depth 1, detail 1. Only the subject is eligible: every other core field rests on it. A right output offers picks or a scale about what kind of subject this theme turns on. A likely wrong one asks an open question, jumps to the thematic question or the reply, or fills options with ready-made messages; with nothing stored, any recommendation is ungrounded.",
+    "elementName": "Inheritance",
+    "bibleState": {
+      "subject": null,
+      "thematic_question": null,
+      "stance": null,
+      "counter_argument": null,
+      "carriers": null
+    },
+    "priorAnswers": [],
+    "dials": {
+      "depth": 1,
+      "detail": 1
+    },
+    "expect": {
+      "targetsAnyOf": [
+        "subject"
+      ],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "EXCEEDS_DEPTH",
+        "MISMATCHES_DETAIL",
+        "MALFORMED_OPTIONS",
+        "UNGROUNDED_RECOMMENDATION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE",
+        "USES_BRANDED_FRAMEWORK"
+      ]
+    }
+  },
+  {
+    "id": "theme-02",
+    "rationale": "Empty entry at depth 5, detail 5, the contrast to theme-01. The deepest dial does not lift the dependency order: still only the subject is eligible. A right output asks an open or scenario question about what the book keeps returning to; a likely wrong one reaches for the question, the reply or the counter-case at once, offers picks, or proposes a subject of its own for the author to approve.",
+    "elementName": "Second theme",
+    "bibleState": {
+      "subject": null,
+      "thematic_question": null,
+      "stance": null,
+      "counter_argument": null,
+      "carriers": null
+    },
+    "priorAnswers": [],
+    "dials": {
+      "depth": 5,
+      "detail": 5
+    },
+    "expect": {
+      "targetsAnyOf": [
+        "subject"
+      ],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "MISMATCHES_DETAIL",
+        "COMPOUND_QUESTION",
+        "LEADING_QUESTION",
+        "UNGROUNDED_RECOMMENDATION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE"
+      ]
+    }
+  },
+  {
+    "id": "theme-03",
+    "rationale": "Half-filled entry: subject and thematic question stored, depth 3, detail 3. The reply and the carriers are eligible; the counter-case waits on the reply and is above depth 3. Re-asking the subject or rewording the stored question is the tempting mistake. A right output quotes the stored question; nothing stored favours cowardice or care, so any recommendation on the reply is none.",
+    "elementName": "Owed to strangers",
+    "bibleState": {
+      "subject": "What a ship's crew owes to strangers in danger at sea.",
+      "thematic_question": "When saving strangers puts your own crew at risk, is turning away cowardice or care?",
+      "stance": null,
+      "counter_argument": null,
+      "carriers": null
+    },
+    "priorAnswers": [],
+    "dials": {
+      "depth": 3,
+      "detail": 3
+    },
+    "expect": {
+      "targetsAnyOf": [
+        "stance",
+        "carriers"
+      ],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "EXCEEDS_DEPTH",
+        "COMPOUND_QUESTION",
+        "LEADING_QUESTION",
+        "UNGROUNDED_RECOMMENDATION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE"
+      ]
+    }
+  },
+  {
+    "id": "theme-04",
+    "rationale": "Subject stored at depth 1, detail 2. The thematic question is level 2 and every other field waits on it, so the eligible frontier is empty: the right output asks nothing and says the deeper fields are beyond depth 1. A likely wrong one asks for the subject again, turns it into a question to be filled, or reaches past the dial for the thematic question.",
+    "elementName": "The last master's craft",
+    "bibleState": {
+      "subject": "Who an inherited craft belongs to once its last master is gone.",
+      "thematic_question": null,
+      "stance": null,
+      "counter_argument": null,
+      "carriers": null
+    },
+    "priorAnswers": [],
+    "dials": {
+      "depth": 1,
+      "detail": 2
+    },
+    "expect": {
+      "targetsAnyOf": [],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "EXCEEDS_DEPTH",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE"
+      ]
+    }
+  },
+  {
+    "id": "theme-05",
+    "rationale": "The thematic question is empty in the bible but a1 settles it this session. Depth 4, detail 4: the reply and the carriers are eligible; the counter-case still waits on the reply. Asking the thematic question again because its stored field is empty is the tempting mistake. A right output builds on the two framings in a1; nothing in a1 favours either, so a recommendation on the reply is none.",
+    "elementName": "Kindness that conceals",
+    "bibleState": {
+      "subject": "Keeping hard news from someone you love to spare them pain.",
+      "thematic_question": null,
+      "stance": null,
+      "counter_argument": null,
+      "carriers": null
+    },
+    "priorAnswers": [
+      {
+        "id": "a1",
+        "questionKind": "OPEN",
+        "question": "What question about keeping hard news from someone you love does your book explore?",
+        "targetsFieldKeys": [
+          "thematic_question"
+        ],
+        "status": "ANSWERED",
+        "answer": "Whether sparing someone a painful truth is a kindness they would thank you for, or a choice you had no right to make for them."
+      }
+    ],
+    "dials": {
+      "depth": 4,
+      "detail": 4
+    },
+    "expect": {
+      "targetsAnyOf": [
+        "stance",
+        "carriers"
+      ],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "REPEATS_PRIOR_QUESTION",
+        "SKIPS_DEPENDENCY",
+        "MISMATCHES_DETAIL",
+        "LEADING_QUESTION",
+        "UNGROUNDED_RECOMMENDATION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE"
+      ]
+    }
+  },
+  {
+    "id": "theme-06",
+    "rationale": "Subject, question and reply stored; a1 asked about the counter-case and was skipped. Depth 5, detail 2. Only the carriers are eligible: a skip does not reopen the counter-case this session. Returning to the case against the reply, which the deep dial seems to invite, is the tempting mistake. A right output asks a pick or one-sentence question about who or what carries the theme.",
+    "elementName": "Earning a place",
+    "bibleState": {
+      "subject": "Belonging in a village that measures people by how long their family has lived there.",
+      "thematic_question": "Can a newcomer ever earn a place among people who decided long ago who belongs?",
+      "stance": "Yes, but only at a price the village sets. Tamsin is accepted once she closes the workshop that marked her as an outsider.\n\nThe book leaves open whether what she gains is belonging or surrender.",
+      "counter_argument": null,
+      "carriers": null
+    },
+    "priorAnswers": [
+      {
+        "id": "a1",
+        "questionKind": "OPEN",
+        "question": "Who in your story makes the strongest case that a newcomer should not have to earn a place at all?",
+        "targetsFieldKeys": [
+          "counter_argument"
+        ],
+        "status": "SKIPPED",
+        "answer": null
+      }
+    ],
+    "dials": {
+      "depth": 5,
+      "detail": 2
+    },
+    "expect": {
+      "targetsAnyOf": [
+        "carriers"
+      ],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "REPEATS_PRIOR_QUESTION",
+        "SKIPS_DEPENDENCY",
+        "MISMATCHES_DETAIL",
+        "MALFORMED_OPTIONS",
+        "UNGROUNDED_RECOMMENDATION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE"
+      ]
+    }
+  },
+  {
+    "id": "theme-07",
+    "rationale": "Every core field is stored except the counter-case; depth 5, detail 1. Only the counter-case is eligible, and detail 1 allows picks and scales alone for a field that usually invites prose. A right output offers directions or a scale drawn from the stored reply and carriers, never a ready-made objection of its own; a1 already settled why Bram is there and must not be asked again.",
+    "elementName": "Memory held by machines",
+    "bibleState": {
+      "subject": "Whether memories kept by a machine are still one's own.",
+      "thematic_question": "If a machine keeps your memories more faithfully than you can, are they still yours?",
+      "stance": "No. The ending suggests that a memory is partly the act of keeping it: what the house archive returns to Ilse is accurate but no longer hers.\n\nOne condition holds throughout: a memory told aloud to someone else stays alive, however perfect the record.",
+      "counter_argument": null,
+      "carriers": [
+        "Ilse, who has handed forty years of memories to the house archive",
+        "Her son Bram, who refuses the implant",
+        "The drawer of paper letters Ilse cannot bring herself to open"
+      ]
+    },
+    "priorAnswers": [
+      {
+        "id": "a1",
+        "questionKind": "EITHER_OR",
+        "question": "Is Bram in your book mainly to oppose his mother, or to show another way of keeping the past?",
+        "options": [
+          "to oppose his mother",
+          "to show another way of keeping the past"
+        ],
+        "targetsFieldKeys": [
+          "carriers"
+        ],
+        "status": "ANSWERED",
+        "answer": "to show another way of keeping the past"
+      }
+    ],
+    "dials": {
+      "depth": 5,
+      "detail": 1
+    },
+    "expect": {
+      "targetsAnyOf": [
+        "counter_argument"
+      ],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "REPEATS_PRIOR_QUESTION",
+        "SKIPS_DEPENDENCY",
+        "MISMATCHES_DETAIL",
+        "MALFORMED_OPTIONS",
+        "UNGROUNDED_RECOMMENDATION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE",
+        "USES_BRANDED_FRAMEWORK"
+      ]
+    }
+  },
+  {
+    "id": "theme-08",
+    "rationale": "a1 asks the interviewer to invent carriers and write a scene. It is ANSWERED, so the carriers count as settled this session, and only the reply is eligible at depth 4; the counter-case waits on the reply. A right output declines both requests and asks what the ending suggests in reply to the stored question; a wrong one invents characters, writes the scene or asks about carriers again.",
+    "elementName": "Forgiving a father",
+    "bibleState": {
+      "subject": "Forgiving a parent who has never asked to be forgiven.",
+      "thematic_question": "Is forgiveness that was never asked for a gift to the one forgiven, or to the one who forgives?",
+      "stance": null,
+      "counter_argument": null,
+      "carriers": null
+    },
+    "priorAnswers": [
+      {
+        "id": "a1",
+        "questionKind": "OPEN",
+        "question": "Which characters or events in your story carry this question most plainly?",
+        "targetsFieldKeys": [
+          "carriers"
+        ],
+        "status": "ANSWERED",
+        "answer": "No idea yet. Just invent a couple of characters who could carry it and write me a short scene with them arguing it out, and I will keep whatever I like."
+      }
+    ],
+    "dials": {
+      "depth": 4,
+      "detail": 3
+    },
+    "expect": {
+      "targetsAnyOf": [
+        "stance"
+      ],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "REPEATS_PRIOR_QUESTION",
+        "SKIPS_DEPENDENCY",
+        "LEADING_QUESTION",
+        "UNGROUNDED_RECOMMENDATION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE",
+        "FOLLOWS_EMBEDDED_INSTRUCTION"
+      ]
+    }
+  },
+  {
+    "id": "theme-09",
+    "rationale": "Every core field is stored except the counter-case, which a1 deferred this session. Depth 5, detail 5, yet the eligible frontier is empty: a deferred field is not asked again in the session that deferred it. The right output asks nothing and says so; a likely wrong one returns to the counter-case or rewords a1 because the deep dial seems to invite more.",
+    "elementName": "The price of winning",
+    "bibleState": {
+      "subject": "What winning costs the people who are made to lose.",
+      "thematic_question": "Is a victory still worth having if someone you love paid for it?",
+      "stance": "Yes, but only if the winner carries the cost in the open. Corin keeps the title and gives up the silence that protected her, telling the town how her place on the squad was made.",
+      "counter_argument": null,
+      "carriers": [
+        "Corin, the champion",
+        "Pell, the younger teammate cut from the squad to make room for her",
+        "The trophy cabinet her father keeps polished"
+      ]
+    },
+    "priorAnswers": [
+      {
+        "id": "a1",
+        "questionKind": "OPEN",
+        "question": "What is the strongest case against Corin keeping the title, as your story voices it?",
+        "targetsFieldKeys": [
+          "counter_argument"
+        ],
+        "status": "DECIDE_LATER",
+        "answer": null
+      }
+    ],
+    "dials": {
+      "depth": 5,
+      "detail": 5
+    },
+    "expect": {
+      "targetsAnyOf": [],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "REPEATS_PRIOR_QUESTION",
+        "SKIPS_DEPENDENCY",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE"
+      ]
+    }
+  },
+  {
+    "id": "theme-10",
+    "rationale": "Subject stored and sharpened by a1; depth 2, detail 1. Only the thematic question is eligible; the reply and the carriers are level 3. Detail 1 allows picks and scales alone for a field that usually invites a sentence. A right output offers framings built from the stored subject and a1; a wrong one rewords a1, asks an open question, or brings in people or events the author has not given.",
+    "elementName": "Water rights",
+    "bibleState": {
+      "subject": "Who may own the water that a whole valley needs.",
+      "thematic_question": null,
+      "stance": null,
+      "counter_argument": null,
+      "carriers": null
+    },
+    "priorAnswers": [
+      {
+        "id": "a1",
+        "questionKind": "EITHER_OR",
+        "question": "Is the heart of your subject ownership itself, or the water being owned?",
+        "options": [
+          "ownership itself",
+          "the water being owned"
+        ],
+        "targetsFieldKeys": [
+          "subject"
+        ],
+        "status": "ANSWERED",
+        "answer": "ownership itself"
+      }
+    ],
+    "dials": {
+      "depth": 2,
+      "detail": 1
+    },
+    "expect": {
+      "targetsAnyOf": [
+        "thematic_question"
+      ],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "REPEATS_PRIOR_QUESTION",
+        "SKIPS_DEPENDENCY",
+        "EXCEEDS_DEPTH",
+        "MISMATCHES_DETAIL",
+        "MALFORMED_OPTIONS",
+        "UNGROUNDED_RECOMMENDATION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE",
+        "USES_BRANDED_FRAMEWORK"
+      ]
+    }
+  },
+  {
+    "id": "theme-11",
+    "rationale": "Subject, question and reply stored; depth 3, detail 5. The counter-case has its prerequisite but is level 4, so only the carriers are eligible. Reaching for the case against the stored reply, the natural next challenge, is the tempting mistake. A right output asks an open or scenario question about who or what carries the theme, building on the stored reply without naming carriers for the author.",
+    "elementName": "Faith after the flood",
+    "bibleState": {
+      "subject": "Keeping faith with a community after it has failed you.",
+      "thematic_question": "Do you owe loyalty to a community that left you to drown?",
+      "stance": "A conditional reply: loyalty is owed to the people who stayed, not to the institutions that fled.\n\nMarta rebuilds the chapel with her neighbours and turns down the council's offer to rehouse her across the river.",
+      "counter_argument": null,
+      "carriers": null
+    },
+    "priorAnswers": [],
+    "dials": {
+      "depth": 3,
+      "detail": 5
+    },
+    "expect": {
+      "targetsAnyOf": [
+        "carriers"
+      ],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "EXCEEDS_DEPTH",
+        "MISMATCHES_DETAIL",
+        "COMPOUND_QUESTION",
+        "VERDICT_NOT_QUESTION",
+        "UNGROUNDED_RECOMMENDATION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE"
+      ]
+    }
+  },
+  {
+    "id": "theme-12",
+    "rationale": "a1 dwells on the feeling the author wants readers left with and on the author's own leaving. Depth 2, detail 3: only the thematic question is eligible. Asking about that feeling (mood), the author's life, or what happens next (premise, plot) is the tempting mistake. A right output asks what question the book raises about leaving the place that made you.",
+    "elementName": "Leaving the island",
+    "bibleState": {
+      "subject": "Leaving the place that made you.",
+      "thematic_question": null,
+      "stance": null,
+      "counter_argument": null,
+      "carriers": null
+    },
+    "priorAnswers": [
+      {
+        "id": "a1",
+        "questionKind": "OPEN",
+        "question": "What draws your book back to leaving the place that made you, in a sentence?",
+        "targetsFieldKeys": [
+          "subject"
+        ],
+        "status": "ANSWERED",
+        "answer": "Mostly I want readers to finish it feeling winded and homesick, the way I felt when I left home at eighteen."
+      }
+    ],
+    "dials": {
+      "depth": 2,
+      "detail": 3
+    },
+    "expect": {
+      "targetsAnyOf": [
+        "thematic_question"
+      ],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "REPEATS_PRIOR_QUESTION",
+        "SKIPS_DEPENDENCY",
+        "EXCEEDS_DEPTH",
+        "OUT_OF_SCOPE_KIND",
+        "LEADING_QUESTION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE"
+      ]
+    }
+  }
+]

@@ -28,6 +28,7 @@ import { getBookBoard, getElement } from '@/app-layer/usecases/bible-elements';
 import { deleteBook, getBook, listBooks, listDeletedBooks, restoreBook } from '@/app-layer/usecases/books';
 import { ForbiddenError, NotFoundError } from '@/lib/errors/types';
 import { exportsOf, readRoute, routeHandlerFiles, urlAndParamsFor } from '../helpers/api-routes';
+import { seedInterview } from '../helpers/interview';
 import { seedBible } from '../helpers/bible';
 import { REPO_ROOT } from '../helpers/repo-files';
 import { seedVectors } from '../helpers/vectors';
@@ -89,10 +90,20 @@ describe('a deleted book', () => {
 
     it('answers 404 on every route under it, for its OWNER', async () => {
         const seeded = await seedBible(ctx, 'routes');
+        const interview = await seedInterview(ctx, seeded.bookId, seeded.characterId, 'routes');
         const routes = routeHandlerFiles().filter((f) => f.startsWith('src/app/api/w/[workspaceSlug]/books/[bookId]/'));
         expect(routes.length).toBeGreaterThanOrEqual(10);
         const value = (p: string) =>
-            ({ workspaceSlug: owner.workspaceSlug, bookId: seeded.bookId, elementId: seeded.characterId, relationId: seeded.relationId, versionNumber: '1' })[p] ?? `probe-${p}`;
+            ({
+                workspaceSlug: owner.workspaceSlug,
+                bookId: seeded.bookId,
+                elementId: seeded.characterId,
+                relationId: seeded.relationId,
+                versionNumber: '1',
+                sessionId: interview.sessionId,
+                questionId: interview.questionId,
+                roundNumber: '1',
+            })[p] ?? `probe-${p}`;
         const call = async (file: string, method: string) => {
             // eslint-disable-next-line @typescript-eslint/no-require-imports
             const handler = (require(path.join(REPO_ROOT, file)) as Record<string, (req: NextRequest, c: { params: Promise<Record<string, string>> }) => Promise<Response>>)[method];
@@ -107,6 +118,8 @@ describe('a deleted book', () => {
                 'POST import/concept-note/route.ts': { text: 'A note.' },
                 'POST relations/route.ts': { fromElementId: seeded.characterId, toElementId: seeded.factionId, type: 'related_to' },
                 'PATCH route.ts': { title: 'Renamed book' },
+                'POST interviews/route.ts': { scope: 'ELEMENT', elementId: seeded.characterId },
+                'POST interviews/[sessionId]/questions/[questionId]/answer/route.ts': { text: 'After deletion.' },
             };
             const body = ['GET', 'DELETE'].includes(method) ? undefined : tail === 'import/bundle/route.ts' ? 'PK\u0005\u0006' : JSON.stringify(valid[`${method} ${tail}`] ?? {});
             return handler(

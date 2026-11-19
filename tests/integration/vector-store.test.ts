@@ -117,7 +117,7 @@ describe('upsert and search through the seam', () => {
     it('orders by cosine similarity: the same text first, then the text sharing the most words', async () => {
         const embedding = await queryFor(texts.want);
         const hits = await inA((db) =>
-            repo.search(db, a.workspaceId, { embeddingRevision: REV, embedding, k: 3, bookId: aBible.bookId, sourceModels: ['Question'] }),
+            repo.search(db, a.workspaceId, { embeddingRevision: REV, embedding, k: 3, bookId: aBible.bookId, sourceModels: ['FixtureNote'] }),
         );
         expect(hits.map((h) => h.sourceId)).toEqual([ids.want, ids.fear, ids.guild]);
         expect(hits[0].score).toBeCloseTo(1, 5);
@@ -130,7 +130,7 @@ describe('upsert and search through the seam', () => {
             expect(hit.score).toBeCloseTo(cosine(embedding, await queryFor(text)), 5);
         }
         expect(hits[0]).toEqual({
-            sourceModel: 'Question',
+            sourceModel: 'FixtureNote',
             sourceId: ids.want,
             chunkIndex: 0,
             bookId: aBible.bookId,
@@ -152,10 +152,10 @@ describe('upsert and search through the seam', () => {
     });
 
     it('lists the keys of one source, and of the revision', async () => {
-        const source = await inA((db) => repo.listSourceKeys(db, a.workspaceId, REV, 'Question', ids.want));
+        const source = await inA((db) => repo.listSourceKeys(db, a.workspaceId, REV, 'FixtureNote', ids.want));
         expect(source).toEqual([
             {
-                sourceModel: 'Question',
+                sourceModel: 'FixtureNote',
                 sourceId: ids.want,
                 chunkIndex: 0,
                 embeddingRevision: REV,
@@ -202,7 +202,7 @@ describe('one revision, one dimension count, under concurrency', () => {
     it("two concurrent first writes of a revision with different counts: one commits, the other is refused, and the revision stays usable", async () => {
         const rev = `race-${randomBytes(4).toString('hex')}`;
         const raw = (sourceId: string, embedding: number[]): VectorRecord => ({
-            sourceModel: 'Question',
+            sourceModel: 'FixtureNote',
             sourceId,
             chunkIndex: 0,
             embeddingRevision: rev,
@@ -239,7 +239,7 @@ describe('one revision, one dimension count, under concurrency', () => {
 
 describe("the seam's float bounds are the database's", () => {
     const raw = (sourceId: string, embedding: number[]): VectorRecord => ({
-        sourceModel: 'Question',
+        sourceModel: 'FixtureNote',
         sourceId,
         chunkIndex: 0,
         embeddingRevision: 'float-bounds:d2:p00000000',
@@ -277,7 +277,7 @@ describe('workspace isolation', () => {
     });
 
     it("B deleting A's source id removes nothing of A's", async () => {
-        expect(await inB((db) => repo.deleteSource(db, b.workspaceId, 'Question', aId))).toBe(0);
+        expect(await inB((db) => repo.deleteSource(db, b.workspaceId, 'FixtureNote', aId))).toBe(0);
         expect(await rowsOf(aId)).toHaveLength(1);
     });
 
@@ -310,7 +310,7 @@ describe('workspace isolation', () => {
             prisma.$executeRaw`
                 INSERT INTO "VectorEmbedding" ("id", "workspaceId", "bookId", "sourceModel", "sourceId", "chunkIndex",
                     "embeddingRevision", "dimensions", "contentHash", "embedding", "updatedAt")
-                VALUES (${uid('raw')}, ${a.workspaceId}, ${bBible.bookId}, 'Question', ${uid('q-raw')}, 0, ${REV}, 3,
+                VALUES (${uid('raw')}, ${a.workspaceId}, ${bBible.bookId}, 'FixtureNote', ${uid('q-raw')}, 0, ${REV}, 3,
                     ${'a'.repeat(64)}, '[1,0,0]'::vector, now())`,
         ).rejects.toThrow(/VectorEmbedding_workspaceId_bookId_fkey/);
     });
@@ -321,7 +321,7 @@ describe('the CHECKs hold whoever writes', () => {
         return prisma.$executeRaw`
             INSERT INTO "VectorEmbedding" ("id", "workspaceId", "bookId", "sourceModel", "sourceId", "chunkIndex",
                 "embeddingRevision", "dimensions", "contentHash", "embedding", "updatedAt")
-            VALUES (${uid('raw')}, ${a.workspaceId}, NULL, ${values.sourceModel ?? 'Question'}, ${uid('q-raw')}, 0, 'raw-check:d3:p00000000',
+            VALUES (${uid('raw')}, ${a.workspaceId}, NULL, ${values.sourceModel ?? 'FixtureNote'}, ${uid('q-raw')}, 0, 'raw-check:d3:p00000000',
                 ${values.dimensions}, ${values.contentHash ?? 'b'.repeat(64)}, ${values.embedding}::vector, now())`;
     }
 
@@ -363,12 +363,12 @@ describe('a source row takes its vectors with it', () => {
         // Rolled back with the transaction that asked for it.
         await expect(
             inA(async (db) => {
-                expect(await repo.deleteSource(db, a.workspaceId, 'Question', id)).toBe(2);
+                expect(await repo.deleteSource(db, a.workspaceId, 'FixtureNote', id)).toBe(2);
                 throw new Error('roll back');
             }),
         ).rejects.toThrow('roll back');
         expect(await rowsOf(id)).toHaveLength(2);
-        expect(await inA((db) => repo.deleteSource(db, a.workspaceId, 'Question', id))).toBe(2);
+        expect(await inA((db) => repo.deleteSource(db, a.workspaceId, 'FixtureNote', id))).toBe(2);
         expect(await rowsOf(id)).toEqual([]);
     });
 
@@ -394,7 +394,7 @@ describe('a source row takes its vectors with it', () => {
             const left = await prisma.$queryRaw<Array<{ sourceModel: string; sourceId: string }>>`
                 SELECT "sourceModel", "sourceId" FROM "VectorEmbedding" WHERE "sourceId" IN (${keep}, ${gone}) ORDER BY "sourceModel"`;
             expect(left).toEqual([
-                { sourceModel: 'Question', sourceId: gone },
+                { sourceModel: 'FixtureNote', sourceId: gone },
                 { sourceModel: model, sourceId: keep },
             ]);
         } finally {

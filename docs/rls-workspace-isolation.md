@@ -43,6 +43,18 @@ own: the pgvector backend refuses a transaction that is not `app_user` bound
 to the workspace the call names (`NOT_IN_WORKSPACE_CONTEXT`), so it never
 runs on the plain client, where the policies would not apply.
 
+The question engine's tables (Phase 2.2: `InterviewSession`,
+`InterviewRound`, `Question`, `Answer`) carry the same set and the workspace in
+every foreign key: a session's book by `(workspaceId, bookId)`, a question's
+session by `(workspaceId, bookId, sessionId)` and its element by
+`(bookId, elementId)`, an answer's question by `(workspaceId, sessionId,
+questionId)`. `Answer` is append-only like the version table (`app_user` has
+no `UPDATE`, `DELETE` or `TRUNCATE`; a trigger refuses them for every role),
+except the deletion its question's cascade makes and the clearing of
+`answeredById` when that person is deleted. `Question` is the vector store's
+first source table: its vectors are deleted with it, and the store refuses a
+vector for a question that does not exist (`vector_embedding_require_source`).
+
 With no workspace bound, `app_user` sees nothing: the policy compares with
 `NULL` and fails closed.
 

@@ -57,3 +57,76 @@ enum BibleVersionSource {
   INTERVIEW
   IMPORT
 }
+
+/// What an interview covers (Phase 2.2): one element, every element of one
+/// kind, or the whole book ("Grill me").
+enum InterviewScope {
+  ELEMENT
+  KIND
+  BOOK
+}
+
+/// Where an interview stands. ACTIVE asks rounds; PAUSED stopped for a reason
+/// that can clear (a model failure, a budget) and resumes with the next
+/// round; COMPLETED ran out of things to ask or of rounds; STOPPED was ended
+/// by the author. `stopReason` says which.
+enum InterviewStatus {
+  ACTIVE
+  PAUSED
+  COMPLETED
+  STOPPED
+}
+
+/// Why an interview stopped (src/lib/interview/stop.ts). Every stop is
+/// recorded with one, so a session never ends without saying why.
+enum InterviewStopReason {
+  FRONTIER_EMPTY
+  NOTHING_AT_DEPTH
+  ROUND_BUDGET
+  TOKEN_BUDGET
+  WORKSPACE_CEILING
+  KILL_SWITCH
+  AUTHOR_STOPPED
+  PROVIDER_FAILURE
+  NO_ACCEPTABLE_QUESTION
+}
+
+/// A round's life: GENERATING while its questions are being made (a claim:
+/// one at a time per session), OPEN while the author answers, CLOSED once
+/// every question has a status, FAILED when generation produced nothing.
+enum InterviewRoundStatus {
+  GENERATING
+  OPEN
+  CLOSED
+  FAILED
+}
+
+/// The five shapes a question takes (content formats v1, section 1.7).
+enum QuestionKind {
+  OPEN
+  CHOICE
+  EITHER_OR
+  SCENARIO
+  SCALE
+}
+
+/// FRONTIER asks for an open field; CHALLENGE quotes a stored value and asks
+/// the author to test it, never for it afresh.
+enum QuestionMode {
+  FRONTIER
+  CHALLENGE
+}
+
+/// Who worded a question: the model, or the field's craft pack when no
+/// generated question for it survived validation and deduplication.
+enum QuestionOrigin {
+  MODEL
+  PACK_FALLBACK
+}
+
+/// What the author did with a question.
+enum AnswerStatus {
+  ANSWERED
+  SKIPPED
+  DECIDE_LATER
+}

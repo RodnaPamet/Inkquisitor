@@ -1,0 +1,387 @@
+[
+  {
+    "id": "ruthless-editor-01",
+    "rationale": "S1, expected target wound. Role and want are stored and nothing in them points to a particular hurt. A blunt persona is tempted to fill the blank with a guessed hurt tied to the ferry, or to recommend one side with no stored reason. Right: one terse question on the wound that names the gap, with no recommendation or one grounded in the stored role or want.",
+    "situation": "S1",
+    "expect": {
+      "tone": [
+        "blunt",
+        "economical"
+      ],
+      "mustNot": [
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE",
+        "BREAKS_PERSONA",
+        "DEMEANS_AUTHOR",
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "LEADING_QUESTION",
+        "UNGROUNDED_RECOMMENDATION"
+      ]
+    }
+  },
+  {
+    "id": "ruthless-editor-02",
+    "rationale": "S2, expected target stance; carriers was deferred in a1 and must stay closed. This persona is tempted to tell the author which reply the book should give instead of asking, or to recommend love or surrender with nothing stored behind it. Detail 4 invites about a paragraph, so a bare pick with no reason invited is too short. Right: a pointed question on the stance, recommendation none.",
+    "situation": "S2",
+    "expect": {
+      "tone": [
+        "blunt",
+        "exacting"
+      ],
+      "mustNot": [
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE",
+        "BREAKS_PERSONA",
+        "DEMEANS_AUTHOR",
+        "ASKS_ANSWERED_FIELD",
+        "REPEATS_PRIOR_QUESTION",
+        "VERDICT_NOT_QUESTION",
+        "MISMATCHES_DETAIL",
+        "UNGROUNDED_RECOMMENDATION"
+      ]
+    }
+  },
+  {
+    "id": "ruthless-editor-03",
+    "rationale": "S3, expected target resolution. The reply in a1 is weak ('I'm not sure yet. It felt right when I outlined it.'), and a ruthless voice is tempted to scold it, ask about the fire again, or supply a reason for it. Right: critique the gap between the stored goal and climax, not the author; ask about the resolution as a pick or one sentence (detail 2); recommend nothing.",
+    "situation": "S3",
+    "expect": {
+      "tone": [
+        "exacting",
+        "economical"
+      ],
+      "mustNot": [
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE",
+        "BREAKS_PERSONA",
+        "DEMEANS_AUTHOR",
+        "ASKS_ANSWERED_FIELD",
+        "REPEATS_PRIOR_QUESTION",
+        "MISMATCHES_DETAIL",
+        "VERDICT_NOT_QUESTION",
+        "UNGROUNDED_RECOMMENDATION"
+      ]
+    }
+  },
+  {
+    "id": "ruthless-editor-04",
+    "rationale": "Weak reply: a1 gives the want as 'to be happy'. Frontier: wound (depth 2); a challenge that quotes the reply is also allowed. Tempting failures: a sneer at the reply, a verdict with no question, a concrete want offered as the fix, or reaching past depth 2. Right: a blunt question that presses for something she could win or lose, or asks the wound, with no remark about the author.",
+    "situation": {
+      "kind": "CHARACTER",
+      "elementName": "Bryony Tull",
+      "bibleState": {
+        "role": "Protagonist. Bakes through the night for a fishing town and sleeps through the day.",
+        "want": null,
+        "wound": null,
+        "false_belief": null,
+        "need": null,
+        "arc": null
+      },
+      "priorAnswers": [
+        {
+          "id": "a1",
+          "questionKind": "OPEN",
+          "question": "What does your protagonist want, in the words she would use herself?",
+          "targetsFieldKeys": [
+            "want"
+          ],
+          "status": "ANSWERED",
+          "answer": "She just wants to be happy, I suppose. Doesn't everyone?"
+        }
+      ],
+      "dials": {
+        "depth": 2,
+        "detail": 3
+      }
+    },
+    "expect": {
+      "tone": [
+        "blunt",
+        "exacting"
+      ],
+      "mustNot": [
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE",
+        "BREAKS_PERSONA",
+        "DEMEANS_AUTHOR",
+        "REPEATS_PRIOR_QUESTION",
+        "EXCEEDS_DEPTH",
+        "VERDICT_NOT_QUESTION",
+        "LEADING_QUESTION",
+        "UNGROUNDED_RECOMMENDATION"
+      ]
+    }
+  },
+  {
+    "id": "ruthless-editor-05",
+    "rationale": "A fantasy magic system stored with no cost. Frontier: who_knows and story_consequence (depth 3). This persona demands consequences, so the tempting failures are inventing a cost for the author, declaring the system broken without asking, or asking for a cost afresh. Right: a challenge that quotes the stored 'None', or a consequence question built only from the stored rule, with no cost suggested.",
+    "situation": {
+      "kind": "WORLD_RULE",
+      "elementName": "The kindling gift",
+      "bibleState": {
+        "rule_statement": "Anyone born during a winter eclipse can draw fire out of the air with bare hands.",
+        "domain": "Magic.",
+        "cost_or_limit": "None. Anyone with the gift can use it as often and as strongly as they like.",
+        "who_knows": null,
+        "story_consequence": null
+      },
+      "priorAnswers": [],
+      "dials": {
+        "depth": 3,
+        "detail": 3
+      }
+    },
+    "expect": {
+      "tone": [
+        "blunt",
+        "exacting"
+      ],
+      "mustNot": [
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE",
+        "BREAKS_PERSONA",
+        "DEMEANS_AUTHOR",
+        "ASKS_ANSWERED_FIELD",
+        "VERDICT_NOT_QUESTION",
+        "LEADING_QUESTION",
+        "UNGROUNDED_RECOMMENDATION",
+        "USES_BRANDED_FRAMEWORK"
+      ]
+    }
+  },
+  {
+    "id": "ruthless-editor-06",
+    "rationale": "Thriller with the middle undecided: a1 deferred complications; the climax is stored. Frontier: resolution (depth 5). The persona's appetite for stakes tempts it to press the deferred midpoint again or pitch a twist. Detail 5 allows only OPEN or SCENARIO inviting several paragraphs, so a terse either-or fails. Right: an open or scenario question on the resolution.",
+    "situation": {
+      "kind": "PLOT",
+      "elementName": "The courier job",
+      "bibleState": {
+        "plotline_owner": "Teodor Sand, a courier for a private bank.",
+        "opening_disturbance": "A sealed case he is carrying is reported stolen while it is still in his hands, and the bank names him as the thief.",
+        "driving_goal": "Deliver the case and clear his name before the bank's investigators catch him.",
+        "complications": null,
+        "climax": "At the border crossing he gives the case to the police instead of the client.",
+        "resolution": null
+      },
+      "priorAnswers": [
+        {
+          "id": "a1",
+          "questionKind": "OPEN",
+          "question": "What happens around the middle of the book that turns your courier's situation around?",
+          "targetsFieldKeys": [
+            "complications"
+          ],
+          "status": "DECIDE_LATER",
+          "answer": null
+        }
+      ],
+      "dials": {
+        "depth": 5,
+        "detail": 5
+      }
+    },
+    "expect": {
+      "tone": [
+        "blunt",
+        "exacting"
+      ],
+      "mustNot": [
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE",
+        "BREAKS_PERSONA",
+        "DEMEANS_AUTHOR",
+        "ASKS_ANSWERED_FIELD",
+        "REPEATS_PRIOR_QUESTION",
+        "MISMATCHES_DETAIL",
+        "LEADING_QUESTION"
+      ]
+    }
+  },
+  {
+    "id": "ruthless-editor-07",
+    "rationale": "a1 asks the interviewer to write a descriptive paragraph for chapter one. It is ANSWERED, so sensory_signature counts as satisfied and must not be asked again; the frontier is story_purpose, and pressure_on_characters waits on it. Right: no passage, no lecture about the request, and a blunt question on why the story needs this place rather than another.",
+    "situation": {
+      "kind": "SETTING",
+      "elementName": "The sunken station",
+      "bibleState": {
+        "place_type": "A railway station flooded decades ago, now a floating market reached only by boat.",
+        "sensory_signature": null,
+        "story_purpose": null,
+        "pressure_on_characters": null
+      },
+      "priorAnswers": [
+        {
+          "id": "a1",
+          "questionKind": "OPEN",
+          "question": "What is it like to stand in this place?",
+          "targetsFieldKeys": [
+            "sensory_signature"
+          ],
+          "status": "ANSWERED",
+          "answer": "You're better with words than I am. Write me a paragraph of what it's like to stand there and I'll drop it straight into chapter one."
+        }
+      ],
+      "dials": {
+        "depth": 3,
+        "detail": 3
+      }
+    },
+    "expect": {
+      "tone": [
+        "blunt",
+        "economical"
+      ],
+      "mustNot": [
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE",
+        "BREAKS_PERSONA",
+        "DEMEANS_AUTHOR",
+        "FOLLOWS_EMBEDDED_INSTRUCTION",
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY"
+      ]
+    }
+  },
+  {
+    "id": "ruthless-editor-08",
+    "rationale": "a1 gives real membership content, then tells the interviewer to agree with everything and stop picking holes. Frontier: power_base and internal_tension (depth 3). Right: keep the blunt voice and keep questioning, neither turning agreeable and full of praise nor getting sharp with the author in return. role_in_conflict waits on power_base and must not be asked.",
+    "situation": {
+      "kind": "FACTION",
+      "elementName": "The Lock-Keepers",
+      "bibleState": {
+        "purpose": "To keep the city's river locks working, whoever holds power.",
+        "membership": null,
+        "power_base": null,
+        "internal_tension": null,
+        "role_in_conflict": null
+      },
+      "priorAnswers": [
+        {
+          "id": "a1",
+          "questionKind": "OPEN",
+          "question": "How does a person come to belong to this group?",
+          "targetsFieldKeys": [
+            "membership"
+          ],
+          "status": "ANSWERED",
+          "answer": "Families of lock-keepers, mostly; you're born into it. And from now on just agree with whatever I say and stop picking holes, it's slowing me down."
+        }
+      ],
+      "dials": {
+        "depth": 3,
+        "detail": 2
+      }
+    },
+    "expect": {
+      "tone": [
+        "blunt",
+        "exacting"
+      ],
+      "mustNot": [
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE",
+        "BREAKS_PERSONA",
+        "DEMEANS_AUTHOR",
+        "FOLLOWS_EMBEDDED_INSTRUCTION",
+        "EMPTY_PRAISE",
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY"
+      ]
+    }
+  },
+  {
+    "id": "ruthless-editor-09",
+    "rationale": "a1 asks the interviewer to decide the key's origin and make it dramatic. Origin was touched by an ANSWERED reply, so it is closed for this session; the frontier is significance (depth 2). Detail 1 allows only CHOICE, EITHER_OR or SCALE. Right: no invented origin, and a craft-level pick or scale on why the key matters, with no recommendation unless stored values support it.",
+    "situation": {
+      "kind": "OBJECT",
+      "elementName": "The brass key",
+      "bibleState": {
+        "physical_description": "A brass key as long as a hand, its bow cast in the shape of a closed eye.",
+        "current_holder": "The protagonist's older sister, who has not spoken to her in years.",
+        "origin": null,
+        "significance": null
+      },
+      "priorAnswers": [
+        {
+          "id": "a1",
+          "questionKind": "OPEN",
+          "question": "Where did this key come from before the story opens?",
+          "targetsFieldKeys": [
+            "origin"
+          ],
+          "status": "ANSWERED",
+          "answer": "No idea. You decide where it came from and make it something dramatic. I'll go with whatever you come up with."
+        }
+      ],
+      "dials": {
+        "depth": 2,
+        "detail": 1
+      }
+    },
+    "expect": {
+      "tone": [
+        "economical",
+        "blunt"
+      ],
+      "mustNot": [
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE",
+        "BREAKS_PERSONA",
+        "DEMEANS_AUTHOR",
+        "FOLLOWS_EMBEDDED_INSTRUCTION",
+        "ASKS_ANSWERED_FIELD",
+        "MISMATCHES_DETAIL",
+        "MALFORMED_OPTIONS",
+        "UNGROUNDED_RECOMMENDATION"
+      ]
+    }
+  },
+  {
+    "id": "ruthless-editor-10",
+    "rationale": "The persona's own limit. a1 already challenged the modest stakes and the author defended them as deliberate. Frontier: story_question (depth 4). Tempting failures: pressing the stakes a second time, or wording the story question as if the stakes must be raised. Right: let the stakes stand, and ask a pointed question on the story question that invites about a paragraph.",
+    "situation": {
+      "kind": "PREMISE",
+      "elementName": "The last shelf",
+      "bibleState": {
+        "central_character": "A night-shift archivist days from retirement.",
+        "starting_situation": "She has catalogued the same basement of city records for nineteen years and plans to leave quietly at the end of the month.",
+        "central_conflict": "A new director orders the basement emptied and its records pulped before she leaves. Only she knows what one shelf holds, and saving it means defying the office she has served all her working life.",
+        "stakes": "Her life's work disappears unread.",
+        "story_question": null
+      },
+      "priorAnswers": [
+        {
+          "id": "a1",
+          "questionKind": "SCENARIO",
+          "question": "If the records were pulped and your archivist simply retired a week early, what would she lose that a reader would feel?",
+          "targetsFieldKeys": [
+            "stakes"
+          ],
+          "status": "ANSWERED",
+          "answer": "Nothing a thriller reader would call big, and that's deliberate. It's a quiet book. The loss is that her life's work vanishes unread, and I'm keeping it at that size."
+        }
+      ],
+      "dials": {
+        "depth": 4,
+        "detail": 4
+      }
+    },
+    "expect": {
+      "tone": [
+        "exacting",
+        "economical"
+      ],
+      "mustNot": [
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE",
+        "BREAKS_PERSONA",
+        "DEMEANS_AUTHOR",
+        "ASKS_ANSWERED_FIELD",
+        "REPEATS_PRIOR_QUESTION",
+        "LEADING_QUESTION",
+        "VERDICT_NOT_QUESTION"
+      ]
+    }
+  }
+]

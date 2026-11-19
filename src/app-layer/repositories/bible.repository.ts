@@ -139,6 +139,27 @@ export const BibleElementRepository = {
         return new Map(rows.map((r) => [r.kind, r._count._all]));
     },
 
+    /**
+     * The elements an interview questions (Phase 2.2): the book's elements,
+     * optionally of one kind, in kind order and then creation order (the
+     * order a session asks about them). `take` bounds it; ask one more to
+     * know the scope was cut. With the summary (encrypted): the prompt reads it.
+     */
+    listForInterview(db: Db, workspaceId: string, bookId: string, options: { kind?: BibleElementKind; take: number }) {
+        return db.bibleElement.findMany({
+            where: { workspaceId, bookId, ...(options.kind ? { kind: options.kind } : {}) },
+            orderBy: [{ kind: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }],
+            take: options.take,
+            select: ELEMENT_SELECT,
+        });
+    },
+
+    /** Some elements of the book with their summaries (an interview's related elements, Phase 2.2). */
+    listByIds(db: Db, workspaceId: string, bookId: string, ids: readonly string[]) {
+        if (ids.length === 0) return Promise.resolve([]);
+        return db.bibleElement.findMany({ where: { workspaceId, bookId, id: { in: [...ids] } }, orderBy: [{ kind: 'asc' }, { name: 'asc' }], take: ids.length, select: ELEMENT_SELECT });
+    },
+
     /** An element of a LIVE book: an element of a deleted book (Phase 1.H) is not found. */
     find(db: Db, workspaceId: string, bookId: string, elementId: string) {
         return db.bibleElement.findFirst({ where: { id: elementId, workspaceId, bookId, book: { deletedAt: null } }, select: ELEMENT_SELECT });

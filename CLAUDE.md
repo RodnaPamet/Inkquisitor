@@ -183,6 +183,17 @@ src/app/w/[workspaceSlug]/deleted-books/ → the OWNER's Recently deleted page
 tests/guards/schema-index-coverage, find-many-bounded; tests/helpers/prisma-schema-models, bible-load
 ```
 
+Phase 2.2 (the question engine) added:
+
+```
+prisma/schema/interview.prisma → InterviewSession, InterviewRound, Question, Answer (append-only)
+src/lib/interview/           → the pure core: frontier, plan, candidates (output schema + validation), dedupe, text
+                               (normalise, grounding), round (produceRound), stop, dials, packs (+ packs/**), prompt,
+                               storage, generator (interface), model-seam.ts (THE 2.1 wiring seam), evals/ (coverage set + runner)
+src/app-layer/usecases/      → interviews, interview-answers, interview-rounds, interview-state, question-embeddings
+src/app/api/w/[workspaceSlug]/books/[bookId]/interviews/** → start, list, read, next round, close, stop, answer, skip, decide later
+```
+
 ## Rules every change obeys
 
 These are `docs/ROADMAP.md` section 3, restated. The roadmap is authoritative
@@ -483,6 +494,40 @@ only under zero-retention terms (D5).
   indexes, indexed foreign keys). A page's reads live in `bible-pages.ts`, and
   the load test (`bible-load.test.ts`) holds them to 300 ms at p95.
   EXPORT downloads go through `bibleDownload` (a refusal is shown, never saved).
+- **The question engine (Phase 2.2).** An interview asks, each round, the
+  whole FRONTIER (`computeFrontier`): every open field whose `dependsOn` is
+  satisfied, within the depth dial, after the already-answered checks remove
+  what the book holds — the bible's stored values always first (rule 5), then
+  any pluggable `AlreadyAnsweredCheck` (a concept seed, a 4.1 fact). An
+  ANSWERED answer of THIS session satisfies its fields; SKIPPED / DECIDE_LATER
+  touch them (not asked again, dependants wait); earlier sessions' answers do
+  not count. Core fields lead the frontier, optional ones follow. The model
+  only WORDS questions, behind `QuestionGenerator`; code validates every
+  candidate (`validateCandidate`: targets, kind by detail, options, text,
+  challenge quote; a bad recommendation is stripped, never fatal),
+  deduplicates (`dedupe`: lexical signals, a keyed `dedupeKey`, and the 2.0
+  vector store's neighbours; a question about another element is never a
+  repeat), fills gaps from the craft pack's examples, orders and numbers.
+  `produceRound` is that whole step, run by the usecase AND the coverage
+  evaluation. The model call is OUTSIDE every transaction: claim the round
+  (GENERATING, under the session's advisory lock), generate, persist. Every
+  stop records a reason (`InterviewStopReason`; FRONTIER_EMPTY vs
+  NOTHING_AT_DEPTH vs ROUND_BUDGET, and `stopDetail` in ids and keys); a
+  session that asked nothing is NOT_ASSESSED, and a scope with no element is
+  refused (`SCOPE_EMPTY`). Until 2.1 wires `src/lib/interview/model-seam.ts`
+  (`fenceData`, `defaultQuestionGenerator`, `modelBudgetSignals`; nothing
+  else), every request that would generate refuses 503 `MODEL_NOT_WIRED`
+  before writing; nothing fakes model output. Author text goes in fenced data,
+  never the system prompt (`buildGenerationRequest`). `bible.edit` runs an
+  interview, `bible.view` reads one. Answers are append-only (a re-answer is
+  the next revision, while the round is open). Question and answer text are
+  in the encrypted manifest; a question passes `sanitiseQuestionForStorage`
+  before it is judged and again as it is written. `Question` is the vector
+  store's first source table: its vectors go with it, and
+  `vector_embedding_require_source` refuses (or, in a rebuild, skips) a vector
+  whose question is gone (issue #23 item 1). Packs (`src/lib/interview/packs/`,
+  original content) are validated with Zod at load and read from disk at
+  `process.cwd()` (the Dockerfile copies the directory); 2.3 mounts them.
 - **Sanitising author text.** Every author-text write sanitises at the
   usecase layer before it is stored: plain text through `plainLine` /
   `plainBlock` (`src/lib/bible/text.ts`, over `sanitizePlainText`), rich text

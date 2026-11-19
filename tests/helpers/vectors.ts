@@ -26,7 +26,7 @@ export async function recordFor(
     const out = await stub.embed([text], { inputType: 'passage' });
     if (!out.ok) throw new Error(`stub embedding failed: ${out.reason}`);
     return {
-        sourceModel: key.sourceModel ?? 'Question',
+        sourceModel: key.sourceModel ?? 'FixtureNote',
         sourceId: key.sourceId,
         chunkIndex: key.chunkIndex ?? 0,
         embeddingRevision: stub.revision,

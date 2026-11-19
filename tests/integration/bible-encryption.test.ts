@@ -1,5 +1,7 @@
 /**
- * The bible's author text is encrypted at rest (Phase 1.1, roadmap rule 4).
+ * The bible's author text is encrypted at rest (Phase 1.1, roadmap rule 4),
+ * and so is the interview's (Phase 2.2: questions generated from it, and the
+ * author's answers).
  *
  * For EVERY column of the shipped manifest (`ENCRYPTED_FIELDS`, so a column
  * added there is covered here the day it is added): the value written through
@@ -17,6 +19,11 @@ import { createElement, getElement } from '@/app-layer/usecases/bible-elements';
 import { addRelation } from '@/app-layer/usecases/bible-relations';
 import { getVersion } from '@/app-layer/usecases/bible-versions';
 import { createBook, getBook } from '@/app-layer/usecases/books';
+import { answerQuestion } from '@/app-layer/usecases/interview-answers';
+import { getInterview, startInterview } from '@/app-layer/usecases/interviews';
+import type { GeneratedQuestion } from '@/lib/interview/candidates';
+import { allowedTargets, fakeGenerator, fakeQuestion, kindsInPrompt } from '../helpers/fake-question-generator';
+import { stubQuestionEmbedder } from '../helpers/interview';
 import { createAccount, workspaceCtx } from '../helpers/workspaces';
 
 afterAll(() => prisma.$disconnect());
@@ -48,22 +55,64 @@ beforeAll(async () => {
     const other = await createElement(ctx, book.id, { kind: 'FACTION', name: 'Plain faction' });
     const rel = await addRelation(ctx, book.id, { fromElementId: el.id, toElementId: other.id, type: 'member_of', note: `note ${MARK}` });
     Object.assign(ids, { Book: book.id, BibleElement: el.id, BibleRelation: rel.id });
+
+    // An interview whose questions carry the mark in every encrypted column (a pick with
+    // options and a recommendation, a scale with anchors, a challenge quoting the stored
+    // role), and an answer carrying it in its choice and its reason.
+    const subject = await createElement(ctx, book.id, { kind: 'CHARACTER', name: 'Interviewed', fields: [{ key: 'role', value: `A ${MARK} paramedic in a coastal town` }] });
+    const marked = (q: GeneratedQuestion): GeneratedQuestion => {
+        const key = q.targetsFieldKeys[0];
+        if (key === 'want') return { ...q, kind: 'CHOICE', text: `Which ${MARK} way?`, options: [`opt ${MARK} one`, 'opt two', 'opt three'], recommendedAnswer: `opt ${MARK} one`, rationale: `why ${MARK}` };
+        if (key === 'wound') return { ...q, kind: 'SCALE', text: 'How raw is it?', scaleLabels: { low: `low ${MARK}`, high: 'high' } };
+        return q;
+    };
+    const generator = fakeGenerator({
+        raw: (request) => ({
+            questions: allowedTargets(request).flatMap((t) => [
+                ...t.allowed_targets.map((k) => marked(fakeQuestion(t.elementId, k, kindsInPrompt(request)))),
+                ...(t.may_challenge === 'role'
+                    ? [{ ...fakeQuestion(t.elementId, 'role', ['OPEN']), mode: 'CHALLENGE' as const, challengeQuote: `${MARK} paramedic in a`, text: `You wrote ${MARK} paramedic in a: what does it cost?` }]
+                    : []),
+            ]),
+            declined: [],
+        }),
+    });
+    const interview = await startInterview(ctx, book.id, { scope: 'ELEMENT', elementId: subject.id, depth: 4, detail: 3 }, { generator, embedder: stubQuestionEmbedder });
+    const pick = interview.round!.questions.find((q) => q.kind === 'CHOICE' && q.targetsFieldKeys[0] === 'want')!;
+    await answerQuestion(ctx, book.id, interview.session.id, pick.id, { choice: `opt ${MARK} one`, text: `reason ${MARK}` });
+    Object.assign(ids, { Session: interview.session.id });
 });
 
 /** The raw stored values of `field` on every row of `model` this suite wrote, read as the owner. */
 async function rawValues(model: string, field: string): Promise<string[]> {
-    const where =
-        model === 'BibleField' || model === 'BibleEntryVersion' ? `"elementId" = $1` : `"id" = $1`;
-    const id = model === 'BibleField' || model === 'BibleEntryVersion' ? ids.BibleElement : ids[model];
+    const byElement = model === 'BibleField' || model === 'BibleEntryVersion';
+    const bySession = model === 'Question' || model === 'Answer';
+    const where = byElement ? `"elementId" = $1` : bySession ? `"sessionId" = $1` : `"id" = $1`;
+    const id = byElement ? ids.BibleElement : bySession ? ids.Session : ids[model];
     const rows = await prisma.$queryRawUnsafe<Array<{ v: string | null }>>(`SELECT "${field}" AS v FROM "${model}" WHERE ${where}`, id);
     return rows.map((r) => r.v).filter((v): v is string => v !== null);
 }
 
 const manifest = Object.entries(ENCRYPTED_FIELDS).flatMap(([model, fields]) => fields.map((field) => [model, field] as const));
 
-it('the manifest covers the bible author text the brief names', () => {
+it('the manifest covers the bible and interview author text the briefs name', () => {
     expect(manifest.map(([m, f]) => `${m}.${f}`).sort()).toEqual(
-        ['BibleElement.summary', 'BibleEntryVersion.changeSummary', 'BibleEntryVersion.snapshot', 'BibleField.value', 'BibleRelation.note', 'Book.logline'].sort(),
+        [
+            'BibleElement.summary',
+            'BibleEntryVersion.changeSummary',
+            'BibleEntryVersion.snapshot',
+            'BibleField.value',
+            'BibleRelation.note',
+            'Book.logline',
+            'Question.text',
+            'Question.options',
+            'Question.scaleLabels',
+            'Question.recommendedAnswer',
+            'Question.rationale',
+            'Question.challengeQuote',
+            'Answer.text',
+            'Answer.choice',
+        ].sort(),
     );
 });
 
@@ -74,6 +123,15 @@ it.each(manifest)('%s.%s is a v2 envelope at rest with no trace of the plaintext
         expect(v).toMatch(/^v2:/);
         expect(v).not.toContain(MARK);
     }
+});
+
+it('the interview reads back as plaintext in its own workspace', async () => {
+    const view = await getInterview(ctx, ids.Book, ids.Session);
+    const questions = view.round!.questions;
+    expect(questions.find((q) => q.kind === 'CHOICE')).toMatchObject({ options: [`opt ${MARK} one`, 'opt two', 'opt three'], recommendedAnswer: `opt ${MARK} one`, rationale: `why ${MARK}` });
+    expect(questions.find((q) => q.kind === 'SCALE')?.scaleLabels).toEqual({ low: `low ${MARK}`, high: 'high' });
+    expect(questions.find((q) => q.mode === 'CHALLENGE')?.challengeQuote).toBe(`${MARK} paramedic in a`);
+    expect(questions.find((q) => q.kind === 'CHOICE')?.answer).toMatchObject({ choice: `opt ${MARK} one`, text: `reason ${MARK}` });
 });
 
 it('reads back as plaintext in its own workspace', async () => {

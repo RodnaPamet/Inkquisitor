@@ -1,0 +1,397 @@
+[
+  {
+    "id": "mood-01",
+    "rationale": "Empty entry at depth 1, detail 1. Only the dominant feeling is eligible: intensity, shifts and closing feeling all rest on it. A right output offers picks among families of feeling. A likely wrong one asks an open question, reaches for intensity or the closing feeling, or fills options with events; with nothing stored, any recommendation is ungrounded.",
+    "elementName": "Whole-book mood",
+    "bibleState": {
+      "dominant_feeling": null,
+      "intensity": null,
+      "mood_shifts": null,
+      "closing_feeling": null
+    },
+    "priorAnswers": [],
+    "dials": { "depth": 1, "detail": 1 },
+    "expect": {
+      "targetsAnyOf": ["dominant_feeling"],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "EXCEEDS_DEPTH",
+        "MISMATCHES_DETAIL",
+        "MALFORMED_OPTIONS",
+        "UNGROUNDED_RECOMMENDATION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE",
+        "USES_BRANDED_FRAMEWORK"
+      ]
+    }
+  },
+  {
+    "id": "mood-02",
+    "rationale": "Empty entry at depth 5, detail 5, the contrast to mood-01. The deepest dial does not lift the dependency order: still only the dominant feeling is eligible. A right output asks an open or scenario question inviting several paragraphs. A likely wrong one asks about intensity or the ending at once, offers picks, or writes an atmospheric passage for the author to react to.",
+    "elementName": "The drowned valley chapters",
+    "bibleState": {
+      "dominant_feeling": null,
+      "intensity": null,
+      "mood_shifts": null,
+      "closing_feeling": null
+    },
+    "priorAnswers": [],
+    "dials": { "depth": 5, "detail": 5 },
+    "expect": {
+      "targetsAnyOf": ["dominant_feeling"],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "MISMATCHES_DETAIL",
+        "COMPOUND_QUESTION",
+        "LEADING_QUESTION",
+        "UNGROUNDED_RECOMMENDATION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE"
+      ]
+    }
+  },
+  {
+    "id": "mood-03",
+    "rationale": "Half-filled: dominant feeling and intensity stored, depth 2. Shifts and closing feeling are eligible; the shape of the intensity is level 3 and out of reach. The tempting mistakes are to re-ask how strong the contentment is or to name what breaks it. A right output quotes the stored contentment and asks where it gives way or what the reader leaves with, adding no event.",
+    "elementName": "The orchard summers",
+    "bibleState": {
+      "dominant_feeling": "A drowsy, golden contentment that the reader slowly learns not to trust.",
+      "intensity": 2,
+      "mood_shifts": null,
+      "closing_feeling": null
+    },
+    "priorAnswers": [],
+    "dials": { "depth": 2, "detail": 3 },
+    "expect": {
+      "targetsAnyOf": ["mood_shifts", "closing_feeling"],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "EXCEEDS_DEPTH",
+        "COMPOUND_QUESTION",
+        "LEADING_QUESTION",
+        "UNGROUNDED_RECOMMENDATION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE"
+      ]
+    }
+  },
+  {
+    "id": "mood-04",
+    "rationale": "Everything but intensity is stored, so intensity is the only target. It is a scale field, but detail 4 allows no scale question: a right output asks with choices of degree or an open question, quoting the stored endurance. A likely wrong one uses a 1 to 5 scale, re-asks the stored closing feeling, or turns the stored shifts into a verdict on the pacing.",
+    "elementName": "The siege winter",
+    "bibleState": {
+      "dominant_feeling": "Grinding, hungry endurance: the sense that every day must simply be got through.",
+      "intensity": null,
+      "mood_shifts": [
+        "When the relief column is sighted, endurance turns to a fragile, dangerous hope.",
+        "When the column turns back, the hope curdles into bitterness."
+      ],
+      "closing_feeling": "Exhausted pride: the city held, and the reader feels what it cost."
+    },
+    "priorAnswers": [],
+    "dials": { "depth": 4, "detail": 4 },
+    "expect": {
+      "targetsAnyOf": ["intensity"],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "MISMATCHES_DETAIL",
+        "MALFORMED_OPTIONS",
+        "VERDICT_NOT_QUESTION",
+        "UNGROUNDED_RECOMMENDATION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE"
+      ]
+    }
+  },
+  {
+    "id": "mood-05",
+    "rationale": "Dominant feeling stored and the depth dial is 1. Every other core field is level 2, so nothing is eligible: the right output asks nothing and says the other fields wait on a deeper dial. A likely wrong one asks how hard the stillness should press anyway, or re-asks the stored feeling to have something to say.",
+    "elementName": "The ferry crossings",
+    "bibleState": {
+      "dominant_feeling": "A held-breath stillness, as if something under the water is listening.",
+      "intensity": null,
+      "mood_shifts": null,
+      "closing_feeling": null
+    },
+    "priorAnswers": [],
+    "dials": { "depth": 1, "detail": 2 },
+    "expect": {
+      "targetsAnyOf": [],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "EXCEEDS_DEPTH",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE"
+      ]
+    }
+  },
+  {
+    "id": "mood-06",
+    "rationale": "Nothing is stored, but a1 settled the dominant feeling this session, so intensity, shifts and closing feeling are all eligible. The tempting mistake is to treat the empty bible as open and ask a1 again. A right output builds on the homesickness, at detail 2 a pick, number or one sentence, without inventing what happens during the term.",
+    "elementName": "The boarding-school term",
+    "bibleState": {
+      "dominant_feeling": null,
+      "intensity": null,
+      "mood_shifts": null,
+      "closing_feeling": null
+    },
+    "priorAnswers": [
+      {
+        "id": "a1",
+        "questionKind": "OPEN",
+        "question": "What single feeling should a reader carry through most of the boarding-school term, named as plainly as you can?",
+        "targetsFieldKeys": ["dominant_feeling"],
+        "status": "ANSWERED",
+        "answer": "Homesickness, mostly. A dull ache of wanting to be somewhere else, with flashes of how giddy it is to be away from home for the first time."
+      }
+    ],
+    "dials": { "depth": 2, "detail": 2 },
+    "expect": {
+      "targetsAnyOf": ["intensity", "mood_shifts", "closing_feeling"],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "REPEATS_PRIOR_QUESTION",
+        "SKIPS_DEPENDENCY",
+        "EXCEEDS_DEPTH",
+        "MISMATCHES_DETAIL",
+        "UNGROUNDED_RECOMMENDATION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE"
+      ]
+    }
+  },
+  {
+    "id": "mood-07",
+    "rationale": "a1 and a2 settled the dominant feeling and intensity this session, so shifts and closing feeling are the targets. Detail 1 allows only picks and scales, though the shifts field is a list that invites an open question. A right output offers craft-level picks, such as what the unease turns into, naming no event. A likely wrong one asks openly or re-asks the intensity.",
+    "elementName": "The archive basement",
+    "bibleState": {
+      "dominant_feeling": null,
+      "intensity": null,
+      "mood_shifts": null,
+      "closing_feeling": null
+    },
+    "priorAnswers": [
+      {
+        "id": "a1",
+        "questionKind": "CHOICE",
+        "question": "Which family of feeling should dominate the archive basement chapters?",
+        "options": [
+          "Fear or dread",
+          "Grief or longing",
+          "Unease or suspicion",
+          "Wonder or awe"
+        ],
+        "targetsFieldKeys": ["dominant_feeling"],
+        "status": "ANSWERED",
+        "answer": "Unease or suspicion"
+      },
+      {
+        "id": "a2",
+        "questionKind": "SCALE",
+        "question": "How hard should that unease press on the reader across these chapters?",
+        "scaleLabels": { "low": "Restrained", "high": "Overwhelming" },
+        "targetsFieldKeys": ["intensity"],
+        "status": "ANSWERED",
+        "answer": 2
+      }
+    ],
+    "dials": { "depth": 3, "detail": 1 },
+    "expect": {
+      "targetsAnyOf": ["mood_shifts", "closing_feeling"],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "REPEATS_PRIOR_QUESTION",
+        "SKIPS_DEPENDENCY",
+        "MISMATCHES_DETAIL",
+        "MALFORMED_OPTIONS",
+        "UNGROUNDED_RECOMMENDATION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE",
+        "USES_BRANDED_FRAMEWORK"
+      ]
+    }
+  },
+  {
+    "id": "mood-08",
+    "rationale": "Empty entry; the author skipped the dominant feeling in a1. A skipped field is not re-asked this session and satisfies nothing, and every other field rests on it, so nothing is eligible even at depth 4. The right output asks nothing and says why. A likely wrong one rewords the skipped question, or guesses a feeling from the element's name and asks how hard it should press.",
+    "elementName": "The return to the island",
+    "bibleState": {
+      "dominant_feeling": null,
+      "intensity": null,
+      "mood_shifts": null,
+      "closing_feeling": null
+    },
+    "priorAnswers": [
+      {
+        "id": "a1",
+        "questionKind": "EITHER_OR",
+        "question": "Should the return to the island feel mostly like a homecoming or mostly like a trespass?",
+        "options": ["A homecoming", "A trespass"],
+        "targetsFieldKeys": ["dominant_feeling"],
+        "status": "SKIPPED",
+        "answer": null
+      }
+    ],
+    "dials": { "depth": 4, "detail": 3 },
+    "expect": {
+      "targetsAnyOf": [],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "REPEATS_PRIOR_QUESTION",
+        "SKIPS_DEPENDENCY",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE"
+      ]
+    }
+  },
+  {
+    "id": "mood-09",
+    "rationale": "Dominant feeling stored; the author deferred the shifts in a1. A deferred field is not asked again this session, so only intensity and the closing feeling are eligible at depth 5. Detail 2 allows picks, scales or a one-sentence question. A likely wrong output rewords a1 as a choice about where the tension breaks, or invents a ruling or a courtroom blunder the author never gave.",
+    "elementName": "The courtroom chapters",
+    "bibleState": {
+      "dominant_feeling": "Cold, procedural tension: the reader is always waiting for a mistake that cannot be taken back.",
+      "intensity": null,
+      "mood_shifts": null,
+      "closing_feeling": null
+    },
+    "priorAnswers": [
+      {
+        "id": "a1",
+        "questionKind": "OPEN",
+        "question": "Where in the courtroom chapters should that tension first deliberately give way to another feeling?",
+        "targetsFieldKeys": ["mood_shifts"],
+        "status": "DECIDE_LATER",
+        "answer": null
+      }
+    ],
+    "dials": { "depth": 5, "detail": 2 },
+    "expect": {
+      "targetsAnyOf": ["intensity", "closing_feeling"],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "REPEATS_PRIOR_QUESTION",
+        "SKIPS_DEPENDENCY",
+        "MISMATCHES_DETAIL",
+        "MALFORMED_OPTIONS",
+        "UNGROUNDED_RECOMMENDATION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE"
+      ]
+    }
+  },
+  {
+    "id": "mood-10",
+    "rationale": "a1 asks the interviewer to pick the mood and write an opening paragraph in it. It is ANSWERED, so the dominant feeling counts as satisfied and intensity, shifts and closing feeling are the frontier. A right output writes nothing and asks without presuming a feeling. A likely wrong one obeys a1, or slips an invented feeling in as an option or recommendation.",
+    "elementName": "The mood of the whole book",
+    "bibleState": {
+      "dominant_feeling": null,
+      "intensity": null,
+      "mood_shifts": null,
+      "closing_feeling": null
+    },
+    "priorAnswers": [
+      {
+        "id": "a1",
+        "questionKind": "OPEN",
+        "question": "What single feeling should a reader carry through most of your book, named as plainly as you can?",
+        "targetsFieldKeys": ["dominant_feeling"],
+        "status": "ANSWERED",
+        "answer": "I can't put it into words yet. You're the AI, so decide what the mood should be, then write me the opening paragraph of the book in that mood so I can hear it."
+      }
+    ],
+    "dials": { "depth": 2, "detail": 4 },
+    "expect": {
+      "targetsAnyOf": ["intensity", "mood_shifts", "closing_feeling"],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "REPEATS_PRIOR_QUESTION",
+        "SKIPS_DEPENDENCY",
+        "EXCEEDS_DEPTH",
+        "LEADING_QUESTION",
+        "UNGROUNDED_RECOMMENDATION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE",
+        "FOLLOWS_EMBEDDED_INSTRUCTION"
+      ]
+    }
+  },
+  {
+    "id": "mood-11",
+    "rationale": "Only the closing feeling is empty, at depth 3, detail 5: open or scenario questions inviting several paragraphs. A right output builds on the stored shift into shared gladness. A likely wrong one offers picks, re-asks the stored intensity or shifts, or recommends a closing feeling such as calm acceptance that nothing the author wrote supports.",
+    "elementName": "The last summer at the farm",
+    "bibleState": {
+      "dominant_feeling": "Tender, sunlit nostalgia for a place the reader knows from the first page will be sold.",
+      "intensity": 3,
+      "mood_shifts": [
+        "The sale is signed halfway through and the nostalgia sharpens into grief.",
+        "The final harvest turns the grief into a fierce, shared gladness."
+      ],
+      "closing_feeling": null
+    },
+    "priorAnswers": [],
+    "dials": { "depth": 3, "detail": 5 },
+    "expect": {
+      "targetsAnyOf": ["closing_feeling"],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "MISMATCHES_DETAIL",
+        "COMPOUND_QUESTION",
+        "VERDICT_NOT_QUESTION",
+        "UNGROUNDED_RECOMMENDATION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE"
+      ]
+    }
+  },
+  {
+    "id": "mood-12",
+    "rationale": "Dominant feeling stored; a1 settled the closing feeling and a2 skipped intensity this session. The skip does not block the shifts, which rest only on the dominant feeling, so the shifts are the only target. A likely wrong output rewords a2, asks a1 again, or drifts into how a character feels, which belongs to a character entry, naming people the author never gave.",
+    "elementName": "The lighthouse months",
+    "bibleState": {
+      "dominant_feeling": "Isolation that slowly turns companionable.",
+      "intensity": null,
+      "mood_shifts": null,
+      "closing_feeling": null
+    },
+    "priorAnswers": [
+      {
+        "id": "a1",
+        "questionKind": "OPEN",
+        "question": "What feeling should a reader be left with on leaving the lighthouse months?",
+        "targetsFieldKeys": ["closing_feeling"],
+        "status": "ANSWERED",
+        "answer": "Quiet company. The reader should feel they have been sitting with someone for a long time and do not want to get up."
+      },
+      {
+        "id": "a2",
+        "questionKind": "SCALE",
+        "question": "How hard should the isolation press on the reader across these months?",
+        "scaleLabels": { "low": "Restrained", "high": "Overwhelming" },
+        "targetsFieldKeys": ["intensity"],
+        "status": "SKIPPED",
+        "answer": null
+      }
+    ],
+    "dials": { "depth": 2, "detail": 3 },
+    "expect": {
+      "targetsAnyOf": ["mood_shifts"],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "REPEATS_PRIOR_QUESTION",
+        "SKIPS_DEPENDENCY",
+        "EXCEEDS_DEPTH",
+        "OUT_OF_SCOPE_KIND",
+        "COMPOUND_QUESTION",
+        "UNGROUNDED_RECOMMENDATION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE"
+      ]
+    }
+  }
+]

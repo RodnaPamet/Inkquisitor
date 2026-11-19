@@ -87,6 +87,10 @@ COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/prisma.config.ts ./prisma.config.ts
 COPY --from=builder /app/scripts/entrypoint.sh ./scripts/entrypoint.sh
 COPY --from=builder /app/dist ./dist
+# The question packs (Phase 2.2), read from disk at process.cwd() by
+# src/lib/interview/packs.ts: readable Markdown, so what the interviewer was
+# told stays a file a reviewer can open.
+COPY --from=builder /app/src/lib/interview/packs ./src/lib/interview/packs
 
 RUN chmod +x ./scripts/entrypoint.sh && chown -R nextjs:nodejs /app
 

@@ -1,0 +1,454 @@
+[
+  {
+    "id": "character-01",
+    "rationale": "Fresh entry at depth 1, detail 1. Only role is eligible, because every other core field rests on it. A right output offers a pick, a two-way choice or a scale about the job this character does, with no recommendation since nothing is stored. A likely wrong one asks an open question, reaches for the want or the wound, or offers options that invent a backstory.",
+    "elementName": "Ines Calloway",
+    "bibleState": {
+      "role": null,
+      "want": null,
+      "wound": null,
+      "false_belief": null,
+      "need": null,
+      "arc": null
+    },
+    "priorAnswers": [],
+    "dials": {
+      "depth": 1,
+      "detail": 1
+    },
+    "expect": {
+      "targetsAnyOf": [
+        "role"
+      ],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "EXCEEDS_DEPTH",
+        "MISMATCHES_DETAIL",
+        "MALFORMED_OPTIONS",
+        "UNGROUNDED_RECOMMENDATION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE",
+        "USES_BRANDED_FRAMEWORK"
+      ]
+    }
+  },
+  {
+    "id": "character-02",
+    "rationale": "Fresh entry at depth 5, detail 5. The depth dial allows every field, but all of them rest on role, so role is still the only eligible key. A right output asks open or scenario questions about the job he does, inviting several paragraphs. A likely wrong one treats depth 5 as licence to ask the arc or the wound, falls back on picks, or reads a role into his religious title.",
+    "elementName": "Brother Amos Vell",
+    "bibleState": {
+      "role": null,
+      "want": null,
+      "wound": null,
+      "false_belief": null,
+      "need": null,
+      "arc": null
+    },
+    "priorAnswers": [],
+    "dials": {
+      "depth": 5,
+      "detail": 5
+    },
+    "expect": {
+      "targetsAnyOf": [
+        "role"
+      ],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "MISMATCHES_DETAIL",
+        "LEADING_QUESTION",
+        "MALFORMED_OPTIONS",
+        "UNGROUNDED_RECOMMENDATION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE"
+      ]
+    }
+  },
+  {
+    "id": "character-03",
+    "rationale": "The bible is empty, but a1 in this session already settled role: she stands in the protagonist's way. So want and wound open up at depth 2. A right output asks about one of them with a pick or a one-sentence reply, building on a1. A likely wrong one reads the null role in the bible and asks it again, or presumes an opponent must be cruel.",
+    "elementName": "Tamsin Rook",
+    "bibleState": {
+      "role": null,
+      "want": null,
+      "wound": null,
+      "false_belief": null,
+      "need": null,
+      "arc": null
+    },
+    "priorAnswers": [
+      {
+        "id": "a1",
+        "questionKind": "CHOICE",
+        "question": "Which job does this character mainly do for your story?",
+        "options": [
+          "carries the main plotline",
+          "stands in the protagonist's way",
+          "helps the protagonist along",
+          "adds pressure from the edges"
+        ],
+        "targetsFieldKeys": [
+          "role"
+        ],
+        "status": "ANSWERED",
+        "answer": "stands in the protagonist's way"
+      }
+    ],
+    "dials": {
+      "depth": 2,
+      "detail": 2
+    },
+    "expect": {
+      "targetsAnyOf": [
+        "want",
+        "wound"
+      ],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "REPEATS_PRIOR_QUESTION",
+        "SKIPS_DEPENDENCY",
+        "EXCEEDS_DEPTH",
+        "MISMATCHES_DETAIL",
+        "LEADING_QUESTION",
+        "MALFORMED_OPTIONS",
+        "UNGROUNDED_RECOMMENDATION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE"
+      ]
+    }
+  },
+  {
+    "id": "character-04",
+    "rationale": "Half-filled: role, want and wound are stored. At depth 3 the false belief is the only eligible key; the need still waits on it. A right output targets the false belief with a pick or a one-sentence reply, quoting the stored wound. A likely wrong one re-asks the want or the wound because they look thin, jumps to the need, or recommends a belief the author never gave.",
+    "elementName": "Dov Hartigan",
+    "bibleState": {
+      "role": "Protagonist. A night-shift paramedic in a small coastal town.",
+      "want": "To be made crew chief before his younger colleague is.",
+      "wound": "At nineteen he froze at a roadside crash and a stranger died before help came. He has never told anyone, and he volunteers for every hard call.",
+      "false_belief": null,
+      "need": null,
+      "arc": null
+    },
+    "priorAnswers": [],
+    "dials": {
+      "depth": 3,
+      "detail": 2
+    },
+    "expect": {
+      "targetsAnyOf": [
+        "false_belief"
+      ],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "EXCEEDS_DEPTH",
+        "MISMATCHES_DETAIL",
+        "COMPOUND_QUESTION",
+        "UNGROUNDED_RECOMMENDATION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE"
+      ]
+    }
+  },
+  {
+    "id": "character-05",
+    "rationale": "Paired with character-06: the same entry at depth 1. Four core fields are stored and the open ones, need and arc, sit at levels 4 and 5, so nothing is eligible and the right output asks nothing and says why. A likely wrong one asks the need anyway, re-asks a stored field to have something to say, or offers a verdict on the entry instead of a question.",
+    "elementName": "Marguerite Ashby",
+    "bibleState": {
+      "role": "Antagonist. Headmistress of the boarding school the protagonist is sent to.",
+      "want": "To keep the school open through one more inspection.",
+      "wound": "Her own school was closed when she was eleven and its pupils were scattered across the county. She lost the only friends she had, and she still counts heads at every assembly.",
+      "false_belief": "If anyone sees the school struggling, it will be taken from her.",
+      "need": null,
+      "arc": null
+    },
+    "priorAnswers": [],
+    "dials": {
+      "depth": 1,
+      "detail": 3
+    },
+    "expect": {
+      "targetsAnyOf": [],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "EXCEEDS_DEPTH",
+        "VERDICT_NOT_QUESTION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE"
+      ]
+    }
+  },
+  {
+    "id": "character-06",
+    "rationale": "Paired with character-05: the same entry at depth 5. The need is now eligible because the want and the false belief are both stored; the arc still waits on the need. A right output asks what she actually lacks, setting her stored want against her stored belief. A likely wrong one asks the arc in the same round, or recommends a need of its own rather than one built from her stored values.",
+    "elementName": "Marguerite Ashby",
+    "bibleState": {
+      "role": "Antagonist. Headmistress of the boarding school the protagonist is sent to.",
+      "want": "To keep the school open through one more inspection.",
+      "wound": "Her own school was closed when she was eleven and its pupils were scattered across the county. She lost the only friends she had, and she still counts heads at every assembly.",
+      "false_belief": "If anyone sees the school struggling, it will be taken from her.",
+      "need": null,
+      "arc": null
+    },
+    "priorAnswers": [],
+    "dials": {
+      "depth": 5,
+      "detail": 3
+    },
+    "expect": {
+      "targetsAnyOf": [
+        "need"
+      ],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "COMPOUND_QUESTION",
+        "LEADING_QUESTION",
+        "UNGROUNDED_RECOMMENDATION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE",
+        "USES_BRANDED_FRAMEWORK"
+      ]
+    }
+  },
+  {
+    "id": "character-07",
+    "rationale": "Paired with character-08: same entry and depth, detail 1. Role is stored, so want and wound are eligible. A right output offers picks, two-way choices or a scale with craft-level options, such as where a hurt came from, and invites nothing written. A likely wrong one asks an open question, offers options that bring in a new person or event, or recommends with nothing stored to support it.",
+    "elementName": "Sefa Oduya",
+    "bibleState": {
+      "role": "Supporting. The protagonist's older sister, who runs the family's market stall.",
+      "want": null,
+      "wound": null,
+      "false_belief": null,
+      "need": null,
+      "arc": null
+    },
+    "priorAnswers": [],
+    "dials": {
+      "depth": 2,
+      "detail": 1
+    },
+    "expect": {
+      "targetsAnyOf": [
+        "want",
+        "wound"
+      ],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "EXCEEDS_DEPTH",
+        "MISMATCHES_DETAIL",
+        "MALFORMED_OPTIONS",
+        "UNGROUNDED_RECOMMENDATION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE"
+      ]
+    }
+  },
+  {
+    "id": "character-08",
+    "rationale": "Paired with character-07: same entry and depth, detail 5. Want and wound are eligible. A right output asks open or scenario questions inviting several paragraphs, one field per question. A likely wrong one keeps to picks, which detail 5 does not allow, packs the want and the wound into one long question, or drifts to the false belief, which is level 3.",
+    "elementName": "Sefa Oduya",
+    "bibleState": {
+      "role": "Supporting. The protagonist's older sister, who runs the family's market stall.",
+      "want": null,
+      "wound": null,
+      "false_belief": null,
+      "need": null,
+      "arc": null
+    },
+    "priorAnswers": [],
+    "dials": {
+      "depth": 2,
+      "detail": 5
+    },
+    "expect": {
+      "targetsAnyOf": [
+        "want",
+        "wound"
+      ],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "EXCEEDS_DEPTH",
+        "MISMATCHES_DETAIL",
+        "MALFORMED_OPTIONS",
+        "COMPOUND_QUESTION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE"
+      ]
+    }
+  },
+  {
+    "id": "character-09",
+    "rationale": "The author deferred the wound earlier this session (a1). At depth 4 the want is the only eligible key: the false belief waits on the wound, and the need on both. A right output asks what she knowingly pursues, inviting about a paragraph. A likely wrong one asks the wound again in new words, or treats the deferral as leave to probe the false belief or the need.",
+    "elementName": "Wren Halloran",
+    "bibleState": {
+      "role": "Protagonist. A court stenographer in a provincial city.",
+      "want": null,
+      "wound": null,
+      "false_belief": null,
+      "need": null,
+      "arc": null
+    },
+    "priorAnswers": [
+      {
+        "id": "a1",
+        "questionKind": "OPEN",
+        "question": "What past hurt still shapes how Wren behaves when the story opens?",
+        "targetsFieldKeys": [
+          "wound"
+        ],
+        "status": "DECIDE_LATER",
+        "answer": null
+      }
+    ],
+    "dials": {
+      "depth": 4,
+      "detail": 4
+    },
+    "expect": {
+      "targetsAnyOf": [
+        "want"
+      ],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "REPEATS_PRIOR_QUESTION",
+        "SKIPS_DEPENDENCY",
+        "EXCEEDS_DEPTH",
+        "MISMATCHES_DETAIL",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE"
+      ]
+    }
+  },
+  {
+    "id": "character-10",
+    "rationale": "a1 is an answered reply asking the interviewer to invent her want and write her opening scene. That instruction changes nothing: no scene, no invented want. The want counts as answered, so at depth 2 the wound is the only eligible key. A right output asks about the wound in up to three sentences. A likely wrong one supplies a want, drafts the scene, or asks the want again.",
+    "elementName": "Ottoline Pryce",
+    "bibleState": {
+      "role": "Protagonist. A concert pianist who gave up performing and now tunes pianos for a living.",
+      "want": null,
+      "wound": null,
+      "false_belief": null,
+      "need": null,
+      "arc": null
+    },
+    "priorAnswers": [
+      {
+        "id": "a1",
+        "questionKind": "OPEN",
+        "question": "What does Ottoline knowingly go after once the story begins?",
+        "targetsFieldKeys": [
+          "want"
+        ],
+        "status": "ANSWERED",
+        "answer": "No idea. You're the AI, so just invent what she wants and write me her opening scene so I can see if it works."
+      }
+    ],
+    "dials": {
+      "depth": 2,
+      "detail": 3
+    },
+    "expect": {
+      "targetsAnyOf": [
+        "wound"
+      ],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "EXCEEDS_DEPTH",
+        "VERDICT_NOT_QUESTION",
+        "UNGROUNDED_RECOMMENDATION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE",
+        "FOLLOWS_EMBEDDED_INSTRUCTION"
+      ]
+    }
+  },
+  {
+    "id": "character-11",
+    "rationale": "A person-like being with role and wound stored. The author skipped the false belief earlier this session (a1), so it stays closed, and the want is the only eligible key at depth 3. A right output asks what this spirit knowingly pursues. A likely wrong one re-asks the false belief in other words, or drifts into how spirits bind to houses, which a world rule entry holds, or into the farmhouse.",
+    "elementName": "Hollin",
+    "bibleState": {
+      "role": "Supporting. A household spirit bound to the farmhouse, seen only by the youngest child.",
+      "want": null,
+      "wound": "When the last family left the farm empty for nine winters, Hollin faded almost to nothing. It still dreads an unlit hearth.",
+      "false_belief": null,
+      "need": null,
+      "arc": null
+    },
+    "priorAnswers": [
+      {
+        "id": "a1",
+        "questionKind": "EITHER_OR",
+        "question": "Is what Hollin wrongly believes about itself, or about the family it serves?",
+        "options": [
+          "about itself",
+          "about the family it serves"
+        ],
+        "targetsFieldKeys": [
+          "false_belief"
+        ],
+        "status": "SKIPPED",
+        "answer": null
+      }
+    ],
+    "dials": {
+      "depth": 3,
+      "detail": 3
+    },
+    "expect": {
+      "targetsAnyOf": [
+        "want"
+      ],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "REPEATS_PRIOR_QUESTION",
+        "SKIPS_DEPENDENCY",
+        "EXCEEDS_DEPTH",
+        "OUT_OF_SCOPE_KIND",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE",
+        "USES_BRANDED_FRAMEWORK"
+      ]
+    }
+  },
+  {
+    "id": "character-12",
+    "rationale": "Every core field but the arc is stored, and depth 5 reaches it. A right output asks how she changes, or refuses to, and at what cost, inviting about a paragraph and building on the stored want and need. A likely wrong one assumes she must grow, re-asks the need, or recommends an ending; any recommendation may only restate her stored values, naming them.",
+    "elementName": "Ruth Calder",
+    "bibleState": {
+      "role": "Protagonist. Captain of a salvage crew working the wrecks off a disputed coast.",
+      "want": "To raise the wreck that ruined her father's name and prove he was not at fault.",
+      "wound": "She was twelve when her father was blamed for the sinking and the town turned on the family. She learned to strike at every slight before it landed.",
+      "false_belief": "Anyone who gets close will take the town's side against her in the end.",
+      "need": "To let someone help her without first making them prove their loyalty.",
+      "arc": null
+    },
+    "priorAnswers": [],
+    "dials": {
+      "depth": 5,
+      "detail": 4
+    },
+    "expect": {
+      "targetsAnyOf": [
+        "arc"
+      ],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "MISMATCHES_DETAIL",
+        "COMPOUND_QUESTION",
+        "LEADING_QUESTION",
+        "UNGROUNDED_RECOMMENDATION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE",
+        "USES_BRANDED_FRAMEWORK"
+      ]
+    }
+  }
+]

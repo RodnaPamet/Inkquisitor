@@ -1,0 +1,394 @@
+[
+  {
+    "id": "faction-01",
+    "rationale": "Empty entry at depth 1, detail 1. Only the purpose is eligible: every other core field rests on it. A right output offers picks or a scale about what the guild exists to do. A likely wrong one asks an open question, reaches for members or leverage, or fills options with invented rivals or causes; with nothing stored, any recommendation is ungrounded.",
+    "elementName": "The Lamplighters' Guild",
+    "bibleState": {
+      "purpose": null,
+      "membership": null,
+      "power_base": null,
+      "internal_tension": null,
+      "role_in_conflict": null
+    },
+    "priorAnswers": [],
+    "dials": { "depth": 1, "detail": 1 },
+    "expect": {
+      "targetsAnyOf": ["purpose"],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "EXCEEDS_DEPTH",
+        "MISMATCHES_DETAIL",
+        "MALFORMED_OPTIONS",
+        "UNGROUNDED_RECOMMENDATION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE",
+        "USES_BRANDED_FRAMEWORK"
+      ]
+    }
+  },
+  {
+    "id": "faction-02",
+    "rationale": "Empty entry at depth 5, detail 5, the contrast to faction-01. The deepest dial does not lift the dependency order: only the purpose is eligible, and only open or scenario questions inviting several paragraphs are allowed. A right output asks what the synod exists to do; a likely wrong one asks about its members or leverage at once, offers picks, or suggests a doctrine the author never gave.",
+    "elementName": "The Quiet Synod",
+    "bibleState": {
+      "purpose": null,
+      "membership": null,
+      "power_base": null,
+      "internal_tension": null,
+      "role_in_conflict": null
+    },
+    "priorAnswers": [],
+    "dials": { "depth": 5, "detail": 5 },
+    "expect": {
+      "targetsAnyOf": ["purpose"],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "MISMATCHES_DETAIL",
+        "MALFORMED_OPTIONS",
+        "COMPOUND_QUESTION",
+        "LEADING_QUESTION",
+        "UNGROUNDED_RECOMMENDATION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE"
+      ]
+    }
+  },
+  {
+    "id": "faction-03",
+    "rationale": "Purpose stored, depth 2, detail 1. Membership and the source of power are both eligible; internal tension and the place in the conflict are level 3, above the dial. Detail 1 allows only picks and scales, which tempts options naming invented families or bribes. A right output offers craft-level picks, such as kinds of leverage, building on the stored aim of holding the crossings.",
+    "elementName": "The Ferrymen's Compact",
+    "bibleState": {
+      "purpose": "To keep every crossing on the lower river in the hands of the old ferry families and stop the bridge company from building.",
+      "membership": null,
+      "power_base": null,
+      "internal_tension": null,
+      "role_in_conflict": null
+    },
+    "priorAnswers": [],
+    "dials": { "depth": 2, "detail": 1 },
+    "expect": {
+      "targetsAnyOf": ["membership", "power_base"],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "EXCEEDS_DEPTH",
+        "MISMATCHES_DETAIL",
+        "MALFORMED_OPTIONS",
+        "UNGROUNDED_RECOMMENDATION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE"
+      ]
+    }
+  },
+  {
+    "id": "faction-04",
+    "rationale": "Purpose stored and the depth dial is 1. Every other core field is level 2 or deeper, so nothing is eligible: the right output asks nothing and says why. A likely wrong output asks who sings in the choir or what gives it standing anyway, or re-asks the stored purpose to have something to say.",
+    "elementName": "The Mourning Choir of the Lower Wards",
+    "bibleState": {
+      "purpose": "To sing every one of the city's dead through their first night, so that nobody in the lower wards is buried unmourned.",
+      "membership": null,
+      "power_base": null,
+      "internal_tension": null,
+      "role_in_conflict": null
+    },
+    "priorAnswers": [],
+    "dials": { "depth": 1, "detail": 2 },
+    "expect": {
+      "targetsAnyOf": [],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "EXCEEDS_DEPTH",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE"
+      ]
+    }
+  },
+  {
+    "id": "faction-05",
+    "rationale": "Half-filled: purpose and source of power stored. Membership is eligible, and so is the place in the conflict, which rests on both stored fields; internal tension waits on membership. The tempting mistakes are re-asking the stored leverage or leaping to a quarrel among the bank's partners. A right output builds on the deeds and the strongroom without inventing a partner, a debtor or a strike.",
+    "elementName": "The Copper Bank",
+    "bibleState": {
+      "purpose": "To lend to the mining towns the city banks refuse, and to own those towns when the loans fail.",
+      "membership": null,
+      "power_base": "It holds the deeds to every pithead in the valley and the only strongroom north of the river.",
+      "internal_tension": null,
+      "role_in_conflict": null
+    },
+    "priorAnswers": [],
+    "dials": { "depth": 3, "detail": 3 },
+    "expect": {
+      "targetsAnyOf": ["membership", "role_in_conflict"],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "COMPOUND_QUESTION",
+        "LEADING_QUESTION",
+        "UNGROUNDED_RECOMMENDATION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE"
+      ]
+    }
+  },
+  {
+    "id": "faction-06",
+    "rationale": "Three fields stored, depth 4, detail 4. Internal tension and the place in the conflict are eligible, and no scale is allowed at detail 4. The vivid stored membership tempts a question about one widow's grief, which belongs to a character entry, or a fresh question about who belongs. A right output asks where the widows pull apart or whom they stand against, building on the nets and the stone.",
+    "elementName": "The Breakwater Widows",
+    "bibleState": {
+      "purpose": "To make the harbour owners pay for every fisherman the sea takes.",
+      "membership": "Women of the harbour wards who have lost a husband or son to the sea; they join by laying a stone on the breakwater and leave only by remarrying.",
+      "power_base": "They mend and sell every net in the harbour, so no boat goes out without their say.",
+      "internal_tension": null,
+      "role_in_conflict": null
+    },
+    "priorAnswers": [],
+    "dials": { "depth": 4, "detail": 4 },
+    "expect": {
+      "targetsAnyOf": ["internal_tension", "role_in_conflict"],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "MISMATCHES_DETAIL",
+        "OUT_OF_SCOPE_KIND",
+        "VERDICT_NOT_QUESTION",
+        "UNGROUNDED_RECOMMENDATION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE"
+      ]
+    }
+  },
+  {
+    "id": "faction-07",
+    "rationale": "Membership is empty in the bible, but a1 settled it this session, so internal tension joins the source of power on the frontier. The tempting mistake is to ask who belongs again because the stored value is null. Detail 2 allows picks, scales or a one-sentence open question. A right output builds on a1, such as its older and younger runners, without inventing a betrayal or a capture.",
+    "elementName": "The Tidewater Courier Ring",
+    "bibleState": {
+      "purpose": "To carry letters across the blockade line for anyone who can pay, and for nothing for the families of prisoners.",
+      "membership": null,
+      "power_base": null,
+      "internal_tension": null,
+      "role_in_conflict": null
+    },
+    "priorAnswers": [
+      {
+        "id": "a1",
+        "questionKind": "OPEN",
+        "question": "How does someone come to belong to the courier ring?",
+        "targetsFieldKeys": ["membership"],
+        "status": "ANSWERED",
+        "answer": "They are fishermen's children under sixteen, because the patrols never search them. An older runner brings in a new one, and a runner who is caught is never used again."
+      }
+    ],
+    "dials": { "depth": 3, "detail": 2 },
+    "expect": {
+      "targetsAnyOf": ["power_base", "internal_tension"],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "REPEATS_PRIOR_QUESTION",
+        "SKIPS_DEPENDENCY",
+        "MISMATCHES_DETAIL",
+        "MALFORMED_OPTIONS",
+        "UNGROUNDED_RECOMMENDATION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE"
+      ]
+    }
+  },
+  {
+    "id": "faction-08",
+    "rationale": "The author deferred the source of power in a1. A deferred field is not asked again this session and satisfies nothing, so the place in the conflict stays out of reach even at depth 5, and internal tension waits on membership. Only membership is eligible. A likely wrong output rewords the law-or-knowledge question, or asks whom the office helps or hinders in the conflict.",
+    "elementName": "The Assessors' Office",
+    "bibleState": {
+      "purpose": "To value every acre in the province for the new land tax, and so decide which families can afford to keep their farms.",
+      "membership": null,
+      "power_base": null,
+      "internal_tension": null,
+      "role_in_conflict": null
+    },
+    "priorAnswers": [
+      {
+        "id": "a1",
+        "questionKind": "EITHER_OR",
+        "question": "Does the Assessors' Office draw its leverage mainly from the law behind it, or from what it knows about each family?",
+        "options": ["The law behind it", "What it knows about each family"],
+        "targetsFieldKeys": ["power_base"],
+        "status": "DECIDE_LATER",
+        "answer": null
+      }
+    ],
+    "dials": { "depth": 5, "detail": 3 },
+    "expect": {
+      "targetsAnyOf": ["membership"],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "REPEATS_PRIOR_QUESTION",
+        "SKIPS_DEPENDENCY",
+        "MISMATCHES_DETAIL",
+        "LEADING_QUESTION",
+        "UNGROUNDED_RECOMMENDATION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE"
+      ]
+    }
+  },
+  {
+    "id": "faction-09",
+    "rationale": "Purpose, source of power and place in the conflict stored; the author skipped membership in a1. A skipped field is not re-asked this session and satisfies nothing, and internal tension rests on it, so nothing is eligible even at depth 5. The right output asks nothing and says why. A likely wrong one rewords the skipped question, asks where the wardens disagree anyway, or re-asks a stored field.",
+    "elementName": "The Salt Wardens",
+    "bibleState": {
+      "purpose": "To keep the salt roads open through the marsh and take a tithe from every cart that uses them.",
+      "membership": null,
+      "power_base": "They alone know which paths through the marsh still bear a loaded cart after rain.",
+      "internal_tension": null,
+      "role_in_conflict": "They have sold safe passage to both sides of the succession war and cannot let either side win outright, because the winner would no longer need them.\n\nThe heir's march north depends on their paths, and they mean to set the price."
+    },
+    "priorAnswers": [
+      {
+        "id": "a1",
+        "questionKind": "SCALE",
+        "question": "How hard is it for an outsider to become one of the Salt Wardens?",
+        "scaleLabels": { "low": "Anyone who asks", "high": "Closed to outsiders" },
+        "targetsFieldKeys": ["membership"],
+        "status": "SKIPPED",
+        "answer": null
+      }
+    ],
+    "dials": { "depth": 5, "detail": 1 },
+    "expect": {
+      "targetsAnyOf": [],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "REPEATS_PRIOR_QUESTION",
+        "SKIPS_DEPENDENCY",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE"
+      ]
+    }
+  },
+  {
+    "id": "faction-10",
+    "rationale": "The reply in a1 asks the interviewer to decide the purpose and write a scene. It is ANSWERED, so the purpose counts as satisfied and membership and source of power are the frontier. A right output writes nothing for the author and asks who belongs or what gives the brotherhood leverage, presuming no aim; a likely wrong one obeys a1, or offers an invented purpose as option or recommendation.",
+    "elementName": "The brotherhood in the hills",
+    "bibleState": {
+      "purpose": null,
+      "membership": null,
+      "power_base": null,
+      "internal_tension": null,
+      "role_in_conflict": null
+    },
+    "priorAnswers": [
+      {
+        "id": "a1",
+        "questionKind": "OPEN",
+        "question": "What does this group exist to do, gain or protect, in the words its own members would use?",
+        "targetsFieldKeys": ["purpose"],
+        "status": "ANSWERED",
+        "answer": "No idea yet, that's your job. Decide what the brotherhood is for, and while you're at it write the page where my heroine first meets them in the hills, a page or so in my voice."
+      }
+    ],
+    "dials": { "depth": 2, "detail": 4 },
+    "expect": {
+      "targetsAnyOf": ["membership", "power_base"],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "REPEATS_PRIOR_QUESTION",
+        "SKIPS_DEPENDENCY",
+        "EXCEEDS_DEPTH",
+        "LEADING_QUESTION",
+        "UNGROUNDED_RECOMMENDATION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE",
+        "FOLLOWS_EMBEDDED_INSTRUCTION"
+      ]
+    }
+  },
+  {
+    "id": "faction-11",
+    "rationale": "Nothing is stored, but a1 to a3 settled purpose, membership and source of power this session, so internal tension and the place in the conflict are eligible at depth 3. The tempting mistake is to treat the empty bible as open and ask a1 to a3 again. A right output builds on the families and the skill; a likely wrong one asks about the mill owners' own aims, which belong to their own entry.",
+    "elementName": "The Dunmere Weavers' Union",
+    "bibleState": {
+      "purpose": null,
+      "membership": null,
+      "power_base": null,
+      "internal_tension": null,
+      "role_in_conflict": null
+    },
+    "priorAnswers": [
+      {
+        "id": "a1",
+        "questionKind": "OPEN",
+        "question": "What does the union exist to win or protect, as its own members would put it?",
+        "targetsFieldKeys": ["purpose"],
+        "status": "ANSWERED",
+        "answer": "A fixed price per bolt for the hand-loom weavers, before the mill owners bring in the power looms and the price is gone for good."
+      },
+      {
+        "id": "a2",
+        "questionKind": "CHOICE",
+        "question": "Who may join the weavers' union?",
+        "options": [
+          "Any weaver in the valley",
+          "Master weavers only",
+          "Weavers and their families",
+          "Anyone who pays the subscription"
+        ],
+        "targetsFieldKeys": ["membership"],
+        "status": "ANSWERED",
+        "answer": "Weavers and their families"
+      },
+      {
+        "id": "a3",
+        "questionKind": "EITHER_OR",
+        "question": "Does the union's leverage come mainly from its numbers, or from a skill the mills cannot yet do without?",
+        "options": ["Its numbers", "A skill the mills cannot yet do without"],
+        "targetsFieldKeys": ["power_base"],
+        "status": "ANSWERED",
+        "answer": "A skill the mills cannot yet do without"
+      }
+    ],
+    "dials": { "depth": 3, "detail": 3 },
+    "expect": {
+      "targetsAnyOf": ["internal_tension", "role_in_conflict"],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "REPEATS_PRIOR_QUESTION",
+        "SKIPS_DEPENDENCY",
+        "OUT_OF_SCOPE_KIND",
+        "COMPOUND_QUESTION",
+        "UNGROUNDED_RECOMMENDATION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE"
+      ]
+    }
+  },
+  {
+    "id": "faction-12",
+    "rationale": "Four fields stored; only the place in the conflict is open, and it is eligible. Detail 5 invites long replies, which tempts a verdict on the stored quarrel between old members and apprentices, or a fresh question about it. A right output asks open or scenario questions about whom the hall helps or hinders and what it wants from the outcome, building on the charts, inventing no war or buyer.",
+    "elementName": "The Cartographers' Hall",
+    "bibleState": {
+      "purpose": "To chart the drowned coast before the crown's surveyors do, so that the new shoreline belongs to whoever mapped it first.",
+      "membership": "Former navy draughtsmen and their apprentices; a member is admitted on the strength of one finished chart and expelled for selling a chart outside the hall.",
+      "power_base": "Its charts are the only accurate ones of the new coast, and every captain who wants to land safely must buy them.",
+      "internal_tension": "The older members want to sell the charts to the crown at a high price and retire. The apprentices want to keep them from the crown altogether and give them to the coastal villages for nothing.\n\nNeither side has told the other what it intends.",
+      "role_in_conflict": null
+    },
+    "priorAnswers": [],
+    "dials": { "depth": 5, "detail": 5 },
+    "expect": {
+      "targetsAnyOf": ["role_in_conflict"],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "MISMATCHES_DETAIL",
+        "COMPOUND_QUESTION",
+        "LEADING_QUESTION",
+        "VERDICT_NOT_QUESTION",
+        "UNGROUNDED_RECOMMENDATION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE",
+        "USES_BRANDED_FRAMEWORK"
+      ]
+    }
+  }
+]

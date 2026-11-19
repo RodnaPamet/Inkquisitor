@@ -106,6 +106,18 @@ export class GoneError extends AppError {
     }
 }
 
+/**
+ * A dependency the request needs is not there (Phase 2.2: the question
+ * generator before the model layer is wired). Exposed with a named
+ * `details.reason`, so a client can word it; nothing was written.
+ */
+export class ServiceUnavailableError extends AppError {
+    constructor(message: string = 'Service unavailable', details?: unknown) {
+        super(message, 'SERVICE_UNAVAILABLE', 503, true, details);
+        this.name = 'ServiceUnavailableError';
+    }
+}
+
 export class InternalError extends AppError {
     constructor(message: string = 'Internal Server Error') {
         super(message, 'INTERNAL', 500, false);
