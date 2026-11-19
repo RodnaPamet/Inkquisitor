@@ -1,0 +1,62 @@
+// ─────────────────────────────────────────────────────────────────
+//  The vector store (subphase 2.0, owner decision D8).
+//
+//  ONE domain-neutral table of embeddings, under the workspace's row-level
+//  security (migration 20261119300000_vector_store). It holds no domain
+//  rows of its own: 2.1 (question dedupe) and 4.1 (elements, facts,
+//  answers) attach their source tables to it by `sourceModel`.
+//
+//  VECTORS ONLY. A row is a key (`sourceModel`, `sourceId`, `chunkIndex`,
+//  `embeddingRevision`), an optional book scope, a keyed content hash and
+//  the vector — never text. The text a vector was computed from stays in
+//  its source row, encrypted under the workspace's data key, and is read
+//  back through that row's own repository. So a vector is a DERIVATIVE of
+//  an encrypted column: plaintext floats (an index needs them), classified
+//  as author text, held only in this database and its backups, and deleted
+//  with its source (the book's cascade below, the workspace's cascade, and
+//  `vector_embedding_delete_with_source()`, which a source table attaches).
+//
+//  `embedding` is the untyped pgvector `vector`, which Prisma can neither
+//  read nor write: `src/app-layer/repositories/vector.repository.ts`
+//  (through `repositories/vector/pgvector-store.ts`) is the only module
+//  that reaches this table (ESLint `local/vector-store-single-seam`).
+// ─────────────────────────────────────────────────────────────────
+
+/// One embedding revision's vector of one chunk of one source row.
+model VectorEmbedding {
+  id                String                @id @default(cuid())
+  workspaceId       String
+  /// The book the source belongs to, when it belongs to one: the search
+  /// scope, and a cascade (deleting the book deletes its vectors).
+  bookId            String?
+  /// The Prisma model of the source row, e.g. `BibleElement` (CHECK).
+  sourceModel       String
+  /// That row's id (CHECK).
+  sourceId          String
+  /// Position within the source, from 0 (CHECK).
+  chunkIndex        Int
+  /// The vector space: model, dimensions and prompt prefixes
+  /// (`embeddingRevisionOf`). Vectors of two revisions are never compared.
+  embeddingRevision String
+  /// `vector_dims(embedding)`, held equal by a CHECK.
+  dimensions        Int
+  /// Keyed SHA-256 (HMAC) of the text the vector was computed from
+  /// (`vectorContentHash`), 64 hex characters (CHECK).
+  contentHash       String
+  /// pgvector `vector`, untyped so one table holds every revision.
+  embedding         Unsupported("vector")
+  /// The rebuild that last wrote or confirmed the row; NULL for a plain upsert.
+  rebuildGeneration String?
+  /// Drawn from the table's sequence on every write; a rebuild deletes only
+  /// rows written before it began (see pgvector-store.ts).
+  writeSeq          BigInt                @default(autoincrement())
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  book      Book?     @relation(fields: [workspaceId, bookId], references: [workspaceId, id], onDelete: Cascade)
+
+  @@unique([workspaceId, embeddingRevision, sourceModel, sourceId, chunkIndex])
+  @@index([workspaceId, sourceModel, sourceId])
+  @@index([workspaceId, bookId, embeddingRevision])
+}

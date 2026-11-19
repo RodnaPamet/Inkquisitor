@@ -25,6 +25,7 @@ import { prisma } from '@/lib/db';
 import { GLOBAL_MODELS, workspaceScopedModelNames } from '@/lib/db/rls-tripwire';
 import { isolationColumn, rlsProblems, type TableRlsFacts } from '../helpers/rls-coverage';
 import { seedBible } from '../helpers/bible';
+import { seedVectors } from '../helpers/vectors';
 import { createAccount, workspaceCtx } from '../helpers/workspaces';
 
 afterAll(() => prisma.$disconnect());
@@ -104,18 +105,30 @@ let a: Awaited<ReturnType<typeof createAccount>>;
 let b: Awaited<ReturnType<typeof createAccount>>;
 beforeAll(async () => {
     // Each account brings a Workspace, an OWNER membership and audit rows,
-    // and a seeded bible (a book, elements, fields, a relation and versions):
-    // a row in every scoped table, for both workspaces.
+    // a seeded bible (a book, elements, fields, a relation and versions) and
+    // a vector (2.0): a row in every scoped table, for both workspaces.
     a = await createAccount({ workspaceName: 'RLS A' });
     b = await createAccount({ workspaceName: 'RLS B' });
-    await seedBible(workspaceCtx(a), 'rls-a');
-    await seedBible(workspaceCtx(b), 'rls-b');
+    const aBook = await seedBible(workspaceCtx(a), 'rls-a');
+    const bBook = await seedBible(workspaceCtx(b), 'rls-b');
+    await seedVectors(workspaceCtx(a), aBook.bookId, 'rls-a');
+    await seedVectors(workspaceCtx(b), bBook.bookId, 'rls-b');
 });
 
 it('there is something to cover: zero tables is never complete coverage', () => {
     expect(scoped.length).toBeGreaterThan(0);
     expect(scoped).toEqual(
-        expect.arrayContaining(['Workspace', 'WorkspaceMembership', 'AuditLog', 'Book', 'BibleElement', 'BibleField', 'BibleRelation', 'BibleEntryVersion']),
+        expect.arrayContaining([
+            'Workspace',
+            'WorkspaceMembership',
+            'AuditLog',
+            'Book',
+            'BibleElement',
+            'BibleField',
+            'BibleRelation',
+            'BibleEntryVersion',
+            'VectorEmbedding',
+        ]),
     );
 });
 

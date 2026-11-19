@@ -57,4 +57,46 @@ MIT License
     SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 Apache License, Version 2.0
-  (none yet)
+
+  tianon/gosu (release 1.19, commit 6456aaa0f3c854d199d0f037f068eb97515b7513)
+  https://github.com/tianon/gosu
+
+  Compiled from unmodified source by the first stage of
+  deploy/postgres/Dockerfile and shipped in the inkquisitor-postgres image
+  (subphase 2.0, decision D7), where it replaces the upstream postgres
+  image's own copy of the same release. No gosu code is in this repository.
+  The project is distributed under the Apache License, Version 2.0:
+  https://www.apache.org/licenses/LICENSE-2.0
+
+PostgreSQL License
+
+  pgvector/pgvector (v0.8.7, commit f37c13f68b57d2c3472b2214fbcff699d6d34876)
+  https://github.com/pgvector/pgvector
+
+  Compiled from unmodified source by deploy/postgres/Dockerfile and shipped
+  in the inkquisitor-postgres image (subphase 2.0, decision D7). No pgvector
+  code is in this repository. The project is distributed under the
+  PostgreSQL License:
+
+    Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
+
+    Portions Copyright (c) 1994, The Regents of the University of California
+
+    Permission to use, copy, modify, and distribute this software and its
+    documentation for any purpose, without fee, and without a written
+    agreement is hereby granted, provided that the above copyright notice
+    and this paragraph and the following two paragraphs appear in all
+    copies.
+
+    IN NO EVENT SHALL THE UNIVERSITY OF CALIFORNIA BE LIABLE TO ANY PARTY FOR
+    DIRECT, INDIRECT, SPECIAL, INCIDENTAL, OR CONSEQUENTIAL DAMAGES,
+    INCLUDING LOST PROFITS, ARISING OUT OF THE USE OF THIS SOFTWARE AND ITS
+    DOCUMENTATION, EVEN IF THE UNIVERSITY OF CALIFORNIA HAS BEEN ADVISED OF
+    THE POSSIBILITY OF SUCH DAMAGE.
+
+    THE UNIVERSITY OF CALIFORNIA SPECIFICALLY DISCLAIMS ANY WARRANTIES,
+    INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY
+    AND FITNESS FOR A PARTICULAR PURPOSE. THE SOFTWARE PROVIDED HEREUNDER IS
+    ON AN "AS IS" BASIS, AND THE UNIVERSITY OF CALIFORNIA HAS NO OBLIGATIONS
+    TO PROVIDE MAINTENANCE, SUPPORT, UPDATES, ENHANCEMENTS, OR
+    MODIFICATIONS.

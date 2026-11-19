@@ -38,18 +38,22 @@ node scripts/carve-audit.mjs <inflect checkout>   # files matching inflect-compl
 Every one of `lint`, `typecheck`, `test`, `test:integration` and `build` must
 pass before a change is finished. CI (`.github/workflows/ci.yml`) runs them as
 the checks **Lint**, **Typecheck**, **Test** (unit, migrations, integration
-against postgres:16 and Redis) and **Build** (app through `npm run build:check`,
+against Postgres with pgvector, built in the job from `deploy/postgres/Dockerfile`,
+and Redis) and **Build** (app through `npm run build:check`,
 and the worker bundle), plus
 **Security** (`npm audit --omit=dev --audit-level=moderate` and the secret
 scan), **CodeQL** (javascript-typescript; the SARIF is kept as an artifact and
 `scripts/sarif-gate.js` fails the check on a high-severity security result)
-**Docker** (image build, Trivy
-CRITICAL,HIGH, ignore-unfixed) and **E2E** (Playwright against the production
-build, with Postgres and Redis; the report is kept as an artifact on failure). The job names are the check names, so never
+**Docker** (the app image and the Postgres image: build, Trivy
+CRITICAL,HIGH, ignore-unfixed; the Postgres image is smoke-tested too) and **E2E** (Playwright against the production
+build, with the same built Postgres and Redis; the report is kept as an artifact on failure). The job names are the check names, so never
 rename one, and never lower a gate to get a change through
 (`tests/unit/ci-workflow.test.ts`). `release.yml` tags and publishes a GitHub
 Release from conventional commits with GITHUB_TOKEN alone; `docs-site.yml`
-builds the help site and deploys it only on main when Pages is enabled.
+builds the help site and deploys it only on main when Pages is enabled;
+`postgres-image.yml` publishes `ghcr.io/rodnapamet/inkquisitor-postgres`
+(main only, weekly and on an upstream digest move; build, smoke, Trivy, then
+push).
 
 ## Stack
 
@@ -142,6 +146,16 @@ src/components/bible/        → BooksList, BookBoard, ElementPage, FieldEditor,
                                the create modals, use-element-autosave
 src/lib/bible/               → api-client (client URL table + fetch), ui-model (template views for pages),
                                completeness, snapshot-text (a snapshot as diff lines), page-data (404)
+```
+
+Subphase 2.0 (the vector store, D7 and D8) added:
+
+```
+deploy/postgres/             → the Postgres image (postgres:16-alpine + pgvector v0.8.7 by tag and commit, gosu rebuilt), smoke.sh, CI's start.sh
+prisma/schema/vector.prisma  → VectorEmbedding: vectors only, one table for every revision and source model
+src/app-layer/repositories/vector.repository.ts → the ONE way into the store (getVectorRepository); backends under vector/
+src/lib/ai/in-deployment-service.ts → the in-deployment address rule and the pinned, bounded dial
+src/lib/ai/embeddings/       → provider contract, stub (dev/test default), TEI (production), config, revision, vectorContentHash
 ```
 
 ## Rules every change obeys
@@ -353,6 +367,33 @@ only under zero-retention terms (D5).
   time, a failed batch requeued beneath newer edits; a save's answer never
   overwrites an input. Deleting an element or removing a relation goes
   through `useToastWithUndo`.
+- **The vector store (subphase 2.0).** Every vector goes through
+  `getVectorRepository()` (`src/app-layer/repositories/vector.repository.ts`);
+  nothing else under `src/` loads a backend, names the `VectorEmbedding`
+  table or reaches its delegate (`local/vector-store-single-seam`). Methods
+  take the usecase's `runInWorkspaceContext` transaction and the workspace id,
+  and the pgvector backend refuses any other transaction
+  (`NOT_IN_WORKSPACE_CONTEXT`). A record is a key (`sourceModel`, `sourceId`,
+  `chunkIndex`, `embeddingRevision`), a `bookId` (or `null`, stated), a
+  `contentHash` from `vectorContentHash` (keyed HMAC, never a plain digest of
+  author text) and the vector — any other member is refused
+  (`UNKNOWN_RECORD_FIELD`); text stays encrypted in its source row and a
+  search returns references and scores. The revision is the provider's
+  (`embeddingRevisionOf`: model, dimensions, prefixes); two revisions are never
+  compared. A source row's vectors are deleted with it: `deleteSource` in the
+  same transaction, and the source table's migration attaches
+  `vector_embedding_delete_with_source('<Model>')`; a book's and a workspace's
+  vectors go by cascade. A rebuild of an empty source is refused unless
+  `allowEmpty` (rule 6). Search is exact (no HNSW index until the production
+  model is chosen; see `vector-search-params.ts`). The migration's `CREATE
+  EXTENSION vector` needs a superuser: the image's `POSTGRES_USER` in the dev
+  stack and CI, an operator once in production (the migration's header).
+  Embeddings come from `getEmbeddingProvider()`: the stub unless
+  `EMBEDDING_PROVIDER=tei`; production refuses the stub, and TEI's URL must
+  resolve only inside the deployment (no external embedding route exists:
+  adding one is an owner decision). Every Postgres the repository runs is
+  `deploy/postgres/Dockerfile`; CI builds it, never pulls it
+  (`tests/unit/postgres-image.test.ts`).
 - **Sanitising author text.** Every author-text write sanitises at the
   usecase layer before it is stored: plain text through `plainLine` /
   `plainBlock` (`src/lib/bible/text.ts`, over `sanitizePlainText`), rich text
@@ -465,7 +506,8 @@ has the design. Reach for the primitives, never hand-roll a replacement:
   `src/` and `packages/ui/src`): jsdom, Testing Library, jest-dom, jest-axe.
   `__mocks__/next-intl.js` answers from `messages/en.json`; `vaul` maps to a
   Radix-backed stub (`tests/rendered/vaul-mock.tsx`).
-- **Integration** (`tests/integration`): a real PostgreSQL, never a mocked
+- **Integration** (`tests/integration`): a real PostgreSQL with pgvector 0.8+
+  (the compose stack's, or CI's built image), never a mocked
   Prisma. Its environment (`tests/helpers/open-handle-environment.ts`) fails a
   file that leaves a socket, pool, server or ref'd timer open after its
   `afterAll`s: close what a file opens (`closeRedisClient`, `$disconnect`). `DATABASE_URL` from the shell wins; otherwise `jest.setup.js` uses

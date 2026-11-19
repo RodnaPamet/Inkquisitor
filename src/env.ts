@@ -180,6 +180,19 @@ export const env = createEnv({
         AV_SCAN_MODE: z.enum(['strict', 'permissive', 'disabled']).optional(),
         CLAMAV_HOST: z.string().min(1).optional(),
 
+        // ── Embeddings (subphase 2.0; read in src/lib/ai/embeddings/select.ts) ──
+        // `stub` (the development and test default: deterministic feature
+        // hashing, no network) or `tei` (Hugging Face Text Embeddings
+        // Inference, self-hosted inside the deployment, so author text reaches
+        // no new sub-processor). Production refuses `stub` at start-up and has
+        // no embedding provider while this is unset.
+        EMBEDDING_PROVIDER: z.enum(['stub', 'tei']).optional(),
+        EMBEDDING_TEI_BASE_URL: z.string().url().optional(),
+        EMBEDDING_TEI_MODEL: z.string().min(1).max(100).optional(),
+        EMBEDDING_TEI_DIMENSIONS: z.string().regex(/^\d+$/).optional(),
+        EMBEDDING_TEI_QUERY_PREFIX: z.string().max(200).optional(),
+        EMBEDDING_TEI_PASSAGE_PREFIX: z.string().max(200).optional(),
+
         // ── Mail (console sink when SMTP_HOST is unset) ──
         SMTP_HOST: z.string().min(1).optional(),
         SMTP_PORT: z.coerce.number().int().positive().optional(),
@@ -230,6 +243,12 @@ export const env = createEnv({
         S3_SECRET_ACCESS_KEY: process.env.S3_SECRET_ACCESS_KEY,
         AV_SCAN_MODE: process.env.AV_SCAN_MODE,
         CLAMAV_HOST: process.env.CLAMAV_HOST,
+        EMBEDDING_PROVIDER: process.env.EMBEDDING_PROVIDER,
+        EMBEDDING_TEI_BASE_URL: process.env.EMBEDDING_TEI_BASE_URL,
+        EMBEDDING_TEI_MODEL: process.env.EMBEDDING_TEI_MODEL,
+        EMBEDDING_TEI_DIMENSIONS: process.env.EMBEDDING_TEI_DIMENSIONS,
+        EMBEDDING_TEI_QUERY_PREFIX: process.env.EMBEDDING_TEI_QUERY_PREFIX,
+        EMBEDDING_TEI_PASSAGE_PREFIX: process.env.EMBEDDING_TEI_PASSAGE_PREFIX,
         SMTP_HOST: process.env.SMTP_HOST,
         SMTP_PORT: process.env.SMTP_PORT,
         SMTP_USER: process.env.SMTP_USER,

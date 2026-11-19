@@ -2,6 +2,18 @@
 #
 #   Lint · Typecheck · Test · Build      the four checks of Phase 0.1
 #   Security · CodeQL · Docker           added by Phase 0.4
+#   E2E                                  Playwright against the production build
+#
+# POSTGRES IS BUILT, NOT PULLED (subphase 2.0, owner decision D7). The
+# migrations run `CREATE EXTENSION vector`, which the official postgres:16
+# image cannot satisfy, so Test and E2E build deploy/postgres/Dockerfile
+# (postgres:16-alpine plus pgvector at a pinned tag and commit) in the job,
+# with the GitHub Actions cache, and run it with deploy/postgres/start.sh in
+# place of a service container. Nothing is pulled from GHCR: a pull request
+# tests the Dockerfile it carries, and CI passes before the first publish of
+# ghcr.io/rodnapamet/inkquisitor-postgres (.github/workflows/postgres-image.yml).
+# Docker builds the same image uncached, smoke-tests it and gates it with the
+# same Trivy rule as the application image.
 #
 # Job names are the check names a branch protection rule requires; renaming
 # one silently drops it from the required set (a check that never runs is
@@ -76,23 +88,13 @@ jobs:
   test:
     name: Test
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # Ten minutes more than before 2.0: a cold cache compiles gosu and
+    # pgvector in the Postgres image build.
+    timeout-minutes: 30
+    # Postgres is not a service here: see "POSTGRES IS BUILT, NOT PULLED" at
+    # the top. The readiness probe and the job worker's integration tests
+    # need a real Redis (they use logical database 14).
     services:
-      postgres:
-        image: postgres:16
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: inkquisitor_test
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U postgres -d inkquisitor_test"
-          --health-interval 3s
-          --health-timeout 3s
-          --health-retries 20
-      # The readiness probe and the job worker's integration tests need a
-      # real Redis (they use logical database 14).
       redis:
         image: redis:7-alpine
         ports:
@@ -108,6 +110,20 @@ jobs:
       REDIS_URL: redis://localhost:6379
     steps:
       - uses: actions/checkout@v7
+      # Postgres with pgvector, from the Dockerfile in this checkout.
+      - uses: docker/setup-buildx-action@v4
+      - name: Build the inkquisitor-postgres image (no push)
+        uses: docker/build-push-action@v7
+        with:
+          context: deploy/postgres
+          file: deploy/postgres/Dockerfile
+          push: false
+          load: true
+          tags: inkquisitor-postgres:ci-${{ github.sha }}
+          cache-from: type=gha,scope=inkquisitor-postgres
+          cache-to: type=gha,scope=inkquisitor-postgres,mode=max,ignore-error=true
+      - name: Start Postgres with pgvector
+        run: deploy/postgres/start.sh "inkquisitor-postgres:ci-${{ github.sha }}" inkquisitor_test
       - uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
@@ -249,27 +265,41 @@ jobs:
           # deadline exceeded` and exit 1, a red indistinguishable from a CVE
           # (inflect-compliance hit it twice on this action and base image).
           timeout: '15m'
+      # The Postgres image (deploy/postgres/, D7): built uncached against the
+      # current upstream 16-alpine tag, so this judges what a publish today
+      # would ship; smoke-tested (the extension, a cosine query through HNSW,
+      # musl, no toolchain, the rebuilt gosu); and gated by the same rule.
+      # Never pushed from here: .github/workflows/postgres-image.yml publishes.
+      - name: Build the inkquisitor-postgres image (no push)
+        uses: docker/build-push-action@v7
+        with:
+          context: deploy/postgres
+          file: deploy/postgres/Dockerfile
+          push: false
+          load: true
+          pull: true
+          no-cache: true
+          tags: inkquisitor-postgres:ci-${{ github.sha }}
+      - name: Smoke-test the inkquisitor-postgres image
+        run: deploy/postgres/smoke.sh "inkquisitor-postgres:ci-${{ github.sha }}"
+      - name: 'Gate: Trivy of the inkquisitor-postgres image (CRITICAL,HIGH, fixable)'
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: inkquisitor-postgres:ci-${{ github.sha }}
+          format: table
+          exit-code: '1'
+          ignore-unfixed: true
+          vuln-type: os,library
+          severity: CRITICAL,HIGH
+          timeout: '15m'
 
   e2e:
     name: E2E
     runs-on: ubuntu-latest
-    timeout-minutes: 25
-    # The same services as Test: the specs drive the production build, which
-    # reads and writes the database once sign-up lands (Phase 0.3).
-    services:
-      postgres:
-        image: postgres:16
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: inkquisitor_test
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U postgres -d inkquisitor_test"
-          --health-interval 3s
-          --health-timeout 3s
-          --health-retries 20
+    # Ten minutes more than before 2.0, for the same cold Postgres image build.
+    timeout-minutes: 35
+    # The same Postgres as Test: the specs drive the production build, which
+    # reads and writes the database (Phase 0.3).
     env:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/inkquisitor_test?schema=public
       DIRECT_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/inkquisitor_test?schema=public
@@ -281,6 +311,20 @@ jobs:
       SKIP_ENV_VALIDATION: '1'
     steps:
       - uses: actions/checkout@v7
+      # Postgres with pgvector, from the Dockerfile in this checkout.
+      - uses: docker/setup-buildx-action@v4
+      - name: Build the inkquisitor-postgres image (no push)
+        uses: docker/build-push-action@v7
+        with:
+          context: deploy/postgres
+          file: deploy/postgres/Dockerfile
+          push: false
+          load: true
+          tags: inkquisitor-postgres:ci-${{ github.sha }}
+          cache-from: type=gha,scope=inkquisitor-postgres
+          cache-to: type=gha,scope=inkquisitor-postgres,mode=max,ignore-error=true
+      - name: Start Postgres with pgvector
+        run: deploy/postgres/start.sh "inkquisitor-postgres:ci-${{ github.sha }}" inkquisitor_test
       - uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
