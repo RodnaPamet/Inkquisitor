@@ -32,6 +32,15 @@ export interface BookWrite {
 }
 
 export const BookRepository = {
+    /**
+     * Serialise every bundle import into one book (Phase 1.3): a
+     * transaction-scoped advisory lock, held to commit, so two imports of
+     * one book queue rather than race for the same slugs.
+     */
+    async lockForImport(db: Db, bookId: string) {
+        await db.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${'bible-import:' + bookId}))`;
+    },
+
     list(db: Db, workspaceId: string, take = 200) {
         return db.book.findMany({ where: { workspaceId }, orderBy: [{ updatedAt: 'desc' }, { id: 'asc' }], take, select: BOOK_SELECT });
     },

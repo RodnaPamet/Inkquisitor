@@ -43,7 +43,7 @@ const COVERAGE: Readonly<Record<string, Classification>> = {
     'Book.logline': { repository: 'BookRepository', writeMethods: ['create', 'update'], sanitiser: 'optionalBlock' },
     'BibleElement.summary': { repository: 'BibleElementRepository', writeMethods: ['create', 'update'], sanitiser: 'optionalBlock' },
     'BibleField.value': { repository: 'BibleFieldRepository', writeMethods: ['upsert'], sanitiser: 'normaliseFieldValue' },
-    'BibleRelation.note': { repository: 'BibleRelationRepository', writeMethods: ['create'], sanitiser: 'optionalBlock' },
+    'BibleRelation.note': { repository: 'BibleRelationRepository', writeMethods: ['create', 'updateNote'], sanitiser: 'optionalBlock' },
     'BibleEntryVersion.changeSummary': { repository: 'BibleVersionRepository', writeMethods: ['create'], sanitiser: 'optionalBlock' },
     'BibleEntryVersion.snapshot': {
         repository: 'BibleVersionRepository',
@@ -211,7 +211,7 @@ describe('negative controls', () => {
     it('flags a usecase that writes without the sanitiser', () => {
         const bad = { ...base, 'src/app-layer/usecases/x.ts': `BibleRelationRepository.create(db, { note: i.note });` };
         expect(coverageProblems(bad, manifest, coverage)).toEqual([
-            'BibleRelation.note: src/app-layer/usecases/x.ts calls BibleRelationRepository.create without calling optionalBlock',
+            'BibleRelation.note: src/app-layer/usecases/x.ts calls BibleRelationRepository.create/updateNote without calling optionalBlock',
         ]);
     });
 
@@ -244,7 +244,7 @@ describe('negative controls', () => {
 
     it('flags a classified write path nobody calls', () => {
         expect(coverageProblems(base, manifest, coverage)).toContain(
-            'BibleRelation.note: nothing calls BibleRelationRepository.create (a check over no writer proves nothing)',
+            'BibleRelation.note: nothing calls BibleRelationRepository.create/updateNote (a check over no writer proves nothing)',
         );
     });
 });

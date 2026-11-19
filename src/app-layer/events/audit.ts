@@ -43,7 +43,10 @@ export type AuditAction =
     | 'BIBLE_FIELDS_UPDATED'
     | 'BIBLE_RELATION_CREATED'
     | 'BIBLE_RELATION_DELETED'
-    | 'BIBLE_VERSION_RESTORED';
+    | 'BIBLE_VERSION_RESTORED'
+    | 'BIBLE_EXPORTED'
+    | 'BIBLE_BUNDLE_IMPORTED'
+    | 'BIBLE_CONCEPT_NOTE_IMPORTED';
 
 export interface AuditEventPayload {
     action: AuditAction;

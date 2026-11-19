@@ -158,6 +158,18 @@ src/lib/ai/in-deployment-service.ts → the in-deployment address rule and the p
 src/lib/ai/embeddings/       → provider contract, stub (dev/test default), TEI (production), config, revision, vectorContentHash
 ```
 
+Phase 1.3 (bible import and export) added:
+
+```
+src/lib/archive/zip.ts       → writeZip (fflate, deterministic) and readZip (bounded, refuses by name)
+src/lib/bible/bundle-format.ts → the Markdown bundle's files; frontmatter split and safe YAML read
+src/lib/bible/bible-pdf.ts, src/lib/pdf/ → the bible as a PDF on the lifted pdfkit helpers (pdfKitFactory, layout, win-ansi)
+src/app-layer/usecases/      → bible-export (bundle, PDF), bible-import (bundle, concept note)
+src/app/api/w/[workspaceSlug]/books/[bookId]/export/{bundle,pdf}, import/{bundle,concept-note}
+src/lib/http/bounded-body.ts → readBoundedBytes: the bounded body read readJsonBody shares
+src/components/bible/        → ImportModal, import-messages; export links on BookBoard
+```
+
 ## Rules every change obeys
 
 These are `docs/ROADMAP.md` section 3, restated. The roadmap is authoritative
@@ -394,6 +406,31 @@ only under zero-retention terms (D5).
   adding one is an owner decision). Every Postgres the repository runs is
   `deploy/postgres/Dockerfile`; CI builds it, never pulls it
   (`tests/unit/postgres-image.test.ts`).
+- **Bible import and export (Phase 1.3).** The Markdown bundle
+  (`bundle-format.ts`, format version 1: `manifest.json`, `book.md`,
+  `<kind>/_index.md`, `<kind>/<slug>.md`) carries its data in YAML
+  frontmatter; the Markdown body is generated for reading and never imported.
+  Rich text stays the stored HTML. Export is a function of the bible alone
+  (no time, no id, fixed zip dates), so export → import into an empty book
+  (with `?bookDetails=apply`) → export is byte-identical; keep it so. An
+  import is bounded (`readBoundedBytes`, 20 MiB), virus-scanned (`scanBuffer`:
+  INFECTED always refused, an unavailable scan refused in `strict`), unzipped
+  by `readZip` (never another unzipper: it bounds count, sizes, ratio and
+  names before inflating and stops a lying entry at its claim), parsed with
+  aliases and tags refused, and validated and sanitised through the 1.1 paths;
+  an unknown kind, field, option or relation type is refused by name. A bundle
+  is ONE transaction: every problem is answered at once (`BUNDLE_REFUSED`,
+  `problems: [{ path, reason, key? }]`) and nothing is written. Elements are
+  matched by slug and saved through the versioned save with source `IMPORT`,
+  so a repeat import writes nothing; the file is the element's whole state
+  over the template keys its writer knew (the manifest's `templateFields`);
+  nothing is deleted. Export refuses (`EXPORT_TOO_LARGE`) a bundle `readZip`
+  would refuse under the import's limits, so every export imports back. A
+  concept note is a RESEARCH element's `notes`. Uploads are never stored as
+  files. A new refusal code goes in `IMPORT_REASONS` and
+  `bible.transfer.reasons` (`tests/unit/bible/import-reasons.test.ts`).
+  `pdfkit` is a server external package (its font metrics load from
+  node_modules); PDF text goes through `toWinAnsi` and `breakLongRuns`.
 - **Sanitising author text.** Every author-text write sanitises at the
   usecase layer before it is stored: plain text through `plainLine` /
   `plainBlock` (`src/lib/bible/text.ts`, over `sanitizePlainText`), rich text
@@ -411,7 +448,9 @@ only under zero-retention terms (D5).
   `sanitize-html` and its parser are ESM: the unit and integration Jest
   projects transform them (`NODE_ESM_ALLOW_LIST` in `jest.config.js`).
 - **Request bodies.** A route reads its body with `readJsonBody(req)`
-  (`src/lib/http/json-body.ts`), never `req.json()` / `req.text()`: a malformed
+  (`src/lib/http/json-body.ts`), or a non-JSON body with
+  `readBoundedBytes(req, max)` (`bounded-body.ts`), never `req.json()` /
+  `req.text()` / `req.arrayBuffer()` / `req.formData()`: a malformed
   body is a 400, and a body past `JSON_BODY_MAX_BYTES` (2 MiB) is a 413
   without being read in full (refused on its `content-length`, or cut off
   once the streamed bytes pass the cap). A numeric query or path parameter

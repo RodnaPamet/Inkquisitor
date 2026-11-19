@@ -11,22 +11,28 @@
  * Creating an element opens `<CreateElementModal>`, from the header (no kind
  * chosen) or from a kind's card (that kind). Shown only when the server says
  * the viewer may edit (`canEdit`).
+ *
+ * Export (Phase 1.3) is two download links, the Markdown bundle and the PDF,
+ * for every viewer (`bible.view`); Import opens `<ImportModal>` and, like
+ * create, is offered only when the viewer may edit.
  */
 import { useState } from 'react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
-import { Plus } from 'lucide-react';
+import { FileDown, FileText, Plus, Upload } from 'lucide-react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Button } from '@/components/ui/button';
+import { buttonVariants } from '@/components/ui/button-variants';
 import { Card } from '@/components/ui/card';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { APP_ROUTES } from '@/lib/app-routes';
-import type { BookView, ElementListItemView } from '@/lib/bible/api-client';
+import { BIBLE_API, type BookView, type ElementListItemView } from '@/lib/bible/api-client';
 import { completeness, type Completeness } from '@/lib/bible/completeness';
 import type { BibleKind } from '@/lib/bible/kinds';
 import type { KindSummary } from '@/lib/bible/ui-model';
 import { CompletenessMeter } from './CompletenessMeter';
 import { CreateElementModal } from './CreateElementModal';
+import { ImportModal } from './ImportModal';
 
 export interface BookBoardProps {
     workspaceSlug: string;
@@ -39,7 +45,9 @@ export interface BookBoardProps {
 export function BookBoard({ workspaceSlug, book, kinds, elements, canEdit }: BookBoardProps) {
     const t = useTranslations('bible.board');
     const tStage = useTranslations('bible.stage');
+    const tTransfer = useTranslations('bible.transfer');
     const [creating, setCreating] = useState<{ kind: BibleKind | null } | null>(null);
+    const [importing, setImporting] = useState(false);
 
     const byKind = new Map<BibleKind, ElementListItemView[]>();
     for (const e of elements) byKind.set(e.kind, [...(byKind.get(e.kind) ?? []), e]);
@@ -52,11 +60,28 @@ export function BookBoard({ workspaceSlug, book, kinds, elements, canEdit }: Boo
                 title: book.title,
                 description: book.logline ?? undefined,
                 meta: <StatusBadge variant="neutral">{tStage(book.stage)}</StatusBadge>,
-                actions: canEdit ? (
-                    <Button variant="primary" icon={<Plus className="size-4" aria-hidden="true" />} onClick={() => setCreating({ kind: null })} id="create-element">
-                        {t('createElement')}
-                    </Button>
-                ) : undefined,
+                actions: (
+                    <div className="flex flex-wrap items-center gap-tight">
+                        <a href={BIBLE_API.exportBundle(workspaceSlug, book.id)} download className={buttonVariants({ variant: 'secondary' })} id="export-bundle">
+                            <FileDown className="size-4" aria-hidden="true" />
+                            {tTransfer('exportBundle')}
+                        </a>
+                        <a href={BIBLE_API.exportPdf(workspaceSlug, book.id)} download className={buttonVariants({ variant: 'secondary' })} id="export-pdf">
+                            <FileText className="size-4" aria-hidden="true" />
+                            {tTransfer('exportPdf')}
+                        </a>
+                        {canEdit ? (
+                            <>
+                                <Button variant="secondary" icon={<Upload className="size-4" aria-hidden="true" />} onClick={() => setImporting(true)} id="import-open">
+                                    {tTransfer('import')}
+                                </Button>
+                                <Button variant="primary" icon={<Plus className="size-4" aria-hidden="true" />} onClick={() => setCreating({ kind: null })} id="create-element">
+                                    {t('createElement')}
+                                </Button>
+                            </>
+                        ) : null}
+                    </div>
+                ),
             }}
         >
             <div className="grid grid-cols-1 gap-default md:grid-cols-2 xl:grid-cols-3" role="list" aria-label={t('kindsAria')}>
@@ -87,6 +112,7 @@ export function BookBoard({ workspaceSlug, book, kinds, elements, canEdit }: Boo
                     initialKind={creating?.kind ?? null}
                 />
             ) : null}
+            {canEdit ? <ImportModal open={importing} setOpen={setImporting} workspaceSlug={workspaceSlug} bookId={book.id} /> : null}
         </DashboardLayout>
     );
 }
