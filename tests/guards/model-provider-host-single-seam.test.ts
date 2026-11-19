@@ -16,17 +16,20 @@ import * as fs from 'node:fs';
 import { repoFiles, repoRelative } from '../helpers/repo-files';
 
 const SEAM = 'src/lib/ai/client.ts';
-const HOST = /anthropic\.com/i;
+// A substring search over source text, not a URL check: any mention of the
+// host, in any case and under any subdomain, counts.
+const HOST = 'anthropic.com';
+const namesHost = (text: string): boolean => text.toLowerCase().includes(HOST);
 
 const SOURCES = [...repoFiles({ under: 'src' }), ...repoFiles({ under: 'scripts' })];
 
 it('the population is real: the seam itself is read and does name the host', () => {
     expect(SOURCES.map(repoRelative)).toContain(SEAM);
-    expect(fs.readFileSync(SOURCES.find((f) => repoRelative(f) === SEAM)!, 'utf8')).toMatch(HOST);
+    expect(namesHost(fs.readFileSync(SOURCES.find((f) => repoRelative(f) === SEAM)!, 'utf8'))).toBe(true);
     expect(SOURCES.length).toBeGreaterThan(100);
 });
 
 it('no other module under src/ or scripts/ names the provider’s host', () => {
-    const offenders = SOURCES.filter((file) => repoRelative(file) !== SEAM && HOST.test(fs.readFileSync(file, 'utf8'))).map(repoRelative);
+    const offenders = SOURCES.filter((file) => repoRelative(file) !== SEAM && namesHost(fs.readFileSync(file, 'utf8'))).map(repoRelative);
     expect(offenders).toEqual([]);
 });
