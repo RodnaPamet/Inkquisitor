@@ -188,6 +188,26 @@
       "inverseLabel": "has as a part",
       "targetKinds": [
         "OBJECT"
+      ],
+      "fields": [
+        {
+          "key": "fit",
+          "label": "How they fit together",
+          "help": "What each contributes to the other, and how the part sits within the whole.",
+          "type": "text",
+          "required": true,
+          "order": 1,
+          "dependsOn": []
+        },
+        {
+          "key": "difference",
+          "label": "What sets them apart",
+          "help": "What one holds that the other lacks, so that the two never blur together.",
+          "type": "text",
+          "required": false,
+          "order": 2,
+          "dependsOn": []
+        }
       ]
     },
     {
@@ -196,6 +216,26 @@
       "inverseLabel": "paired with",
       "targetKinds": [
         "OBJECT"
+      ],
+      "fields": [
+        {
+          "key": "fit",
+          "label": "How they fit together",
+          "help": "What each contributes to the other, and how the part sits within the whole.",
+          "type": "text",
+          "required": true,
+          "order": 1,
+          "dependsOn": []
+        },
+        {
+          "key": "difference",
+          "label": "What sets them apart",
+          "help": "What one holds that the other lacks, so that the two never blur together.",
+          "type": "text",
+          "required": false,
+          "order": 2,
+          "dependsOn": []
+        }
       ]
     },
     {
@@ -204,6 +244,26 @@
       "inverseLabel": "used to make",
       "targetKinds": [
         "OBJECT"
+      ],
+      "fields": [
+        {
+          "key": "fit",
+          "label": "How they fit together",
+          "help": "What each contributes to the other, and how the part sits within the whole.",
+          "type": "text",
+          "required": true,
+          "order": 1,
+          "dependsOn": []
+        },
+        {
+          "key": "difference",
+          "label": "What sets them apart",
+          "help": "What one holds that the other lacks, so that the two never blur together.",
+          "type": "text",
+          "required": false,
+          "order": 2,
+          "dependsOn": []
+        }
       ]
     },
     {
@@ -212,6 +272,26 @@
       "inverseLabel": "has copy",
       "targetKinds": [
         "OBJECT"
+      ],
+      "fields": [
+        {
+          "key": "fit",
+          "label": "How they fit together",
+          "help": "What each contributes to the other, and how the part sits within the whole.",
+          "type": "text",
+          "required": true,
+          "order": 1,
+          "dependsOn": []
+        },
+        {
+          "key": "difference",
+          "label": "What sets them apart",
+          "help": "What one holds that the other lacks, so that the two never blur together.",
+          "type": "text",
+          "required": false,
+          "order": 2,
+          "dependsOn": []
+        }
       ]
     },
     {
@@ -220,6 +300,37 @@
       "inverseLabel": "unlocked or activated by",
       "targetKinds": [
         "OBJECT"
+      ],
+      "fields": [
+        {
+          "key": "mechanism",
+          "label": "How one leads to the other",
+          "help": "The chain from the first to the second: what makes the second follow from it, rather than merely come after it.",
+          "type": "text",
+          "required": true,
+          "order": 1,
+          "dependsOn": []
+        },
+        {
+          "key": "reader_sees",
+          "label": "What the reader sees of the link",
+          "help": "Whether the reader notices the connection as it happens, later on, or only when looking back.",
+          "type": "text",
+          "required": false,
+          "order": 2,
+          "dependsOn": []
+        },
+        {
+          "key": "between",
+          "label": "What lies between them",
+          "help": "What happens, or is deliberately left out, between the first and the second.",
+          "type": "text",
+          "required": false,
+          "order": 3,
+          "dependsOn": [
+            "mechanism"
+          ]
+        }
       ]
     },
     {
@@ -228,6 +339,26 @@
       "inverseLabel": "informs",
       "targetKinds": [
         "RESEARCH"
+      ],
+      "fields": [
+        {
+          "key": "what_is_drawn",
+          "label": "What is drawn from it",
+          "help": "Which facts, methods or details pass from the source into the book.",
+          "type": "text",
+          "required": true,
+          "order": 1,
+          "dependsOn": []
+        },
+        {
+          "key": "liberties",
+          "label": "Liberties taken",
+          "help": "Where the book departs from the source on purpose, and why.",
+          "type": "text",
+          "required": false,
+          "order": 2,
+          "dependsOn": []
+        }
       ]
     }
   ]

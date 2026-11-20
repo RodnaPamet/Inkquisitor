@@ -1,12 +1,12 @@
 /**
  * Integration fixtures for the bible: a book with elements, fields, a
- * relation and their versions, written through the product's own usecases (so
+ * relation (and one of its fields) and their versions, written through the product's own usecases (so
  * every row is sanitised, encrypted and versioned exactly as a request would
  * leave it). Text that should stay private carries a recognisable marker, so
  * a suite can look for it in the raw rows.
  */
 import { createBook } from '@/app-layer/usecases/books';
-import { addRelation } from '@/app-layer/usecases/bible-relations';
+import { addRelation, saveRelationFields } from '@/app-layer/usecases/bible-relations';
 import { createElement } from '@/app-layer/usecases/bible-elements';
 import type { WorkspaceRequestContext } from '@/app-layer/types';
 
@@ -17,7 +17,7 @@ export interface SeededBible {
     relationId: string;
 }
 
-/** A book with a CHARACTER (two fields), a FACTION and a `member_of` relation between them. */
+/** A book with a CHARACTER (two fields), a FACTION and a `member_of` relation between them (with one field, Phase 3.3). */
 export async function seedBible(ctx: WorkspaceRequestContext, marker = 'seed'): Promise<SeededBible> {
     const book = await createBook(ctx, { title: `Book ${marker}`, logline: `Logline ${marker}`, stage: 'PLANNING' });
     const character = await createElement(ctx, book.id, {
@@ -37,5 +37,7 @@ export async function seedBible(ctx: WorkspaceRequestContext, marker = 'seed'): 
         type: 'member_of',
         note: `Note ${marker}`,
     });
+    // Phase 3.3 (D24): one of the relation's fields, saved as its second version.
+    await saveRelationFields(ctx, book.id, relation.id, { baseVersion: 1, fields: [{ key: 'terms', value: `Terms ${marker}` }], changeSummary: `Terms ${marker}` });
     return { bookId: book.id, characterId: character.id, factionId: faction.id, relationId: relation.id };
 }

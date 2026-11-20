@@ -29,9 +29,9 @@ import { refKey } from './frontier';
 import { candidateFrom, GeneratedQuestionsSchema, parseGeneratedQuestions, validateCandidate, type Candidate, type ValidationContext, type ValidationElement } from './candidates';
 import { dedupe, type AskedQuestion, type DedupeTextContext } from './dedupe';
 import { GenerationStop, type GenerationFailureKind, type GenerationRequest, type GenerationResult, type QuestionGenerator } from './generator';
-import type { CraftPack, PersonaPack } from './packs';
+import type { CraftPack, PersonaPack, RelationsPack } from './packs';
 import { ENGINE_INSTRUCTIONS, packsVersionOf, questionDataBlocks, roundGuidance, type PromptAnswer, type PromptElement } from './prompt';
-import { fillGapsFromPack, TOKENS_PER_CALL_REPORT_MAX, type RoundElement } from './round';
+import { fillGapsFromPack, packForSubject, TOKENS_PER_CALL_REPORT_MAX, type RoundElement } from './round';
 import { sanitiseQuestionForStorage } from './storage';
 import type { Dials } from './dials';
 import type { QuestionOrigin } from './vocabulary';
@@ -94,6 +94,8 @@ export interface RephraseInput {
     preferChoice: boolean;
     persona: PersonaPack | null;
     craft: Readonly<Record<BibleKind, CraftPack>>;
+    /** Phase 3.3: the pack a relation's question is asked with. */
+    relations?: RelationsPack;
     element: RoundElement;
     original: RephraseOriginal;
     related: ReadonlyArray<{ kind: BibleKind; name: string; summary: string | null }>;
@@ -127,7 +129,10 @@ export function buildRephraseRequest(input: RephraseInput): GenerationRequest {
         stored: [...e.storedText].map(([key, value]) => ({ key, value })),
         assignedKeys: challenge ? [] : [...input.original.targetsFieldKeys],
         challengeKey: challenge ? input.original.targetsFieldKeys[0] : null,
+        ...(e.relation ? { relation: e.relation } : {}),
+        ...(e.pending ? { pending: e.pending } : {}),
     };
+    const pack = packForSubject(e, input.craft, input.relations);
     const promptInput = {
         bookId: input.bookId,
         dials: input.dials,
@@ -135,7 +140,7 @@ export function buildRephraseRequest(input: RephraseInput): GenerationRequest {
         preferChoice: input.preferChoice,
         personaKey: input.original.personaKey,
         persona: input.persona,
-        craftPacks: [input.craft[e.kind]],
+        craftPacks: pack ? [pack] : [],
         elements: [promptElement],
         related: input.related,
         sessionAnswers: input.sessionAnswers,
@@ -228,7 +233,7 @@ export async function produceRephrase(input: RephraseInput, deps: { generator: Q
 
     // The pack's example for the field, when the question asks for one field afresh.
     if (o.mode === 'FRONTIER' && o.targetsFieldKeys.length === 1) {
-        const { filled } = fillGapsFromPack([{ elementId: o.elementId, fieldKey: o.targetsFieldKeys[0] }], new Map([[e.elementId, e]]), input.craft, input.dials.detail, (c) => repeats(c));
+        const { filled } = fillGapsFromPack([{ elementId: o.elementId, fieldKey: o.targetsFieldKeys[0] }], new Map([[e.elementId, e]]), input.craft, input.dials.detail, (c) => repeats(c), input.relations);
         if (filled.length > 0) out.question = { ...filled[0], origin: 'PACK_FALLBACK', reviewRequired: false };
     }
     return out;

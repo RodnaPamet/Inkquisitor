@@ -7,7 +7,7 @@
  */
 import { z } from 'zod';
 import { RAW_INPUT_FACTOR } from '@/lib/bible/field-values';
-import { BaseVersionInput, CHANGE_SUMMARY_MAX, ELEMENT_NAME_MAX, ELEMENT_SUMMARY_MAX, FieldValueInput } from './bible';
+import { BaseVersionInput, CHANGE_SUMMARY_MAX, ELEMENT_NAME_MAX, ELEMENT_SUMMARY_MAX, FieldValueInput, RelationBaseVersionInput } from './bible';
 
 const id = z.string().min(1).max(64);
 const raw = (max: number) => z.string().max(max * RAW_INPUT_FACTOR);
@@ -20,7 +20,8 @@ export const BULK_ACCEPT_MAX = 50;
  *
  *   baseVersion      a FIELD proposal: the element's version the author's
  *                    review read (required: 1.H's rule). A newer one refuses
- *                    409 VERSION_CONFLICT.
+ *                    409 VERSION_CONFLICT. A RELATION_FIELD proposal (Phase
+ *                    3.3): the relation's (0: a relation with no version yet).
  *   reviewedCurrent  the author saw the element's CURRENT value, which moved
  *                    since the proposal was made (409 PROPOSAL_OUTDATED
  *                    otherwise).
@@ -30,7 +31,7 @@ export const BULK_ACCEPT_MAX = 50;
  */
 export const AcceptProposalInput = z
     .object({
-        baseVersion: BaseVersionInput.optional(),
+        baseVersion: RelationBaseVersionInput.optional(),
         reviewedCurrent: z.boolean().optional(),
         value: FieldValueInput.optional(),
         name: raw(ELEMENT_NAME_MAX).min(1).optional(),

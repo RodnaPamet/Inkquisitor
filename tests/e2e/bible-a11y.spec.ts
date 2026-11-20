@@ -21,7 +21,8 @@ import { SETUP_OPTIONS_TIMEOUT_MS, STUB_BASE_URL } from './stub-server';
  *     board and the timeline (their own controls; tldraw's canvas is a
  *     third party's and is excluded), the type picker, the element sheet, and
  *     the read-only maps embedded on a character's, a beat's and an event's
- *     page;
+ *     page; and (Phase 3.3) a map's list of proposed entries and links,
+ *     decided by keyboard alone, and a relation's sheet;
  *   - an author can create, edit, relate and restore with the KEYBOARD ONLY:
  *     after the page is opened, every step is a key press — focus moves by
  *     Tab, controls answer Enter, Space, typing and the arrow keys — and no
@@ -284,6 +285,45 @@ test.describe('the interview pages (Phase 2.4, the stubbed-model server)', () =>
         await expectNoAxeViolations(page, 'review of proposed changes');
         await main.getByTestId('field-proposal').first().getByRole('button', { name: 'Edit, then accept' }).click();
         await expectNoAxeViolations(page, 'review, a proposal being edited');
+    });
+
+    /** Two characters on the relationship map and an interview about both, reconciled: the stub proposes the link between them (Phase 3.3). */
+    async function proposedLink(page: Page) {
+        const { slug, bookId, elementId } = await bookWithCharacter(page);
+        const api = page.request;
+        const tam = ((await (await api.post(`/api/w/${slug}/books/${bookId}/elements`, { data: { kind: 'CHARACTER', name: 'Tam' } })).json()) as { element: { id: string } }).element.id;
+        const node = (id: string, x: number) => ({ elementId: id, x, y: 0, w: 220, h: 88, lane: null });
+        await api.put(`/api/w/${slug}/books/${bookId}/maps/relationship`, { data: { expectedVersion: 0, nodes: [node(elementId, 0), node(tam, 520)], edges: [], freeform: [] } });
+        const base = `/api/w/${slug}/books/${bookId}/interviews`;
+        const started = (await (await api.post(base, { data: { scope: 'SELECTION', elementIds: [elementId, tam], relationIds: [], depth: 2, detail: 3 } })).json()) as {
+            interview: { session: { id: string }; round: { number: number; questions: Array<{ id: string; kind: string; options: string[] | null }> } };
+        };
+        const { session, round } = started.interview;
+        for (const q of round.questions) {
+            const data = q.kind === 'CHOICE' || q.kind === 'EITHER_OR' ? { choice: q.options![0] } : q.kind === 'SCALE' ? { scale: 3 } : { text: 'Mara taught Tam to read the tides.' };
+            expect((await api.post(`${base}/${session.id}/questions/${q.id}/answer`, { data })).ok()).toBe(true);
+        }
+        const closed = (await (await api.post(`${base}/${session.id}/rounds/${round.number}/close`, { data: {} })).json()) as { reconcile: { status: string } | null };
+        expect(closed.reconcile?.status).toBe('DONE');
+        return { slug, bookId, elementId };
+    }
+
+    test('axe finds no WCAG 2.1 AA violation on a map’s list of proposed entries and links, nor on a relation’s sheet; the list is decided by keyboard alone (Phase 3.3)', async ({ page }) => {
+        test.setTimeout(150_000);
+        const { slug, bookId, elementId } = await proposedLink(page);
+        const main = page.getByRole('main');
+        await page.goto(`/w/${slug}/books/${bookId}/maps/relationship`);
+        const list = main.getByTestId('structure-list');
+        await expect(list.getByTestId('new-relation-proposal')).toHaveCount(1, { timeout: 20_000 });
+        await expectNoAxeViolations(page, 'a map’s list of proposed entries and links', '[data-testid="structure-list"]');
+        await tabTo(page, list.getByRole('button', { name: /^Accept the relation/ }));
+        await page.keyboard.press('Enter');
+        await expect(main.getByTestId('structure-list')).toHaveCount(0, { timeout: 10_000 });
+
+        await page.goto(`/w/${slug}/books/${bookId}/elements/${elementId}`);
+        await main.getByTestId('relations-panel').getByTestId('relation-open').first().click();
+        await expect(page.getByRole('dialog').getByTestId('relation-sheet')).toBeVisible({ timeout: 10_000 });
+        await expectNoAxeViolations(page, 'a relation’s sheet', '[role="dialog"]');
     });
 
     test('accept a proposed change with the keyboard alone (Phase 2.5)', async ({ page }) => {

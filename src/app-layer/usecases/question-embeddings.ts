@@ -25,6 +25,7 @@
  * deduplication keeps its lexical signals. A missing provider (production
  * refuses the stub, and TEI is not configured) is the same.
  */
+import { PENDING_SUBJECT_ID, subjectIdOf } from '@/lib/interview/subjects';
 import type { WorkspaceRequestContext } from '@/app-layer/types';
 import { assertPermission } from '@/app-layer/policies/permission.policy';
 import { QuestionRepository } from '@/app-layer/repositories/interview.repository';
@@ -111,7 +112,9 @@ export async function findQuestionNeighbours(
         }
         const unknown = [...new Set([...neighbours.values()].flat().map((n) => n.questionId))].filter((id) => !known.has(id));
         const targets = await QuestionRepository.targetsOf(db, ctx.workspaceId, bookId, unknown);
-        return { neighbours, neighbourTargets: new Map(targets.map((t) => [t.id, { elementId: t.elementId, targetsFieldKeys: t.targetsFieldKeys }])) };
+        // Phase 3.3: a neighbour's subject (`subjectIdOf`); one about another session's element not yet created is about none of ours.
+        const subjectOf = (t: (typeof targets)[number]) => (t.aboutPending ? `${PENDING_SUBJECT_ID}:elsewhere` : subjectIdOf(t));
+        return { neighbours, neighbourTargets: new Map(targets.map((t) => [t.id, { elementId: subjectOf(t), targetsFieldKeys: t.targetsFieldKeys }])) };
     });
 }
 

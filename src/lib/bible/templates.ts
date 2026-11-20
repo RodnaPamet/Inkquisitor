@@ -20,6 +20,10 @@
  *   relationTypesInto(kind)           every relation that may END at `kind`,
  *                                     with the kind that starts it (read from
  *                                     this end with its inverse label)
+ *   relationFieldDefs(fromKind, key)  a relation type's fields (Phase 3.3,
+ *                                     D24), in order; `related_to` has its own
+ *                                     small generic set
+ *   getRelationFieldDef(fromKind, key, field)  one of them, or undefined
  *
  * A relation type is identified by the kind that declares it plus its key (two
  * kinds may each declare an `allied_with`). It is declared once, on the
@@ -27,7 +31,7 @@
  * declaring kind's element to the target), then read from both ends.
  */
 import { BIBLE_KINDS, type BibleKind } from './kinds';
-import { BUILT_IN_RELATION_KEY, templateSchema, type BibleTemplate, type FieldDef, type RelationTypeDef } from './template-schema';
+import { BUILT_IN_RELATION_KEY, relationFieldsSchema, templateSchema, type BibleTemplate, type FieldDef, type RelationFieldDef, type RelationTypeDef } from './template-schema';
 
 import character from './templates/character.json';
 import custom from './templates/custom.json';
@@ -77,7 +81,7 @@ export const RAW_TEMPLATES: Readonly<Record<BibleKind, unknown>> = Object.freeze
  * this impossible; this check says so where the lookup depends on it, and
  * holds if that rule is ever relaxed.
  */
-export function relationLookupCollisions(templates: Readonly<Record<BibleKind, { relationTypes: readonly RelationTypeDef[] }>>): string[] {
+export function relationLookupCollisions(templates: Readonly<Record<BibleKind, { relationTypes: ReadonlyArray<Pick<RelationTypeDef, 'key' | 'targetKinds'>> }>>): string[] {
     const out: string[] = [];
     for (const [i, k1] of BIBLE_KINDS.entries()) {
         for (const k2 of BIBLE_KINDS.slice(i + 1)) {
@@ -101,7 +105,8 @@ export function loadTemplates(raw: Readonly<Record<BibleKind, unknown>>): Readon
         }
         if (parsed.data.kind !== kind) throw new Error(`bible template filed as ${kind} declares kind ${parsed.data.kind}`);
         const sorted = [...parsed.data.fields].sort((a, b) => a.order - b.order);
-        out[kind] = deepFreeze({ ...parsed.data, kind, fields: sorted });
+        const relationTypes = parsed.data.relationTypes.map((r) => ({ ...r, fields: [...r.fields].sort((a, b) => a.order - b.order) }));
+        out[kind] = deepFreeze({ ...parsed.data, kind, fields: sorted, relationTypes });
     }
     const collisions = relationLookupCollisions(out);
     if (collisions.length > 0) throw new Error(`bible templates declare a relation key two kinds could each hold between the same two elements: ${collisions.join('; ')}`);
@@ -118,12 +123,23 @@ export function getFieldDef(kind: BibleKind, key: string): FieldDef | undefined 
     return TEMPLATES[kind].fields.find((f) => f.key === key);
 }
 
+/**
+ * The built-in relation's fields (Phase 3.3, D24): a minimal generic set, as
+ * `related_to` says nothing about what kind of link it is. Parsed with the
+ * same schema as every declared type's, at load.
+ */
+const BUILT_IN_RELATION_FIELDS: readonly RelationFieldDef[] = relationFieldsSchema.parse([
+    { key: 'nature', label: 'Nature of the link', help: 'What connects these two, in a sentence or two.', type: 'text', required: true, order: 1, dependsOn: [] },
+    { key: 'significance', label: 'Why it matters', help: 'What this link does for the story, or would cost it if it were cut.', type: 'text', required: false, order: 2, dependsOn: [] },
+]);
+
 /** The built-in relation: any element to any other, read the same both ways. */
-export const BUILT_IN_RELATION: RelationTypeDef = Object.freeze({
+export const BUILT_IN_RELATION: RelationTypeDef = deepFreeze({
     key: BUILT_IN_RELATION_KEY,
     label: 'related to',
     inverseLabel: 'related to',
     targetKinds: [...BIBLE_KINDS],
+    fields: [...BUILT_IN_RELATION_FIELDS],
 });
 
 /** A relation an element of `fromKind` may start, by key; undefined when the kind declares none by that key. */
@@ -140,6 +156,34 @@ export function relationAllowed(fromKind: BibleKind, key: string, toKind: BibleK
 /** A relation reads the same from both ends (label equals inverse label). */
 export function isSymmetric(type: RelationTypeDef): boolean {
     return type.label === type.inverseLabel;
+}
+
+/** A relation type's fields (D24), in order: empty for a type the kind does not declare. */
+export function relationFieldDefs(fromKind: BibleKind, key: string): readonly RelationFieldDef[] {
+    return getRelationType(fromKind, key)?.fields ?? [];
+}
+
+/** One field of a relation type, or undefined. */
+export function getRelationFieldDef(fromKind: BibleKind, key: string, fieldKey: string): RelationFieldDef | undefined {
+    return relationFieldDefs(fromKind, key).find((f) => f.key === fieldKey);
+}
+
+/**
+ * Every relation field key any type declares (built-in included), each once,
+ * in kind order then declaration order: the relations interview pack covers
+ * all of them (Phase 3.3).
+ */
+export function allRelationFieldKeys(): { keys: string[]; required: string[] } {
+    const keys: string[] = [];
+    const required: string[] = [];
+    const types = [...BIBLE_KINDS.flatMap((k) => TEMPLATES[k].relationTypes), BUILT_IN_RELATION];
+    for (const t of types) {
+        for (const f of t.fields) {
+            if (!keys.includes(f.key)) keys.push(f.key);
+            if (f.required && !required.includes(f.key)) required.push(f.key);
+        }
+    }
+    return { keys, required };
 }
 
 export function relationTypesFrom(kind: BibleKind): readonly RelationTypeDef[] {
@@ -165,4 +209,4 @@ function deepFreeze<T>(value: T): T {
     return value;
 }
 
-export type { BibleTemplate, FieldDef, RelationTypeDef } from './template-schema';
+export type { BibleTemplate, FieldDef, RelationFieldDef, RelationTypeDef } from './template-schema';

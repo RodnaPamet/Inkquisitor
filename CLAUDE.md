@@ -328,6 +328,19 @@ src/lib/canvas/lanes.ts, relation-picker.ts → derived layout, drop and keyboar
 src/components/canvas/ → RelationTypePicker, ElementSheet, LaneBackdrop, StoryMapPreview (SVG, no tldraw), tldraw/lane-host
 ```
 
+Phase 3.3 (interview from the canvas, D24) added:
+
+```
+prisma/schema/bible.prisma   → BibleRelationField (a relation's fields), BibleRelationVersion (its own append-only history)
+src/lib/bible/relation-snapshot.ts, src/app-layer/usecases/relation-common.ts → a relation's versioned field save
+src/lib/interview/subjects.ts, packs/relations/ → a question's subject (element, relation, the beat not yet created); the relations pack
+src/app-layer/usecases/interview-scope.ts → SELECTION ("Grill this") and BETWEEN ("What happens between these?")
+src/lib/canvas/structure-preview.ts → ghost geometry, the plot board's slots (pure)
+src/components/canvas/       → GhostLayer (OnTheCanvas, never records), CanvasInterviewControls, PendingStructureList
+src/components/enrichment/StructuralProposals.tsx, src/components/bible/RelationSheet.tsx
+src/app/api/w/[workspaceSlug]/books/[bookId]/{relations/[relationId]/fields, proposals/pending-structure}
+```
+
 Phase 3.4 (word search, D21) added:
 
 ```
@@ -1061,6 +1074,31 @@ closed beta with an explicit operator flag (D5, amended 2026-11-19).
   tldraw. The bundle carries a rank as `order:` (refused `ORDER_NOT_ALLOWED`,
   `ORDER_INVALID`, `ORDER_DUPLICATE`, `ORDER_TAKEN`); the PDF prints ordered
   kinds in story order.
+- **Interview from the canvas (Phase 3.3; D24).** A relation type declares
+  1..4 PROSE fields beside its type in its template (`related_to`: nature,
+  significance); they are rows (`BibleRelationField`, encrypted, sanitised
+  through `normaliseFieldValue`), found by word search from both ends and
+  carried by the bundle, and every change to a relation's fields, and every
+  relation the product creates, writes one `BibleRelationVersion` (append-only,
+  its own advisory lock, `baseVersion` 0 = a relation with no version yet; 409
+  VERSION_CONFLICT) — never a version of either end. A question is about a
+  SUBJECT (`subjectIdOf`): an element, a relation (filed under its declaring end
+  with `relationId`) or the beat not yet created (`PENDING_SUBJECT_ID`, filed
+  under the slot's earlier neighbour with `aboutPending`); each relation field is
+  a frontier entry, and a field the relation holds is never asked (rule 5). A
+  SELECTION session is the selected elements, the selected relations and every
+  relation between two selected elements, frozen at start (SCOPE_EMPTY,
+  SCOPE_TOO_LARGE, another book's id a 404); BETWEEN is two adjacent placed beats
+  of one act (SLOT_INVALID naming the problem). Reconcile's NEW_RELATION and the
+  slot's NEW_ELEMENT are refused, never softened, by the rules in
+  `validate.ts`'s header; a link to a new element waits for it (409
+  END_NOT_CREATED / END_GONE); the slot's beat is created in its act and placed
+  by the order move under the order's lock, both versions naming the answers.
+  Ghosts are drawn in `OnTheCanvas` from React state, NEVER store records, behind
+  their own error boundary; the list beside the map (`PendingStructureList`, no
+  tldraw, outside the canvas boundary) is the record, and what is accepted there
+  is added to that map through its own save. The relations pack and the reconcile
+  prompt follow D11; after editing either, re-run their records.
 - **Word search (Phase 3.4; D21).** OPTION A, DECRYPT AND SCAN: `searchBook`
   reads one book through `runInWorkspaceContext` (the encryption extension
   decrypts it), turns every source into plain text, and ranks it in memory

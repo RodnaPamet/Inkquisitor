@@ -60,6 +60,8 @@ export interface PacksView {
     recordMode: PackRecordMode;
     personas: PackView[];
     craft: PackView[];
+    /** Phase 3.3 (D24): the one relations pack, the craft guidance for every relation's fields. */
+    relations: PackView[];
     /** How many of all the packs mount; zero of zero is never "all" (rule 6). */
     mountable: number;
     total: number;
@@ -68,17 +70,18 @@ export interface PacksView {
 function view(packs: PackRegistry, name: string, verdict: MountVerdict | undefined): PackView {
     const file = packs.files[name];
     const persona = file.group === 'persona' && isPersonaKey(file.key) ? packs.personas[file.key] : null;
-    const craft = file.group === 'craft' ? packs.craft[file.key as BibleKind] : null;
+    // Phase 3.3: the relations pack is craft guidance for every relation's fields.
+    const craft = file.group === 'craft' ? packs.craft[file.key as BibleKind] : file.group === 'relations' ? packs.relations : null;
     return {
         name,
         group: file.group,
         key: file.key,
-        displayName: persona ? persona.displayName : getTemplate(file.key as BibleKind).label,
+        displayName: persona ? persona.displayName : file.group === 'relations' ? 'Relations' : getTemplate(file.key as BibleKind).label,
         version: file.version,
         description: (persona ?? craft)!.description,
         contentHash: file.contentHash,
         coverage: craft ? [...craft.coverage] : null,
-        evaluationCases: persona ? packs.personaEvals[persona.persona].length : packs.craftEvals[file.key as BibleKind].length,
+        evaluationCases: persona ? packs.personaEvals[persona.persona].length : file.group === 'relations' ? packs.relationEvals.length : packs.craftEvals[file.key as BibleKind].length,
         mountable: verdict?.ok === true,
         refusal: !verdict ? { reason: 'NO_RECORD', detail: 'not checked' } : verdict.ok ? null : { reason: verdict.reason, detail: verdict.detail },
         recordKind: verdict?.ok ? verdict.pin.recordKind : null,
@@ -93,6 +96,7 @@ export async function listInterviewPacks(ctx: WorkspaceRequestContext, packs: Pa
         recordMode: mode,
         personas: all.filter((p) => p.group === 'persona'),
         craft: all.filter((p) => p.group === 'craft'),
+        relations: all.filter((p) => p.group === 'relations'),
         mountable: all.filter((p) => p.mountable).length,
         total: all.length,
     };

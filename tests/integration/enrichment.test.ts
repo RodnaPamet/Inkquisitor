@@ -202,7 +202,7 @@ describe('new elements are proposed, never created silently', () => {
         const { ctx, bookId, elementId } = await setup();
         const reconciler = scripted((f) => {
             const a = f.answers.find((x) => x.status === 'ANSWERED')!;
-            return { operations: [], newElements: [{ kind: 'CHARACTER', name: 'Ilse Varga', summary: null, cites: [a.answerId] }] };
+            return { operations: [], newElements: [{ kind: 'CHARACTER', name: 'Ilse Varga', summary: null, fillsSlot: false, cites: [a.answerId] }] };
         });
         const { sessionId } = await seedReconciledRound(ctx, bookId, elementId, { reconciler }, (k) => `About the ${k}: Ilse Varga runs the ferry.`);
         expect(await prisma.bibleElement.count({ where: { bookId } })).toBe(1);
@@ -219,7 +219,7 @@ describe('new elements are proposed, never created silently', () => {
             ctx,
             bookId,
             elementId,
-            { reconciler: scripted((f) => ({ operations: [], newElements: [{ kind: 'CHARACTER', name: 'Ilse Varga-Holm', summary: null, cites: [f.answers[0].answerId] }, { kind: 'SETTING', name: 'Nowhere', summary: null, cites: [f.answers[0].answerId] }] })) },
+            { reconciler: scripted((f) => ({ operations: [], newElements: [{ kind: 'CHARACTER', name: 'Ilse Varga-Holm', summary: null, fillsSlot: false, cites: [f.answers[0].answerId] }, { kind: 'SETTING', name: 'Nowhere', summary: null, fillsSlot: false, cites: [f.answers[0].answerId] }] })) },
             () => 'Ilse Varga-Holm again.',
         );
         expect(again.closed.reconcile!.proposed.NEW_ELEMENT).toBe(0);
@@ -364,7 +364,7 @@ describe('review fixes (2.5 review)', () => {
         // The run: "The Drainage Board" is the book's "Drainage Board".
         const proposeBoard = scripted((f) => {
             const a = f.answers.find((x) => x.status === 'ANSWERED')!;
-            return { operations: [], newElements: [{ kind: 'FACTION', name: 'The Drainage Board', summary: null, cites: [a.answerId] }, { kind: 'SETTING', name: 'Saltmarsh', summary: null, cites: [a.answerId] }] };
+            return { operations: [], newElements: [{ kind: 'FACTION', name: 'The Drainage Board', summary: null, fillsSlot: false, cites: [a.answerId] }, { kind: 'SETTING', name: 'Saltmarsh', summary: null, fillsSlot: false, cites: [a.answerId] }] };
         });
         const first = await seedReconciledRound(ctx, bookId, elementId, { reconciler: proposeBoard }, () => 'The Drainage Board took the land at Saltmarsh.');
         expect(first.closed.reconcile!.proposed.NEW_ELEMENT).toBe(1);

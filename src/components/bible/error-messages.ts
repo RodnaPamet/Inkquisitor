@@ -26,6 +26,8 @@ export const WORDED_REASONS = [
     'ORDER_RANK_EXHAUSTED',
     'ORDER_NOT_ALLOWED',
     'ORDER_SELF',
+    // A relation's fields (Phase 3.3): saved against the relation's version.
+    'VERSION_CONFLICT',
 ] as const;
 
 export function useApiErrorMessage(): (reason: string | null) => string {

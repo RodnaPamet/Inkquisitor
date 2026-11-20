@@ -27,7 +27,7 @@
 import type { WorkspaceRequestContext } from '@/app-layer/types';
 import { logEvent } from '@/app-layer/events/audit';
 import { assertPermission } from '@/app-layer/policies/permission.policy';
-import { BibleElementRepository, BibleFieldRepository, BibleRelationRepository } from '@/app-layer/repositories/bible.repository';
+import { BibleElementRepository, BibleFieldRepository, BibleRelationFieldRepository, BibleRelationRepository } from '@/app-layer/repositories/bible.repository';
 import { WorkspaceRepository } from '@/app-layer/repositories/workspace.repository';
 import { BUNDLE_MAX_ELEMENTS, BUNDLE_MAX_RELATIONS, BUNDLE_UPLOAD_MAX_BYTES, BUNDLE_ZIP_LIMITS } from '@/app-layer/schemas/bible-transfer';
 import { readZip, writeZip, ZipRefusal } from '@/lib/archive/zip';
@@ -36,7 +36,8 @@ import { bundleFiles, type BibleBundle, type BundleElement, type BundleRelation 
 import { decodeFieldValue, type FieldValue } from '@/lib/bible/field-values';
 import type { BibleElementStatus, BookStage } from '@/lib/bible/kinds';
 import { slugify } from '@/lib/bible/slug';
-import { getFieldDef } from '@/lib/bible/templates';
+import { RELATION_FIELDS_MAX } from '@/lib/bible/template-schema';
+import { getFieldDef, getRelationFieldDef } from '@/lib/bible/templates';
 import { runInWorkspaceContext, type PrismaTx } from '@/lib/db/rls-middleware';
 import { ValidationError } from '@/lib/errors/types';
 import { requireBook } from './bible-common';
@@ -68,9 +69,20 @@ export async function readBibleBundle(db: PrismaTx, ctx: WorkspaceRequestContext
 
     const relations = await BibleRelationRepository.listForBook(db, ctx.workspaceId, bookId, BUNDLE_MAX_RELATIONS + 1);
     if (relations.length > BUNDLE_MAX_RELATIONS) throw tooLarge('relations', BUNDLE_MAX_RELATIONS);
+    // Phase 3.3 (D24): each relation's fields, read in batches like the elements' (a key its template no longer has is left out).
+    const relationFields = new Map<string, Map<string, FieldValue>>(relations.map((r) => [r.id, new Map()]));
+    const relationById = new Map(relations.map((r) => [r.id, r] as const));
+    for (let i = 0; i < relations.length; i += FIELD_READ_BATCH) {
+        const ids = relations.slice(i, i + FIELD_READ_BATCH).map((r) => r.id);
+        for (const f of await BibleRelationFieldRepository.listForRelations(db, ctx.workspaceId, ids, RELATION_FIELDS_MAX)) {
+            const r = relationById.get(f.relationId);
+            const fromKind = r ? kindById.get(r.fromElementId) : undefined;
+            if (r && fromKind && getRelationFieldDef(fromKind, r.type, f.key)) relationFields.get(f.relationId)!.set(f.key, decodeFieldValue(f.value));
+        }
+    }
     const relationsById = new Map<string, BundleRelation[]>();
     for (const r of relations) {
-        relationsById.set(r.fromElementId, [...(relationsById.get(r.fromElementId) ?? []), { type: r.type, to: r.to.slug, note: r.note }]);
+        relationsById.set(r.fromElementId, [...(relationsById.get(r.fromElementId) ?? []), { type: r.type, to: r.to.slug, note: r.note, fields: relationFields.get(r.id)! }]);
     }
 
     const elements: BundleElement[] = rows.map((r) => ({

@@ -5,7 +5,8 @@
  * from its own end (the API gives each one's label for this end: the type's
  * label when this element started it, the inverse label when it ends here),
  * and, for an author who may edit, a picker to add one and a remove button
- * that follows the undo-toast convention.
+ * that follows the undo-toast convention. Each relation opens in its own
+ * sheet (`RelationSheet`, Phase 3.3): its fields, and an interview about it.
  *
  * The picker is two `<Combobox>`es: the relation (only the types valid for
  * this element's kind, from either end — `relationOptionsFor`), then the
@@ -26,7 +27,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
-import { Link2, X } from 'lucide-react';
+import { Link2, PanelRightOpen, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Combobox, type ComboboxOption } from '@/components/ui/combobox';
@@ -38,6 +39,7 @@ import type { BibleKind } from '@/lib/bible/kinds';
 import { pickerQuery } from '@/lib/bible/picker-query';
 import type { RelationOption } from '@/lib/bible/ui-model';
 import { useApiErrorMessage } from './error-messages';
+import { RelationSheet } from './RelationSheet';
 
 /** Matches the picker shows at most per search. */
 export const PICKER_PAGE = 20;
@@ -70,6 +72,8 @@ export function RelationsPanel({ workspaceSlug, bookId, element, options, kindLa
     const [searching, setSearching] = useState(false);
     const [searchFailed, setSearchFailed] = useState(false);
     const searchSeq = useRef(0);
+    // Phase 3.3: the relation opened in its sheet (its fields).
+    const [opened, setOpened] = useState<{ id: string; title: string } | null>(null);
 
     const relationOptions: ComboboxOption[] = options.map((o) => ({
         value: o.id,
@@ -193,15 +197,25 @@ export function RelationsPanel({ workspaceSlug, bookId, element, options, kindLa
                                 </Link>{' '}
                                 <span className="text-xs text-content-muted">({kindLabels[r.other.kind]})</span>
                             </p>
-                            {canEdit ? (
+                            <div className="flex shrink-0 items-center gap-tight">
                                 <Button
                                     variant="secondary"
                                     size="sm"
-                                    icon={<X className="size-3.5" aria-hidden="true" />}
-                                    aria-label={t('remove', { label: r.label, name: r.other.name })}
-                                    onClick={() => remove(r.id, r.label, r.other.name)}
+                                    icon={<PanelRightOpen className="size-3.5" aria-hidden="true" />}
+                                    aria-label={t('open', { label: r.label, name: r.other.name })}
+                                    onClick={() => setOpened({ id: r.id, title: `${r.label} ${r.other.name}` })}
+                                    data-testid="relation-open"
                                 />
-                            ) : null}
+                                {canEdit ? (
+                                    <Button
+                                        variant="secondary"
+                                        size="sm"
+                                        icon={<X className="size-3.5" aria-hidden="true" />}
+                                        aria-label={t('remove', { label: r.label, name: r.other.name })}
+                                        onClick={() => remove(r.id, r.label, r.other.name)}
+                                    />
+                                ) : null}
+                            </div>
                         </li>
                     ))}
                 </ul>
@@ -264,6 +278,17 @@ export function RelationsPanel({ workspaceSlug, bookId, element, options, kindLa
                     </Button>
                 </div>
             ) : null}
+            <RelationSheet
+                open={opened !== null}
+                onOpenChange={(next) => {
+                    if (!next) setOpened(null);
+                }}
+                workspaceSlug={workspaceSlug}
+                bookId={bookId}
+                relationId={opened?.id ?? null}
+                title={opened?.title ?? ''}
+                canEdit={canEdit}
+            />
         </Card>
     );
 }

@@ -49,6 +49,7 @@ function server(bookLayer: { depth?: number; personaKeys?: string[] }, unmountab
         recordMode: 'structural',
         personas: PERSONA_KEYS.map((k) => persona(k, !unmountable.includes(k))),
         craft: [],
+        relations: [],
         mountable: 0,
         total: 0,
     };

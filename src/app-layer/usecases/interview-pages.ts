@@ -36,7 +36,11 @@ export async function loadInterviewPage(ctx: WorkspaceRequestContext, bookId: st
             ? interviewScopeElements(ctx, bookId, { scope: 'ELEMENT', elementId: s.targetElementId })
             : s.scope === 'KIND' && s.targetKind
               ? interviewScopeElements(ctx, bookId, { scope: 'KIND', kind: s.targetKind })
-              : interviewScopeElements(ctx, bookId, { scope: 'BOOK' });
+              : s.scope === 'SELECTION'
+                ? interviewScopeElements(ctx, bookId, { scope: 'SELECTION', elementIds: s.scopeElementIds, relationIds: s.scopeRelationIds, frozen: true })
+                : s.scope === 'BETWEEN' && s.slot
+                  ? interviewScopeElements(ctx, bookId, { scope: 'BETWEEN', afterElementId: s.slot.afterElementId, beforeElementId: s.slot.beforeElementId }).catch(() => ({ elements: [], truncated: false }))
+                  : interviewScopeElements(ctx, bookId, { scope: 'BOOK' });
     return { book, interview, reconcileAttention, ...(await scope) };
 }
 

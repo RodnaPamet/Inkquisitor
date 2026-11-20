@@ -131,43 +131,183 @@
       "key": "in_tension_with",
       "label": "is in tension with",
       "inverseLabel": "is in tension with",
-      "targetKinds": ["THEME"]
+      "targetKinds": ["THEME"],
+      "fields": [
+        {
+          "key": "point",
+          "label": "Where they meet or part",
+          "help": "The point on which the two stand against each other: one question answered two ways.",
+          "type": "text",
+          "required": true,
+          "order": 1,
+          "dependsOn": []
+        },
+        {
+          "key": "reveals",
+          "label": "What the comparison reveals",
+          "help": "What a reader understands from setting the two side by side that neither shows alone.",
+          "type": "text",
+          "required": false,
+          "order": 2,
+          "dependsOn": []
+        }
+      ]
     },
     {
       "key": "strand_of",
       "label": "is a strand of",
       "inverseLabel": "has as a strand",
-      "targetKinds": ["THEME"]
+      "targetKinds": ["THEME"],
+      "fields": [
+        {
+          "key": "fit",
+          "label": "How they fit together",
+          "help": "What each contributes to the other, and how the part sits within the whole.",
+          "type": "text",
+          "required": true,
+          "order": 1,
+          "dependsOn": []
+        },
+        {
+          "key": "difference",
+          "label": "What sets them apart",
+          "help": "What one holds that the other lacks, so that the two never blur together.",
+          "type": "text",
+          "required": false,
+          "order": 2,
+          "dependsOn": []
+        }
+      ]
     },
     {
       "key": "felt_through",
       "label": "is felt through",
       "inverseLabel": "makes felt",
-      "targetKinds": ["MOOD"]
+      "targetKinds": ["MOOD"],
+      "fields": [
+        {
+          "key": "how_shown",
+          "label": "How it shows on the page",
+          "help": "Where and how the reader meets this link: in an action, an image, a setting or a choice.",
+          "type": "text",
+          "required": true,
+          "order": 1,
+          "dependsOn": []
+        },
+        {
+          "key": "why_it_matters",
+          "label": "Why it matters",
+          "help": "What this link does for the book: the meaning, pressure or effect it carries.",
+          "type": "text",
+          "required": false,
+          "order": 2,
+          "dependsOn": []
+        }
+      ]
     },
     {
       "key": "echoed_in",
       "label": "is echoed in",
       "inverseLabel": "echoes",
-      "targetKinds": ["TEXTURE", "OBJECT"]
+      "targetKinds": ["TEXTURE", "OBJECT"],
+      "fields": [
+        {
+          "key": "how_shown",
+          "label": "How it shows on the page",
+          "help": "Where and how the reader meets this link: in an action, an image, a setting or a choice.",
+          "type": "text",
+          "required": true,
+          "order": 1,
+          "dependsOn": []
+        },
+        {
+          "key": "why_it_matters",
+          "label": "Why it matters",
+          "help": "What this link does for the book: the meaning, pressure or effect it carries.",
+          "type": "text",
+          "required": false,
+          "order": 2,
+          "dependsOn": []
+        }
+      ]
     },
     {
       "key": "tested_by",
       "label": "is tested by",
       "inverseLabel": "tests",
-      "targetKinds": ["WORLD_RULE", "TIMELINE_EVENT"]
+      "targetKinds": ["WORLD_RULE", "TIMELINE_EVENT"],
+      "fields": [
+        {
+          "key": "how_shown",
+          "label": "How it shows on the page",
+          "help": "Where and how the reader meets this link: in an action, an image, a setting or a choice.",
+          "type": "text",
+          "required": true,
+          "order": 1,
+          "dependsOn": []
+        },
+        {
+          "key": "why_it_matters",
+          "label": "Why it matters",
+          "help": "What this link does for the book: the meaning, pressure or effect it carries.",
+          "type": "text",
+          "required": false,
+          "order": 2,
+          "dependsOn": []
+        }
+      ]
     },
     {
       "key": "embodied_by",
       "label": "is embodied by",
       "inverseLabel": "embodies",
-      "targetKinds": ["FACTION"]
+      "targetKinds": ["FACTION"],
+      "fields": [
+        {
+          "key": "how_shown",
+          "label": "How it shows on the page",
+          "help": "Where and how the reader meets this link: in an action, an image, a setting or a choice.",
+          "type": "text",
+          "required": true,
+          "order": 1,
+          "dependsOn": []
+        },
+        {
+          "key": "why_it_matters",
+          "label": "Why it matters",
+          "help": "What this link does for the book: the meaning, pressure or effect it carries.",
+          "type": "text",
+          "required": false,
+          "order": 2,
+          "dependsOn": []
+        }
+      ]
     },
     {
       "key": "draws_on",
       "label": "draws on",
       "inverseLabel": "informs",
-      "targetKinds": ["RESEARCH"]
+      "targetKinds": ["RESEARCH"],
+      "fields": [
+        {
+          "key": "what_is_drawn",
+          "label": "What is drawn from it",
+          "help": "Which facts, methods or details pass from the source into the book.",
+          "type": "text",
+          "required": true,
+          "order": 1,
+          "dependsOn": []
+        },
+        {
+          "key": "liberties",
+          "label": "Liberties taken",
+          "help": "Where the book departs from the source on purpose, and why.",
+          "type": "text",
+          "required": false,
+          "order": 2,
+          "dependsOn": []
+        }
+      ]
     }
   ]
 }

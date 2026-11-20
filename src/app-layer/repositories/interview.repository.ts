@@ -24,6 +24,12 @@ export const SESSION_SELECT = {
     scope: true,
     targetElementId: true,
     targetKind: true,
+    scopeElementIds: true,
+    scopeRelationIds: true,
+    slotKind: true,
+    slotAfterElementId: true,
+    slotBeforeElementId: true,
+    slotAct: true,
     depth: true,
     detail: true,
     personaKeys: true,
@@ -64,6 +70,8 @@ export const QUESTION_SELECT = {
     roundId: true,
     position: true,
     elementId: true,
+    relationId: true,
+    aboutPending: true,
     targetsFieldKeys: true,
     mode: true,
     origin: true,
@@ -127,6 +135,14 @@ export const InterviewSessionRepository = {
             scope: InterviewScope;
             targetElementId: string | null;
             targetKind: BibleElementKind | null;
+            /** Phase 3.3: a SELECTION's elements and relations, frozen at start. */
+            scopeElementIds?: string[];
+            scopeRelationIds?: string[];
+            /** Phase 3.3: a BETWEEN session's slot. */
+            slotKind?: BibleElementKind | null;
+            slotAfterElementId?: string | null;
+            slotBeforeElementId?: string | null;
+            slotAct?: string | null;
             depth: number;
             detail: number;
             personaKeys: string[];
@@ -212,6 +228,10 @@ export interface QuestionWrite {
     roundId: string;
     position: number;
     elementId: string;
+    /** Phase 3.3: the relation it asks about (filed under its declaring element), or none. */
+    relationId?: string | null;
+    /** Phase 3.3: it asks about the BETWEEN session's element not yet created (filed under the slot's anchor). */
+    aboutPending?: boolean;
     targetsFieldKeys: string[];
     mode: QuestionMode;
     origin: QuestionOrigin;
@@ -266,11 +286,26 @@ export const QuestionRepository = {
         return db.question.findMany({ where: { workspaceId, sessionId }, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }], take, select: QUESTION_SELECT });
     },
 
-    /** Questions of OTHER sessions of the book about these elements, newest first (`take` of them): book-wide deduplication. */
+    /**
+     * Questions of OTHER sessions of the book about these elements, newest first (`take` of them): book-wide deduplication.
+     * Only questions about the elements themselves (Phase 3.3): one filed under an element for its relation or for a
+     * BETWEEN session's element not yet created is about something else.
+     */
     listForElementsElsewhere(db: Db, workspaceId: string, bookId: string, elementIds: readonly string[], exceptSessionId: string, take: number) {
         if (elementIds.length === 0) return Promise.resolve([]);
         return db.question.findMany({
-            where: { workspaceId, bookId, elementId: { in: [...elementIds] }, sessionId: { not: exceptSessionId } },
+            where: { workspaceId, bookId, elementId: { in: [...elementIds] }, relationId: null, aboutPending: false, sessionId: { not: exceptSessionId } },
+            orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+            take,
+            select: QUESTION_SELECT,
+        });
+    },
+
+    /** Questions of OTHER sessions of the book about these relations, newest first (`take` of them): book-wide deduplication (Phase 3.3). */
+    listForRelationsElsewhere(db: Db, workspaceId: string, bookId: string, relationIds: readonly string[], exceptSessionId: string, take: number) {
+        if (relationIds.length === 0) return Promise.resolve([]);
+        return db.question.findMany({
+            where: { workspaceId, bookId, relationId: { in: [...relationIds] }, sessionId: { not: exceptSessionId } },
             orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
             take,
             select: QUESTION_SELECT,
@@ -282,19 +317,27 @@ export const QuestionRepository = {
      * holds, each pair once however many questions hold it (no text is read):
      * the exact-repeat lookup beyond the bounded read of earlier questions.
      */
-    async findExactRepeats(db: Db, workspaceId: string, bookId: string, probes: ReadonlyArray<{ elementId: string; dedupeKey: string }>) {
+    async findExactRepeats(db: Db, workspaceId: string, bookId: string, probes: ReadonlyArray<{ elementId: string; dedupeKey: string; relation?: boolean }>) {
         if (probes.length === 0) return [];
+        // Phase 3.3: a relation's probe names the relation (its subject id); an element's matches only questions about the element itself.
         const rows = await db.question.groupBy({
-            by: ['elementId', 'dedupeKey'],
-            where: { workspaceId, bookId, OR: probes.map((p) => ({ elementId: p.elementId, dedupeKey: p.dedupeKey })) },
+            by: ['elementId', 'relationId', 'dedupeKey'],
+            where: {
+                workspaceId,
+                bookId,
+                aboutPending: false,
+                OR: probes.map((p) => (p.relation ? { relationId: p.elementId, dedupeKey: p.dedupeKey } : { elementId: p.elementId, relationId: null, dedupeKey: p.dedupeKey })),
+            },
+            orderBy: [{ elementId: 'asc' }, { dedupeKey: 'asc' }],
+            take: probes.length * 2,
         });
-        return rows.map((r) => ({ elementId: r.elementId, dedupeKey: r.dedupeKey }));
+        return rows.map((r) => ({ elementId: r.relationId ?? r.elementId, dedupeKey: r.dedupeKey }));
     },
 
     /** The targets of some questions (no encrypted column): what a vector neighbour asked about. */
     targetsOf(db: Db, workspaceId: string, bookId: string, ids: readonly string[]) {
         if (ids.length === 0) return Promise.resolve([]);
-        return db.question.findMany({ where: { workspaceId, bookId, id: { in: [...ids] } }, select: { id: true, elementId: true, targetsFieldKeys: true }, take: ids.length });
+        return db.question.findMany({ where: { workspaceId, bookId, id: { in: [...ids] } }, select: { id: true, elementId: true, relationId: true, aboutPending: true, targetsFieldKeys: true }, take: ids.length });
     },
 
     /** One page of the workspace's questions for a rebuild of their vectors, by id (keyset). */

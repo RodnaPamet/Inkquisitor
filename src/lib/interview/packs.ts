@@ -2,7 +2,13 @@
  * THE QUESTION PACKS, read as plain data (Phase 2.2; mounting since 2.3).
  *
  * A craft pack per element kind (`packs/craft/<dir>/PACK.md`) teaches the
- * interviewer how to question an element of that kind; a persona pack
+ * interviewer how to question an element of that kind; the RELATIONS pack
+ * (`packs/relations/PACK.md`, Phase 3.3, decision D24) how to question the
+ * link between two elements, through the fields every relation type declares
+ * (one pack for every type, its coverage every relation field key, its
+ * evaluation set per type: a relation's questions are about a link, whatever
+ * kinds it joins, so one craft guidance serves them and one record gates it,
+ * D11 as for every pack); a persona pack
  * (`packs/personas/<key>/PACK.md`) shapes how a question is worded. Both are
  * original text written for Inkquisitor in the content formats v1 (sections
  * 3 and 4), each with the evaluation set beside it (`evals.json`); the persona
@@ -41,7 +47,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { z } from 'zod';
 import { BIBLE_KINDS, IDENTIFIER_MAX, IDENTIFIER_PATTERN, type BibleKind } from '@/lib/bible/kinds';
-import { getTemplate } from '@/lib/bible/templates';
+import { allRelationFieldKeys, getRelationType, getTemplate, relationFieldDefs } from '@/lib/bible/templates';
 import { scanPackFiles, type PackFilesScan } from './pack-text-scan';
 import { PERSONA_KEYS, QUESTION_KINDS, type PersonaKey, type QuestionKind } from './vocabulary';
 
@@ -183,34 +189,93 @@ export interface CraftPack {
 }
 
 export function parseCraftPack(raw: string, kind: BibleKind): CraftPack {
-    const where = `craft pack ${packDirOf(kind)}`;
+    const template = getTemplate(kind);
+    const parsed = parseQuestionPack(raw, {
+        where: `craft pack ${packDirOf(kind)}`,
+        frontmatter: ['name', 'version', 'kind', 'coverage', 'description'],
+        name: `craft-${packDirOf(kind)}`,
+        kind,
+        label: template.label,
+        keys: template.fields.map((f) => f.key),
+        core: template.fields.filter((f) => f.required).map((f) => f.key),
+        ordered: true,
+    });
+    return { ...parsed, kind };
+}
+
+/** The relations pack's name (Phase 3.3): one pack for every relation type. */
+export const RELATIONS_PACK_NAME = 'relations';
+
+/** The relations pack (Phase 3.3, D24): a craft pack whose "template" is every relation field key. */
+export type RelationsPack = Omit<CraftPack, 'kind'>;
+
+/**
+ * Parse the relations pack: the craft format, with `name, version, coverage,
+ * description` (no kind), the heading `# Relations`, and a coverage that is
+ * every relation field key any type declares, each once (`allRelationFieldKeys`;
+ * in any order, since the keys come from several templates).
+ */
+export function parseRelationsPack(raw: string): RelationsPack {
+    const { keys, required } = allRelationFieldKeys();
+    return parseQuestionPack(raw, {
+        where: 'relations pack',
+        frontmatter: ['name', 'version', 'coverage', 'description'],
+        name: RELATIONS_PACK_NAME,
+        kind: null,
+        label: 'Relations',
+        keys,
+        core: required,
+        ordered: false,
+    });
+}
+
+interface QuestionPackShape {
+    where: string;
+    frontmatter: readonly string[];
+    name: string;
+    kind: BibleKind | null;
+    label: string;
+    /** The keys the coverage may name, in order when `ordered`. */
+    keys: readonly string[];
+    /** The keys the coverage and the examples must cover. */
+    core: readonly string[];
+    /** The coverage follows `keys`' order (a kind's template); otherwise it names every key once. */
+    ordered: boolean;
+}
+
+function parseQuestionPack(raw: string, shape: QuestionPackShape): RelationsPack {
+    const where = shape.where;
     if (bytesOf(raw) > PACK_MAX_BYTES) throw new Error(`${where}: larger than ${PACK_MAX_BYTES} bytes`);
     const { fields, body } = readFrontmatter(raw, where);
-    if (fields.map(([k]) => k).join(',') !== 'name,version,kind,coverage,description') throw new Error(`${where}: frontmatter keys must be name, version, kind, coverage, description`);
+    if (fields.map(([k]) => k).join(',') !== shape.frontmatter.join(',')) throw new Error(`${where}: frontmatter keys must be ${shape.frontmatter.join(', ')}`);
     const fm = Object.fromEntries(fields);
-    const template = getTemplate(kind);
     const parsed = z
         .object({
-            name: z.literal(`craft-${packDirOf(kind)}`),
+            name: z.literal(shape.name),
             version: z.literal('1'),
-            kind: z.literal(kind),
+            ...(shape.kind ? { kind: z.literal(shape.kind) } : {}),
             coverage: z.array(z.string().max(IDENTIFIER_MAX).regex(IDENTIFIER_PATTERN)).min(1),
             description: z.string(),
         })
+        .strict()
         .safeParse(fm);
     if (!parsed.success) throw new Error(`${where}: frontmatter ${parsed.error.issues.map((i) => i.path.join('.')).join(', ')}`);
     const description = unquote(parsed.data.description, where);
     if (!DESCRIPTION.safeParse(description).success) throw new Error(`${where}: description is not one plain line of at most 200 characters`);
 
     const coverage = parsed.data.coverage;
-    const templateKeys = template.fields.map((f) => f.key);
-    const core = template.fields.filter((f) => f.required).map((f) => f.key);
+    const templateKeys = shape.keys;
+    const core = shape.core;
     if (coverage.some((k) => !templateKeys.includes(k))) throw new Error(`${where}: coverage names a key the template lacks`);
     if (core.some((k) => !coverage.includes(k))) throw new Error(`${where}: coverage misses a core key`);
-    const orderOf = (k: string) => templateKeys.indexOf(k);
-    if (coverage.some((k, i) => i > 0 && orderOf(coverage[i - 1]) >= orderOf(k))) throw new Error(`${where}: coverage is not in template order`);
+    if (shape.ordered) {
+        const orderOf = (k: string) => templateKeys.indexOf(k);
+        if (coverage.some((k, i) => i > 0 && orderOf(coverage[i - 1]) >= orderOf(k))) throw new Error(`${where}: coverage is not in template order`);
+    } else if (new Set(coverage).size !== coverage.length || coverage.length !== templateKeys.length) {
+        throw new Error(`${where}: coverage must name every relation field key exactly once`);
+    }
 
-    if (headingsOf(body).join('\n') !== CRAFT_HEADINGS(template.label).join('\n')) throw new Error(`${where}: headings are not exactly the format's`);
+    if (headingsOf(body).join('\n') !== CRAFT_HEADINGS(shape.label).join('\n')) throw new Error(`${where}: headings are not exactly the format's`);
     const howTo = sectionLines(body, '## How to question').filter((l) => l.startsWith('- '));
     if (howTo[0] !== CRAFT_FIXED_BULLETS[0] || howTo[1] !== CRAFT_FIXED_BULLETS[1]) throw new Error(`${where}: the two fixed bullets do not open "How to question"`);
     const depth = sectionLines(body, '## Depth guidance').filter((l) => l.startsWith('- '));
@@ -232,7 +297,7 @@ export function parseCraftPack(raw: string, kind: BibleKind): CraftPack {
     for (const k of core) {
         if (!examples.some((e) => e.keys.includes(k))) throw new Error(`${where}: no example covers core key ${k}`);
     }
-    return { name: parsed.data.name, version: 1, kind, coverage, description, text: raw, contentHash: sha256Of(raw), examples };
+    return { name: parsed.data.name, version: 1, coverage, description, text: raw, contentHash: sha256Of(raw), examples };
 }
 
 // ─── Persona packs ─────────────────────────────────────────────────
@@ -385,6 +450,40 @@ export function parseCraftEvals(raw: string, kind: BibleKind): CraftEvalCase[] {
 
 export type PersonaEvalCase = z.infer<typeof PersonaEvalCaseSchema>;
 
+/**
+ * One case of the relations pack's set (Phase 3.3): a relation of a type
+ * between two named elements, its stored core fields, and what a right round
+ * targets. `bibleState` names exactly the type's core relation fields, in order.
+ */
+export const RelationEvalCaseSchema = z
+    .object({
+        id: z.string().regex(/^relations-\d{2}$/),
+        rationale: z.string().min(1).max(400),
+        fromKind: z.enum(BIBLE_KINDS),
+        relationType: z.string().max(IDENTIFIER_MAX).regex(IDENTIFIER_PATTERN),
+        fromName: z.string().min(1).max(60),
+        toName: z.string().min(1).max(60),
+        bibleState: z.record(z.string(), z.string().min(1).max(1_200).nullable()),
+        priorAnswers: z.array(PRIOR_ANSWER),
+        dials: DIALS,
+        expect: z.object({ targetsAnyOf: z.array(z.string()), mustNot: MUST_NOT }).strict(),
+    })
+    .strict();
+export type RelationEvalCase = z.infer<typeof RelationEvalCaseSchema>;
+
+export function parseRelationEvals(raw: string): RelationEvalCase[] {
+    const where = 'relations evals';
+    const cases = parseEvals(raw, RelationEvalCaseSchema, where, 'relations', 8, 15);
+    for (const c of cases) {
+        if (!getRelationType(c.fromKind, c.relationType)) throw new Error(`${where}: ${c.id} names a relation type ${c.fromKind} does not declare`);
+        const core = relationFieldDefs(c.fromKind, c.relationType)
+            .filter((f) => f.required)
+            .map((f) => f.key);
+        if (Object.keys(c.bibleState).join(',') !== core.join(',')) throw new Error(`${where}: ${c.id}'s bibleState is not exactly the type's core keys in order`);
+    }
+    return cases;
+}
+
 export function parsePersonaEvals(raw: string, persona: PersonaKey): PersonaEvalCase[] {
     return parseEvals(raw, PersonaEvalCaseSchema, `persona evals ${persona}`, persona, 6, 10);
 }
@@ -421,7 +520,7 @@ export function personaSetHash(evalsRaw: string, situationsRaw: string): string 
 export const PACK_RECORD_FILE = 'evaluation-record.json';
 export const SITUATIONS_FILE = 'situations.json';
 
-export type PackGroup = 'craft' | 'persona';
+export type PackGroup = 'craft' | 'persona' | 'relations';
 
 /**
  * What mounting reads about one pack: its identity, the hashes that pin it,
@@ -432,7 +531,7 @@ export interface PackFile {
     /** `craft-character`, `persona-socratic`, … (the frontmatter `name`). */
     name: string;
     group: PackGroup;
-    /** The element kind (craft) or the persona key (persona). */
+    /** The element kind (craft), the persona key (persona), or `relations`. */
     key: string;
     version: number;
     /** Relative to the packs directory: `craft/character`, `personas/socratic`. */
@@ -449,11 +548,14 @@ export interface PackFile {
 
 export interface PackRegistry {
     craft: Readonly<Record<BibleKind, CraftPack>>;
+    /** Phase 3.3: the one pack for every relation's fields. */
+    relations: RelationsPack;
     personas: Readonly<Record<PersonaKey, PersonaPack>>;
     craftEvals: Readonly<Record<BibleKind, CraftEvalCase[]>>;
+    relationEvals: readonly RelationEvalCase[];
     personaEvals: Readonly<Record<PersonaKey, PersonaEvalCase[]>>;
     situations: Readonly<Record<SituationId, Situation>>;
-    /** Every pack, by name: 16 craft (one per kind), then 6 personas. */
+    /** Every pack, by name: 16 craft (one per kind), the relations pack, then 6 personas. */
     files: Readonly<Record<string, PackFile>>;
     personaEvalCount: number;
 }
@@ -504,6 +606,24 @@ export function loadPacks(dir: string = PACKS_DIR): PackRegistry {
             record: readRecord(path.join(dir, rel)),
         };
     }
+    const relationsRaw = read('relations', 'PACK.md');
+    const relationEvalsRaw = read('relations', 'evals.json');
+    const relations = parseRelationsPack(relationsRaw);
+    const relationEvals = parseRelationEvals(relationEvalsRaw);
+    files[relations.name] = {
+        name: relations.name,
+        group: 'relations',
+        key: RELATIONS_PACK_NAME,
+        version: relations.version,
+        dir: 'relations',
+        contentHash: relations.contentHash,
+        setHash: sha256Of(relationEvalsRaw),
+        scan: scanPackFiles([
+            ['PACK.md', relationsRaw],
+            ['evals.json', relationEvalsRaw],
+        ]),
+        record: readRecord(path.join(dir, 'relations')),
+    };
     const situationsRaw = read('personas', SITUATIONS_FILE);
     const situations = parseSituations(situationsRaw);
     const personas = {} as Record<PersonaKey, PersonaPack>;
@@ -532,7 +652,7 @@ export function loadPacks(dir: string = PACKS_DIR): PackRegistry {
             record: readRecord(path.join(dir, rel)),
         };
     }
-    return { craft, personas, craftEvals, personaEvals, situations, files, personaEvalCount };
+    return { craft, relations, personas, craftEvals, relationEvals, personaEvals, situations, files, personaEvalCount };
 }
 
 let registry: PackRegistry | undefined;

@@ -40,8 +40,20 @@ import { CODE_DEFAULT_DIALS, PERSONAS_PER_SESSION_MAX, dialEffects, type DialEff
 import { DIAL_MAX, DIAL_MIN, isDial } from './dials';
 import { INTERVIEW_SCOPES, PERSONA_KEYS, isPersonaKey, type PersonaKey } from './vocabulary';
 
-/** What a new interview asks about. */
-export type InterviewTarget = { scope: 'ELEMENT'; elementId: string } | { scope: 'KIND'; kind: BibleKind } | { scope: 'BOOK' };
+/**
+ * What a new interview asks about. Phase 3.3 (the canvas): a SELECTION of
+ * elements and relations ("Grill this"; an edge alone is a selection of one
+ * relation), or the place BETWEEN two neighbouring beats.
+ */
+export type InterviewTarget =
+    | { scope: 'ELEMENT'; elementId: string }
+    | { scope: 'KIND'; kind: BibleKind }
+    | { scope: 'BOOK' }
+    | { scope: 'SELECTION'; elementIds: string[]; relationIds: string[] }
+    | { scope: 'BETWEEN'; afterElementId: string; beforeElementId: string };
+
+/** Ids a selection's query carries at most (the server's own bound, `SELECTION_ELEMENTS_MAX`). */
+export const SELECTION_QUERY_MAX = 60;
 
 /** The dials and toggles a new interview starts with. */
 export interface InterviewSetup {
@@ -155,8 +167,9 @@ export function startRequestBody(target: InterviewTarget, setup: InterviewSetup)
     };
 }
 
-/** Which persona or kind a pack name (`persona-<key>`, `craft-<kind>`) is; null for a name this client does not know. */
-export function packOfName(name: string): { group: 'persona'; key: PersonaKey } | { group: 'craft'; kind: BibleKind } | null {
+/** Which persona or kind a pack name (`persona-<key>`, `craft-<kind>`, `relations`) is; null for a name this client does not know. */
+export function packOfName(name: string): { group: 'persona'; key: PersonaKey } | { group: 'craft'; kind: BibleKind } | { group: 'relations' } | null {
+    if (name === 'relations') return { group: 'relations' };
     if (name.startsWith('persona-')) {
         const key = name.slice('persona-'.length);
         return isPersonaKey(key) ? { group: 'persona', key } : null;
@@ -174,6 +187,14 @@ export function interviewSetupQuery(target: InterviewTarget, setup: InterviewSet
     q.set('scope', target.scope);
     if (target.scope === 'ELEMENT') q.set('element', target.elementId);
     if (target.scope === 'KIND') q.set('kind', target.kind);
+    if (target.scope === 'SELECTION') {
+        if (target.elementIds.length > 0) q.set('elements', target.elementIds.join(','));
+        if (target.relationIds.length > 0) q.set('relations', target.relationIds.join(','));
+    }
+    if (target.scope === 'BETWEEN') {
+        q.set('after', target.afterElementId);
+        q.set('before', target.beforeElementId);
+    }
     q.set('depth', String(setup.depth));
     q.set('detail', String(setup.detail));
     if (setup.personaKeys.length > 0) q.set('personas', setup.personaKeys.join(','));
@@ -205,6 +226,17 @@ export function setupFromQuery(q: Query): { target: InterviewTarget; setup: Inte
         const kind = one(q, 'kind');
         if (!kind || !(BIBLE_KINDS as readonly string[]).includes(kind)) return null;
         target = { scope: 'KIND', kind: kind as BibleKind };
+    } else if (scope === 'SELECTION') {
+        const ids = (key: string) => (one(q, key) ?? '').split(',').filter((id) => id.length > 0 && id.length <= 64);
+        const elementIds = [...new Set(ids('elements'))];
+        const relationIds = [...new Set(ids('relations'))];
+        if (elementIds.length + relationIds.length === 0 || elementIds.length > SELECTION_QUERY_MAX || relationIds.length > SELECTION_QUERY_MAX) return null;
+        target = { scope: 'SELECTION', elementIds, relationIds };
+    } else if (scope === 'BETWEEN') {
+        const after = one(q, 'after');
+        const before = one(q, 'before');
+        if (!after || !before || after.length > 64 || before.length > 64 || after === before) return null;
+        target = { scope: 'BETWEEN', afterElementId: after, beforeElementId: before };
     } else target = { scope: 'BOOK' };
     const dial = (key: string, fallback: number) => {
         const n = Number(one(q, key));

@@ -126,6 +126,7 @@ import {
     type FieldEntry,
 } from './bible-common';
 import { bookWrite } from './books';
+import { normaliseRelationFieldEntries, recordRelationVersion, relationForSave, writeRelationFieldValues } from './relation-common';
 import { ORDER_SCOPE_MAX } from './bible-order';
 
 // ─── Shared ─────────────────────────────────────────────────────────
@@ -230,7 +231,8 @@ interface PreparedElement {
      * keys it knew), then any unknown key (refused).
      */
     fields: FieldEntry[];
-    relations: Array<{ type: string; to: string; note: string | null }>;
+    /** Phase 3.3 (D24): each relation's fields as the file gives them (set; a field the file leaves out is kept). */
+    relations: Array<{ type: string; to: string; note: string | null; fields: FieldEntry[] }>;
 }
 
 /** The YAML frontmatter of one file, as JavaScript values, or a problem. */
@@ -328,7 +330,19 @@ function prepareElement(path: string, fm: BundleElementFrontmatter, knownKeys: R
             problems.add({ path, reason: 'SELF_RELATION', key: `relations.${i}` });
             ok = false;
         }
-        if (note !== undefined) relations.push({ type: r.type, to: r.to, note });
+        // Its fields (Phase 3.3), against its type's template when the type is one this kind declares (an unknown type is refused below).
+        const fields: FieldEntry[] = Object.entries(r.fields ?? {}).map(([key, value]) => ({ key, value }));
+        if (fields.length > 0 && getRelationType(fm.kind, r.type)) {
+            try {
+                normaliseRelationFieldEntries({ fromKind: fm.kind, type: r.type }, fields);
+            } catch (err) {
+                const refused = err instanceof ValidationError ? (err.details as { fields?: Array<{ key: string; reason: string }> } | undefined)?.fields : undefined;
+                if (!refused) throw err;
+                for (const f of refused) problems.add({ path, reason: f.reason, key: `relations.${i}.fields.${f.key}` });
+                ok = false;
+            }
+        }
+        if (note !== undefined) relations.push({ type: r.type, to: r.to, note, fields });
     });
 
     if (!ok || name === undefined || summary === undefined || customLabel === undefined) return null;
@@ -674,14 +688,25 @@ export async function importBibleBundle(
                         const found = symmetric
                             ? await BibleRelationRepository.findPair(db, ctx.workspaceId, bookId, from, to, r.type)
                             : await BibleRelationRepository.findExact(db, ctx.workspaceId, bookId, from, to, r.type);
+                        // Phase 3.3 (D24): a relation the import creates or changes (its note, its fields) gets one version, source IMPORT.
                         if (!found) {
-                            await BibleRelationRepository.create(db, ctx.workspaceId, bookId, { fromElementId: from, toElementId: to, type: r.type, symmetric, note: r.note });
+                            const created = await BibleRelationRepository.create(db, ctx.workspaceId, bookId, { fromElementId: from, toElementId: to, type: r.type, symmetric, note: r.note });
+                            const saved = relationForSave(bookId, { id: created.id, type: r.type, fromElementId: from, toElementId: to, note: r.note, from: { kind: e.kind } });
+                            if (r.fields.length > 0) await writeRelationFieldValues(db, ctx, saved, r.fields);
+                            await recordRelationVersion(db, ctx, saved, { source: 'IMPORT' });
                             relations.created++;
-                        } else if ((found.note ?? null) !== r.note) {
-                            await BibleRelationRepository.updateNote(db, ctx.workspaceId, bookId, found.id, r.note);
-                            relations.updated++;
                         } else {
-                            relations.unchanged++;
+                            await BibleRelationRepository.lock(db, found.id);
+                            const noteChanged = (found.note ?? null) !== r.note;
+                            if (noteChanged) await BibleRelationRepository.updateNote(db, ctx.workspaceId, bookId, found.id, r.note);
+                            const saved = relationForSave(bookId, { id: found.id, type: r.type, fromElementId: found.fromElementId, toElementId: found.toElementId, note: r.note, from: { kind: found.fromElementId === from ? e.kind : (kindOf.get(r.to) ?? e.kind) } });
+                            const fieldsChanged = r.fields.length > 0 ? await writeRelationFieldValues(db, ctx, saved, r.fields) : [];
+                            if (noteChanged || fieldsChanged.length > 0) {
+                                await recordRelationVersion(db, ctx, saved, { source: 'IMPORT' });
+                                relations.updated++;
+                            } else {
+                                relations.unchanged++;
+                            }
                         }
                     }
                 }

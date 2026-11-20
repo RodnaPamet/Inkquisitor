@@ -3,7 +3,7 @@
  *
  * A marker word is planted in every kind of author text the product takes —
  * a book's title and logline, an element's name, summary and fields, a
- * relation's note, a concept note, an interview answer, the reconcile step's
+ * relation's note and (Phase 3.3) its fields, a concept note, an interview answer, the reconcile step's
  * proposals, a rephrase, a research brief, an attached file, a fetched page
  * and its findings, a model answer that fails validation, and an unexpected
  * error whose message carries it, a model-call rate-limit refusal of a
@@ -56,7 +56,7 @@ import { _resetSentryForTests, initSentry } from '@/lib/observability/sentry';
 import { withApiErrorHandling } from '@/lib/errors/api';
 import { createBook } from '@/app-layer/usecases/books';
 import { createElement, updateElementFields } from '@/app-layer/usecases/bible-elements';
-import { addRelation } from '@/app-layer/usecases/bible-relations';
+import { addRelation, saveRelationFields } from '@/app-layer/usecases/bible-relations';
 import { importConceptNote } from '@/app-layer/usecases/bible-import';
 import { callStructured } from '@/app-layer/usecases/model-calls';
 import { getInterview, startInterview } from '@/app-layer/usecases/interviews';
@@ -142,7 +142,12 @@ it('a marker planted in every author-text path reaches no log line, span, Sentry
     const ilse = await createElement(ctx, bookId, { kind: 'CHARACTER', name: marked('Ilse'), summary: marked('A keeper'), fields: [{ key: 'role', value: marked('Keeper of the light.') }] });
     const light = await createElement(ctx, bookId, { kind: 'SETTING', name: 'The Wennaway Light', fields: [{ key: 'place_type', value: 'A lighthouse on a tidal island.' }] });
     await updateElementFields(ctx, bookId, ilse.id, { baseVersion: 1, fields: [{ key: 'want', value: marked('To keep the light burning.') }] });
-    await addRelation(ctx, bookId, { fromElementId: ilse.id, toElementId: light.id, type: 'related_to', note: marked('She lives there.') });
+    const lives = await addRelation(ctx, bookId, { fromElementId: ilse.id, toElementId: light.id, type: 'related_to', note: marked('She lives there.') });
+    // A relation's fields (Phase 3.3, D24): saved, and refused over a newer version — through the request wrapper.
+    await wrapped(() => saveRelationFields(ctx, bookId, lives.id, { baseVersion: 1, fields: [{ key: 'nature', value: marked('She was born in its lamp room.') }], changeSummary: marked('Why') }));
+    const staleRelation = await wrapped(() => saveRelationFields(ctx, bookId, lives.id, { baseVersion: 1, fields: [{ key: 'significance', value: marked('It is all she has.') }] }));
+    expect(staleRelation.status).toBe(409);
+    expect((await staleRelation.text()).toLowerCase()).not.toContain(MARKER.toLowerCase());
     await importConceptNote(ctx, bookId, { text: marked('A note about tides and lamps.') }, { scan: CLEAN_SCAN });
 
     // The story canvas (Phase 3.1): a sticky note on the relationship map, saved through the request wrapper, and a refused layer.

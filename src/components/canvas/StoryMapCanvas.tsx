@@ -91,6 +91,7 @@ import { canvasAssetUrls } from '@/lib/canvas/tldraw-assets';
 import { installArrowToEdgeConversion, installEdgeLineRemovesEdge, installOneNodePerElement, type ArrowVerdict, type RelationRequest } from './tldraw/arrow-to-edge';
 import { installCardDrop } from './tldraw/lane-host';
 import { LaneBackdrop, LaneBackdropContext } from './LaneBackdrop';
+import { StructurePreviewContext, StructurePreviewLayer, type StructurePreviewValue } from './GhostLayer';
 import { STORY_NODE_SHAPE_TYPE, type StoryNodeShape } from './tldraw/story-node-shape';
 import type { KnownRelation } from './tldraw/edge-validation';
 import { restoreFreeform } from './tldraw/restore-freeform';
@@ -133,7 +134,16 @@ function StoryToolbar() {
         </DefaultToolbar>
     );
 }
-const TLDRAW_COMPONENTS: TLComponents = { Toolbar: StoryToolbar, OnTheCanvas: LaneBackdrop };
+/** Under the shapes, in page space: the derived maps' lanes, then the pending proposals' ghosts (Phase 3.3). Neither is a store record. */
+function CanvasOverlays() {
+    return (
+        <>
+            <LaneBackdrop />
+            <StructurePreviewLayer />
+        </>
+    );
+}
+const TLDRAW_COMPONENTS: TLComponents = { Toolbar: StoryToolbar, OnTheCanvas: CanvasOverlays };
 
 export interface StoryMapCanvasProps {
     /** The map's rows, exactly as the API returns them. */
@@ -163,6 +173,8 @@ export interface StoryMapCanvasProps {
     onCardsDropped?: (drops: Array<{ elementId: string; center: { x: number; y: number } }>) => void;
     /** A node was double-clicked: open its element. */
     onNodeOpen?: (elementId: string) => void;
+    /** Phase 3.3: the book's pending new elements and relations, drawn as ghosts (never store records), and the plot board's slots. */
+    preview?: StructurePreviewValue | null;
 }
 
 /** `shape:…`, checked rather than asserted: an id without it is a serializer bug. */
@@ -223,6 +235,7 @@ export function StoryMapCanvas({
     onEdgeRemoved,
     onCardsDropped,
     onNodeOpen,
+    preview = null,
 }: StoryMapCanvasProps) {
     // Callbacks through refs: `onMount` runs once per editor, so a closure
     // would pin the first render's callbacks for the editor's whole life.
@@ -336,19 +349,21 @@ export function StoryMapCanvas({
     return (
         <div className="h-full w-full" data-story-canvas="true" data-map-layout={layout}>
             <LaneBackdropContext.Provider value={lanes}>
-            <Tldraw
-                shapeUtils={SHAPE_UTILS}
-                bindingUtils={BINDING_UTILS}
-                onMount={handleMount}
-                options={TLDRAW_OPTIONS}
-                textOptions={STORY_TEXT_OPTIONS}
-                overrides={TLDRAW_OVERRIDES}
-                components={components}
-                assetUrls={ASSET_URLS}
-                user={user}
-                acceptedImageMimeTypes={NO_FILE_TYPES}
-                acceptedVideoMimeTypes={NO_FILE_TYPES}
-            />
+                <StructurePreviewContext.Provider value={preview}>
+                    <Tldraw
+                        shapeUtils={SHAPE_UTILS}
+                        bindingUtils={BINDING_UTILS}
+                        onMount={handleMount}
+                        options={TLDRAW_OPTIONS}
+                        textOptions={STORY_TEXT_OPTIONS}
+                        overrides={TLDRAW_OVERRIDES}
+                        components={components}
+                        assetUrls={ASSET_URLS}
+                        user={user}
+                        acceptedImageMimeTypes={NO_FILE_TYPES}
+                        acceptedVideoMimeTypes={NO_FILE_TYPES}
+                    />
+                </StructurePreviewContext.Provider>
             </LaneBackdropContext.Provider>
         </div>
     );

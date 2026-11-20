@@ -49,7 +49,14 @@ import type { Prisma } from '@prisma/client';
 import type { WorkspaceRequestContext } from '@/app-layer/types';
 import { logEvent } from '@/app-layer/events/audit';
 import { assertPermission } from '@/app-layer/policies/permission.policy';
-import { BibleElementRepository, BibleFieldRepository, BibleVersionRepository } from '@/app-layer/repositories/bible.repository';
+import {
+    BibleElementRepository,
+    BibleFieldRepository,
+    BibleRelationFieldRepository,
+    BibleRelationRepository,
+    BibleRelationVersionRepository,
+    BibleVersionRepository,
+} from '@/app-layer/repositories/bible.repository';
 import { EnrichmentProposalRepository, ReconcileRunRepository, type ReconcileRunRow } from '@/app-layer/repositories/enrichment.repository';
 import { AnswerRepository, InterviewRoundRepository, InterviewSessionRepository, QuestionRepository, type AnswerRow, type RoundRow, type SessionRow } from '@/app-layer/repositories/interview.repository';
 import { RoundNumberParam } from '@/app-layer/schemas/interview';
@@ -58,14 +65,15 @@ import { ConflictError, NotFoundError } from '@/lib/errors/types';
 import { AiUnavailableError, type AiUnavailableReason } from '@/lib/ai/errors';
 import { decodeFieldValue, type FieldValue } from '@/lib/bible/field-values';
 import type { BibleKind } from '@/lib/bible/kinds';
-import { getTemplate } from '@/lib/bible/templates';
+import { getRelationType, getTemplate, relationFieldDefs } from '@/lib/bible/templates';
+import { PENDING_SUBJECT_ID, relationSubjectName, subjectIdOf, type RelationSubject } from '@/lib/interview/subjects';
 import { defaultReconciler } from '@/lib/enrichment/model-seam';
 import { BOOK_ELEMENTS_IN_PROMPT_MAX, RECONCILE_PROMPT_VERSION } from '@/lib/enrichment/prompt';
-import { runReconcileStep, validateOutput, type ReconcileMetrics, type ReconcileRoundInput, type RoundAnswerInput } from '@/lib/enrichment/reconcile';
+import { emptyProposedCounts, runReconcileStep, validateOutput, type ProposedCounts, type ReconcileMetrics, type ReconcileRoundInput, type RoundAnswerInput, type RoundElementInput } from '@/lib/enrichment/reconcile';
 import type { Reconciler } from '@/lib/enrichment/reconciler';
 import { reconcileGate, type ReconcileGateVerdict } from '@/lib/enrichment/record-gate';
 import { sanitiseProposalForStorage } from '@/lib/enrichment/storage';
-import { nameKey } from '@/lib/enrichment/validate';
+import { nameKey, type RelationEnd } from '@/lib/enrichment/validate';
 import { effectiveRunState, STALE_RECONCILE_MS, statusOfOutcome, type ReconcileOutcome, type RefusalCode } from '@/lib/enrichment/vocabulary';
 import type { PackRecordMode } from '@/lib/interview/pack-records-config';
 import { decodeOptions, decodeScaleLabels } from '@/lib/interview/storage';
@@ -102,8 +110,8 @@ export interface ReconcileRunView {
     status: ReconcileRunRow['status'];
     outcome: ReconcileOutcome | null;
     attempts: number;
-    /** Proposals stored, by kind (counts only). */
-    proposed: { ADD: number; UPDATE: number; REMOVE: number; NEW_ELEMENT: number };
+    /** Proposals stored, by kind (counts only; a relation's field among ADD, UPDATE and REMOVE). */
+    proposed: ProposedCounts;
     /** Of those, flagged POSSIBLE_INSTRUCTION for the author (D14). */
     flagged: number;
     noChange: number;
@@ -128,7 +136,7 @@ export function runView(run: ReconcileRunRow, roundNumber: number): ReconcileRun
         status: state.status,
         outcome: state.outcome,
         attempts: run.attempts,
-        proposed: m.proposed ?? { ADD: 0, UPDATE: 0, REMOVE: 0, NEW_ELEMENT: 0 },
+        proposed: { ...emptyProposedCounts(), ...(m.proposed ?? {}) },
         flagged: m.flagged ?? 0,
         noChange: m.noChange ?? 0,
         refused: m.refused ?? {},
@@ -156,19 +164,49 @@ async function storedValuesOf(db: PrismaTx, ctx: WorkspaceRequestContext, elemen
     return out;
 }
 
+/** Relations read as the ends of a new relation's existing pairs, at most. */
+const EXISTING_RELATIONS_READ = 500;
+/** Stored relation fields read per relation. */
+const FIELDS_PER_RELATION = 10;
+
 /**
- * The round as reconcile reads it: its questions' elements (those still in
- * the book) with their stored values and the keys the questions targeted, the
- * latest answer of each question, and the book's elements by kind and name.
+ * The elements a new relation may join, by the session's scope (Phase 3.3,
+ * D24): a SELECTION's elements and its relations' ends; a BETWEEN session's
+ * two neighbours (an answer about the slot addresses them). Every other scope
+ * offers none, so it proposes no relation.
+ */
+async function relationEndsOf(db: PrismaTx, ctx: WorkspaceRequestContext, session: SessionRow): Promise<RelationEnd[]> {
+    if (session.scope === 'SELECTION') {
+        const relations = await BibleRelationRepository.listByIdsWithEnds(db, ctx.workspaceId, session.bookId, session.scopeRelationIds);
+        const ids = [...new Set([...session.scopeElementIds, ...relations.flatMap((r) => [r.fromElementId, r.toElementId])])];
+        const rows = await BibleElementRepository.listByIds(db, ctx.workspaceId, session.bookId, ids);
+        return rows.map((e) => ({ elementId: e.id, kind: e.kind as BibleKind, name: e.name }));
+    }
+    if (session.scope === 'BETWEEN' && session.slotAfterElementId && session.slotBeforeElementId) {
+        const rows = await BibleElementRepository.listByIds(db, ctx.workspaceId, session.bookId, [session.slotAfterElementId, session.slotBeforeElementId]);
+        return rows.map((e) => ({ elementId: e.id, kind: e.kind as BibleKind, name: e.name, neighbour: true }));
+    }
+    return [];
+}
+
+/**
+ * The round as reconcile reads it: its questions' SUBJECTS (Phase 3.3:
+ * elements, relations and the BETWEEN slot's element not yet created, those
+ * still in the book) with their stored values and the keys the questions
+ * targeted, the latest answer of each question, the book's elements by kind
+ * and name, and the ends a new relation may join with the relations the book
+ * holds between them.
  */
 export async function loadRoundInput(db: PrismaTx, ctx: WorkspaceRequestContext, session: SessionRow, round: RoundRow): Promise<ReconcileRoundInput> {
     const questions = await QuestionRepository.listForRound(db, ctx.workspaceId, session.id, round.id, ROUND_QUESTIONS_MAX);
     const latest = latestByQuestion(await AnswerRepository.listForSession(db, ctx.workspaceId, session.id, SESSION_ANSWERS_READ));
-    const elementIds = [...new Set(questions.map((q) => q.elementId))];
+    const targetedOf = (subject: string) => new Set(questions.filter((q) => subjectIdOf(q) === subject).flatMap((q) => q.targetsFieldKeys));
+
+    const elementIds = [...new Set(questions.filter((q) => !q.relationId && !q.aboutPending).map((q) => q.elementId))];
     const rows = await BibleElementRepository.listByIds(db, ctx.workspaceId, session.bookId, elementIds);
     const stored = await storedValuesOf(db, ctx, rows.map((r) => r.id));
-    const elements = rows.map((e) => {
-        const targeted = new Set(questions.filter((q) => q.elementId === e.id).flatMap((q) => q.targetsFieldKeys));
+    const elements: RoundElementInput[] = rows.map((e) => {
+        const targeted = targetedOf(e.id);
         return {
             elementId: e.id,
             kind: e.kind as BibleKind,
@@ -178,14 +216,68 @@ export async function loadRoundInput(db: PrismaTx, ctx: WorkspaceRequestContext,
             scopeKeys: getTemplate(e.kind).fields.filter((f) => targeted.has(f.key)).map((f) => f.key),
         };
     });
-    const live = new Set(rows.map((r) => r.id));
+
+    // The relations the round asked about (Phase 3.3), with their stored fields.
+    const relationIds = [...new Set(questions.flatMap((q) => (q.relationId ? [q.relationId] : [])))];
+    const relations = await BibleRelationRepository.listByIdsWithEnds(db, ctx.workspaceId, session.bookId, relationIds);
+    const relationStored = new Map<string, Map<string, FieldValue>>(relations.map((r) => [r.id, new Map()]));
+    for (const f of await BibleRelationFieldRepository.listForRelations(db, ctx.workspaceId, relations.map((r) => r.id), FIELDS_PER_RELATION)) {
+        relationStored.get(f.relationId)?.set(f.key, decodeFieldValue(f.value));
+    }
+    for (const r of relations) {
+        const relation: RelationSubject = {
+            relationId: r.id,
+            type: r.type,
+            label: getRelationType(r.from.kind, r.type)?.label ?? r.type,
+            fromElementId: r.fromElementId,
+            toElementId: r.toElementId,
+            fromKind: r.from.kind,
+            toKind: r.to.kind,
+            fromName: r.from.name,
+            toName: r.to.name,
+        };
+        const targeted = targetedOf(r.id);
+        elements.push({
+            elementId: r.id,
+            kind: r.from.kind,
+            name: relationSubjectName(relation),
+            customLabel: null,
+            stored: relationStored.get(r.id) ?? new Map(),
+            scopeKeys: relationFieldDefs(r.from.kind, r.type).filter((f) => targeted.has(f.key)).map((f) => f.key),
+            relation,
+        });
+    }
+
+    // The BETWEEN slot's element not yet created, when the round asked about it and both neighbours remain.
+    const relationEnds = await relationEndsOf(db, ctx, session);
+    let slot: ReconcileRoundInput['slot'] = null;
+    if (session.scope === 'BETWEEN' && session.slotKind && relationEnds.length === 2) {
+        slot = { kind: session.slotKind as BibleKind };
+        if (questions.some((q) => q.aboutPending)) {
+            const targeted = targetedOf(PENDING_SUBJECT_ID);
+            const after = relationEnds.find((e) => e.elementId === session.slotAfterElementId)!;
+            const before = relationEnds.find((e) => e.elementId === session.slotBeforeElementId)!;
+            elements.push({
+                elementId: PENDING_SUBJECT_ID,
+                kind: slot.kind,
+                name: `${after.name} → … → ${before.name}`,
+                customLabel: null,
+                stored: new Map(),
+                scopeKeys: getTemplate(slot.kind).fields.filter((f) => targeted.has(f.key)).map((f) => f.key),
+                pending: { afterName: after.name, beforeName: before.name },
+            });
+        }
+    }
+
+    const live = new Set(elements.map((e) => e.elementId));
     const answers: RoundAnswerInput[] = [];
     for (const q of questions) {
         const a = latest.get(q.id);
-        if (!a || !live.has(q.elementId)) continue;
+        const subject = subjectIdOf(q);
+        if (!a || !live.has(subject)) continue;
         answers.push({
             answerId: a.id,
-            elementId: q.elementId,
+            elementId: subject,
             targetsFieldKeys: q.targetsFieldKeys,
             questionKind: q.kind,
             question: q.text,
@@ -198,7 +290,16 @@ export async function loadRoundInput(db: PrismaTx, ctx: WorkspaceRequestContext,
         });
     }
     const book = await BibleElementRepository.page(db, ctx.workspaceId, session.bookId, { take: BOOK_ELEMENTS_IN_PROMPT_MAX });
-    return { bookId: session.bookId, elements, answers, bookElements: book.map((b) => ({ kind: b.kind as BibleKind, name: b.name })) };
+    const existing = await BibleRelationRepository.listBetween(db, ctx.workspaceId, session.bookId, relationEnds.map((e) => e.elementId), EXISTING_RELATIONS_READ);
+    return {
+        bookId: session.bookId,
+        elements,
+        answers,
+        bookElements: book.map((b) => ({ kind: b.kind as BibleKind, name: b.name })),
+        relationEnds,
+        existingRelations: existing.map((r) => ({ fromElementId: r.fromElementId, toElementId: r.toElementId, type: r.type, symmetric: r.symmetric })),
+        slot,
+    };
 }
 
 type Claim =
@@ -312,53 +413,156 @@ async function persistRun(
     const pendingNames = new Set(
         (await EnrichmentProposalRepository.pendingNewElementNames(db, ctx.workspaceId, session.bookId, PENDING_NAMES_MAX)).map((p) => nameKey(p.newName ?? '')),
     );
-    const kinds = new Map(now.elements.map((e) => [e.elementId, e.kind]));
+    const subjects = new Map(now.elements.map((e) => [e.elementId, e] as const));
+    const ends = new Map((now.relationEnds ?? []).map((e) => [e.elementId, e] as const));
     const versions = new Map<string, number>();
-    const proposed = { ADD: 0, UPDATE: 0, REMOVE: 0, NEW_ELEMENT: 0 };
+    const relationVersions = new Map<string, number>();
+    const proposed = emptyProposedCounts();
     let flagged = 0;
     const refused: Partial<Record<RefusalCode, number>> = {};
-    for (const r of validation.refusals) refused[r.code] = (refused[r.code] ?? 0) + 1;
-    for (const draft of validation.proposals) {
+    const refuse = (code: RefusalCode) => {
+        refused[code] = (refused[code] ?? 0) + 1;
+    };
+    for (const r of validation.refusals) refuse(r.code);
+    // A new element's proposal id by its place among the output's new elements: what a new relation's `new.N` end names.
+    const newElementProposals = new Map<number, string>();
+    const newElementDrafts = new Map(validation.proposals.flatMap((p) => (p.kind === 'NEW_ELEMENT' ? [[p.outputIndex, p] as const] : [])));
+    // New elements first, so a new relation's end is stored before it.
+    const ordered = [...validation.proposals].sort((a, b) => (a.kind === 'NEW_RELATION' ? 1 : 0) - (b.kind === 'NEW_RELATION' ? 1 : 0));
+    for (const draft of ordered) {
         if (draft.kind === 'NEW_ELEMENT') {
             const key = nameKey(draft.name);
             const alreadyProposed = pendingNames.has(key);
             if (alreadyProposed || (await bookHoldsElementName(db, ctx, session.bookId, draft.name))) {
-                const code: RefusalCode = alreadyProposed ? 'ALREADY_PROPOSED' : 'ELEMENT_EXISTS';
-                refused[code] = (refused[code] ?? 0) + 1;
+                refuse(alreadyProposed ? 'ALREADY_PROPOSED' : 'ELEMENT_EXISTS');
                 continue;
             }
             pendingNames.add(key);
+            const text = sanitiseProposalForStorage(draft, draft.newKind);
+            const row = await EnrichmentProposalRepository.create(
+                db,
+                ctx.workspaceId,
+                {
+                    bookId: session.bookId,
+                    sessionId: session.id,
+                    roundId: round.id,
+                    kind: 'NEW_ELEMENT',
+                    elementId: null,
+                    fieldKey: null,
+                    operation: null,
+                    proposedValue: text.proposedValue,
+                    baseVersion: null,
+                    newKind: draft.newKind,
+                    newName: text.newName,
+                    newSummary: text.newSummary,
+                    fillsSlot: draft.fillsSlot,
+                    flags: [...draft.flags],
+                },
+                draft.citedAnswerIds,
+            );
+            newElementProposals.set(draft.outputIndex, row.id);
+            proposed.NEW_ELEMENT++;
+            if (draft.flags.length > 0) flagged++;
+            continue;
         }
-        const elementKind = draft.kind === 'FIELD' ? (kinds.get(draft.elementId) ?? null) : null;
-        const text = sanitiseProposalForStorage(draft, elementKind);
-        let baseVersion: number | null = null;
-        if (draft.kind === 'FIELD') {
+        if (draft.kind === 'NEW_RELATION') {
+            // An end that is a new element of this answer must have been stored above (not a name the book now holds).
+            const endOf = (r: typeof draft.from) => ('elementId' in r ? { elementId: r.elementId, proposalId: null } : { elementId: null, proposalId: newElementProposals.get(r.newElement) ?? null });
+            const from = endOf(draft.from);
+            const to = endOf(draft.to);
+            if ((from.elementId === null && from.proposalId === null) || (to.elementId === null && to.proposalId === null)) {
+                refuse('RELATION_END_REFUSED');
+                continue;
+            }
+            const fromKind = 'elementId' in draft.from ? ends.get(draft.from.elementId)?.kind : newElementDrafts.get(draft.from.newElement)?.newKind;
+            if (!fromKind) {
+                refuse('RELATION_END_OUT_OF_SCOPE');
+                continue;
+            }
+            const text = sanitiseProposalForStorage(draft, { relationType: draft.type, fromKind });
+            await EnrichmentProposalRepository.create(
+                db,
+                ctx.workspaceId,
+                {
+                    bookId: session.bookId,
+                    sessionId: session.id,
+                    roundId: round.id,
+                    kind: 'NEW_RELATION',
+                    elementId: null,
+                    fieldKey: null,
+                    operation: null,
+                    proposedValue: text.proposedValue,
+                    baseVersion: null,
+                    newKind: null,
+                    newName: null,
+                    newSummary: null,
+                    newRelationType: draft.type,
+                    newFromElementId: from.elementId,
+                    newToElementId: to.elementId,
+                    newFromProposalId: from.proposalId,
+                    newToProposalId: to.proposalId,
+                    flags: [...draft.flags],
+                },
+                draft.citedAnswerIds,
+            );
+            proposed.NEW_RELATION++;
+            if (draft.flags.length > 0) flagged++;
+            continue;
+        }
+        const subject = subjects.get(draft.elementId);
+        if (!subject) continue;
+        if (subject.relation) {
+            // A relation's field (Phase 3.3): based on the relation's latest version (0: none yet).
+            const relationId = subject.relation.relationId;
+            if (!relationVersions.has(relationId)) relationVersions.set(relationId, await BibleRelationVersionRepository.latestNumber(db, ctx.workspaceId, relationId));
+            const text = sanitiseProposalForStorage(draft, { relationType: subject.relation.type, fromKind: subject.relation.fromKind });
+            await EnrichmentProposalRepository.create(
+                db,
+                ctx.workspaceId,
+                {
+                    bookId: session.bookId,
+                    sessionId: session.id,
+                    roundId: round.id,
+                    kind: 'RELATION_FIELD',
+                    elementId: null,
+                    relationId,
+                    fieldKey: draft.fieldKey,
+                    operation: draft.operation,
+                    proposedValue: text.proposedValue,
+                    baseVersion: relationVersions.get(relationId)!,
+                    newKind: null,
+                    newName: null,
+                    newSummary: null,
+                    flags: [...draft.flags],
+                },
+                draft.citedAnswerIds,
+            );
+        } else {
+            const text = sanitiseProposalForStorage(draft, subject.kind);
             if (!versions.has(draft.elementId)) versions.set(draft.elementId, await BibleVersionRepository.latestNumber(db, ctx.workspaceId, draft.elementId));
-            baseVersion = versions.get(draft.elementId)!;
+            await EnrichmentProposalRepository.create(
+                db,
+                ctx.workspaceId,
+                {
+                    bookId: session.bookId,
+                    sessionId: session.id,
+                    roundId: round.id,
+                    kind: 'FIELD',
+                    elementId: draft.elementId,
+                    fieldKey: draft.fieldKey,
+                    operation: draft.operation,
+                    proposedValue: text.proposedValue,
+                    baseVersion: versions.get(draft.elementId)!,
+                    newKind: null,
+                    newName: null,
+                    newSummary: null,
+                    flags: [...draft.flags],
+                },
+                draft.citedAnswerIds,
+            );
         }
-        await EnrichmentProposalRepository.create(
-            db,
-            ctx.workspaceId,
-            {
-                bookId: session.bookId,
-                sessionId: session.id,
-                roundId: round.id,
-                kind: draft.kind,
-                elementId: draft.kind === 'FIELD' ? draft.elementId : null,
-                fieldKey: draft.kind === 'FIELD' ? draft.fieldKey : null,
-                operation: draft.kind === 'FIELD' ? draft.operation : null,
-                proposedValue: text.proposedValue,
-                baseVersion,
-                newKind: draft.kind === 'NEW_ELEMENT' ? draft.newKind : null,
-                newName: text.newName,
-                newSummary: text.newSummary,
-                flags: [...draft.flags],
-            },
-            draft.citedAnswerIds,
-        );
         if (draft.flags.length > 0) flagged++;
-        if (draft.kind === 'NEW_ELEMENT') proposed.NEW_ELEMENT++;
-        else proposed[draft.operation]++;
+        proposed[draft.operation]++;
     }
     await finishRun(db, ctx, session, round, claim.runId, claim.attempt, 'OK', {
         ...step.metrics,

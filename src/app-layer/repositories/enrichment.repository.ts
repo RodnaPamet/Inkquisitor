@@ -42,6 +42,7 @@ export const PROPOSAL_SELECT = {
     roundId: true,
     kind: true,
     elementId: true,
+    relationId: true,
     fieldKey: true,
     operation: true,
     proposedValue: true,
@@ -49,6 +50,13 @@ export const PROPOSAL_SELECT = {
     newKind: true,
     newName: true,
     newSummary: true,
+    fillsSlot: true,
+    newRelationType: true,
+    newFromElementId: true,
+    newToElementId: true,
+    newFromProposalId: true,
+    newToProposalId: true,
+    createdRelationId: true,
     flags: true,
     status: true,
     decidedById: true,
@@ -76,6 +84,14 @@ export interface ProposalWrite {
     newSummary: string | null;
     /** The author's warnings (D14), from `PROPOSAL_FLAGS`. */
     flags: string[];
+    /** Phase 3.3 (D24): a RELATION_FIELD's relation; a NEW_ELEMENT that fills a BETWEEN slot; a NEW_RELATION's type and ends. */
+    relationId?: string | null;
+    fillsSlot?: boolean;
+    newRelationType?: string | null;
+    newFromElementId?: string | null;
+    newToElementId?: string | null;
+    newFromProposalId?: string | null;
+    newToProposalId?: string | null;
 }
 
 export const ReconcileRunRepository = {
@@ -165,6 +181,40 @@ export const EnrichmentProposalRepository = {
         });
     },
 
+    /** The other PENDING proposals for one relation field (Phase 3.3; superseded by an acceptance). */
+    pendingForRelationField(db: Db, workspaceId: string, relationId: string, fieldKey: string, exceptId: string, take: number) {
+        return db.enrichmentProposal.findMany({
+            where: { workspaceId, relationId, fieldKey, status: 'PENDING', id: { not: exceptId } },
+            orderBy: { createdAt: 'asc' },
+            take,
+            select: { id: true, sessionId: true },
+        });
+    },
+
+    /**
+     * The book's PENDING structural proposals (Phase 3.3: new elements and new
+     * relations), oldest first, decrypted, with their citations: what a story
+     * map previews as ghosts and lists beside them. `take` bounds it.
+     */
+    pendingStructuralForBook(db: Db, workspaceId: string, bookId: string, take: number) {
+        return db.enrichmentProposal.findMany({
+            where: { workspaceId, bookId, status: 'PENDING', kind: { in: ['NEW_ELEMENT', 'NEW_RELATION'] } },
+            orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+            take,
+            select: PROPOSAL_SELECT,
+        });
+    },
+
+    /** The NEW_ELEMENT proposals a NEW_RELATION's ends name (Phase 3.3), by id, in a session. */
+    listEnds(db: Db, workspaceId: string, sessionId: string, ids: readonly string[]) {
+        if (ids.length === 0) return Promise.resolve([]);
+        return db.enrichmentProposal.findMany({
+            where: { workspaceId, sessionId, id: { in: [...ids] }, kind: 'NEW_ELEMENT' },
+            take: ids.length,
+            select: { id: true, status: true, createdElementId: true, newKind: true, newName: true },
+        });
+    },
+
     /**
      * Decide a PENDING proposal, once: a conditional update, so of two
      * concurrent decisions exactly one lands (the count says which).
@@ -173,11 +223,18 @@ export const EnrichmentProposalRepository = {
         db: Db,
         workspaceId: string,
         proposalId: string,
-        data: { status: Exclude<EnrichmentProposalStatus, 'PENDING'>; decidedById: string; versionId?: string | null; createdElementId?: string | null },
+        data: { status: Exclude<EnrichmentProposalStatus, 'PENDING'>; decidedById: string; versionId?: string | null; createdElementId?: string | null; createdRelationId?: string | null },
     ): Promise<boolean> {
         const res = await db.enrichmentProposal.updateMany({
             where: { id: proposalId, workspaceId, status: 'PENDING' },
-            data: { status: data.status, decidedById: data.decidedById, decidedAt: new Date(), versionId: data.versionId ?? null, createdElementId: data.createdElementId ?? null },
+            data: {
+                status: data.status,
+                decidedById: data.decidedById,
+                decidedAt: new Date(),
+                versionId: data.versionId ?? null,
+                createdElementId: data.createdElementId ?? null,
+                createdRelationId: data.createdRelationId ?? null,
+            },
         });
         return res.count === 1;
     },

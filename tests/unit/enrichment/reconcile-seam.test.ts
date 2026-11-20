@@ -100,7 +100,7 @@ describe('2.1 outcome → the run (the table in model-seam.ts); a failed call pr
         const bad: FakeTurn = { kind: 'text', text: 'not json', usage: { input_tokens: 500, output_tokens: 20 } };
         const invalid = await outcomeOf([bad, bad]);
         expect(invalid.step).toMatchObject({ outcome: 'INVALID_OUTPUT', validation: null, metrics: { tokensUsed: 1_040, proposed: { ADD: 0, UPDATE: 0, REMOVE: 0, NEW_ELEMENT: 0 } } });
-        const leak = JSON.stringify({ operations: [{ elementId: 'eval-en-01', fieldKey: 'want', op: 'ADD', value: `AKIA${'IOSFODNN7'}EXAMPLE`, cites: ['a1'] }], newElements: [] });
+        const leak = JSON.stringify({ operations: [{ elementId: 'eval-en-01', fieldKey: 'want', op: 'ADD', value: `AKIA${'IOSFODNN7'}EXAMPLE`, cites: ['a1'] }], newElements: [], newRelations: [] });
         expect((await outcomeOf([{ kind: 'text', text: leak }])).step.outcome).toBe('GUARD_REFUSED');
     });
 

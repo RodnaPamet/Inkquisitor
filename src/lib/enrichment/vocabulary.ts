@@ -21,7 +21,8 @@ export type ReconcileOp = (typeof RECONCILE_OPS)[number];
 export const STORED_OPS = ['ADD', 'UPDATE', 'REMOVE'] as const;
 export type StoredOp = (typeof STORED_OPS)[number];
 
-export const PROPOSAL_KINDS = ['FIELD', 'NEW_ELEMENT'] as const;
+/** Phase 3.3 (D24) adds a relation's field and a new relation. Mirrors `EnrichmentProposalKind`. */
+export const PROPOSAL_KINDS = ['FIELD', 'NEW_ELEMENT', 'RELATION_FIELD', 'NEW_RELATION'] as const;
 export type ProposalKind = (typeof PROPOSAL_KINDS)[number];
 
 export const PROPOSAL_STATUSES = ['PENDING', 'ACCEPTED', 'EDITED_ACCEPTED', 'REJECTED', 'SUPERSEDED'] as const;
@@ -140,6 +141,22 @@ export function statusOfOutcome(outcome: ReconcileOutcome): Exclude<ReconcileRun
  *   ELEMENT_EXISTS             a new element the book already has, by name
  *   DUPLICATE_NEW_ELEMENT      a second proposal of one new element in the same answer
  *   ALREADY_PROPOSED           a new element a pending proposal of the book already offers
+ *
+ * Phase 3.3 (decision D24), a BETWEEN slot and new relations:
+ *
+ *   SLOT_NOT_OFFERED           a new element that claims a slot the session does not have
+ *   SLOT_KIND_MISMATCH         a new element for the slot of another kind than the slot's
+ *   SLOT_TAKEN                 a second new element for the one slot
+ *   PENDING_WITHOUT_ELEMENT    an operation on the slot's element with no new element to carry it
+ *   RELATION_END_OUT_OF_SCOPE  a new relation's end that is not one of the session's relation ends
+ *                              (nor a new element of the same answer)
+ *   RELATION_END_REFUSED       a new relation's end is a new element that was itself refused
+ *   RELATION_SELF              both ends the same element
+ *   RELATION_TYPE_NOT_ALLOWED  a type the `from` end's kind does not declare for the `to` end's
+ *                              kind (stored from the declaring end), and not `related_to`
+ *   RELATION_EXISTS            the book already holds that relation
+ *   DUPLICATE_NEW_RELATION     the same relation twice in one answer
+ *   RELATION_NOT_IN_ANSWERS    an end no cited answer names or was asked about (the model made the link up)
  */
 export const REFUSAL_CODES = [
     'MALFORMED',
@@ -163,6 +180,17 @@ export const REFUSAL_CODES = [
     'ELEMENT_EXISTS',
     'DUPLICATE_NEW_ELEMENT',
     'ALREADY_PROPOSED',
+    'SLOT_NOT_OFFERED',
+    'SLOT_KIND_MISMATCH',
+    'SLOT_TAKEN',
+    'PENDING_WITHOUT_ELEMENT',
+    'RELATION_END_OUT_OF_SCOPE',
+    'RELATION_END_REFUSED',
+    'RELATION_SELF',
+    'RELATION_TYPE_NOT_ALLOWED',
+    'RELATION_EXISTS',
+    'DUPLICATE_NEW_RELATION',
+    'RELATION_NOT_IN_ANSWERS',
 ] as const;
 export type RefusalCode = (typeof REFUSAL_CODES)[number];
 
@@ -181,5 +209,9 @@ export const DECISION_REFUSALS = [
     'BULK_INELIGIBLE',
     'ELEMENT_EXISTS',
     'CITATIONS_GONE',
+    // Phase 3.3: a new relation, and the slot's new element.
+    'RELATION_EXISTS',
+    'END_NOT_CREATED',
+    'END_GONE',
 ] as const;
 export type DecisionRefusal = (typeof DECISION_REFUSALS)[number];

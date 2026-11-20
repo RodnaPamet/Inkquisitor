@@ -41,6 +41,11 @@
  * A scope with no element (a kind the book has none of) is refused 400
  * `SCOPE_EMPTY`: a session over nothing would "complete" having asked
  * nothing, and zero is never complete (rule 6).
+ *
+ * Phase 3.3 (the canvas): a SELECTION session asks about the elements and
+ * relations selected on a map (and every relation between the selected
+ * elements), a BETWEEN session about a beat not yet created between two
+ * neighbouring beats; both resolved and frozen at start (`interview-scope.ts`).
  */
 import type { BibleElementKind, Prisma } from '@prisma/client';
 import type { WorkspaceRequestContext } from '@/app-layer/types';
@@ -57,6 +62,10 @@ import { roundBudgetFor, tokenBudgetFor } from '@/lib/interview/dials';
 import { getPacks } from '@/lib/interview/packs';
 import { PacksNotMountableError, packNamesFor, pinForRow, pinsFor } from '@/lib/interview/pack-mount';
 import { requireBook, requireElement } from './bible-common';
+import { resolveBetweenSlot, resolveSelection, SLOT_KIND, type BetweenSlot, type SelectionScope } from './interview-scope';
+import { BibleRelationRepository } from '@/app-layer/repositories/bible.repository';
+import { getRelationType, relationFieldDefs } from '@/lib/bible/templates';
+import { PENDING_SUBJECT_ID, relationSubjectName } from '@/lib/interview/subjects';
 import { defaultLayersFor } from './interview-defaults';
 import { deploymentPackMounts } from './interview-packs';
 import {
@@ -80,6 +89,7 @@ import {
     SESSION_QUESTIONS_MAX,
     SESSION_ROUNDS_READ,
     SCOPE_ELEMENTS_MAX,
+    SCOPE_RELATIONS_MAX,
     type InterviewView,
     type SessionSummaryView,
 } from './interview-state';
@@ -127,14 +137,23 @@ export async function startInterview(ctx: WorkspaceRequestContext, bookId: strin
     const started = await runInWorkspaceContext(ctx, async (db) => {
         await requireBook(db, ctx, bookId);
         let kinds: BibleKind[];
+        let selection: SelectionScope | null = null;
+        let slot: BetweenSlot | null = null;
         if (parsed.scope === 'ELEMENT') kinds = [(await requireElement(db, ctx, bookId, parsed.elementId!)).kind];
-        else {
+        else if (parsed.scope === 'SELECTION') {
+            selection = await resolveSelection(db, ctx, bookId, { elementIds: parsed.elementIds, relationIds: parsed.relationIds });
+            kinds = selection.kinds;
+        } else if (parsed.scope === 'BETWEEN') {
+            slot = await resolveBetweenSlot(db, ctx, bookId, parsed.afterElementId!, parsed.beforeElementId!);
+            kinds = [slot.kind];
+        } else {
             const any = await BibleElementRepository.listForInterview(db, ctx.workspaceId, bookId, { kind: parsed.kind, take: 1 });
             if (any.length === 0) throw new ValidationError('There is nothing in this book to ask about yet.', { reason: 'SCOPE_EMPTY' });
             kinds = parsed.scope === 'KIND' ? [parsed.kind!] : [...BIBLE_KINDS];
         }
         const { settings, sources } = resolveDials({ session: parsed, ...(await defaultLayersFor(db, ctx, bookId)) });
-        const names = packNamesFor(kinds, settings.personaKeys);
+        // A selection with a relation in it is questioned with the relations pack too (Phase 3.3).
+        const names = packNamesFor(kinds, settings.personaKeys, { relations: (selection?.relationIds.length ?? 0) > 0 });
         const pinned = pinsFor(names, await packContext.mounts(names));
         if (!pinned.ok) throw new PacksNotMountableError(pinned.refusals);
         const { depth, detail, personaKeys } = settings;
@@ -143,6 +162,12 @@ export async function startInterview(ctx: WorkspaceRequestContext, bookId: strin
             scope: parsed.scope,
             targetElementId: parsed.scope === 'ELEMENT' ? parsed.elementId! : null,
             targetKind: parsed.scope === 'KIND' ? parsed.kind! : null,
+            scopeElementIds: selection?.elementIds ?? [],
+            scopeRelationIds: selection?.relationIds ?? [],
+            slotKind: slot?.kind ?? null,
+            slotAfterElementId: slot?.afterElementId ?? null,
+            slotBeforeElementId: slot?.beforeElementId ?? null,
+            slotAct: slot?.act ?? null,
             depth,
             detail,
             personaKeys,
@@ -164,6 +189,9 @@ export async function startInterview(ctx: WorkspaceRequestContext, bookId: strin
                     scope: parsed.scope,
                     targetElementId: session.targetElementId,
                     targetKind: session.targetKind,
+                    scopeElements: session.scopeElementIds.length,
+                    scopeRelations: session.scopeRelationIds.length,
+                    ...(slot ? { slotAfterElementId: slot.afterElementId, slotBeforeElementId: slot.beforeElementId } : {}),
                     depth,
                     detail,
                     personaKeys,
@@ -207,12 +235,30 @@ export async function getInterview(ctx: WorkspaceRequestContext, bookId: string,
     });
 }
 
-/** An element an interview may ask about, as its page names it (Phase 2.4): no stored value. */
+/**
+ * A subject an interview may ask about, as its page names it (Phase 2.4): no
+ * stored value. Since Phase 3.3 a relation (its id, its ends and label, and its
+ * type's field labels) or a BETWEEN session's element not yet created (its id
+ * `PENDING_SUBJECT_ID`, between two named neighbours).
+ */
 export interface ScopeElementView {
     id: string;
     name: string;
     kind: BibleElementKind;
+    relation?: { fromName: string; toName: string; label: string };
+    pending?: { afterName: string; beforeName: string };
+    /** A relation's field labels by key (its type's, not its kind's). */
+    fieldLabels?: Record<string, string>;
 }
+
+/** What `interviewScopeElements` is asked about: a target as the setup names it, or a stored session's scope. */
+export type ScopeQuery =
+    | { scope: 'ELEMENT'; elementId: string }
+    | { scope: 'KIND'; kind: BibleElementKind }
+    | { scope: 'BOOK' }
+    /** `frozen`: a started session's scope, exactly as the start resolved it (no relation made since is added). */
+    | { scope: 'SELECTION'; elementIds: readonly string[]; relationIds: readonly string[]; frozen?: boolean }
+    | { scope: 'BETWEEN'; afterElementId: string; beforeElementId: string };
 
 /**
  * The elements a scope covers, for the interview page to name them (Phase
@@ -220,14 +266,50 @@ export interface ScopeElementView {
  * `SCOPE_ELEMENTS_MAX` (the engine's own bound; `truncated` beyond it). An
  * element the book does not hold is a 404.
  */
-export async function interviewScopeElements(
-    ctx: WorkspaceRequestContext,
-    bookId: string,
-    scope: { scope: 'ELEMENT'; elementId: string } | { scope: 'KIND'; kind: BibleElementKind } | { scope: 'BOOK' },
-): Promise<{ elements: ScopeElementView[]; truncated: boolean }> {
+export async function interviewScopeElements(ctx: WorkspaceRequestContext, bookId: string, scope: ScopeQuery): Promise<{ elements: ScopeElementView[]; truncated: boolean }> {
     await assertPermission(ctx, 'bible.view');
     return runInWorkspaceContext(ctx, async (db) => {
         await requireBook(db, ctx, bookId);
+        if (scope.scope === 'SELECTION') {
+            // The selection's elements, its relations and those between its elements (as the start resolves them; one gone since is left out).
+            // A started session's scope is FROZEN: its stored relations already hold those between its elements, and a relation
+            // made since is not asked about, so it is not named either.
+            const elements = await BibleElementRepository.listByIds(db, ctx.workspaceId, bookId, scope.elementIds.slice(0, SCOPE_ELEMENTS_MAX));
+            const between = scope.frozen ? [] : await BibleRelationRepository.listBetween(db, ctx.workspaceId, bookId, elements.map((e) => e.id), SCOPE_RELATIONS_MAX);
+            const relationIds = [...new Set([...scope.relationIds, ...between.map((r) => r.id)])].slice(0, SCOPE_RELATIONS_MAX);
+            const relations = await BibleRelationRepository.listByIdsWithEnds(db, ctx.workspaceId, bookId, relationIds);
+            return {
+                elements: [
+                    ...elements.map((e) => ({ id: e.id, name: e.name, kind: e.kind })),
+                    ...relations.map((r) => {
+                        const label = getRelationType(r.from.kind, r.type)?.label ?? r.type;
+                        return {
+                            id: r.id,
+                            name: relationSubjectName({ fromName: r.from.name, toName: r.to.name, label }),
+                            kind: r.from.kind,
+                            relation: { fromName: r.from.name, toName: r.to.name, label },
+                            fieldLabels: Object.fromEntries(relationFieldDefs(r.from.kind, r.type).map((f) => [f.key, f.label])),
+                        };
+                    }),
+                ],
+                truncated: false,
+            };
+        }
+        if (scope.scope === 'BETWEEN') {
+            // The two neighbours, named, and the element not yet created between them.
+            const ends = await BibleElementRepository.listByIds(db, ctx.workspaceId, bookId, [scope.afterElementId, scope.beforeElementId]);
+            const after = ends.find((e) => e.id === scope.afterElementId);
+            const before = ends.find((e) => e.id === scope.beforeElementId);
+            if (!after || !before) throw new NotFoundError('Element not found.');
+            return {
+                elements: [
+                    { id: after.id, name: after.name, kind: after.kind },
+                    { id: before.id, name: before.name, kind: before.kind },
+                    { id: PENDING_SUBJECT_ID, name: `${after.name} → … → ${before.name}`, kind: SLOT_KIND, pending: { afterName: after.name, beforeName: before.name } },
+                ],
+                truncated: false,
+            };
+        }
         if (scope.scope === 'ELEMENT') {
             const e = await requireElement(db, ctx, bookId, scope.elementId);
             return { elements: [{ id: e.id, name: e.name, kind: e.kind }], truncated: false };

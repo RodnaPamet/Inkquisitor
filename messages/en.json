@@ -434,7 +434,8 @@
             "removeFailed": "The relation could not be removed.",
             "undo": "Undo",
             "addedNotShown": "The relation was added, but the list could not be refreshed. Reload the page to see it.",
-            "searchFailed": "The search failed. Type again to retry."
+            "searchFailed": "The search failed. Type again to retry.",
+            "open": "Open \"{label} {name}\""
         },
         "history": {
             "compareTitle": "Compare versions",
@@ -608,6 +609,17 @@
                 "until": "Restorable until",
                 "action": "Restore"
             }
+        },
+        "relationSheet": {
+            "loading": "Loading the relation…",
+            "loadFailed": "The relation could not be read. Close this and try again.",
+            "noFields": "This kind of relation has no fields.",
+            "version": "Version {number}",
+            "noVersion": "No version yet",
+            "save": "Save",
+            "reload": "Reload",
+            "question": "Question this relation",
+            "questionTitle": "Question: {from} {label} {to}"
         }
     },
     "interview": {
@@ -714,6 +726,9 @@
             "ELEMENT": "{name}",
             "KIND": "Every {kind}",
             "BOOK": "The whole book",
+            "SELECTION": "From a map: {elements, plural, one {# element} other {# elements}} and {relations, plural, one {# relation} other {# relations}}",
+            "BETWEEN": "A new beat between two beats",
+            "pending": "The new beat between {a} and {b}",
             "unknownElement": "A deleted entry"
         },
         "status": {
@@ -743,6 +758,8 @@
             "titleElement": "Enriching {name}",
             "titleKind": "Grill me: every {kind}",
             "titleBook": "Grill me: the whole book",
+            "titleSelection": "Grill me: {count, plural, one {# entry} other {# entries}} from the map",
+            "titleBetween": "What happens between {a} and {b}?",
             "round": "Round {number}",
             "roundOf": "Round {number} of up to {budget}",
             "progressNotAssessed": "Not assessed: no question asked yet",
@@ -847,6 +864,8 @@
         "errors": {
             "AI_UNAVAILABLE": "AI questions are not available on this server right now.",
             "SCOPE_EMPTY": "There is nothing of this kind in the book to ask about yet.",
+            "SCOPE_TOO_LARGE": "That selection links more relations than one interview can ask about. Select fewer entries.",
+            "SLOT_INVALID": "Those two beats no longer sit side by side in one act, so there is no empty place between them. Reopen the plot board and try again.",
             "ROUND_OPEN": "A round is already open. Finish it first.",
             "ROUND_GENERATING": "A round is already being prepared.",
             "ROUND_NOT_OPEN": "That round has already finished.",
@@ -869,6 +888,7 @@
             "PACKS_NOT_MOUNTABLE": "The question packs are not ready on this server yet, so an interview cannot start.",
             "PACKS_NOT_MOUNTABLE_NAMED": "These question packs are not ready on this server, so the interview cannot go on: {packs}.",
             "packCraft": "{kind} questions",
+            "packRelations": "relation questions",
             "packPersona": "the {name} interviewer",
             "ANSWERED_IN_BIBLE": "Your bible now answers this, so it is not asked again. Skip it, or answer it as it is.",
             "PACK_CHANGED": "A question pack this interview was started with has changed since, so it cannot be asked differently. Your answers are kept.",
@@ -951,7 +971,23 @@
         "summaryLabel": "Summary",
         "openElement": "Open the entry",
         "kindLabel": "Kind: {kind}",
+        "relationFieldsTitle": "Relation changes",
+        "relationFieldsHelp": "Changes to what a link between two entries holds: its history, what each side wants, how it changes.",
+        "relationAria": "{from} {label} {to}",
+        "newRelationsTitle": "New relations",
+        "newRelationsHelp": "Links between entries that your answers state. Accepting one creates the relation; a link to a new entry waits until you accept that entry.",
+        "relationNote": "Note",
+        "relationWaits": "Accept the new entry “{name}” first; this link joins it.",
+        "relationEndGone": "An entry this link joins was not created, so it cannot be accepted. Reject it.",
+        "acceptedRelation": "Accepted. The relation is now in the bible.",
+        "acceptRelationAria": "Accept the relation {from} {label} {to}",
+        "rejectRelationAria": "Reject the relation {from} {label} {to}",
+        "slotPlacement": "When accepted, it is placed between “{a}” and “{b}” in story order.",
+        "firstFields": "Its first fields",
         "errors": {
+            "RELATION_EXISTS": "The bible already holds that relation.",
+            "END_NOT_CREATED": "Accept the new entry this relation joins first.",
+            "END_GONE": "An entry this relation joins is gone, so it cannot be accepted. Reject it.",
             "VERSION_CONFLICT": "Someone saved this entry while you were reviewing. Reload to see its current value.",
             "PROPOSAL_OUTDATED": "This entry changed since the proposal was made. Reload, compare it with the entry as it is now, and decide again.",
             "PROPOSAL_STALE": "The field no longer holds what this change was proposed for, so it cannot be applied.",
@@ -1320,6 +1356,34 @@
             "notOnMap": "Not on the {map} yet.",
             "empty": "The {map} is empty.",
             "label": "The {map}, with {name} marked"
+        },
+        "interview": {
+            "grillThis": "Grill this",
+            "questionRelation": "Question this relation",
+            "selectFirst": "Select cards or links on the map first.",
+            "tooMany": "Select at most {max} cards and {max} links.",
+            "grillTitle": "Grill me: {count, plural, one {# thing} other {# things}} from the map",
+            "between": "What happens between…",
+            "betweenSearch": "Search beats…",
+            "betweenNone": "No two beats sit side by side in an act yet.",
+            "betweenOption": "{a} → {b}",
+            "betweenAria": "What happens between {a} and {b}?",
+            "betweenTitle": "What happens between {a} and {b}?"
+        },
+        "ghost": {
+            "proposed": "Proposed"
+        },
+        "structure": {
+            "title": "Waiting for you",
+            "help": "New entries and links your answers propose. Dashed cards and lines on the map show them; nothing is added until you accept it here.",
+            "helpReader": "New entries and links proposed by an interview, waiting for an editor to accept or reject them.",
+            "proposed": "Proposed",
+            "acceptAria": "Accept the new entry {name}",
+            "rejectAria": "Reject the new entry {name}",
+            "openReview": "Open its review",
+            "previewFailed": "The map could not draw these proposals. They are all listed here, and you can still decide each one.",
+            "loadFailed": "The proposals waiting for you could not be read. Reload the page to try again.",
+            "truncated": "Showing the first {count} proposals."
         }
     },
     "search": {
@@ -1350,7 +1414,9 @@
             "summary": "Summary",
             "field": "Field",
             "relationNote": "Note on the link to {name}",
-            "relationNoteUnnamed": "Note on a link"
+            "relationNoteUnnamed": "Note on a link",
+            "relationField": "{field} on the link to {name}",
+            "relationFieldUnnamed": "{field} on a link"
         },
         "errors": {
             "QUERY_TOO_LONG": "That search is too long. Use fewer words.",

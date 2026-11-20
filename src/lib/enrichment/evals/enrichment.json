@@ -3733,5 +3733,432 @@
         "PROPOSES_STORY_CONTENT"
       ]
     }
+  },
+  {
+    "id": "en-41",
+    "rationale": "A relation interview (Phase 3.3): the relation's own fields, both empty, each answered. Right: ADD each from its answer, about the link itself, and nothing about either person alone.",
+    "subject": "RELATION",
+    "relation": {
+      "type": "loves",
+      "toKind": "CHARACTER",
+      "toName": "Tomas Fenn"
+    },
+    "kind": "CHARACTER",
+    "elementName": "Wren Halloway",
+    "bookElements": [
+      {
+        "kind": "CHARACTER",
+        "name": "Wren Halloway"
+      },
+      {
+        "kind": "CHARACTER",
+        "name": "Tomas Fenn"
+      }
+    ],
+    "bibleState": {
+      "history": null,
+      "wants": null
+    },
+    "sessionId": "s1",
+    "scopeFieldKeys": [
+      "history",
+      "wants"
+    ],
+    "answers": [
+      {
+        "id": "a1",
+        "sessionId": "s1",
+        "questionKind": "OPEN",
+        "question": "How did these two come to be linked this way?",
+        "targetsFieldKeys": [
+          "history"
+        ],
+        "status": "ANSWERED",
+        "answer": "They met on the ferry the summer the old bridge closed, and he taught her to read the tides."
+      },
+      {
+        "id": "a2",
+        "sessionId": "s1",
+        "questionKind": "OPEN",
+        "question": "What does each of them want from the other?",
+        "targetsFieldKeys": [
+          "wants"
+        ],
+        "status": "ANSWERED",
+        "answer": "She wants him to stay in the marsh town; he wants her to come with him to the city."
+      }
+    ],
+    "expect": {
+      "operations": [
+        {
+          "fieldKey": "history",
+          "op": "ADD",
+          "cites": [
+            "a1"
+          ],
+          "mustContain": [
+            "ferry"
+          ],
+          "mustNotContain": [
+            "married"
+          ],
+          "reference": "They met on the ferry the summer the old bridge closed, and he taught her to read the tides."
+        },
+        {
+          "fieldKey": "wants",
+          "op": "ADD",
+          "cites": [
+            "a2"
+          ],
+          "mustContain": [
+            "city"
+          ],
+          "mustNotContain": [
+            "betray"
+          ],
+          "reference": "She wants him to stay in the marsh town; he wants her to come with him to the city."
+        }
+      ],
+      "newElements": [],
+      "mustNot": [
+        "CITES_NO_ANSWER",
+        "CITES_FOREIGN_ANSWER",
+        "CITES_UNANSWERED",
+        "TARGETS_OUT_OF_SCOPE_FIELD",
+        "UNSOURCED_SENTENCE",
+        "PROPOSES_STORY_CONTENT"
+      ]
+    }
+  },
+  {
+    "id": "en-42",
+    "rationale": "A relation's stored history corrected by the author. Right: UPDATE the history to the corrected fact, dropping the retracted one rather than merging both.",
+    "subject": "RELATION",
+    "relation": {
+      "type": "sibling_of",
+      "toKind": "CHARACTER",
+      "toName": "Ada Brask"
+    },
+    "kind": "CHARACTER",
+    "elementName": "Dov Brask",
+    "bookElements": [
+      {
+        "kind": "CHARACTER",
+        "name": "Dov Brask"
+      },
+      {
+        "kind": "CHARACTER",
+        "name": "Ada Brask"
+      }
+    ],
+    "bibleState": {
+      "history": "They ran the bakery together after their mother left.",
+      "wants": null
+    },
+    "sessionId": "s1",
+    "scopeFieldKeys": [
+      "history"
+    ],
+    "answers": [
+      {
+        "id": "a1",
+        "sessionId": "s1",
+        "questionKind": "OPEN",
+        "question": "How does the history you stored still shape these two?",
+        "targetsFieldKeys": [
+          "history"
+        ],
+        "status": "ANSWERED",
+        "answer": "I've changed that: they ran the bakery together after their father died, not after their mother left."
+      }
+    ],
+    "expect": {
+      "operations": [
+        {
+          "fieldKey": "history",
+          "op": "UPDATE",
+          "cites": [
+            "a1"
+          ],
+          "mustContain": [
+            "father died"
+          ],
+          "mustNotContain": [
+            "mother left"
+          ],
+          "reference": "They ran the bakery together after their father died."
+        }
+      ],
+      "newElements": [],
+      "mustNot": [
+        "CITES_NO_ANSWER",
+        "CITES_FOREIGN_ANSWER",
+        "CITES_UNANSWERED",
+        "TARGETS_OUT_OF_SCOPE_FIELD",
+        "UNSOURCED_SENTENCE",
+        "PROPOSES_STORY_CONTENT"
+      ]
+    }
+  },
+  {
+    "id": "en-43",
+    "rationale": "A selection of two characters (Phase 3.3): an answer about one's want also states a link to the other. Right: ADD the want, and propose the link the answer states (loves, with its history), citing it.",
+    "ends": [
+      {
+        "ref": "e1",
+        "kind": "CHARACTER",
+        "name": "Tomas Fenn"
+      }
+    ],
+    "kind": "CHARACTER",
+    "elementName": "Wren Halloway",
+    "bookElements": [
+      {
+        "kind": "CHARACTER",
+        "name": "Wren Halloway"
+      },
+      {
+        "kind": "CHARACTER",
+        "name": "Tomas Fenn"
+      }
+    ],
+    "bibleState": {
+      "role": "Protagonist. Runs the ferry office in a shrinking marsh town.",
+      "want": null,
+      "wound": null,
+      "false_belief": null,
+      "need": null,
+      "arc": null
+    },
+    "sessionId": "s1",
+    "scopeFieldKeys": [
+      "want"
+    ],
+    "answers": [
+      {
+        "id": "a1",
+        "sessionId": "s1",
+        "questionKind": "OPEN",
+        "question": "What does Wren want, in words she would use herself?",
+        "targetsFieldKeys": [
+          "want"
+        ],
+        "status": "ANSWERED",
+        "answer": "She wants to win Tomas Fenn back. They were engaged until he left for the city."
+      }
+    ],
+    "expect": {
+      "operations": [
+        {
+          "fieldKey": "want",
+          "op": "ADD",
+          "cites": [
+            "a1"
+          ],
+          "mustContain": [
+            "Tomas"
+          ],
+          "mustNotContain": [
+            "revenge"
+          ],
+          "reference": "To win Tomas Fenn back."
+        }
+      ],
+      "newElements": [],
+      "newRelations": [
+        {
+          "from": "self",
+          "to": "e1",
+          "type": "loves",
+          "note": null,
+          "fields": [
+            {
+              "key": "history",
+              "reference": "They were engaged until he left for the city."
+            }
+          ],
+          "cites": [
+            "a1"
+          ]
+        }
+      ],
+      "mustNot": [
+        "CITES_NO_ANSWER",
+        "CITES_FOREIGN_ANSWER",
+        "CITES_UNANSWERED",
+        "TARGETS_OUT_OF_SCOPE_FIELD",
+        "UNSOURCED_SENTENCE",
+        "PROPOSES_STORY_CONTENT"
+      ]
+    }
+  },
+  {
+    "id": "en-44",
+    "rationale": "What happens between two beats (Phase 3.3): the beat not yet created, described in answers. Right: the new beat filling the slot, named from an answer, with its fields, and the two causal links to its neighbours the answers state.",
+    "subject": "SLOT",
+    "ends": [
+      {
+        "ref": "e1",
+        "kind": "PLOT_BEAT",
+        "name": "The bridge gives way",
+        "neighbour": true
+      },
+      {
+        "ref": "e2",
+        "kind": "PLOT_BEAT",
+        "name": "The town turns on the mayor",
+        "neighbour": true
+      }
+    ],
+    "kind": "PLOT_BEAT",
+    "elementName": "The new beat",
+    "bookElements": [
+      {
+        "kind": "PLOT_BEAT",
+        "name": "The bridge gives way"
+      },
+      {
+        "kind": "PLOT_BEAT",
+        "name": "The town turns on the mayor"
+      }
+    ],
+    "bibleState": {
+      "what_happens": null,
+      "cause": null,
+      "effect": null
+    },
+    "sessionId": "s1",
+    "scopeFieldKeys": [
+      "what_happens",
+      "cause",
+      "effect"
+    ],
+    "answers": [
+      {
+        "id": "a1",
+        "sessionId": "s1",
+        "questionKind": "OPEN",
+        "question": "What happens in this beat, in a sentence or two?",
+        "targetsFieldKeys": [
+          "what_happens"
+        ],
+        "status": "ANSWERED",
+        "answer": "The warning signs come down. The mayor's men are seen pulling them down at the bridge."
+      },
+      {
+        "id": "a2",
+        "sessionId": "s1",
+        "questionKind": "OPEN",
+        "question": "What brings this beat about?",
+        "targetsFieldKeys": [
+          "cause"
+        ],
+        "status": "ANSWERED",
+        "answer": "The bridge gives way and the town wants someone to blame."
+      },
+      {
+        "id": "a3",
+        "sessionId": "s1",
+        "questionKind": "OPEN",
+        "question": "What does this beat set in motion?",
+        "targetsFieldKeys": [
+          "effect"
+        ],
+        "status": "ANSWERED",
+        "answer": "When the town learns the mayor's men pulled the signs down, it turns on the mayor."
+      }
+    ],
+    "expect": {
+      "operations": [
+        {
+          "fieldKey": "what_happens",
+          "op": "ADD",
+          "cites": [
+            "a1"
+          ],
+          "mustContain": [
+            "warning signs"
+          ],
+          "mustNotContain": [
+            "mayor is killed"
+          ],
+          "reference": "The mayor's men are seen pulling the warning signs down at the bridge."
+        },
+        {
+          "fieldKey": "cause",
+          "op": "ADD",
+          "cites": [
+            "a2"
+          ],
+          "mustContain": [
+            "blame"
+          ],
+          "mustNotContain": [],
+          "reference": "The bridge gives way and the town wants someone to blame."
+        },
+        {
+          "fieldKey": "effect",
+          "op": "ADD",
+          "cites": [
+            "a3"
+          ],
+          "mustContain": [
+            "turns on the mayor"
+          ],
+          "mustNotContain": [],
+          "reference": "When the town learns the mayor's men pulled the signs down, it turns on the mayor."
+        }
+      ],
+      "newElements": [
+        {
+          "kind": "PLOT_BEAT",
+          "name": "The warning signs come down",
+          "cites": [
+            "a1"
+          ],
+          "fillsSlot": true
+        }
+      ],
+      "newRelations": [
+        {
+          "from": "e1",
+          "to": "new.1",
+          "type": "causes",
+          "note": null,
+          "fields": [
+            {
+              "key": "mechanism",
+              "reference": "The bridge gives way and the town wants someone to blame."
+            }
+          ],
+          "cites": [
+            "a2"
+          ]
+        },
+        {
+          "from": "new.1",
+          "to": "e2",
+          "type": "causes",
+          "note": null,
+          "fields": [
+            {
+              "key": "mechanism",
+              "reference": "When the town learns the mayor's men pulled the signs down, it turns on the mayor."
+            }
+          ],
+          "cites": [
+            "a3"
+          ]
+        }
+      ],
+      "mustNot": [
+        "CITES_NO_ANSWER",
+        "CITES_FOREIGN_ANSWER",
+        "CITES_UNANSWERED",
+        "TARGETS_OUT_OF_SCOPE_FIELD",
+        "UNSOURCED_SENTENCE",
+        "PROPOSES_STORY_CONTENT"
+      ]
+    }
   }
 ]

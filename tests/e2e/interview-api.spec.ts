@@ -40,9 +40,11 @@ test('a production server without real-model pack records refuses every intervie
     const packs = await api.get(`/api/w/${slug}/interview-packs`);
     expect(packs.status()).toBe(200);
     const body = await packs.json();
-    expect(body).toMatchObject({ recordMode: 'model', mountable: 0, total: 22 });
+    // Six personas, sixteen craft packs and the relations pack (Phase 3.3).
+    expect(body).toMatchObject({ recordMode: 'model', mountable: 0, total: 23 });
     expect(body.personas).toHaveLength(6);
-    expect([...body.personas, ...body.craft].every((p: { refusal: { reason: string } }) => p.refusal.reason === 'STRUCTURAL_RECORD_REFUSED')).toBe(true);
+    expect(body.relations).toHaveLength(1);
+    expect([...body.personas, ...body.craft, ...body.relations].every((p: { refusal: { reason: string } }) => p.refusal.reason === 'STRUCTURAL_RECORD_REFUSED')).toBe(true);
 });
 
 test('the dial defaults: a workspace layer and a book layer, resolved book over workspace', async ({ page }) => {

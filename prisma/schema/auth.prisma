@@ -34,29 +34,31 @@ model User {
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
-  accounts            Account[]
-  sessions            UserSession[]
-  memberships         WorkspaceMembership[]
+  accounts              Account[]
+  sessions              UserSession[]
+  memberships           WorkspaceMembership[]
   /// Bible versions this person saved; the link is cleared (and the version
   /// kept) when the person is deleted.
-  bibleVersions       BibleEntryVersion[]
+  bibleVersions         BibleEntryVersion[]
+  /// Phase 3.3: the relation versions this person saved.
+  bibleRelationVersions BibleRelationVersion[]
   /// Interviews this person started, and answers they gave (Phase 2.2); both
   /// links are cleared (and the rows kept) when the person is deleted.
-  interviewSessions   InterviewSession[]
-  interviewAnswers    Answer[]
+  interviewSessions     InterviewSession[]
+  interviewAnswers      Answer[]
   /// Phase 2.5: proposals this person decided.
-  enrichmentDecisions EnrichmentProposal[]
+  enrichmentDecisions   EnrichmentProposal[]
   /// Phase 2.6: research briefs this person wrote, runs they dispatched and
   /// proposals they decided; each link is cleared when the person is deleted.
-  researchBriefs      ResearchBrief[]
-  researchRuns        ResearchRun[]
-  researchDecisions   ResearchProposal[]
+  researchBriefs        ResearchBrief[]
+  researchRuns          ResearchRun[]
+  researchDecisions     ResearchProposal[]
   /// Phase 3.1: story-map snapshots this person's saves wrote; the link is
   /// cleared (and the snapshot kept) when the person is deleted.
-  mapSnapshots        MapSnapshot[]
+  mapSnapshots          MapSnapshot[]
   /// Model calls this person's requests made; the link is cleared (and the
   /// record kept) when the person is deleted.
-  aiCalls             AiCallLog[]
+  aiCalls               AiCallLog[]
 }
 
 /// An OAuth identity linked to a user (Google). No provider token is

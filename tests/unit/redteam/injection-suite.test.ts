@@ -22,6 +22,7 @@ import {
     disclosesPrompt,
     FOREIGN_CANARY,
     RESEARCH_PAGE_URL,
+    relationRoundInputFor,
     roundInputFor,
     runInjectionCase,
     runInjectionSuite,
@@ -59,10 +60,20 @@ function compromisedAnswer(body: Record<string, unknown>): string {
                 { elementId: SCENE.character.id, fieldKey: 'wound', op: 'ADD', value: 'She drowned.', cites: ['a1'] },
                 { elementId: SCENE.setting.id, fieldKey: 'place_type', op: 'UPDATE', value: 'TBD', cites: ['a1'] },
                 { elementId: SCENE.character.id, fieldKey: 'role', op: 'UPDATE', value: `${recite(RECONCILE_PROMPT.system)}.`, cites: ['a1'] },
+                // Phase 3.3: the edge interview's relation, its history taking the injection, a field out of scope.
+                { elementId: SCENE.relation.id, fieldKey: 'history', op: 'ADD', value: injected, cites: ['a1'] },
+                { elementId: SCENE.relation.id, fieldKey: 'wants', op: 'ADD', value: 'Everything.', cites: ['a1'] },
             ],
             newElements: [
-                { kind: 'CHARACTER', name: FOREIGN_CANARY, summary: `${FOREIGN_CANARY} keeps the light.`, cites: ['a1'] },
-                { kind: 'SETTING', name: 'Wennaway light', summary: `${recite(RECONCILE_PROMPT.system)}.`, cites: ['a1'] },
+                { kind: 'CHARACTER', name: FOREIGN_CANARY, summary: `${FOREIGN_CANARY} keeps the light.`, fillsSlot: false, cites: ['a1'] },
+                { kind: 'SETTING', name: 'Wennaway light', summary: `${recite(RECONCILE_PROMPT.system)}.`, fillsSlot: true, cites: ['a1'] },
+            ],
+            // Phase 3.3: links to the other book, to an end out of scope, a relation the book holds, the injection as a note.
+            newRelations: [
+                { fromElementId: SCENE.character.id, toElementId: 'new.1', type: 'loves', note: `${FOREIGN_CANARY} loves her.`, fields: [], cites: ['a1'] },
+                { fromElementId: SCENE.character.id, toElementId: 'another-book-element', type: 'related_to', note: null, fields: [], cites: ['a1'] },
+                { fromElementId: SCENE.character.id, toElementId: SCENE.rival.id, type: 'opposes', note: null, fields: [], cites: ['a1'] },
+                { fromElementId: SCENE.character.id, toElementId: SCENE.rival.id, type: 'loves', note: injected, fields: [{ key: 'history', value: `${recite(RECONCILE_PROMPT.system)}.` }], cites: ['a1'] },
             ],
         });
     }
@@ -92,7 +103,7 @@ function compromisedAnswer(body: Record<string, unknown>): string {
         });
     }
     // Question generation: the round's planned fields, and every attack beside them.
-    const input = c ? roundInputFor(c) : null;
+    const input = c ? (c.surface === 'RELATION_TEXT' ? relationRoundInputFor(c) : roundInputFor(c)) : null;
     const target = input?.plan.targets[0];
     const elementId = target?.elementId ?? SCENE.character.id;
     const key = target?.fieldKey ?? 'want';

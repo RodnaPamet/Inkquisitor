@@ -64,6 +64,8 @@ model Book {
   researchBriefs    ResearchBrief[]
   /// Phase 3.1: the book's story maps, at most one of each kind.
   storyMaps         StoryMap[]
+  /// Phase 3.3: the history of the book's relations (it outlives each relation).
+  relationVersions  BibleRelationVersion[]
 
   @@unique([workspaceId, id])
   /// The books list: a workspace's live books, most recently updated first.
@@ -111,15 +113,18 @@ model BibleElement {
   /// Phase 3.1: where this element is drawn on the book's story maps; the
   /// nodes go with the element.
   mapNodes            MapNode[]
+  /// Phase 3.3: NEW_RELATION proposals with this element at one end.
+  newRelationsFrom    EnrichmentProposal[] @relation("NewRelationFrom")
+  newRelationsTo      EnrichmentProposal[] @relation("NewRelationTo")
 
   @@unique([bookId, slug])
   @@unique([bookId, id])
   @@unique([workspaceId, id])
-  /// The board and the kind lists: a book's elements of one kind by name (Phase 1.H).
-  @@index([workspaceId, bookId, kind, name])
   /// Phase 3.2: one element per place in a kind's story order; also the
   /// order's own read (a book's ranked elements of one kind).
   @@unique([bookId, kind, orderRank])
+  /// The board and the kind lists: a book's elements of one kind by name (Phase 1.H).
+  @@index([workspaceId, bookId, kind, name])
 }
 
 /// One field of an element, keyed by its kind's template.
@@ -162,14 +167,23 @@ model BibleRelation {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  book Book         @relation(fields: [workspaceId, bookId], references: [workspaceId, id], onDelete: Cascade)
-  from BibleElement @relation("BibleRelationFrom", fields: [bookId, fromElementId], references: [bookId, id], onDelete: Cascade)
-  to   BibleElement @relation("BibleRelationTo", fields: [bookId, toElementId], references: [bookId, id], onDelete: Cascade)
+  book                Book                 @relation(fields: [workspaceId, bookId], references: [workspaceId, id], onDelete: Cascade)
+  from                BibleElement         @relation("BibleRelationFrom", fields: [bookId, fromElementId], references: [bookId, id], onDelete: Cascade)
+  to                  BibleElement         @relation("BibleRelationTo", fields: [bookId, toElementId], references: [bookId, id], onDelete: Cascade)
   /// Phase 3.1: where this relation is drawn on the book's story maps; the
   /// edges go with the relation.
-  mapEdges MapEdge[]
+  mapEdges            MapEdge[]
+  /// Phase 3.3 (decision D24): the relation's own fields, keyed by its type's
+  /// template fields; they go with the relation.
+  fields              BibleRelationField[]
+  /// Phase 3.3: questions an interview asked about this relation, and the
+  /// changes proposed to its fields; they go with it.
+  questions           Question[]
+  enrichmentProposals EnrichmentProposal[]
 
   @@unique([fromElementId, toElementId, type])
+  /// Phase 3.3: the key a relation field references (the workspace in every foreign key).
+  @@unique([workspaceId, id])
   /// Phase 3.1: the key a map edge references, so the database refuses an
   /// edge drawing another book's relation.
   @@unique([bookId, id])
@@ -181,29 +195,29 @@ model BibleRelation {
 /// moment. Append-only (trigger). Keyed to its BOOK, not its element: an
 /// element's history outlives the element and goes only with its book.
 model BibleEntryVersion {
-  id                  String             @id @default(cuid())
-  workspaceId         String
-  bookId              String
-  elementId           String
+  id                       String             @id @default(cuid())
+  workspaceId              String
+  bookId                   String
+  elementId                String
   /// 1, 2, 3, … per element, assigned under the element's advisory lock.
-  versionNumber       Int
+  versionNumber            Int
   /// The element and its fields as JSON (encrypted).
-  snapshot            String
+  snapshot                 String
   /// What changed, in the author's words or the product's (encrypted).
-  changeSummary       String?
-  source              BibleVersionSource
+  changeSummary            String?
+  source                   BibleVersionSource
   /// The version this one restored, when it is a restore.
-  restoredFromVersion Int?
+  restoredFromVersion      Int?
   /// The answers an INTERVIEW version is drawn from (Phase 2.5, rule 1): the
   /// ids of the cited answers of the proposal(s) the author accepted. Set at
   /// insert and never changed (the table is append-only); non-empty exactly
   /// when `source` is INTERVIEW (CHECK). Ids only: an answer deleted later
   /// leaves its id here, as the history it was.
-  sourceAnswerIds     String[]           @default([])
+  sourceAnswerIds          String[]           @default([])
   /// The research findings a RESEARCH version is drawn from (Phase 2.6, rule
   /// 1): non-empty exactly when `source` is RESEARCH (CHECK). Ids only, set at
   /// insert, never changed.
-  sourceFindingIds    String[]           @default([])
+  sourceFindingIds         String[]           @default([])
   /// The research proposal a RESEARCH version accepted (NULL for a finding
   /// kept as a research note, and for every other source; CHECK).
   sourceResearchProposalId String?
@@ -211,15 +225,72 @@ model BibleEntryVersion {
   /// a reorder on the plot board or the timeline). Set at insert; the history
   /// words the version from it, as it does a restore from `restoredFromVersion`,
   /// so the change summary keeps holding only the author's words.
-  movedInOrder        Boolean            @default(false)
+  movedInOrder             Boolean            @default(false)
   /// Who saved it; NULL once that person is deleted.
-  authorId            String?
-  createdAt           DateTime           @default(now())
+  authorId                 String?
+  createdAt                DateTime           @default(now())
 
   book   Book  @relation(fields: [workspaceId, bookId], references: [workspaceId, id], onDelete: Cascade)
   author User? @relation(fields: [authorId], references: [id], onDelete: SetNull)
 
   @@unique([elementId, versionNumber])
+  @@index([workspaceId, bookId])
+  @@index([authorId])
+}
+
+/// One field of a relation (Phase 3.3, decision D24), keyed by the relation
+/// type's template fields (`relationFieldDefs`). Like an element's field: a
+/// row only when it has a value, JSON-encoded by type (prose: a string), the
+/// value encrypted. Every save of a relation's fields writes one
+/// BibleRelationVersion in the same transaction.
+model BibleRelationField {
+  id          String   @id @default(cuid())
+  workspaceId String
+  relationId  String
+  /// A key of the relation type's fields.
+  key         String
+  /// The value, JSON-encoded (encrypted). An empty field has no row.
+  value       String
+  /// The template's order for the key.
+  order       Int
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  relation BibleRelation @relation(fields: [workspaceId, relationId], references: [workspaceId, id], onDelete: Cascade)
+
+  @@unique([relationId, key])
+  @@index([workspaceId, relationId])
+}
+
+/// One saved state of a relation (Phase 3.3, decision D24): its type, ends,
+/// note and fields at that moment. APPEND-ONLY (trigger), like an element's
+/// version, and keyed to its BOOK, not the relation: a relation's history
+/// outlives it and goes only with its book. Numbered per relation under the
+/// relation's advisory lock (`BibleRelationRepository.lock`).
+model BibleRelationVersion {
+  id              String             @id @default(cuid())
+  workspaceId     String
+  bookId          String
+  /// The relation (no foreign key: the history outlives the relation).
+  relationId      String
+  /// 1, 2, 3, … per relation.
+  versionNumber   Int
+  /// The relation as JSON (encrypted).
+  snapshot        String
+  /// What changed, in the author's words (encrypted).
+  changeSummary   String?
+  source          BibleVersionSource
+  /// The answers an INTERVIEW version is drawn from (rule 1): non-empty exactly
+  /// when `source` is INTERVIEW (CHECK). Ids only, set at insert.
+  sourceAnswerIds String[]           @default([])
+  /// Who saved it; NULL once that person is deleted.
+  authorId        String?
+  createdAt       DateTime           @default(now())
+
+  book   Book  @relation(fields: [workspaceId, bookId], references: [workspaceId, id], onDelete: Cascade)
+  author User? @relation(fields: [authorId], references: [id], onDelete: SetNull)
+
+  @@unique([relationId, versionNumber])
   @@index([workspaceId, bookId])
   @@index([authorId])
 }

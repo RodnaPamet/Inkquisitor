@@ -145,49 +145,277 @@
       "key": "causes",
       "label": "causes",
       "inverseLabel": "caused by",
-      "targetKinds": ["TIMELINE_EVENT"]
+      "targetKinds": ["TIMELINE_EVENT"],
+      "fields": [
+        {
+          "key": "mechanism",
+          "label": "How one leads to the other",
+          "help": "The chain from the first to the second: what makes the second follow from it, rather than merely come after it.",
+          "type": "text",
+          "required": true,
+          "order": 1,
+          "dependsOn": []
+        },
+        {
+          "key": "reader_sees",
+          "label": "What the reader sees of the link",
+          "help": "Whether the reader notices the connection as it happens, later on, or only when looking back.",
+          "type": "text",
+          "required": false,
+          "order": 2,
+          "dependsOn": []
+        },
+        {
+          "key": "between",
+          "label": "What lies between them",
+          "help": "What happens, or is deliberately left out, between the first and the second.",
+          "type": "text",
+          "required": false,
+          "order": 3,
+          "dependsOn": [
+            "mechanism"
+          ]
+        }
+      ]
     },
     {
       "key": "precedes",
       "label": "precedes",
       "inverseLabel": "follows",
-      "targetKinds": ["TIMELINE_EVENT"]
+      "targetKinds": ["TIMELINE_EVENT"],
+      "fields": [
+        {
+          "key": "mechanism",
+          "label": "How one leads to the other",
+          "help": "The chain from the first to the second: what makes the second follow from it, rather than merely come after it.",
+          "type": "text",
+          "required": true,
+          "order": 1,
+          "dependsOn": []
+        },
+        {
+          "key": "reader_sees",
+          "label": "What the reader sees of the link",
+          "help": "Whether the reader notices the connection as it happens, later on, or only when looking back.",
+          "type": "text",
+          "required": false,
+          "order": 2,
+          "dependsOn": []
+        },
+        {
+          "key": "between",
+          "label": "What lies between them",
+          "help": "What happens, or is deliberately left out, between the first and the second.",
+          "type": "text",
+          "required": false,
+          "order": 3,
+          "dependsOn": [
+            "mechanism"
+          ]
+        }
+      ]
     },
     {
       "key": "stage_of",
       "label": "stage of",
       "inverseLabel": "has as a stage",
-      "targetKinds": ["TIMELINE_EVENT"]
+      "targetKinds": ["TIMELINE_EVENT"],
+      "fields": [
+        {
+          "key": "fit",
+          "label": "How they fit together",
+          "help": "What each contributes to the other, and how the part sits within the whole.",
+          "type": "text",
+          "required": true,
+          "order": 1,
+          "dependsOn": []
+        },
+        {
+          "key": "difference",
+          "label": "What sets them apart",
+          "help": "What one holds that the other lacks, so that the two never blur together.",
+          "type": "text",
+          "required": false,
+          "order": 2,
+          "dependsOn": []
+        }
+      ]
     },
     {
       "key": "involves",
       "label": "involves",
       "inverseLabel": "involved in",
-      "targetKinds": ["FACTION", "OBJECT"]
+      "targetKinds": ["FACTION", "OBJECT"],
+      "fields": [
+        {
+          "key": "part_played",
+          "label": "Part played",
+          "help": "What the one does in or for the other: who acts, who is acted upon, who only looks on.",
+          "type": "text",
+          "required": true,
+          "order": 1,
+          "dependsOn": []
+        },
+        {
+          "key": "aftermath",
+          "label": "What it leaves behind",
+          "help": "What this involvement costs, wins or changes for either side once it is over.",
+          "type": "text",
+          "required": false,
+          "order": 2,
+          "dependsOn": [
+            "part_played"
+          ]
+        }
+      ]
     },
     {
       "key": "instigated_by",
       "label": "instigated by",
       "inverseLabel": "instigated",
-      "targetKinds": ["FACTION"]
+      "targetKinds": ["FACTION"],
+      "fields": [
+        {
+          "key": "basis",
+          "label": "What holds it together",
+          "help": "Why this link exists: the need, duty, fear, belief or bargain that keeps it in place.",
+          "type": "text",
+          "required": true,
+          "order": 1,
+          "dependsOn": []
+        },
+        {
+          "key": "terms",
+          "label": "What each side gives and gets",
+          "help": "What passes between the two because of this link, such as loyalty, protection, money, secrets or obedience.",
+          "type": "text",
+          "required": false,
+          "order": 2,
+          "dependsOn": []
+        },
+        {
+          "key": "strain",
+          "label": "Where it strains",
+          "help": "The pressure that could break or turn this link, and what would follow if it gave way.",
+          "type": "text",
+          "required": false,
+          "order": 3,
+          "dependsOn": [
+            "basis"
+          ]
+        },
+        {
+          "key": "change",
+          "label": "How it changes",
+          "help": "Where this link stands at the start of the book and at its end, and what moves it.",
+          "type": "text",
+          "required": false,
+          "order": 4,
+          "dependsOn": [
+            "basis"
+          ]
+        }
+      ]
     },
     {
       "key": "creates",
       "label": "creates",
       "inverseLabel": "created in",
-      "targetKinds": ["FACTION", "OBJECT"]
+      "targetKinds": ["FACTION", "OBJECT"],
+      "fields": [
+        {
+          "key": "mechanism",
+          "label": "How one leads to the other",
+          "help": "The chain from the first to the second: what makes the second follow from it, rather than merely come after it.",
+          "type": "text",
+          "required": true,
+          "order": 1,
+          "dependsOn": []
+        },
+        {
+          "key": "reader_sees",
+          "label": "What the reader sees of the link",
+          "help": "Whether the reader notices the connection as it happens, later on, or only when looking back.",
+          "type": "text",
+          "required": false,
+          "order": 2,
+          "dependsOn": []
+        },
+        {
+          "key": "between",
+          "label": "What lies between them",
+          "help": "What happens, or is deliberately left out, between the first and the second.",
+          "type": "text",
+          "required": false,
+          "order": 3,
+          "dependsOn": [
+            "mechanism"
+          ]
+        }
+      ]
     },
     {
       "key": "ends_or_destroys",
       "label": "ends or destroys",
       "inverseLabel": "ended or destroyed in",
-      "targetKinds": ["FACTION", "OBJECT"]
+      "targetKinds": ["FACTION", "OBJECT"],
+      "fields": [
+        {
+          "key": "mechanism",
+          "label": "How one leads to the other",
+          "help": "The chain from the first to the second: what makes the second follow from it, rather than merely come after it.",
+          "type": "text",
+          "required": true,
+          "order": 1,
+          "dependsOn": []
+        },
+        {
+          "key": "reader_sees",
+          "label": "What the reader sees of the link",
+          "help": "Whether the reader notices the connection as it happens, later on, or only when looking back.",
+          "type": "text",
+          "required": false,
+          "order": 2,
+          "dependsOn": []
+        },
+        {
+          "key": "between",
+          "label": "What lies between them",
+          "help": "What happens, or is deliberately left out, between the first and the second.",
+          "type": "text",
+          "required": false,
+          "order": 3,
+          "dependsOn": [
+            "mechanism"
+          ]
+        }
+      ]
     },
     {
       "key": "draws_on",
       "label": "draws on",
       "inverseLabel": "informs",
-      "targetKinds": ["RESEARCH"]
+      "targetKinds": ["RESEARCH"],
+      "fields": [
+        {
+          "key": "what_is_drawn",
+          "label": "What is drawn from it",
+          "help": "Which facts, methods or details pass from the source into the book.",
+          "type": "text",
+          "required": true,
+          "order": 1,
+          "dependsOn": []
+        },
+        {
+          "key": "liberties",
+          "label": "Liberties taken",
+          "help": "Where the book departs from the source on purpose, and why.",
+          "type": "text",
+          "required": false,
+          "order": 2,
+          "dependsOn": []
+        }
+      ]
     }
   ]
 }

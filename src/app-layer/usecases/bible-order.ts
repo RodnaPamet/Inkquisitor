@@ -40,9 +40,9 @@ import { BibleElementRepository, BibleVersionRepository } from '@/app-layer/repo
 import { ElementOrderInput } from '@/app-layer/schemas/bible';
 import { isOrderedKind } from '@/lib/bible/kinds';
 import { compareRanks, placeRank } from '@/lib/bible/story-order';
-import { runInWorkspaceContext } from '@/lib/db/rls-middleware';
+import { runInWorkspaceContext, type PrismaTx } from '@/lib/db/rls-middleware';
 import { ConflictError, ValidationError } from '@/lib/errors/types';
-import { assertBaseVersion, isUniqueViolation, readFieldValues, recordVersion, requireBook, requireElement, writeFieldValues } from './bible-common';
+import { assertBaseVersion, isUniqueViolation, readFieldValues, recordVersion, requireBook, requireElement, writeFieldValues, type VersionMeta } from './bible-common';
 
 /** Placed elements one order may hold before a move is refused (far past any book's beats or events). */
 export const ORDER_SCOPE_MAX = 10_000;
@@ -64,6 +64,54 @@ export interface OrderMoveResult {
 
 function stale(): ConflictError {
     return new ConflictError('The order changed since this view was drawn.', { reason: 'ORDER_STALE' });
+}
+
+/**
+ * Place a NEW, unplaced element of an ordered kind between two of its kind's
+ * elements, inside the caller's transaction (Phase 3.3: accepting the beat
+ * "What happens between these?" proposed). The 3.2 move's rules: the CALLER
+ * holds the order's lock (`lockOrder`, taken before any element lock) and the
+ * element's; one rank strictly between the neighbours (`placeRank`), one
+ * version marked `movedInOrder`. A neighbour no longer placed (moved out of
+ * the order, deleted) is an open end, so the element still lands beside the
+ * one that remains; with neither, it stays unplaced and nothing is written.
+ * The version names what the placement came from (`meta`: an accepted
+ * proposal's is INTERVIEW, naming its answers, rule 1).
+ */
+export async function placeNewElementInOrderTx(
+    db: PrismaTx,
+    ctx: WorkspaceRequestContext,
+    bookId: string,
+    element: { id: string; kind: string },
+    neighbours: { after: string | null; before: string | null },
+    meta: Pick<VersionMeta, 'source' | 'sourceAnswerIds'> = { source: 'MANUAL' },
+): Promise<{ placed: boolean; orderRank: string | null; versionNumber: number | null }> {
+    if (!isOrderedKind(element.kind)) return { placed: false, orderRank: null, versionNumber: null };
+    const ranked = await BibleElementRepository.rankedInOrder(db, ctx.workspaceId, bookId, element.kind, ORDER_SCOPE_MAX + 1);
+    if (ranked.length > ORDER_SCOPE_MAX) throw new ConflictError('This order is too long to move in.', { reason: 'ORDER_SCOPE_TOO_LARGE' });
+    const rankOf = new Map(ranked.map((r) => [r.id, r.orderRank as string] as const));
+    const after = neighbours.after ? (rankOf.get(neighbours.after) ?? null) : null;
+    let before = neighbours.before ? (rankOf.get(neighbours.before) ?? null) : null;
+    // Moved past each other since: the earlier one is kept, and the element goes after it.
+    if (after !== null && before !== null && compareRanks(after, before) >= 0) before = null;
+    if (after === null && before === null) return { placed: false, orderRank: null, versionNumber: null };
+    const others = ranked.filter((r) => r.id !== element.id).map((r) => r.orderRank as string);
+    let decision = placeRank(others, { after, before });
+    if (!decision.ok && decision.reason === 'ORDER_STALE') {
+        // The order moved between the two (a beat placed between them meanwhile): beside the earlier one.
+        before = null;
+        decision = placeRank(others, { after, before });
+        if (!decision.ok && after === null) return { placed: false, orderRank: null, versionNumber: null };
+    }
+    if (!decision.ok) throw new ConflictError('There is no more room at that place in the order.', { reason: 'ORDER_RANK_EXHAUSTED' });
+    await BibleElementRepository.setOrderRank(db, ctx.workspaceId, bookId, element.id, decision.rank);
+    const version = await recordVersion(db, ctx, bookId, element.id, { ...meta, movedInOrder: true });
+    await logEvent(
+        ctx,
+        { action: 'BIBLE_ELEMENT_MOVED', entityType: 'BibleElement', entityId: element.id, details: { bookId, kind: element.kind, versionNumber: version.versionNumber, rankChanged: true, actChanged: false } },
+        { db },
+    );
+    return { placed: true, orderRank: decision.rank, versionNumber: version.versionNumber };
 }
 
 export async function moveElementInOrder(ctx: WorkspaceRequestContext, bookId: string, elementId: string, input: unknown): Promise<OrderMoveResult> {
