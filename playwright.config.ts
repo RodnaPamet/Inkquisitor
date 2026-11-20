@@ -62,6 +62,8 @@ function serverEnv(origin: string): Record<string, string> {
 
 export default defineConfig({
     testDir: './tests/e2e',
+    // Warms each server's cold public routes before the first spec (issue #36, item 8: the cause of the auth cold-start timeouts).
+    globalSetup: './tests/e2e/global-setup.ts',
     fullyParallel: true,
     forbidOnly: isCI,
     retries: isCI ? 2 : 0,

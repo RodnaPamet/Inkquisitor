@@ -9,11 +9,12 @@
     "hash": "sha256:0ae01c4e75b6507fc5e88281652f74433ad4a250b994d0058ce5f88bf690b72c"
   },
   "promptVersion": "question-generation.2.3.0",
+  "promptHash": "sha256:95a96114bc64edc84cc3e217fe49d6777443ad3f946525784f2080043d47601b",
   "generator": {
     "kind": "structural",
     "id": "structural-generator.1"
   },
-  "ranAt": "2026-11-19T23:18:42.695Z",
+  "ranAt": "2026-11-20T11:26:12.200Z",
   "answers": [
     {
       "caseId": "devils-advocate-01",

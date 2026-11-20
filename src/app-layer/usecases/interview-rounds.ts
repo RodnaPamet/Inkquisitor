@@ -50,7 +50,7 @@ import { GenerationStop, type QuestionGenerator } from '@/lib/interview/generato
 import { defaultQuestionGenerator, modelBudgetSignals } from '@/lib/interview/model-seam';
 import { getPacks, type PackRegistry } from '@/lib/interview/packs';
 import { PacksNotMountableError, packNamesFor, parsePackPins, pinMismatch, type MountVerdict, type PackRecordMode } from '@/lib/interview/pack-mount';
-import { nextRoundGenerationCalls, nextRoundGenerationTokens } from '@/lib/interview/dial-settings';
+import { nextRoundGenerationCalls, nextRoundTokens } from '@/lib/interview/dial-settings';
 import { planRound, type RoundPlan } from '@/lib/interview/plan';
 import { QUESTION_PROMPT_VERSION } from '@/lib/interview/prompt';
 import { produceRound, TOKENS_PER_CALL_REPORT_MAX, type PlannedQuestion, type RoundObserver, type RoundOutput } from '@/lib/interview/round';
@@ -58,6 +58,10 @@ import type { InterviewStreamEvent, PlannedField } from '@/lib/interview/stream-
 import { logger } from '@/lib/observability/logger';
 import type { VectorRecord } from '@/app-layer/repositories/vector.repository';
 import { decideStop } from '@/lib/interview/stop';
+import { recordRoundRepetition } from '@/lib/interview/repetition';
+import { cosineThresholdsFor } from '@/lib/interview/dedupe-thresholds';
+import { chargeModelCalls } from '@/lib/security/model-call-rate-limit';
+import { env } from '@/env';
 import { encodeJson, sanitiseQuestionForStorage } from '@/lib/interview/storage';
 import { STATUS_AFTER_STOP, type PersonaKey, type StopReason } from '@/lib/interview/vocabulary';
 import { challengeableOf, frontierOf, frontierStop, loadInterviewState, nextRoundNumber, stopDetailFor, storedTextOf, type InterviewState } from './interview-state';
@@ -185,8 +189,15 @@ export function emptyRoundStopReason(m: Pick<RoundOutput['metrics'], 'generation
 }
 
 /** End a session with its reason, in the caller's transaction. */
-export async function endSession(db: PrismaTx, ctx: WorkspaceRequestContext, session: SessionRow, reason: StopReason, detail: Prisma.InputJsonValue): Promise<void> {
-    const status = STATUS_AFTER_STOP[reason];
+export async function endSession(
+    db: PrismaTx,
+    ctx: WorkspaceRequestContext,
+    session: SessionRow,
+    reason: StopReason,
+    detail: Prisma.InputJsonValue,
+    statusOverride?: 'STOPPED',
+): Promise<void> {
+    const status = statusOverride ?? STATUS_AFTER_STOP[reason];
     await InterviewSessionRepository.update(db, ctx.workspaceId, session.id, {
         status,
         stopReason: reason,
@@ -238,13 +249,20 @@ export function stopNow(
         frontierStop: fromFrontier,
         tokenBudget: session.tokenBudget,
         tokensUsed: session.tokensUsed,
-        nextRoundTokens: nextRoundGenerationTokens(session.personaKeys.length),
+        nextRoundTokens: nextRoundTokens(session.personaKeys.length),
         authorStopped: false,
         roundBudget: session.roundBudget,
         roundsRun: session.roundsRun,
     });
     if (!reason) return null;
     return { reason, detail: stopDetailFor(reason, frontier, reason === fromFrontier ? { scopeElements: state.elements.length } : undefined) };
+}
+
+/** The session is already paused PACK_CHANGED for exactly these packs: a retry has nothing new to record. */
+function alreadyPausedFor(session: SessionRow, detail: { problem: string; packs: readonly unknown[] }): boolean {
+    if (session.status !== 'PAUSED' || session.stopReason !== 'PACK_CHANGED') return false;
+    const stored = session.stopDetail as { problem?: unknown; packs?: unknown } | null;
+    return stored?.problem === detail.problem && JSON.stringify(stored?.packs ?? null) === JSON.stringify(detail.packs);
 }
 
 /**
@@ -278,10 +296,25 @@ export async function claimRound(db: PrismaTx, ctx: WorkspaceRequestContext, ses
         throw new PacksNotMountableError(problem.packs);
     }
     if (problem) {
-        await endSession(db, ctx, session, 'PACK_CHANGED', { problem: problem.reason, packs: problem.packs });
+        const detail = { problem: problem.reason, packs: problem.packs };
+        if (problem.reason === 'PACK_NOT_PINNED') {
+            // A session from before pinning (2.2) can never be pinned (the pins
+            // are write-once; one written now would be a reconstruction), so no
+            // deployment will ever resume it: it ENDS, once, and a later request
+            // meets an ended interview (409 INTERVIEW_ENDED) and writes nothing
+            // (issue #36, item 2).
+            await endSession(db, ctx, session, 'PACK_CHANGED', detail, 'STOPPED');
+        } else if (!alreadyPausedFor(session, detail)) {
+            // A changed pack pauses (a deployment that restores the file lets it
+            // resume); asked again while still changed, it is already paused for
+            // exactly this, and nothing is written again (issue #36, item 2).
+            await endSession(db, ctx, session, 'PACK_CHANGED', detail);
+        }
         return { kind: 'stopped', reason: 'PACK_CHANGED' };
     }
     const { frontier, plan } = planOf(state, session);
+    // The workspace's model-call rate (issue #32, item 5): one unit per generation call the round will make, before it is claimed.
+    chargeModelCalls(ctx.workspaceId, nextRoundGenerationCalls(session.personaKeys.length));
     const roundNumber = nextRoundNumber(state);
     const round = await InterviewRoundRepository.create(db, ctx.workspaceId, {
         sessionId: session.id,
@@ -342,6 +375,8 @@ export async function generateClaimedRound(
                 sessionAnswers: state.promptAnswers,
                 asked: state.asked,
                 packs,
+                // The cosine thresholds of the embedder's revision (issue #32 item 1): calibrated, configured, or the uncalibrated default.
+                cosineThresholds: embedder ? cosineThresholdsFor(embedder.revision, env.DEDUPE_COSINE_THRESHOLDS) : undefined,
             },
             {
                 generator,
@@ -459,6 +494,7 @@ export async function generateClaimedRound(
             if (vector && embedder) records.push(questionRecord(ctx.workspaceId, created.id, session.bookId, created.text, vector, embedder.revision));
         }
         await InterviewRoundRepository.update(db, ctx.workspaceId, claim.roundId, { status: 'OPEN', openedAt: new Date(), metrics });
+        recordRoundRepetition({ asked: questions.length, duplicates: output.metrics.duplicates });
         await logEvent(
             ctx,
             {

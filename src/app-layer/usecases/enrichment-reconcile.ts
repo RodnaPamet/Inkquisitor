@@ -69,6 +69,7 @@ import { nameKey } from '@/lib/enrichment/validate';
 import { effectiveRunState, STALE_RECONCILE_MS, statusOfOutcome, type ReconcileOutcome, type RefusalCode } from '@/lib/enrichment/vocabulary';
 import type { PackRecordMode } from '@/lib/interview/pack-records-config';
 import { decodeOptions, decodeScaleLabels } from '@/lib/interview/storage';
+import { TOKENS_PER_RECONCILE_CALL } from '@/lib/interview/dials';
 import { logger } from '@/lib/observability/logger';
 import { requireBook } from './bible-common';
 import { bookHoldsElementName } from './enrichment-names';
@@ -268,7 +269,21 @@ async function claimRun(
         await finishRun(db, ctx, session, round, runId, attempt, refusal.outcome, { refusalReason: refusal.reason });
         return { kind: 'ended', run: (await ReconcileRunRepository.find(db, ctx.workspaceId, session.id, round.id))! };
     }
-    return { kind: 'claimed', runId, attempt, input: await loadRoundInput(db, ctx, session, round) };
+    const input = await loadRoundInput(db, ctx, session, round);
+    // The session's token budget (2.H item 2): a round with answers to
+    // reconcile needs one call, and a session that cannot take it is REFUSED
+    // TOKEN_BUDGET, nothing sent, its answers kept. A round with nothing
+    // answered needs no call, so it still ends NOTHING_TO_RECONCILE.
+    if (input.answers.some((a) => a.status === 'ANSWERED') && reconcileOverTokenBudget(session)) {
+        await finishRun(db, ctx, session, round, runId, attempt, 'TOKEN_BUDGET', { refusalReason: 'TOKEN_BUDGET' });
+        return { kind: 'ended', run: (await ReconcileRunRepository.find(db, ctx.workspaceId, session.id, round.id))! };
+    }
+    return { kind: 'claimed', runId, attempt, input };
+}
+
+/** Would one more reconcile call pass the session's token budget? (`TOKENS_PER_RECONCILE_CALL`, the share `tokenBudgetFor` gives each round.) */
+export function reconcileOverTokenBudget(session: Pick<SessionRow, 'tokensUsed' | 'tokenBudget'>): boolean {
+    return session.tokensUsed + TOKENS_PER_RECONCILE_CALL > session.tokenBudget;
 }
 
 /** Store what survived validation against the bible as it stands now, and end the run. */

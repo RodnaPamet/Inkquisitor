@@ -26,7 +26,9 @@
  * element is never a repeat: "what does this character want?" asked of two
  * characters is two questions): `c` duplicates `q` when exact; or sameTarget
  * and (jaccard ≥ 0.6, or trigram ≥ 0.75, or sameShape, or cosine ≥ 0.9); or,
- * on another field of the element, jaccard ≥ 0.8 or cosine ≥ 0.97. The thresholds are constants here, tested
+ * on another field of the element, jaccard ≥ 0.8 or cosine ≥ 0.97. The lexical thresholds are constants here; the
+ * COSINE pair is per embedding revision (`dedupe-thresholds.ts`, issue #32 item 1: 0.9 / 0.97 is the
+ * uncalibrated default, pending the production model), handed in as `cosine`. Tested
  * on paraphrase pairs (which must match) and near-miss pairs on one field
  * (which must not) in tests/unit/interview/dedupe.test.ts.
  *
@@ -175,8 +177,23 @@ export function sameShape(a: DedupeQuestion, b: DedupeQuestion): boolean {
 
 export type DuplicateSignal = 'EXACT' | 'JACCARD' | 'TRIGRAM' | 'SHAPE' | 'EMBEDDING';
 
-/** Does `c` repeat `q`? `cosine` is their embedding similarity, when both have one. */
-export function duplicateSignal(c: DedupeQuestion, q: DedupeQuestion, ctx: DedupeTextContext, cosine: number | null = null): DuplicateSignal | null {
+/** The cosine thresholds of one embedding revision: same target, and another field of the element. */
+export interface CosineThresholds {
+    readonly sameTarget: number;
+    readonly otherTarget: number;
+}
+
+/** The uncalibrated default (2.2's figures), for a revision nobody calibrated (`dedupe-thresholds.ts`). */
+export const DEFAULT_COSINE_THRESHOLDS: CosineThresholds = Object.freeze({ sameTarget: DEDUPE.SAME_TARGET_COSINE, otherTarget: DEDUPE.OTHER_TARGET_COSINE });
+
+/** Does `c` repeat `q`? `cosine` is their embedding similarity, when both have one, judged by `thresholds`. */
+export function duplicateSignal(
+    c: DedupeQuestion,
+    q: DedupeQuestion,
+    ctx: DedupeTextContext,
+    cosine: number | null = null,
+    thresholds: CosineThresholds = DEFAULT_COSINE_THRESHOLDS,
+): DuplicateSignal | null {
     if (c.elementId !== q.elementId) return null;
     const tc = dedupeTokens(c, ctx);
     const tq = dedupeTokens(q, ctx);
@@ -186,11 +203,11 @@ export function duplicateSignal(c: DedupeQuestion, q: DedupeQuestion, ctx: Dedup
         if (j >= DEDUPE.SAME_TARGET_JACCARD) return 'JACCARD';
         if (trigramDice(c.text, q.text) >= DEDUPE.SAME_TARGET_TRIGRAM) return 'TRIGRAM';
         if (sameShape(c, q)) return 'SHAPE';
-        if (cosine !== null && cosine >= DEDUPE.SAME_TARGET_COSINE) return 'EMBEDDING';
+        if (cosine !== null && cosine >= thresholds.sameTarget) return 'EMBEDDING';
         return null;
     }
     if (j >= DEDUPE.OTHER_TARGET_JACCARD) return 'JACCARD';
-    if (cosine !== null && cosine >= DEDUPE.OTHER_TARGET_COSINE) return 'EMBEDDING';
+    if (cosine !== null && cosine >= thresholds.otherTarget) return 'EMBEDDING';
     return null;
 }
 
@@ -213,6 +230,8 @@ export interface DedupeInput<C extends DedupeQuestion> {
     askedKeys?: ReadonlySet<string>;
     /** Candidate index → its own embedding, for comparisons within the round. */
     vectors?: ReadonlyMap<number, readonly number[]>;
+    /** The cosine thresholds of the vectors' embedding revision (`cosineThresholdsFor`); default: uncalibrated. */
+    cosine?: CosineThresholds;
 }
 
 export interface DedupeResult {
@@ -234,12 +253,13 @@ function cosine(a: readonly number[], b: readonly number[]): number {
 
 export function dedupe<C extends DedupeQuestion>(input: DedupeInput<C>): DedupeResult {
     const askedById = new Map(input.asked.map((q) => [q.id, q]));
+    const thresholds = input.cosine ?? DEFAULT_COSINE_THRESHOLDS;
     const result: DedupeResult = { keptIndexes: [], dropped: [] };
     input.candidates.forEach((c, index) => {
         // 1. Against what was asked, lexically, with the neighbour's score when the store found it.
         const scoreOf = new Map((input.neighbours?.get(index) ?? []).map((n) => [n.questionId, n.score]));
         for (const q of input.asked) {
-            const signal = duplicateSignal(c, q, input.ctx, scoreOf.get(q.id) ?? null);
+            const signal = duplicateSignal(c, q, input.ctx, scoreOf.get(q.id) ?? null, thresholds);
             if (signal) {
                 result.dropped.push({ index, duplicateOf: q.id, signal, scope: q.scope });
                 return;
@@ -255,7 +275,7 @@ export function dedupe<C extends DedupeQuestion>(input: DedupeInput<C>): DedupeR
             if (askedById.has(n.questionId)) continue;
             const target = input.neighbourTargets?.get(n.questionId);
             if (!target || target.elementId !== c.elementId) continue;
-            const threshold = sameTarget(c, target) ? DEDUPE.SAME_TARGET_COSINE : DEDUPE.OTHER_TARGET_COSINE;
+            const threshold = sameTarget(c, target) ? thresholds.sameTarget : thresholds.otherTarget;
             if (n.score >= threshold) {
                 result.dropped.push({ index, duplicateOf: n.questionId, signal: 'EMBEDDING', scope: 'BOOK' });
                 return;
@@ -265,7 +285,7 @@ export function dedupe<C extends DedupeQuestion>(input: DedupeInput<C>): DedupeR
         for (const k of result.keptIndexes) {
             const a = input.vectors?.get(index);
             const b = input.vectors?.get(k);
-            const signal = duplicateSignal(c, input.candidates[k], input.ctx, a && b ? cosine(a, b) : null);
+            const signal = duplicateSignal(c, input.candidates[k], input.ctx, a && b ? cosine(a, b) : null, thresholds);
             if (signal) {
                 result.dropped.push({ index, duplicateOf: `candidate:${k}`, signal, scope: 'ROUND' });
                 return;

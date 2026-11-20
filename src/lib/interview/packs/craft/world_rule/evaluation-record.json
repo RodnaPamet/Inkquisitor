@@ -9,11 +9,12 @@
     "hash": "sha256:3b062c5000aaa16edd284853ed85d99ac0c0eb7dd0b7b6eb27d3baf806b23f2d"
   },
   "promptVersion": "question-generation.2.3.0",
+  "promptHash": "sha256:95a96114bc64edc84cc3e217fe49d6777443ad3f946525784f2080043d47601b",
   "generator": {
     "kind": "structural",
     "id": "structural-generator.1"
   },
-  "ranAt": "2026-11-19T23:18:41.144Z",
+  "ranAt": "2026-11-20T11:26:08.468Z",
   "answers": [
     {
       "caseId": "world_rule-01",

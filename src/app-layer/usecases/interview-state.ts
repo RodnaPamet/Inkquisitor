@@ -191,9 +191,19 @@ export async function loadInterviewState(db: PrismaTx, ctx: WorkspaceRequestCont
 
     const rounds = await InterviewRoundRepository.listForSession(db, ctx.workspaceId, session.id, SESSION_ROUNDS_READ);
     const challenged = questions.filter((q) => q.mode === 'CHALLENGE').map((q) => ({ elementId: q.elementId, fieldKey: q.targetsFieldKeys[0] }));
-    const challengesPlanned = rounds.filter((r) => (r.plan as { challenge?: unknown } | null)?.challenge).length;
+    const challengesPlanned = challengesPlannedOf(rounds);
 
     return { elements, scopeTruncated: scope.truncated, questions, latest, answerFacts, promptAnswers, asked, related, rounds, challenged, challengesPlanned };
+}
+
+/**
+ * The challenges the session has spent of its per-session limit: those planned
+ * by rounds that were ASKED (or are being asked). A round that FAILED asked
+ * nothing, so its planned challenge is not spent: failures (a provider
+ * outage, a cancelled stream) cannot use up the limit (issue #32, item 6).
+ */
+export function challengesPlannedOf(rounds: ReadonlyArray<Pick<RoundRow, 'status' | 'plan'>>): number {
+    return rounds.filter((r) => r.status !== 'FAILED' && (r.plan as { challenge?: unknown } | null)?.challenge).length;
 }
 
 /** The number the session's next round takes: one past the newest (never a count of the rounds read, which are bounded). */

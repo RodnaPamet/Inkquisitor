@@ -102,9 +102,22 @@ describe('a long unbroken run', () => {
         // every line, which took about six seconds for this one run.
         const run = 'abcdefghij'.repeat(10_000);
         const bundle = sampleBundle();
-        const started = Date.now();
+        // Growth, not a wall-clock bound (a 2 s limit flaked under load, 2.H):
+        // a run four times as long must cost far less than the sixteen times a
+        // quadratic re-measure would. Same machine, same load, median of three.
+        const medianMs = async (text: string): Promise<number> => {
+            const runs: number[] = [];
+            for (let i = 0; i < 3; i += 1) {
+                const started = process.hrtime.bigint();
+                await renderBiblePdf({ ...bundle, elements: [{ ...bundle.elements[2], summary: text }] }, META);
+                runs.push(Number(process.hrtime.bigint() - started) / 1e6);
+            }
+            return runs.sort((a, b) => a - b)[1];
+        };
+        const quarter = run.slice(0, run.length / 4);
+        await medianMs(quarter); // warm the font and the JIT
+        expect((await medianMs(run)) / (await medianMs(quarter))).toBeLessThan(8);
         const pdf = await renderBiblePdf({ ...bundle, elements: [{ ...bundle.elements[2], summary: run }] }, META);
-        expect(Date.now() - started).toBeLessThan(2_000);
         // Its lines, in drawing order (the page stamps between pages are other runs).
         const lines = pdfTextRuns(pdf).filter((r) => /^[a-j]+$/.test(r));
         expect(lines.length).toBeGreaterThan(100);

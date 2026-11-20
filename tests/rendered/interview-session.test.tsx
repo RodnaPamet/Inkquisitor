@@ -144,8 +144,16 @@ it('a session paused PACK_CHANGED says why, and a session from before pinning sa
     unmount();
     const unpinned = interview({ status: 'PAUSED', stopReason: 'PACK_CHANGED', roundStatus: 'CLOSED' });
     unpinned.session.stopDetail = { problem: 'PACK_NOT_PINNED', packs: ['craft-character'] };
-    mount({ kind: 'existing', interview: unpinned });
+    const second = mount({ kind: 'existing', interview: unpinned });
     expect(screen.getByTestId('stop-reason')).toHaveTextContent('This interview was started before question packs were recorded with it, so it cannot go on.');
+    // Presented as ended (issue #36, item 2): never offered "Continue", whether still paused from before or ended by the server.
+    expect(document.getElementById('round-next')).toBeNull();
+    second.unmount();
+    const endedUnpinned = interview({ status: 'STOPPED', stopReason: 'PACK_CHANGED', roundStatus: 'CLOSED' });
+    endedUnpinned.session.stopDetail = { problem: 'PACK_NOT_PINNED', packs: ['craft-character'] };
+    mount({ kind: 'existing', interview: endedUnpinned });
+    expect(screen.getByTestId('stop-reason')).toHaveTextContent('This interview was started before question packs were recorded with it, so it cannot go on.');
+    expect(document.getElementById('round-next')).toBeNull();
 });
 
 it('the side panel fills as answers arrive: pending enrichment, the answer read-only', async () => {

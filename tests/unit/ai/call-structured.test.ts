@@ -302,11 +302,17 @@ describe('the guard under the default mode: flag and fence', () => {
 });
 
 describe('deadline and cancellation', () => {
-    it('past the deadline the request is aborted: TIMEOUT, charged what the stream reported', async () => {
-        const { ledger, promise } = run([{ kind: 'hang', usage: { input_tokens: 900, output_tokens: 0 } }], { deps: { timeoutMs: 50 } });
+    it('past the deadline the request is aborted: TIMEOUT, its reported input charged and its unseen output at its bound (issue #30, item 10)', async () => {
+        const { api, ledger, promise } = run([{ kind: 'hang', usage: { input_tokens: 900, output_tokens: 0 } }], { deps: { timeoutMs: 50 } });
         const err = await promise.catch((e: unknown) => e);
         expect(err).toBeInstanceOf(AiTimeoutError);
-        expect(ledger.records[0]).toMatchObject({ outcome: 'TIMEOUT', errorCode: 'DEADLINE', attempts: 1, inputTokens: 900, costEstimated: false });
+        // The counts are what the stream reported; the CHARGE adds the output it may have generated unseen.
+        expect(ledger.records[0]).toMatchObject({ outcome: 'TIMEOUT', errorCode: 'DEADLINE', attempts: 1, inputTokens: 900, costEstimated: true });
+        const maxTokens = (api.requests[0] as { max_tokens: number }).max_tokens;
+        // The reported output (the fake's message_start says 1) plus the unseen rest, up to max_tokens.
+        expect(ledger.records[0].costMicroUsd).toBe(900 * 2 + maxTokens * 10);
+        // Never past the worst case the reservation held.
+        expect(ledger.records[0].costMicroUsd).toBeLessThanOrEqual(ledger.records[0].worstCaseMicroUsd);
     });
 
     it('the caller’s signal cancels a call in flight: ABORTED', async () => {

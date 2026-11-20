@@ -30,6 +30,7 @@ import {
     DIAL_MAX,
     DIAL_MIN,
     TOKENS_PER_GENERATION_CALL,
+    TOKENS_PER_RECONCILE_CALL,
     answerTextMax,
     isDial,
     kindsAllowed,
@@ -182,6 +183,17 @@ export function nextRoundGenerationCalls(personaCount: number): number {
 /** The tokens one more round of this session would spend at most on generation. */
 export function nextRoundGenerationTokens(personaCount: number): number {
     return nextRoundGenerationCalls(personaCount) * TOKENS_PER_GENERATION_CALL;
+}
+
+/**
+ * The tokens one more round would spend at most, its reconcile call included
+ * (Phase 2.H item 2): a round is not opened unless the session's budget can
+ * also take the reconcile of its answers, so the last round's answers are not
+ * left un-proposed by a budget the questions spent. `tokenBudgetFor` gives
+ * every round both shares.
+ */
+export function nextRoundTokens(personaCount: number): number {
+    return nextRoundGenerationTokens(personaCount) + TOKENS_PER_RECONCILE_CALL;
 }
 
 export { DIAL_MAX, DIAL_MIN, PERSONA_KEYS };

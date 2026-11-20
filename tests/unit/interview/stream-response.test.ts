@@ -6,6 +6,8 @@
  */
 import { ConflictError } from '@/lib/errors/types';
 import { interviewStreamResponse, refusalCodeOf } from '@/lib/interview/stream-response';
+import { __resetStreamCapacity, MAX_STREAMS_GLOBAL, MAX_STREAMS_PER_WORKSPACE, streamCapacitySnapshot } from '@/lib/http/stream-capacity';
+import { RateLimitedError } from '@/lib/errors/types';
 import { parseSseData, sseComment, sseData, type InterviewStreamEvent } from '@/lib/interview/stream-events';
 import type { InterviewView } from '@/app-layer/usecases/interview-state';
 
@@ -47,15 +49,19 @@ describe('the wire format', () => {
     });
 });
 
+const stream = (r: Request, run: Parameters<typeof interviewStreamResponse>[1], workspaceId = 'ws-1') => interviewStreamResponse(r, run, { workspaceId });
+
+beforeEach(() => __resetStreamCapacity());
+
 describe('interviewStreamResponse', () => {
     const req = (signal?: AbortSignal) => new Request('http://x/stream', { method: 'POST', signal });
 
     it('rethrows a failure before the run is under way, so the route answers JSON', async () => {
-        await expect(interviewStreamResponse(req(), async () => Promise.reject(new ConflictError('open', { reason: 'ROUND_OPEN' })))).rejects.toMatchObject({ details: { reason: 'ROUND_OPEN' } });
+        await expect(stream(req(), async () => Promise.reject(new ConflictError('open', { reason: 'ROUND_OPEN' })))).rejects.toMatchObject({ details: { reason: 'ROUND_OPEN' } });
     });
 
     it('streams what the run emits, then committed, then done', async () => {
-        const res = await interviewStreamResponse(req(), async (sink) => {
+        const res = await stream(req(), async (sink) => {
             sink.emit({ type: 'started', sessionId: 's1' });
             sink.ready();
             await Promise.resolve();
@@ -71,12 +77,12 @@ describe('interviewStreamResponse', () => {
     });
 
     it('a run that settles without ever being under way still streams its outcome (a session that stopped at once)', async () => {
-        const res = await interviewStreamResponse(req(), async () => VIEW);
+        const res = await stream(req(), async () => VIEW);
         expect(framesOf(await res.text()).map((e) => e.type)).toEqual(['committed', 'done']);
     });
 
     it('a failure after the stream began is a refusal event with its code, then done', async () => {
-        const res = await interviewStreamResponse(req(), async (sink) => {
+        const res = await stream(req(), async (sink) => {
             sink.ready();
             await Promise.resolve();
             throw new ConflictError('x', { reason: 'INTERVIEW_ENDED' });
@@ -88,7 +94,7 @@ describe('interviewStreamResponse', () => {
         const abort = new AbortController();
         let seen: AbortSignal | null = null;
         let finish: () => void = () => {};
-        const res = await interviewStreamResponse(req(abort.signal), async (sink) => {
+        const res = await stream(req(abort.signal), async (sink) => {
             seen = sink.signal;
             sink.ready();
             await new Promise<void>((r) => (finish = r));
@@ -100,7 +106,7 @@ describe('interviewStreamResponse', () => {
         finish();
 
         let seen2: AbortSignal | null = null;
-        const res2 = await interviewStreamResponse(req(), async (sink) => {
+        const res2 = await stream(req(), async (sink) => {
             seen2 = sink.signal;
             sink.ready();
             await new Promise(() => {});
@@ -109,5 +115,104 @@ describe('interviewStreamResponse', () => {
         await res2.body!.cancel();
         expect(seen2!.aborted).toBe(true);
         await res.body!.cancel().catch(() => {});
+    });
+});
+
+describe('stream capacity (2.H item 4; issue #36, item 3)', () => {
+    const req = (signal?: AbortSignal) => new Request('http://x/stream', { method: 'POST', signal });
+    /** A run that is under way and settles only when `finish` is called (or its signal aborts). */
+    function held() {
+        let finish: () => void = () => {};
+        let signal: AbortSignal | null = null;
+        const run = async (sink: { ready(): void; signal: AbortSignal }) => {
+            signal = sink.signal;
+            sink.ready();
+            await new Promise<void>((resolve) => {
+                finish = resolve;
+                sink.signal.addEventListener('abort', () => resolve(), { once: true });
+            });
+            return VIEW;
+        };
+        return { run, finish: () => finish(), signal: () => signal };
+    }
+    const tick = () => new Promise((r) => setTimeout(r, 0));
+
+    it('a workspace holds at most MAX_STREAMS_PER_WORKSPACE streams; the next is a 429 STREAM_CAPACITY before its run starts; another workspace is unaffected', async () => {
+        const runs = Array.from({ length: MAX_STREAMS_PER_WORKSPACE }, held);
+        const responses = await Promise.all(runs.map((h) => stream(req(), h.run)));
+        expect(streamCapacitySnapshot().workspaces['ws-1']).toBe(MAX_STREAMS_PER_WORKSPACE);
+        let started = false;
+        const refused = stream(req(), async () => {
+            started = true;
+            return VIEW;
+        });
+        await expect(refused).rejects.toBeInstanceOf(RateLimitedError);
+        await expect(refused).rejects.toMatchObject({ status: 429, details: { reason: 'STREAM_CAPACITY', bound: 'WORKSPACE_AT_CAPACITY' } });
+        expect(started).toBe(false);
+        const other = held();
+        const elsewhere = await stream(req(), other.run, 'ws-2');
+        expect(elsewhere.status).toBe(200);
+        // Each stream ending frees its slot.
+        for (const h of [...runs, other]) h.finish();
+        await Promise.all([...responses, elsewhere].map((r) => r.text()));
+        await tick();
+        expect(streamCapacitySnapshot()).toEqual({ total: 0, workspaces: {} });
+    });
+
+    it('the process holds at most MAX_STREAMS_GLOBAL across workspaces', async () => {
+        const runs = Array.from({ length: MAX_STREAMS_GLOBAL }, held);
+        const responses = await Promise.all(runs.map((h, i) => stream(req(), h.run, `ws-${i}`)));
+        await expect(stream(req(), held().run, 'ws-new')).rejects.toMatchObject({ details: { reason: 'STREAM_CAPACITY', bound: 'PROCESS_AT_CAPACITY' } });
+        for (const h of runs) h.finish();
+        await Promise.all(responses.map((r) => r.text()));
+        await tick();
+        expect(streamCapacitySnapshot().total).toBe(0);
+    });
+
+    it('cancellation frees the slot: the client going away aborts the run, and once it settles the slot is free', async () => {
+        const abort = new AbortController();
+        const h = held();
+        await stream(req(abort.signal), h.run);
+        expect(streamCapacitySnapshot().total).toBe(1);
+        abort.abort();
+        expect(h.signal()!.aborted).toBe(true);
+        await tick();
+        expect(streamCapacitySnapshot().total).toBe(0);
+
+        // The reader cancelling, without the request's own abort, does the same.
+        const h2 = held();
+        const res2 = await stream(req(), h2.run);
+        expect(streamCapacitySnapshot().total).toBe(1);
+        await res2.body!.cancel();
+        await tick();
+        expect(h2.signal()!.aborted).toBe(true);
+        expect(streamCapacitySnapshot().total).toBe(0);
+    });
+
+    it('a cancelled run that is still settling keeps its slot until it settles', async () => {
+        let settle: () => void = () => {};
+        const res = await stream(req(), async (sink) => {
+            sink.ready();
+            await new Promise<void>((r) => (settle = r)); // ignores the abort: still cutting its call
+            return VIEW;
+        });
+        await res.body!.cancel();
+        await tick();
+        expect(streamCapacitySnapshot().total).toBe(1);
+        settle();
+        await tick();
+        expect(streamCapacitySnapshot().total).toBe(0);
+    });
+
+    it('a refusal before the stream opened frees the slot at once', async () => {
+        await expect(stream(req(), async () => Promise.reject(new RateLimitedError('x')))).rejects.toBeInstanceOf(RateLimitedError);
+        expect(streamCapacitySnapshot().total).toBe(0);
+        // A run that throws synchronously, too.
+        await expect(
+            stream(req(), (() => {
+                throw new Error('sync');
+            }) as unknown as Parameters<typeof interviewStreamResponse>[1]),
+        ).rejects.toThrow('sync');
+        expect(streamCapacitySnapshot().total).toBe(0);
     });
 });

@@ -30,7 +30,8 @@
  *
  * Nothing here logs the events: they carry author text.
  */
-import { AppError } from '@/lib/errors/types';
+import { AppError, RateLimitedError } from '@/lib/errors/types';
+import { acquireStreamSlot, type CapacityLease } from '@/lib/http/stream-capacity';
 import { logger } from '@/lib/observability/logger';
 import { sseComment, sseData, type InterviewStreamEvent } from './stream-events';
 import type { InterviewView } from '@/app-layer/usecases/interview-state';
@@ -57,7 +58,25 @@ export function refusalCodeOf(err: unknown): string {
     return 'INTERNAL';
 }
 
-export async function interviewStreamResponse(req: Request, run: (sink: StreamSink) => Promise<InterviewView>): Promise<Response> {
+/**
+ * Take the workspace's stream slot (`src/lib/http/stream-capacity.ts`, 2.H
+ * item 4), or refuse 429 `STREAM_CAPACITY` naming the binding bound, before
+ * anything runs or is written. Shared with the research progress stream.
+ */
+export function takeStreamSlot(workspaceId: string): CapacityLease {
+    const lease = acquireStreamSlot(workspaceId);
+    if (typeof lease === 'string') throw new RateLimitedError('Too many streams are open.', { reason: 'STREAM_CAPACITY', bound: lease });
+    return lease;
+}
+
+export async function interviewStreamResponse(
+    req: Request,
+    run: (sink: StreamSink) => Promise<InterviewView>,
+    opts: { workspaceId: string },
+): Promise<Response> {
+    // The slot is held until the run settles AND the stream is torn down,
+    // whichever is later, and released exactly once (`release` is idempotent).
+    const lease = takeStreamSlot(opts.workspaceId);
     const abort = new AbortController();
     const onClientGone = () => abort.abort();
     if (req.signal.aborted) abort.abort();
@@ -85,12 +104,27 @@ export async function interviewStreamResponse(req: Request, run: (sink: StreamSi
         markReady = () => resolve('ready');
     });
     const sink: StreamSink = { emit: (event) => write(sseData(event)), ready: () => markReady(), signal: abort.signal };
-    const work = run(sink);
+    let work: Promise<InterviewView>;
+    try {
+        work = run(sink);
+    } catch (err) {
+        lease.release();
+        req.signal.removeEventListener('abort', onClientGone);
+        throw err;
+    }
+    // The run's own end frees nothing while the stream may still be writing;
+    // a run that settles before the stream starts is released by the stream's
+    // cleanup, or below when it refused before the stream existed.
+    const settled = work.then(
+        () => undefined,
+        () => undefined,
+    );
 
     // A throw before the run is under way is the route's ordinary JSON error.
     try {
         await Promise.race([ready, work]);
     } catch (err) {
+        lease.release();
         req.signal.removeEventListener('abort', onClientGone);
         throw err;
     }
@@ -100,6 +134,9 @@ export async function interviewStreamResponse(req: Request, run: (sink: StreamSi
         if (heartbeat) clearInterval(heartbeat);
         heartbeat = null;
         req.signal.removeEventListener('abort', onClientGone);
+        // The slot goes when the run has settled too: a cancelled run is still
+        // cutting its model call and abandoning its round until it settles.
+        void settled.then(() => lease.release());
         if (closed) return;
         closed = true;
         try {

@@ -54,6 +54,17 @@ it('the tripwire cuts the turn on a refused tool use: REFUSED_GUARD TOOL_USE_REF
     expect(ledger.records[0].costMicroUsd).toBeGreaterThanOrEqual(WEB_SEARCH_MICRO_USD_PER_REQUEST);
 });
 
+it('a turn cut off mid-stream is charged its unseen output at the bound, marked estimated, within its reservation (issue #30, item 10)', async () => {
+    const { api, ledger, promise } = run([{ kind: 'events', events: gatherEvents({ query: 'the secret of the book', pages: [PAGE] }) }], { inspectToolUse: (u) => (u.tool === 'web_search' ? 'QUOTES_BOOK_TEXT' : null) });
+    await promise.catch(() => undefined);
+    const record = ledger.records[0];
+    expect(record.costEstimated).toBe(true);
+    const maxTokens = (api.requests[0] as { max_tokens: number }).max_tokens;
+    // 1,500 input tokens reported at message_start, the search fee, and the output up to max_tokens.
+    expect(record.costMicroUsd).toBe(1_500 * 2 + maxTokens * 10 + WEB_SEARCH_MICRO_USD_PER_REQUEST);
+    expect(record.costMicroUsd).toBeLessThanOrEqual(record.worstCaseMicroUsd);
+});
+
 it('continues a pause_turn with the model’s own turn passed back; stops at the request cap', async () => {
     const pause = (id: string): FakeTurn => ({ kind: 'events', events: gatherEvents({ query: `q ${id}`, pages: [PAGE], fetchUrls: [], stop: 'pause_turn', idBase: id }) });
     const { api, ledger, promise } = run([pause('a'), pause('b'), pause('c')], { maxRequests: 2 });

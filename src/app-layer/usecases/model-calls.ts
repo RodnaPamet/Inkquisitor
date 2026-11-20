@@ -24,6 +24,7 @@ import { periodStartOf, spendPeriod, type AiLedger } from '@/lib/ai/call-record'
 import { aiDisabled, aiUnavailableReason, monthlyCeilingMicroUsd, type AiEnvRecord } from '@/lib/ai/config';
 import type { AiUnavailableReason } from '@/lib/ai/errors';
 import { env } from '@/env';
+import { logger } from '@/lib/observability/logger';
 import {
     callStructured as callStructuredCore,
     type StructuredCallDeps,
@@ -42,10 +43,14 @@ import {
 export function workspaceAiLedger(ctx: Pick<WorkspaceRequestContext, 'workspaceId' | 'requestId' | 'userId'>): AiLedger {
     return {
         async reserve(request) {
-            const now = new Date();
             const periodStart = periodStartOf(request.startedAt);
             return runInWorkspaceContext(ctx, async (db) => {
                 await AiCallRepository.lockSpend(db, ctx.workspaceId);
+                // The database's clock decides expiry (issue #30, item 9), and an
+                // expired, unsettled reservation is charged before this one is judged.
+                const now = await AiCallRepository.dbNow(db);
+                const abandoned = await AiCallRepository.chargeAbandoned(db, ctx.workspaceId, now);
+                if (abandoned.count > 0) logger.warn('ai.reservation_abandoned', { component: 'ai', workspaceId: ctx.workspaceId, count: abandoned.count, microUsd: abandoned.microUsd });
                 const held = await AiCallRepository.reserve(db, ctx.workspaceId, {
                     callId: request.callId,
                     periodStart,

@@ -79,8 +79,11 @@ const LIST_QUERY_INDEXES: readonly ListQueryIndex[] = [
     { model: 'UserSession', fields: ['userId', 'revokedAt'], justification: 'a person’s live sessions' },
 ];
 
-/** Models read by a list query whose index the model's leading ones already give, → why. Empty today. */
-const LIST_MODELS_INDEX_SUFFICIENT: Readonly<Record<string, string>> = {};
+/** Models read by a list query whose index the model's leading ones already give, → why. */
+const LIST_MODELS_INDEX_SUFFICIENT: Readonly<Record<string, string>> = {
+    AiSpendReservation:
+        'the expired-reservation sweep (2.H, issue #30 item 9): a workspace holds one row per call in flight, so `[workspaceId, periodStart, expiresAt]`, led by the workspace, bounds the read to a handful of rows',
+};
 
 // ─── The checks (pure, so the negative controls can drive them) ─────
 

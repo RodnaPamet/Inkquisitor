@@ -27,6 +27,8 @@ npm run packs:evaluate    # re-run the interview packs' evaluation sets, structu
 npm run packs:evaluate -- --no-packs --reconcile   # the reconcile step's sets (2.5): its structural record beside them
 npm run packs:evaluate -- --no-packs --research    # the research agent's sets (2.6): its structural record beside them
 npm run redteam:injection -- --out redteam-out   # the injection corpus against the REAL model (the nightly workflow runs it; needs a key and a budget)
+npm run packs:evaluate -- --no-packs --rephrase    # "Ask me this differently"'s set (2.H): its structural record beside it
+npm run packs:evaluate -- --judge                  # also the judge's report over the pack records written (2.H; a report, never a gate)
 npm run docs:build        # the Starlight help site (site/), from docs/user/
 npm run lint              # eslint . (flat config, eslint.config.mjs)
 npm run typecheck         # tsc --noEmit, then packages/ui alone (no `@/` imports there)
@@ -284,6 +286,18 @@ src/lib/redteam/             → the prompt-injection corpus and suite (injectio
 src/lib/text/                → prompt-disclosure (eight words of a prompt), negation (polarityKept), url-mentions (addressesIn)
 src/lib/ai/call-log-retention.ts, src/app-layer/usecases/ai-call-retention.ts → AiCallLog's retention and its daily job
 src/lib/bible/picker-query.ts → the relation picker's clamped search
+```
+
+Phase 2.H (robustness, cost and evaluation records) added:
+
+```
+src/lib/http/stream-capacity.ts   → per-workspace (4) and per-process (32) stream slots, carved from inflect (takeStreamSlot)
+src/lib/security/model-call-rate-limit.ts → chargeModelCalls: model calls a minute per workspace (429 MODEL_RATE_LIMITED)
+src/lib/ai/prompt-hash.ts         → promptContentHash: what a record pins besides the version
+src/lib/evals/judge.ts            → the evaluation-time judge (model in Evals, structural fallback), never in a product path
+src/lib/interview/evals/rephrase* → the rephrase prompt's set, evaluation and record; rephrase-record-gate.ts (D11)
+src/lib/interview/repetition.ts, dedupe-thresholds.ts; src/lib/process-shared-cache.ts; src/lib/bible/field-coercion.ts
+tests/guards/evaluation-records-current.test.ts → every prompt and pack hash recomputed against its committed record
 ```
 
 ## Rules every change obeys
@@ -887,6 +901,41 @@ closed beta with an explicit operator flag (D5, amended 2026-11-19).
   row-level security; app_user still deletes nothing. Keyed hashes per
   workspace come from `workspaceSubkey` (the vector content hash uses it;
   `dedupeKey` does not yet: the 2.H note has the rekey design).
+- **Hardening Phase 2 (2.H: robustness, cost, evaluation records).** BUDGETS:
+  every model feature stops at its session's or run's budget and at the month
+  before it sends anything — a round (TOKEN_BUDGET, and it opens only if the
+  budget also takes its reconcile: `nextRoundTokens`), a rephrase (409),
+  reconcile (REFUSED `TOKEN_BUDGET`), research (BUDGET_SPENT), each the ceiling
+  too; and every request that will call a model charges
+  `chargeModelCalls(workspaceId, calls)` first (`MODEL_CALLS_LIMIT`, in-process,
+  off where the rate tiers are off). The ledger judges expiry by the database's
+  clock (`dbNow`) and CHARGES an expired, unsettled reservation to its month
+  (`chargeAbandoned`); a stream cut off mid-way is charged its unseen output at
+  `max_tokens`, `costEstimated`. STREAMS: every SSE route takes
+  `takeStreamSlot(ctx.workspaceId)` (429 `STREAM_CAPACITY`) and releases it
+  once, after the run settles; a new stream route does the same. FAILURES end
+  resumable with a worded code (`tests/integration/model-feature-hardening.test.ts`
+  holds each feature to it). LATENCY is held by counted work, never a wall
+  clock (`interview-latency.test.ts`: the first question after one call).
+  REPETITION: `bookRepetition` over a book's questions must find none; the
+  `interview.questions.repeats_dropped` counter shows the pressure. RECORDS:
+  every exported `definePrompt` template is evaluated by a record that pins its
+  `promptContentHash` (and every pack record its pack's and set's hashes);
+  `tests/guards/evaluation-records-current.test.ts` recomputes them, so after
+  editing a prompt, a pack or a set re-run `npm run packs:evaluate` with the
+  flag that covers it. A new product prompt needs a set, a record and a gate
+  (the rephrase prompt's is the smallest example). The judge
+  (`src/lib/evals/judge.ts`) grades the ungraded behaviours in the Evals
+  workflow only; no product module imports it, and its pass bar is unset.
+  Verdict caches that two module graphs (instrumentation and routes) both read
+  live in `processSharedMap`, keyed by content hashes, never by object
+  identity. Vector writes refuse any isolation but READ COMMITTED
+  (`UNSUPPORTED_ISOLATION`). A re-imported field whose template type changed
+  is coerced only where nothing is lost (`field-coercion.ts`), else refused
+  `FIELD_TYPE_CHANGED`. Cosine thresholds for deduplication are per embedding
+  revision (`DEDUPE_COSINE_THRESHOLDS`, `dedupe-thresholds.ts`; uncalibrated
+  until the production model is chosen). CI reads Docker Hub through
+  `mirror.gcr.io`.
 - **Sanitising author text.** Every author-text write sanitises at the
   usecase layer before it is stored: plain text through `plainLine` /
   `plainBlock` (`src/lib/bible/text.ts`, over `sanitizePlainText`), rich text

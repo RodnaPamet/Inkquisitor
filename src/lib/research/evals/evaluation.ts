@@ -54,7 +54,8 @@ import { FINDINGS_PROMPT, FIT_PROMPT, GATHER_PROMPT, RESEARCH_PROMPT_VERSION } f
 import { buildBookTextIndex, toolUseRefusal, type BookTextIndex } from '../query-egress';
 import type { Researcher } from '../researcher';
 import { findingsBlocks, fitBlocks, runResearchSteps, sourcesOf, type ResearchRunInput, type ResearchStepsResult } from '../run';
-import { parseFindingsOutput } from '../schema';
+import { FindingsOutputSchema, FitOutputSchema, parseFindingsOutput } from '../schema';
+import { combinedPromptHash, promptContentHash } from '@/lib/ai/prompt-hash';
 import { validateFindings } from '../validate';
 import { DEPTH_BUDGETS } from '../vocabulary';
 import { allResearchCases, researchEvalSets, type ResearchEvalCase } from './eval-set';
@@ -70,11 +71,18 @@ export const RECORD_VALIDITY_BAR = 0.8;
 
 const SHA256 = z.string().regex(/^sha256:[0-9a-f]{64}$/);
 
+/** The research run's three prompts' combined content hash: gather (a server-tool turn, no schema), findings, fit. */
+export function researchPromptHash(): string {
+    return combinedPromptHash([promptContentHash(GATHER_PROMPT, null), promptContentHash(FINDINGS_PROMPT, FindingsOutputSchema), promptContentHash(FIT_PROMPT, FitOutputSchema)]);
+}
+
 export const ResearchRecordSchema = z
     .object({
         format: z.literal(RESEARCH_RECORD_FORMAT),
         sets: z.object({ research: z.object({ hash: SHA256 }).strict(), adversarial: z.object({ hash: SHA256 }).strict() }).strict(),
         promptVersion: z.string().min(1).max(200),
+        /** The three prompts' combined content hash under that version (`researchPromptHash`, Phase 2.H item 7). */
+        promptHash: SHA256,
         generator: z.object({ kind: z.enum(RECORD_KINDS), id: z.string().min(1).max(128) }).strict(),
         ranAt: z.iso.datetime(),
         answers: z
@@ -274,6 +282,7 @@ export async function checkResearchRecord(raw: unknown): Promise<ResearchRecordC
         return { ok: false, reason: 'SETS_CHANGED', detail: 'the evaluation sets changed since the record was made' };
     }
     if (record.promptVersion !== RESEARCH_PROMPT_VERSION) return { ok: false, reason: 'PROMPT_CHANGED', detail: `${record.promptVersion} ≠ ${RESEARCH_PROMPT_VERSION}` };
+    if (record.promptHash !== researchPromptHash()) return { ok: false, reason: 'PROMPT_CHANGED', detail: 'a research prompt or output schema changed since the record was made (its version did not); re-run the research evaluation' };
     const byCase = new Map(record.answers.map((a) => [a.caseId, a] as const));
     const missing = allResearchCases.filter((c) => !byCase.has(c.id)).map((c) => c.id);
     if (missing.length > 0) return { ok: false, reason: 'CASES_MISSING', detail: missing.join(', ') };
@@ -303,6 +312,7 @@ export function structuralRecord(ranAt: Date = new Date()): ResearchRecord {
         format: RESEARCH_RECORD_FORMAT,
         sets: { research: { ...researchEvalSets.research }, adversarial: { ...researchEvalSets.adversarial } },
         promptVersion: RESEARCH_PROMPT_VERSION,
+        promptHash: researchPromptHash(),
         generator: { kind: 'structural', id: REFERENCE_RESEARCHER_ID },
         ranAt: ranAt.toISOString(),
         answers: allResearchCases.map(referenceAnswer),

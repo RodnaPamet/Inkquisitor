@@ -1,0 +1,96 @@
+{
+  "format": "inkquisitor-rephrase-set/1",
+  "description": "Questions an author asked to have asked differently (Phase 2.H, issue #36 item 4). Each case is one unanswered question of an open round and the element it is about. A right rephrase asks about the same element, the same targets and the same mode, from another angle, repeating nothing asked; it invents no story content and keeps the author's own words out of the question unless they are quoted for a challenge.",
+  "cases": [
+    {
+      "id": "rp-01",
+      "kind": "CHARACTER",
+      "elementName": "Mara Quell",
+      "detail": 3,
+      "stored": { "role": "A tide-clerk who records every ship that leaves the harbour." },
+      "original": { "fieldKey": "want", "kind": "OPEN", "text": "What does Mara want more than anything?" },
+      "ungraded": ["persona tone", "leading wording", "a genuinely different angle"]
+    },
+    {
+      "id": "rp-02",
+      "kind": "CHARACTER",
+      "elementName": "Old Tomas",
+      "detail": 3,
+      "stored": { "role": "The ferryman who has crossed the estuary for forty years." },
+      "original": { "fieldKey": "speaking_voice", "kind": "OPEN", "text": "How does Tomas sound when he speaks?" },
+      "ungraded": ["persona tone", "leading wording"]
+    },
+    {
+      "id": "rp-03",
+      "kind": "SETTING",
+      "elementName": "The Drowned Market",
+      "detail": 3,
+      "stored": { "place_type": "A covered market half sunk into a tidal river." },
+      "original": { "fieldKey": "sensory_signature", "kind": "OPEN", "text": "What does the Drowned Market smell and sound like?" },
+      "ungraded": ["persona tone", "leading wording"]
+    },
+    {
+      "id": "rp-04",
+      "kind": "SETTING",
+      "elementName": "Harrowgate Tower",
+      "detail": 3,
+      "stored": {},
+      "original": { "fieldKey": "place_type", "kind": "OPEN", "text": "What kind of place is Harrowgate Tower?" },
+      "ungraded": ["persona tone", "leading wording"]
+    },
+    {
+      "id": "rp-05",
+      "kind": "OBJECT",
+      "elementName": "The Brass Astrolabe",
+      "detail": 3,
+      "stored": { "physical_description": "A palm-sized astrolabe with one ring cracked." },
+      "original": { "fieldKey": "significance", "kind": "OPEN", "text": "Why does the astrolabe matter to the story?" },
+      "ungraded": ["persona tone", "leading wording"]
+    },
+    {
+      "id": "rp-06",
+      "kind": "THEME",
+      "elementName": "Debt",
+      "detail": 3,
+      "stored": { "subject": "What people owe the dead." },
+      "original": { "fieldKey": "thematic_question", "kind": "OPEN", "text": "What question about debt does the book keep asking?" },
+      "ungraded": ["persona tone", "leading wording", "states no answer the author has not given"]
+    },
+    {
+      "id": "rp-07",
+      "kind": "PLOT",
+      "elementName": "The Salt Claim",
+      "detail": 3,
+      "stored": { "plotline_owner": "Mara Quell" },
+      "original": { "fieldKey": "driving_goal", "kind": "OPEN", "text": "What is Mara trying to achieve in the salt claim plotline?" },
+      "ungraded": ["persona tone", "leading wording"]
+    },
+    {
+      "id": "rp-08",
+      "kind": "WORLD_RULE",
+      "elementName": "The Tithe of Names",
+      "detail": 3,
+      "stored": { "rule_statement": "Every child born on the island gives one name to the sea." },
+      "original": { "fieldKey": "cost_or_limit", "kind": "OPEN", "text": "What does the tithe of names cost the people who keep it?" },
+      "ungraded": ["persona tone", "leading wording"]
+    },
+    {
+      "id": "rp-09",
+      "kind": "FACTION",
+      "elementName": "The Lamplighters",
+      "detail": 3,
+      "stored": { "purpose": "They keep the harbour lights burning through the storm season." },
+      "original": { "fieldKey": "membership", "kind": "OPEN", "text": "Who belongs to the Lamplighters?" },
+      "ungraded": ["persona tone", "leading wording"]
+    },
+    {
+      "id": "rp-10",
+      "kind": "PREMISE",
+      "elementName": "Premise",
+      "detail": 3,
+      "stored": { "central_character": "Mara Quell, a tide-clerk." },
+      "original": { "fieldKey": "stakes", "kind": "OPEN", "text": "What does Mara stand to lose?" },
+      "ungraded": ["persona tone", "leading wording", "invents no stakes"]
+    }
+  ]
+}

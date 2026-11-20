@@ -67,6 +67,8 @@
 import { craftPackName, personaPackName, type PackFile, type PackRegistry } from './packs';
 import { checkPackRecord, type RecordKind, type RecordRefusal } from './pack-evaluation';
 import type { BibleKind } from '@/lib/bible/kinds';
+import { createHash } from 'node:crypto';
+import { processSharedMap } from '@/lib/process-shared-cache';
 import { ServiceUnavailableError } from '@/lib/errors/types';
 import type { PersonaKey } from './vocabulary';
 import type { PackRecordMode } from './pack-records-config';
@@ -104,20 +106,43 @@ export async function checkPackMountable(file: PackFile, registry: PackRegistry,
     };
 }
 
-const cache = new WeakMap<PackRegistry, Map<string, Promise<MountVerdict>>>();
+/**
+ * The verdicts, shared by every module graph of the process (issue #36, item
+ * 7): the start-up warm-up (the instrumentation bundle) fills the map the
+ * routes read, so the first `GET interview-packs` replays nothing. Keyed by
+ * CONTENT — the mode, the pack, and the hashes of its text, its set and its
+ * record — never by the registry object, which each graph loads for itself.
+ */
+const cache = processSharedMap<Promise<MountVerdict>>('pack-mount-verdicts');
 
-/** One pack's verdict under `mode`, computed once per registry, mode and pack. A replay that throws is a refusal, never a pass. */
+const registryKeys = new WeakMap<PackRegistry, string>();
+/** Every pack's content and set hash: a persona's replay runs beside the craft packs, which its own record does not pin. */
+function registryKeyOf(registry: PackRegistry): string {
+    let key = registryKeys.get(registry);
+    if (!key) {
+        const parts = Object.values(registry.files).map((f) => `${f.name}:${f.contentHash}:${f.setHash}`).sort();
+        key = createHash('sha256').update(parts.join('\n'), 'utf8').digest('hex');
+        registryKeys.set(registry, key);
+    }
+    return key;
+}
+
+/** The record as the verdict reads it: the hash of what was parsed (not of the file name or object), or its state. */
+function recordKeyOf(file: PackFile): string {
+    if (file.record.state !== 'present') return file.record.state;
+    return createHash('sha256').update(JSON.stringify(file.record.raw) ?? 'undefined', 'utf8').digest('hex');
+}
+
+/** One pack's verdict under `mode`, computed once per process, mode and pack content. A replay that throws is a refusal, never a pass. */
 function verdictOf(registry: PackRegistry, name: string, mode: PackRecordMode): Promise<MountVerdict> {
-    let byKey = cache.get(registry);
-    if (!byKey) cache.set(registry, (byKey = new Map()));
-    const key = `${mode}\u0000${name}`;
-    let verdict = byKey.get(key);
+    const file = registry.files[name];
+    const key = file ? `${mode}\u0000${registryKeyOf(registry)}\u0000${name}\u0000${file.contentHash}\u0000${file.setHash}\u0000${recordKeyOf(file)}\u0000${file.scan.rules.length === 0 ? 'scan-ok' : 'scan-refused'}` : `${mode}\u0000${name}\u0000missing`;
+    let verdict = cache.get(key);
     if (!verdict) {
-        const file = registry.files[name];
         verdict = !file
             ? Promise.resolve<MountVerdict>({ ok: false, reason: 'NO_RECORD', detail: 'no such pack' })
             : checkPackMountable(file, registry, mode).catch((err: unknown): MountVerdict => ({ ok: false, reason: 'MALFORMED', detail: err instanceof Error ? err.name : 'replay failed' }));
-        byKey.set(key, verdict);
+        cache.set(key, verdict);
     }
     return verdict;
 }

@@ -91,10 +91,28 @@ function lockKey(workspaceId: string, embeddingRevision: string): Prisma.Sql {
     return Prisma.sql`hashtext(${`vector-store:${workspaceId}`}), hashtext(${embeddingRevision})`;
 }
 
-/** The (workspace, revision) key that serialises a revision's first writes (`writeBatch`). */
-function firstWriteLockKey(workspaceId: string, embeddingRevision: string): Prisma.Sql {
-    return Prisma.sql`hashtext(${`vector-store-first-write:${workspaceId}`}), hashtext(${embeddingRevision})`;
+/**
+ * The key that serialises a workspace's FIRST writes of any revision
+ * (`writeBatch`; issue #23, item 3). One key per workspace, not per revision:
+ * two transactions that each make the first write of two revisions, in
+ * opposite orders, would otherwise each hold one revision's lock and wait for
+ * the other's (40P01). With one key there is no order to get wrong. A first
+ * write is rare (once per revision per workspace), so serialising them costs
+ * nothing a later write pays.
+ */
+function firstWriteLockKey(workspaceId: string): Prisma.Sql {
+    return Prisma.sql`hashtext(${`vector-store-first-write:${workspaceId}`}), hashtext('first-write')`;
 }
+
+/**
+ * The isolation level every write needs (issue #23, item 3). The first-write
+ * lock works because the statement after it takes a FRESH snapshot and sees
+ * the first writer's committed rows: true under READ COMMITTED (what
+ * `runInWorkspaceContext` uses), false under REPEATABLE READ or SERIALIZABLE,
+ * whose snapshot predates the lock. A write in such a transaction is refused,
+ * by name, rather than allowed to fix a revision's dimension count twice.
+ */
+export const VECTOR_WRITE_ISOLATION = 'read committed';
 
 function dimensionSql(dimensions: number): Prisma.Sql {
     if (!Number.isInteger(dimensions) || dimensions < 1 || dimensions > MAX_DIMENSIONS) {
@@ -173,7 +191,7 @@ export function createPgvectorStore(): VectorStoreBackend {
             SELECT current_setting('role', true) AS role,
                    current_setting('app.workspace_id', true) AS bound,
                    (SELECT extversion FROM pg_extension WHERE extname = 'vector') AS ver,
-                   to_regclass('public."VectorEmbedding"') IS NOT NULL AS tbl`);
+                   to_regclass('"VectorEmbedding"') IS NOT NULL AS tbl`);
         if (probe?.role !== 'app_user' || probe.bound !== workspaceId) {
             throw new VectorStoreError(
                 'NOT_IN_WORKSPACE_CONTEXT',
@@ -220,6 +238,10 @@ export function createPgvectorStore(): VectorStoreBackend {
         if (records.length === 0) return { inserted: 0, updated: 0, unchanged: 0 };
         // The repository admits one revision and one dimension count per call.
         const { embeddingRevision, embedding } = records[0];
+        const [iso] = await db.$queryRaw<Array<{ iso: string }>>(Prisma.sql`SELECT current_setting('transaction_isolation') AS iso`);
+        if (iso?.iso !== VECTOR_WRITE_ISOLATION) {
+            throw new VectorStoreError('UNSUPPORTED_ISOLATION', `vector writes need ${VECTOR_WRITE_ISOLATION} isolation, not ${iso?.iso ?? 'unknown'}`);
+        }
         // Shared with every other write; a rebuild's start takes it exclusively,
         // so no write's writeSeq can fall below a startSeq drawn while it is in flight.
         // `void` cannot be deserialised by $queryRaw, hence $executeRaw.
@@ -234,7 +256,7 @@ export function createPgvectorStore(): VectorStoreBackend {
             // (held to commit) and asks again: a second first write waits for
             // the first to commit and then sees its rows. Taken after the shared
             // lock and never before it, so it cannot deadlock with a rebuild.
-            await db.$executeRaw(Prisma.sql`SELECT pg_advisory_xact_lock(${firstWriteLockKey(workspaceId, embeddingRevision)})`);
+            await db.$executeRaw(Prisma.sql`SELECT pg_advisory_xact_lock(${firstWriteLockKey(workspaceId)})`);
             stored = await revisionDimensions(db, workspaceId, embeddingRevision);
         }
         if (stored !== null && stored !== embedding.length) {

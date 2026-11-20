@@ -193,6 +193,11 @@ export const env = createEnv({
         EMBEDDING_TEI_DIMENSIONS: z.string().regex(/^\d+$/).optional(),
         EMBEDDING_TEI_QUERY_PREFIX: z.string().max(200).optional(),
         EMBEDDING_TEI_PASSAGE_PREFIX: z.string().max(200).optional(),
+        /** Deduplication's cosine thresholds per embedding revision, `<revision>=<same>,<other>[;…]` (issue #32 item 1; `src/lib/interview/dedupe-thresholds.ts`). */
+        DEDUPE_COSINE_THRESHOLDS: z
+            .string()
+            .regex(/^[^=;\s]{1,200}=(0(\.\d+)?|1(\.0+)?),(0(\.\d+)?|1(\.0+)?)(;[^=;\s]{1,200}=(0(\.\d+)?|1(\.0+)?),(0(\.\d+)?|1(\.0+)?))*$/)
+            .optional(),
 
         // ── The model layer (Phase 2.1; src/lib/ai/config.ts, src/lib/ai/tiers.ts) ──
         // The Anthropic API key. Optional outside production: without it every
@@ -297,6 +302,7 @@ export const env = createEnv({
         EMBEDDING_TEI_DIMENSIONS: process.env.EMBEDDING_TEI_DIMENSIONS,
         EMBEDDING_TEI_QUERY_PREFIX: process.env.EMBEDDING_TEI_QUERY_PREFIX,
         EMBEDDING_TEI_PASSAGE_PREFIX: process.env.EMBEDDING_TEI_PASSAGE_PREFIX,
+        DEDUPE_COSINE_THRESHOLDS: process.env.DEDUPE_COSINE_THRESHOLDS,
         ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
         AI_RETENTION_MODE: process.env.AI_RETENTION_MODE,
         ANTHROPIC_ZDR_CONFIRMED: process.env.ANTHROPIC_ZDR_CONFIRMED,
