@@ -15,6 +15,9 @@ it('a background rect goes in as the SVG’s first child, and only a hex colour 
 it('a filename is reduced to what a filesystem takes, with a fallback for nothing', () => {
     expect(safeFilename('The Long Night — Plot board', 'png')).toBe('the-long-night-plot-board.png');
     expect(safeFilename('***', 'svg')).toBe('story-map.svg');
+    // The cut at 60 characters never leaves a trailing hyphen, nor a leading one.
+    expect(safeFilename(`${'a'.repeat(59)} b`, 'svg')).toBe(`${'a'.repeat(59)}.svg`);
+    expect(safeFilename(`  ${'b'.repeat(70)}`, 'svg')).toMatch(/^b{1,60}\.svg$/);
 });
 
 it('exports the current page as an SVG download with the background in it', async () => {
