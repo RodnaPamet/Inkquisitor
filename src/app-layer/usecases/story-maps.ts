@@ -260,7 +260,9 @@ async function drawnNodes(
         return f !== undefined && mapTakesKind(kind, f.kind);
     });
     const excluded = nodes.filter((n) => facts.has(n.elementId)).length - kept.length;
-    if (mapLayoutMode(kind) === 'free') return { nodes: kept, excluded, participants: null };
+    // The relationship map has no lanes: a lane is what makes a card the
+    // bible's (a lane card is never resized, `StoryNodeShapeUtil.canResize`).
+    if (mapLayoutMode(kind) === 'free') return { nodes: kept.map((n) => ({ ...n, lane: null })), excluded, participants: null };
     const inputs: LaneNodeInput[] = kept.map((n) => {
         const f = facts.get(n.elementId)!;
         return { elementId: n.elementId, name: f.name, orderRank: f.orderRank, act: f.act };

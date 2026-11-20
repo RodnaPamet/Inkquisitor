@@ -180,6 +180,14 @@ describe('each map draws its own kinds', () => {
         expect(ok.map.nodes[0]).toMatchObject({ x: 10, y: 20, lane: null });
     });
 
+    it('the relationship map keeps no lane: a lane in the save is not stored (a lane makes a card the bible’s, never resizable)', async () => {
+        const book = await createBook(ctx, { title: 'Free lanes' });
+        const ch = await createElement(ctx, book.id, { kind: 'CHARACTER', name: 'Ada' });
+        const saved = await saveStoryMap(ctx, book.id, 'relationship', { expectedVersion: 0, nodes: [{ elementId: ch.id, x: 10, y: 20, w: 220, h: 88, lane: 'opening' }], edges: [], freeform: [] });
+        expect(saved.map.nodes[0]).toMatchObject({ x: 10, y: 20, lane: null });
+        expect((await prisma.mapNode.findFirstOrThrow({ where: { bibleElementId: ch.id } })).lane).toBeNull();
+    });
+
     it('a map saved before 3.2 holding another kind shows without it, says so, and its next save leaves it out', async () => {
         const book = await createBook(ctx, { title: 'Old map' });
         const ev = await createElement(ctx, book.id, { kind: 'TIMELINE_EVENT', name: 'Flood' });
