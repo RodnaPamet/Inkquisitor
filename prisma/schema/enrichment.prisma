@@ -65,51 +65,74 @@ model ReconcileRun {
 
 /// A proposed bible change, waiting for the author.
 model EnrichmentProposal {
-  id               String                   @id @default(cuid())
-  workspaceId      String
-  bookId           String
-  sessionId        String
-  roundId          String
-  kind             EnrichmentProposalKind
+  id                String                   @id @default(cuid())
+  workspaceId       String
+  bookId            String
+  sessionId         String
+  roundId           String
+  kind              EnrichmentProposalKind
   /// FIELD: the element whose field it changes (in the session's scope; a
-  /// trigger holds it to the proposal's book). NULL for NEW_ELEMENT (CHECK).
-  elementId        String?
+  /// trigger holds it to the proposal's book). NULL for every other kind (CHECK).
+  elementId         String?
+  /// RELATION_FIELD (Phase 3.3, D24): the relation whose field it changes (a
+  /// trigger holds it to the proposal's book). NULL for every other kind (CHECK).
+  relationId        String?
   /// FIELD: the template key it changes (in the round's scope).
-  fieldKey         String?
+  fieldKey          String?
   /// FIELD: ADD, UPDATE or REMOVE.
-  operation        EnrichmentOperation?
-  /// FIELD: the proposed value, JSON-encoded by the field's type, sanitised
-  /// (encrypted). NULL exactly for REMOVE (CHECK).
-  proposedValue    String?
+  operation         EnrichmentOperation?
+  /// FIELD and RELATION_FIELD: the proposed value, JSON-encoded by the
+  /// field's type, sanitised (encrypted); NULL exactly for REMOVE (CHECK).
+  /// NEW_ELEMENT (Phase 3.3): the new element's first field values, a JSON
+  /// object by key, or NULL. NEW_RELATION: `{ note, fields }`, JSON (encrypted).
+  proposedValue     String?
   /// FIELD: the element's latest version when the proposal was made; an
   /// acceptance over a newer one shows the author the change first (1.H).
-  baseVersion      Int?
+  /// RELATION_FIELD: the relation's latest version (0: none yet).
+  baseVersion       Int?
   /// NEW_ELEMENT: the kind of the element proposed.
-  newKind          BibleElementKind?
+  newKind           BibleElementKind?
   /// NEW_ELEMENT: its name, as an answer gave it (encrypted).
-  newName          String?
+  newName           String?
   /// NEW_ELEMENT: a short summary drawn from the answers, or NULL (encrypted).
-  newSummary       String?
+  newSummary        String?
+  /// NEW_ELEMENT (Phase 3.3): it is the BETWEEN session's element not yet
+  /// created, placed between the slot's two neighbours when accepted.
+  fillsSlot         Boolean                  @default(false)
+  /// NEW_RELATION (Phase 3.3, D24): the type, declared by the `from` end's kind
+  /// (or `related_to`), and each end: an element of the book, or a NEW_ELEMENT
+  /// proposal of the same session (accepted first). Exactly one per end (CHECK).
+  newRelationType   String?
+  newFromElementId  String?
+  newToElementId    String?
+  newFromProposalId String?
+  newToProposalId   String?
   /// What the author is warned of, from a closed list (CHECK; `PROPOSAL_FLAGS`):
   /// POSSIBLE_INSTRUCTION when the text addresses the product itself (owner
   /// decision D14). A flagged proposal is shown as such and never bulk-accepted.
   /// Fixed at insert, like the rest of the proposal.
-  flags            String[]                 @default([])
-  status           EnrichmentProposalStatus @default(PENDING)
+  flags             String[]                 @default([])
+  status            EnrichmentProposalStatus @default(PENDING)
   /// Who decided it; NULL while PENDING, and once that person is deleted.
-  decidedById      String?
-  decidedAt        DateTime?
-  /// The BibleEntryVersion an acceptance of a FIELD proposal wrote (no
-  /// foreign key: a version outlives its element; the table is append-only).
-  versionId        String?
+  decidedById       String?
+  decidedAt         DateTime?
+  /// The BibleEntryVersion an acceptance of a FIELD proposal wrote, or (Phase
+  /// 3.3) the BibleRelationVersion a RELATION_FIELD or NEW_RELATION one wrote
+  /// (no foreign key: a version outlives its subject; both tables are append-only).
+  versionId         String?
   /// The element an accepted NEW_ELEMENT proposal created (no foreign key:
   /// the record of the decision outlives the element).
-  createdElementId String?
-  createdAt        DateTime                 @default(now())
+  createdElementId  String?
+  /// The relation an accepted NEW_RELATION proposal created (no foreign key, as above).
+  createdRelationId String?
+  createdAt         DateTime                 @default(now())
 
   session   InterviewSession     @relation(fields: [workspaceId, bookId, sessionId], references: [workspaceId, bookId, id], onDelete: Cascade)
   round     InterviewRound       @relation(fields: [sessionId, roundId], references: [sessionId, id], onDelete: Cascade)
   element   BibleElement?        @relation(fields: [elementId], references: [id], onDelete: Cascade)
+  relation  BibleRelation?       @relation(fields: [relationId], references: [id], onDelete: Cascade)
+  newFrom   BibleElement?        @relation("NewRelationFrom", fields: [newFromElementId], references: [id], onDelete: Cascade)
+  newTo     BibleElement?        @relation("NewRelationTo", fields: [newToElementId], references: [id], onDelete: Cascade)
   decidedBy User?                @relation(fields: [decidedById], references: [id], onDelete: SetNull)
   citations EnrichmentCitation[]
 
@@ -122,6 +145,10 @@ model EnrichmentProposal {
   @@index([sessionId, roundId])
   /// The pending proposals for one field (superseded on an acceptance).
   @@index([elementId, fieldKey])
+  /// Phase 3.3: the pending proposals for one relation field, and the foreign keys' indexes.
+  @@index([relationId, fieldKey])
+  @@index([newFromElementId])
+  @@index([newToElementId])
   @@index([decidedById])
 }
 

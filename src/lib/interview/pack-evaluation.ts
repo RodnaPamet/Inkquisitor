@@ -47,12 +47,14 @@
  */
 import { z } from 'zod';
 import type { BibleKind } from '@/lib/bible/kinds';
-import { getTemplate } from '@/lib/bible/templates';
+import { getRelationType, getTemplate, relationFieldDefs } from '@/lib/bible/templates';
+import type { FieldDef } from '@/lib/bible/template-schema';
 import type { AskedQuestion } from './dedupe';
 import type { Dials } from './dials';
 import { computeFrontier, type AnswerFact } from './frontier';
 import type { GenerationResult, QuestionGenerator } from './generator';
-import type { PackFile, PackPriorAnswer, PackRegistry, Situation } from './packs';
+import type { PackFile, PackPriorAnswer, PackRegistry, RelationsPack, Situation } from './packs';
+import { relationSubjectName, type RelationSubject } from './subjects';
 import { planRound } from './plan';
 import { QUESTION_PROMPT, QUESTION_PROMPT_VERSION, roundGuidanceFingerprint, type PromptAnswer } from './prompt';
 import { DROP_REASONS, GeneratedQuestionsSchema } from './candidates';
@@ -142,10 +144,14 @@ export interface PackEvalCase {
     mustNot: readonly string[];
     /** A persona case's expected tone words (judge-graded), or null. */
     tone: readonly string[] | null;
+    /** Phase 3.3: a relations pack case questions a relation of this type between two named elements. */
+    relation?: { fromKind: BibleKind; type: string; fromName: string; toName: string };
 }
 
-function coreFields(kind: BibleKind) {
-    return getTemplate(kind).fields.filter((f) => f.required);
+/** The core fields a case is graded on: its relation type's (a relations case), else its kind's. */
+function coreFields(c: Pick<PackEvalCase, 'kind' | 'relation'>): readonly FieldDef[] {
+    if (c.relation) return relationFieldDefs(c.relation.fromKind, c.relation.type).filter((f) => f.required);
+    return getTemplate(c.kind).fields.filter((f) => f.required);
 }
 
 function elementIdOf(caseId: string): string {
@@ -161,7 +167,7 @@ function answerFacts(caseId: string, prior: readonly PackPriorAnswer[]): AnswerF
 export function situationFrontier(id: string, s: Pick<Situation, 'kind' | 'bibleState' | 'priorAnswers' | 'dials'>): string[] {
     const stored = new Set(Object.entries(s.bibleState).filter(([, v]) => v !== null).map(([k]) => k));
     const result = computeFrontier({
-        elements: [{ elementId: elementIdOf(id), kind: s.kind, fields: coreFields(s.kind), storedKeys: stored }],
+        elements: [{ elementId: elementIdOf(id), kind: s.kind, fields: coreFields({ kind: s.kind }), storedKeys: stored }],
         sessionAnswers: answerFacts(id, s.priorAnswers),
         depth: s.dials.depth,
     });
@@ -169,9 +175,25 @@ export function situationFrontier(id: string, s: Pick<Situation, 'kind' | 'bible
 }
 
 /** Every case of the named pack's set, normalised. */
-export function evalCasesOf(registry: Pick<PackRegistry, 'files' | 'craftEvals' | 'personaEvals' | 'situations'>, name: string): PackEvalCase[] {
+export function evalCasesOf(registry: Pick<PackRegistry, 'files' | 'craftEvals' | 'personaEvals' | 'situations' | 'relationEvals'>, name: string): PackEvalCase[] {
     const file = registry.files[name];
     if (!file) throw new Error(`no pack named ${name}`);
+    if (file.group === 'relations') {
+        return registry.relationEvals.map((c) => ({
+            id: c.id,
+            kind: c.fromKind,
+            elementName: c.fromName,
+            customLabel: null,
+            bibleState: c.bibleState,
+            priorAnswers: c.priorAnswers,
+            dials: c.dials,
+            persona: null,
+            expectTargets: c.expect.targetsAnyOf,
+            mustNot: c.expect.mustNot,
+            tone: null,
+            relation: { fromKind: c.fromKind, type: c.relationType, fromName: c.fromName, toName: c.toName },
+        }));
+    }
     if (file.group === 'craft') {
         const kind = file.key as BibleKind;
         return registry.craftEvals[kind].map((c) => ({
@@ -221,13 +243,35 @@ function valueText(v: string | string[] | number): string {
  */
 export async function runEvalCase(
     c: PackEvalCase,
-    packs: Pick<PackRegistry, 'craft' | 'personas'>,
+    packs: Pick<PackRegistry, 'craft' | 'personas'> & { relations?: RelationsPack },
     generator: QuestionGenerator,
 ): Promise<{ round: RoundOutput; outputs: unknown[] }> {
     const elementId = elementIdOf(c.id);
-    const fields = coreFields(c.kind);
+    const fields = coreFields(c);
     const storedText = new Map(Object.entries(c.bibleState).flatMap(([k, v]) => (v === null ? [] : [[k, valueText(v)] as const])));
-    const element: RoundElement = { elementId, kind: c.kind, name: c.elementName, customLabel: c.customLabel, fields, storedText };
+    // A relations case questions a relation (Phase 3.3): its subject is the link, named by its two ends and its type's label.
+    const relation: RelationSubject | undefined = c.relation
+        ? {
+              relationId: elementId,
+              type: c.relation.type,
+              label: getRelationType(c.relation.fromKind, c.relation.type)?.label ?? c.relation.type,
+              fromElementId: `${elementId}-from`,
+              toElementId: `${elementId}-to`,
+              fromKind: c.relation.fromKind,
+              toKind: getRelationType(c.relation.fromKind, c.relation.type)?.targetKinds[0] ?? c.relation.fromKind,
+              fromName: c.relation.fromName,
+              toName: c.relation.toName,
+          }
+        : undefined;
+    const element: RoundElement = {
+        elementId,
+        kind: c.kind,
+        name: relation ? relationSubjectName(relation) : c.elementName,
+        customLabel: c.customLabel,
+        fields,
+        storedText,
+        ...(relation ? { relation } : {}),
+    };
     const facts = answerFacts(c.id, c.priorAnswers);
     const sessionAnswers: PromptAnswer[] = c.priorAnswers.map((a) => ({
         answerId: a.id,
@@ -333,7 +377,7 @@ export interface CaseGrade {
 }
 
 export function gradeCase(c: PackEvalCase, round: RoundOutput): CaseGrade {
-    const core = new Set(coreFields(c.kind).map((f) => f.key));
+    const core = new Set(coreFields(c).map((f) => f.key));
     const frontierQs = round.questions.filter((q) => q.mode === 'FRONTIER');
     const generated = new Set(frontierQs.filter((q) => q.origin === 'MODEL').flatMap((q) => q.targetsFieldKeys));
     const asked = new Set(round.questions.flatMap((q) => q.targetsFieldKeys).filter((k) => core.has(k)));

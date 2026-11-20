@@ -18,6 +18,14 @@
  * only towards the template's own kind or a later one (a relation between
  * two kinds is declared once, on the earlier kind's template; a custom
  * element relates only to custom elements).
+ *
+ * RELATION FIELDS (Phase 3.3, decision D24). Each relation type declares a
+ * small set of fields beside it (`fields`: what the link itself holds, such as
+ * its history or what each side wants of the other), held to the same rules
+ * as an element's fields (unique keys and labels, orders 1..n, `dependsOn`
+ * only on an earlier one) and to two more: one to `RELATION_FIELDS_MAX`
+ * fields, and prose only (`text` or `richtext`): a relation's facts are
+ * sentences about two elements, and 4.3 deepens them (D23).
  */
 import { z } from 'zod';
 import { BIBLE_KINDS, IDENTIFIER_MAX, IDENTIFIER_PATTERN, kindRank, type BibleKind } from './kinds';
@@ -67,12 +75,49 @@ const fieldSchema = z.discriminatedUnion('type', [
         .strict(),
 ]);
 
+/** A relation type's fields, at most (decision D24: a small set per type). */
+export const RELATION_FIELDS_MAX = 4;
+
+/** The field types a relation field may take: prose (D24). */
+export const RELATION_FIELD_TYPES = ['text', 'richtext'] as const;
+
+const relationFieldSchema = z.discriminatedUnion('type', [
+    z.object({ ...fieldBase, type: z.literal('text') }).strict(),
+    z.object({ ...fieldBase, type: z.literal('richtext') }).strict(),
+]);
+
+/** The rules that span one list of fields (an element's template, or a relation type's): keys and labels unique, orders 1..n, prerequisites earlier. */
+function fieldListIssues(fields: ReadonlyArray<{ key: string; label: string; order: number; dependsOn: readonly string[] }>, issue: (message: string, path: (string | number)[]) => void, at: (string | number)[]): void {
+    const keys = fields.map((f) => f.key);
+    const orderOf = new Map(fields.map((f) => [f.key, f.order] as const));
+    duplicates(keys).forEach((k) => issue(`duplicate field key ${k}`, at));
+    duplicates(fields.map((f) => f.label)).forEach((l) => issue(`duplicate field label ${l}`, at));
+    const orders = fields.map((f) => f.order).sort((a, b) => a - b);
+    if (orders.some((o, i) => o !== i + 1)) issue('field orders must run 1..n without gaps or repeats', at);
+    fields.forEach((f, i) => {
+        duplicates([...f.dependsOn]).forEach((d) => issue(`${f.key} lists ${d} twice`, [...at, i, 'dependsOn']));
+        for (const dep of f.dependsOn) {
+            const depOrder = orderOf.get(dep);
+            if (depOrder === undefined) issue(`${f.key} depends on unknown field ${dep}`, [...at, i, 'dependsOn']);
+            else if (depOrder >= f.order) issue(`${f.key} depends on ${dep}, which does not come before it`, [...at, i, 'dependsOn']);
+        }
+    });
+}
+
+/** A relation type's fields (D24), with the list's own rules; the built-in `related_to` is checked by the same schema. */
+export const relationFieldsSchema = z
+    .array(relationFieldSchema)
+    .min(1)
+    .max(RELATION_FIELDS_MAX)
+    .superRefine((fields, ctx) => fieldListIssues(fields, (message, path) => ctx.addIssue({ code: 'custom', message, path }), []));
+
 const relationTypeSchema = z
     .object({
         key: identifier.refine((k) => k !== BUILT_IN_RELATION_KEY, { message: 'related_to is built in' }),
         label: z.string().min(1).max(32),
         inverseLabel: z.string().min(1).max(32),
         targetKinds: z.array(kind).min(1),
+        fields: relationFieldsSchema,
     })
     .strict();
 
@@ -87,21 +132,9 @@ export const templateSchema = z
     .strict()
     .superRefine((t, ctx) => {
         const issue = (message: string, path: (string | number)[]) => ctx.addIssue({ code: 'custom', message, path });
-        const keys = t.fields.map((f) => f.key);
-        const orderOf = new Map(t.fields.map((f) => [f.key, f.order] as const));
-
-        duplicates(keys).forEach((k) => issue(`duplicate field key ${k}`, ['fields']));
-        duplicates(t.fields.map((f) => f.label)).forEach((l) => issue(`duplicate field label ${l}`, ['fields']));
-        const orders = t.fields.map((f) => f.order).sort((a, b) => a - b);
-        if (orders.some((o, i) => o !== i + 1)) issue('field orders must run 1..n without gaps or repeats', ['fields']);
+        fieldListIssues(t.fields, issue, ['fields']);
 
         t.fields.forEach((f, i) => {
-            duplicates(f.dependsOn).forEach((d) => issue(`${f.key} lists ${d} twice`, ['fields', i, 'dependsOn']));
-            for (const dep of f.dependsOn) {
-                const depOrder = orderOf.get(dep);
-                if (depOrder === undefined) issue(`${f.key} depends on unknown field ${dep}`, ['fields', i, 'dependsOn']);
-                else if (depOrder >= f.order) issue(`${f.key} depends on ${dep}, which does not come before it`, ['fields', i, 'dependsOn']);
-            }
             if (f.type === 'choice') {
                 duplicates(f.options.map((o) => o.value)).forEach((v) => issue(`${f.key} repeats option ${v}`, ['fields', i, 'options']));
             }
@@ -122,6 +155,8 @@ export const templateSchema = z
 export type BibleTemplate = z.infer<typeof templateSchema> & { kind: BibleKind };
 export type FieldDef = BibleTemplate['fields'][number];
 export type RelationTypeDef = BibleTemplate['relationTypes'][number];
+/** One field of a relation type (D24): prose only. */
+export type RelationFieldDef = RelationTypeDef['fields'][number];
 
 function duplicates<T>(values: readonly T[]): T[] {
     return [...new Set(values.filter((v, i) => values.indexOf(v) !== i))];

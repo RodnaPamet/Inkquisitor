@@ -299,7 +299,8 @@ describe('a reader', () => {
         mount(readerProps());
         expect(screen.queryByRole('button', { name: 'Delete' })).toBeNull();
         expect(screen.queryByTestId('relation-picker')).toBeNull();
-        expect(within(panel()).queryByRole('button')).toBeNull();
+        // A reader may open a relation to read its fields (Phase 3.3), and nothing else.
+        expect(within(panel()).queryAllByRole('button').map((b) => b.getAttribute('aria-label'))).toEqual(['Open "member of The Tidewardens"']);
         expect(panel()).toHaveTextContent('member of The Tidewardens');
     });
 

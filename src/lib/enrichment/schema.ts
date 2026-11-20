@@ -13,6 +13,14 @@
  * The model's answer is untrusted: `parseReconcileOutput` re-reads it item by
  * item, so one malformed operation costs only itself (counted MALFORMED), and
  * `validate.ts` holds every survivor to the rules.
+ *
+ * Phase 3.3 (decision D24): an operation's `elementId` is its SUBJECT's id (an
+ * element's, a relation's, or the BETWEEN slot's `PENDING_SUBJECT_ID`); a new
+ * element says whether it `fillsSlot` (the BETWEEN session's element not yet
+ * created); and `newRelations` proposes links, each end an element of the
+ * data's `relation_ends` or `new.N` (the N-th of this output's newElements, from
+ * 1), with a note and the type's fields (prose: strings) drawn from the
+ * answers. Still within 2.1's limits: every member required, one more nullable.
  */
 import { z } from 'zod';
 import { BIBLE_KINDS, IDENTIFIER_MAX, IDENTIFIER_PATTERN } from '@/lib/bible/kinds';
@@ -55,23 +63,48 @@ export const NewElementSchema = z
         kind: z.enum(BIBLE_KINDS),
         name: z.string().max(NEW_NAME_RAW_MAX),
         summary: z.string().max(NEW_SUMMARY_RAW_MAX).nullable(),
+        /** Phase 3.3: it is the BETWEEN session's element not yet created (its fields are the operations on the slot). */
+        fillsSlot: z.boolean(),
         cites: z.array(answerId).max(CITES_MAX),
     })
     .strict();
 export type NewElementOutput = z.infer<typeof NewElementSchema>;
 
-/** The whole output (design 5.3). */
+/** New relations one call may propose (Phase 3.3). */
+export const NEW_RELATIONS_PER_CALL_MAX = 8;
+/** A new relation's fields, at most (a type declares at most four). */
+export const NEW_RELATION_FIELDS_MAX = 4;
+export const NEW_RELATION_NOTE_RAW_MAX = 8_000;
+
+/** A new relation (Phase 3.3, D24): two ends, a type, a note and fields drawn from the answers. */
+export const NewRelationSchema = z
+    .object({
+        /** An element id of the data's `relation_ends`, or `new.N` (the N-th new element of this output, from 1). */
+        fromElementId: z.string().min(1).max(64),
+        toElementId: z.string().min(1).max(64),
+        type: fieldKey,
+        note: z.string().max(NEW_RELATION_NOTE_RAW_MAX).nullable(),
+        fields: z.array(z.object({ key: fieldKey, value: z.string().max(VALUE_TEXT_RAW_MAX) }).strict()).max(NEW_RELATION_FIELDS_MAX),
+        cites: z.array(answerId).max(CITES_MAX),
+    })
+    .strict();
+export type NewRelationOutput = z.infer<typeof NewRelationSchema>;
+
+/** The whole output (design 5.3; Phase 3.3 adds `newRelations`). */
 export const ReconcileOutputSchema = z
     .object({
         operations: z.array(ReconcileOperationSchema).max(OPERATIONS_PER_CALL_MAX),
         newElements: z.array(NewElementSchema).max(NEW_ELEMENTS_PER_CALL_MAX),
+        newRelations: z.array(NewRelationSchema).max(NEW_RELATIONS_PER_CALL_MAX),
     })
     .strict();
 export type ReconcileOutput = z.infer<typeof ReconcileOutputSchema>;
 
 export interface ParsedReconcile {
     operations: ReconcileOperation[];
-    newElements: NewElementOutput[];
+    /** Every new element as given, in output order (a refused item is `null`, so `new.N` still names the N-th). */
+    newElements: Array<NewElementOutput | null>;
+    newRelations: NewRelationOutput[];
     /** Items that did not parse, counted (never logged: they hold model text). */
     malformed: number;
     /** The whole output was not an object with an `operations` array. */
@@ -79,26 +112,35 @@ export interface ParsedReconcile {
 }
 
 function readItems<T>(raw: unknown, schema: z.ZodType<T>, max: number, out: { malformed: number }): T[] {
+    return readItemsInPlace(raw, schema, max, out).filter((x): x is T => x !== null);
+}
+
+/** As `readItems`, keeping a malformed item's place as `null` (a new element is named by its position). */
+function readItemsInPlace<T>(raw: unknown, schema: z.ZodType<T>, max: number, out: { malformed: number }): Array<T | null> {
     if (!Array.isArray(raw)) return [];
-    const items: T[] = [];
+    const items: Array<T | null> = [];
     out.malformed += Math.max(0, raw.length - max);
     for (const item of raw.slice(0, max)) {
         const parsed = schema.safeParse(item);
         if (parsed.success) items.push(parsed.data);
-        else out.malformed++;
+        else {
+            items.push(null);
+            out.malformed++;
+        }
     }
     return items;
 }
 
 /** Read a model's raw output one item at a time. */
 export function parseReconcileOutput(raw: unknown): ParsedReconcile {
-    const out: ParsedReconcile = { operations: [], newElements: [], malformed: 0, unreadable: false };
+    const out: ParsedReconcile = { operations: [], newElements: [], newRelations: [], malformed: 0, unreadable: false };
     if (typeof raw !== 'object' || raw === null || !Array.isArray((raw as { operations?: unknown }).operations)) {
         out.unreadable = true;
         return out;
     }
-    const r = raw as { operations: unknown; newElements?: unknown };
+    const r = raw as { operations: unknown; newElements?: unknown; newRelations?: unknown };
     out.operations = readItems(r.operations, ReconcileOperationSchema, OPERATIONS_PER_CALL_MAX, out);
-    out.newElements = readItems(r.newElements, NewElementSchema, NEW_ELEMENTS_PER_CALL_MAX, out);
+    out.newElements = readItemsInPlace(r.newElements, NewElementSchema, NEW_ELEMENTS_PER_CALL_MAX, out);
+    out.newRelations = readItems(r.newRelations, NewRelationSchema, NEW_RELATIONS_PER_CALL_MAX, out);
     return out;
 }

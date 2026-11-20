@@ -156,6 +156,22 @@ export const RelationCreateInput = z
     .strict();
 export type RelationCreateInput = z.infer<typeof RelationCreateInput>;
 
+/**
+ * Phase 3.3 (decision D24): a relation's version a save is based on. 0 names
+ * a relation saved before 3.3, which has no version yet.
+ */
+export const RelationBaseVersionInput = z.number().int().min(0).max(2_147_483_647);
+
+/** Save some of a relation's fields (D24): a versioned save, as an element's fields save is. */
+export const RelationFieldsUpdateInput = z
+    .object({
+        fields: z.array(FieldEntryInput).min(1).max(FIELDS_PER_SAVE_MAX),
+        changeSummary: raw(CHANGE_SUMMARY_MAX).nullish(),
+        baseVersion: RelationBaseVersionInput,
+    })
+    .strict();
+export type RelationFieldsUpdateInput = z.infer<typeof RelationFieldsUpdateInput>;
+
 // ─── Story order (Phase 3.2, decision D22) ──────────────────────────
 
 /**

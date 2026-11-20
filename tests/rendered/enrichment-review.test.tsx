@@ -17,8 +17,8 @@ jest.mock('next/navigation', () => ({
 
 import { SessionReview, valueAsDiffHtml } from '@/components/enrichment/SessionReview';
 import { RoundFieldsPanel } from '@/components/interview/RoundFieldsPanel';
-import type { FieldProposalView, NewElementProposalView, SessionReviewView } from '@/lib/enrichment/api-client';
-import { getFieldDef } from '@/lib/bible/templates';
+import type { FieldProposalView, NewElementProposalView, NewRelationProposalView, RelationFieldProposalView, SessionReviewView } from '@/lib/enrichment/api-client';
+import { getFieldDef, getRelationFieldDef } from '@/lib/bible/templates';
 import { KIND_LABELS, mockFetch, SLUG } from '../helpers/bible-ui';
 
 const BOOK = { id: 'book_1', title: 'The Salt Roads' };
@@ -60,6 +60,8 @@ const newElement: NewElementProposalView = {
     flags: [],
     citedAnswerIds: ['a1'],
     decidedAt: null,
+    fields: [],
+    slot: null,
 };
 
 function review(over: Partial<SessionReviewView> = {}): SessionReviewView {
@@ -71,6 +73,8 @@ function review(over: Partial<SessionReviewView> = {}): SessionReviewView {
             field({ fieldKey: 'need', operation: 'REMOVE', proposedValue: null, currentValue: 'To be seen.', bulkEligible: false }),
         ],
         newElements: [newElement],
+        relationFields: [],
+        newRelations: [],
         answers: { a1: { answerId: 'a1', question: 'What does Wren want?', questionKind: 'OPEN', answer: 'She wants the council seat back, and Ilse helps.', status: 'ANSWERED' } },
         runs: [{ roundNumber: 1, status: 'DONE', outcome: 'OK', reviewRequired: false, refusalReason: null }],
         truncated: false,
@@ -228,5 +232,90 @@ describe('the interview links to its review (Phase 2.4’s side panel)', () => {
     it('the fields panel links pending enrichment to the review', () => {
         render(<RoundFieldsPanel questions={[]} planned={[]} naming={{ elementName: () => 'Wren', fieldLabel: (_e, k) => k }} reviewHref="/w/ada/books/book_1/interviews/s1/review" />);
         expect(screen.getByRole('link', { name: 'Review proposed changes' })).toHaveAttribute('href', '/w/ada/books/book_1/interviews/s1/review');
+    });
+});
+
+describe('relation proposals (Phase 3.3, D24)', () => {
+    const relationField = getRelationFieldDef('CHARACTER', 'loves', 'history')!;
+    const relationChange: RelationFieldProposalView = {
+        id: 'p-rel-field',
+        kind: 'RELATION_FIELD',
+        roundNumber: 1,
+        status: 'PENDING',
+        relationId: 'r1',
+        relation: { type: 'loves', label: 'loves', from: { id: 'e1', name: 'Wren', kind: 'CHARACTER' }, to: { id: 'e2', name: 'Tomas', kind: 'CHARACTER' } },
+        fieldKey: 'history',
+        field: relationField,
+        operation: 'ADD',
+        proposedValue: 'They met on the ferry.',
+        currentValue: null,
+        baseVersion: 0,
+        currentVersion: 0,
+        flags: [],
+        citedAnswerIds: ['a1'],
+        decidedAt: null,
+    };
+    const link = (over: Partial<NewRelationProposalView> = {}): NewRelationProposalView => ({
+        id: 'p-link',
+        kind: 'NEW_RELATION',
+        roundNumber: 1,
+        status: 'PENDING',
+        type: 'loves',
+        label: 'loves',
+        from: { elementId: 'e1', proposalId: null, name: 'Wren', kind: 'CHARACTER', exists: true },
+        to: { elementId: null, proposalId: 'p-new', name: 'Ilse', kind: 'CHARACTER', exists: false },
+        note: 'Since the ferry.',
+        fields: [{ field: relationField, value: 'They met on the ferry.' }],
+        createdRelationId: null,
+        flags: [],
+        citedAnswerIds: ['a1'],
+        decidedAt: null,
+        ...over,
+    });
+
+    it('a relation’s field change names the link and sends the relation’s version; a new link waits for its new end', async () => {
+        const { requests } = mockFetch({
+            [`POST ${API}/proposals/p-rel-field/accept`]: { json: { decision: { proposalId: 'p-rel-field', status: 'ACCEPTED', elementId: null, versionNumber: 1, relationId: 'r1' } } },
+            [`GET ${API}/proposals`]: { json: { review: review({ fields: [], newElements: [], relationFields: [{ ...relationChange, status: 'ACCEPTED' }], newRelations: [link()] }) } },
+        });
+        const { container } = renderReview(review({ fields: [], newElements: [newElement], relationFields: [relationChange], newRelations: [link()] }));
+        const change = screen.getByTestId('relation-field-proposal');
+        expect(change).toHaveTextContent('Wren loves Tomas');
+        const proposed = screen.getByTestId('new-relation-proposal');
+        expect(proposed).toHaveTextContent('Wren loves Ilse');
+        expect(within(proposed).getByTestId('relation-waits')).toHaveTextContent('Accept the new entry “Ilse” first');
+        expect(within(proposed).getByRole('button', { name: 'Accept the relation Wren loves Ilse' })).toBeDisabled();
+        expect(within(proposed).getByText('They met on the ferry.')).toBeInTheDocument();
+        expect(await axe(container)).toHaveNoViolations();
+
+        fireEvent.click(within(change).getByRole('button', { name: /^Accept the change to/ }));
+        await waitFor(() => expect(requests.some((r) => r.method === 'POST')).toBe(true));
+        expect(requests.find((r) => r.method === 'POST')!.body).toEqual({ baseVersion: 0 });
+    });
+
+    it('a link whose ends exist is accepted with no version (a new relation has none yet)', async () => {
+        const ready = link({ to: { elementId: 'e3', proposalId: 'p-new', name: 'Ilse', kind: 'CHARACTER', exists: true } });
+        const { requests } = mockFetch({
+            [`POST ${API}/proposals/p-link/accept`]: { json: { decision: { proposalId: 'p-link', status: 'ACCEPTED', elementId: null, versionNumber: 1, relationId: 'r9' } } },
+            [`GET ${API}/proposals`]: { json: { review: review({ fields: [], newElements: [], newRelations: [{ ...ready, status: 'ACCEPTED' }] }) } },
+        });
+        renderReview(review({ fields: [], newElements: [], newRelations: [ready] }));
+        fireEvent.click(screen.getByRole('button', { name: 'Accept the relation Wren loves Ilse' }));
+        expect(await screen.findByText('Accepted. The relation is now in the bible.')).toBeInTheDocument();
+        expect(requests.find((r) => r.method === 'POST')!.body).toEqual({});
+    });
+
+    it('a slot’s new beat says where it will be placed, and shows its first fields', () => {
+        mockFetch({});
+        const beat: NewElementProposalView = {
+            ...newElement,
+            newKind: 'PLOT_BEAT',
+            name: 'The signs come down',
+            fields: [{ field: getFieldDef('PLOT_BEAT', 'what_happens')!, value: 'The mayor’s men pull the signs down.' }],
+            slot: { afterElementId: 'b1', afterName: 'The bridge gives way', beforeElementId: 'b2', beforeName: 'The town turns', act: 'opening' },
+        };
+        renderReview(review({ fields: [], newElements: [beat] }));
+        expect(screen.getByTestId('slot-placement')).toHaveTextContent('placed between “The bridge gives way” and “The town turns”');
+        expect(screen.getByText('The mayor’s men pull the signs down.')).toBeInTheDocument();
     });
 });

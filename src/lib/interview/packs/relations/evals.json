@@ -1,0 +1,374 @@
+[
+  {
+    "id": "relations-01",
+    "rationale": "A fresh bond between two characters at depth 1, detail 1. Both core fields rest on nothing, so the round may ask how the link began or what each wants. A right output asks about the link, never about either person alone; a likely wrong one asks what one character is like.",
+    "fromKind": "CHARACTER",
+    "relationType": "loves",
+    "fromName": "Ilse",
+    "toName": "the ferryman",
+    "bibleState": {
+      "history": null,
+      "wants": null
+    },
+    "priorAnswers": [],
+    "dials": {
+      "depth": 1,
+      "detail": 1
+    },
+    "expect": {
+      "targetsAnyOf": [
+        "history",
+        "wants"
+      ],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "EXCEEDS_DEPTH",
+        "MISMATCHES_DETAIL",
+        "MALFORMED_OPTIONS",
+        "UNGROUNDED_RECOMMENDATION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE",
+        "USES_BRANDED_FRAMEWORK"
+      ]
+    }
+  },
+  {
+    "id": "relations-02",
+    "rationale": "The same kind of bond at depth 5, detail 5, with the history already stored: only what each wants is left among the core fields. A right output builds on the stored history; a wrong one asks for the history again.",
+    "fromKind": "CHARACTER",
+    "relationType": "mentor_of",
+    "fromName": "Old Brannoch",
+    "toName": "Tamsin",
+    "bibleState": {
+      "history": "He found her sleeping in the forge loft the winter her father drowned.",
+      "wants": null
+    },
+    "priorAnswers": [],
+    "dials": {
+      "depth": 5,
+      "detail": 5
+    },
+    "expect": {
+      "targetsAnyOf": [
+        "wants"
+      ],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "EXCEEDS_DEPTH",
+        "MISMATCHES_DETAIL",
+        "MALFORMED_OPTIONS",
+        "UNGROUNDED_RECOMMENDATION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE",
+        "USES_BRANDED_FRAMEWORK"
+      ]
+    }
+  },
+  {
+    "id": "relations-03",
+    "rationale": "A link whose core fields are all stored: nothing is left to ask among them, so a right round asks nothing at all.",
+    "fromKind": "CHARACTER",
+    "relationType": "sibling_of",
+    "fromName": "Dov",
+    "toName": "Ada",
+    "bibleState": {
+      "history": "They ran the bakery together after their mother left.",
+      "wants": "Dov wants Ada to stay; Ada wants Dov to let her go."
+    },
+    "priorAnswers": [],
+    "dials": {
+      "depth": 3,
+      "detail": 3
+    },
+    "expect": {
+      "targetsAnyOf": [],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "EXCEEDS_DEPTH",
+        "MISMATCHES_DETAIL",
+        "MALFORMED_OPTIONS",
+        "UNGROUNDED_RECOMMENDATION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE",
+        "USES_BRANDED_FRAMEWORK"
+      ]
+    }
+  },
+  {
+    "id": "relations-04",
+    "rationale": "A member of a group, at depth 2, detail 2. What holds the membership is the one core field. A right output offers kinds of hold, never a named oath or event.",
+    "fromKind": "CHARACTER",
+    "relationType": "member_of",
+    "fromName": "Captain Orrel",
+    "toName": "the Lamplighters",
+    "bibleState": {
+      "basis": null
+    },
+    "priorAnswers": [],
+    "dials": {
+      "depth": 2,
+      "detail": 2
+    },
+    "expect": {
+      "targetsAnyOf": [
+        "basis"
+      ],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "EXCEEDS_DEPTH",
+        "MISMATCHES_DETAIL",
+        "MALFORMED_OPTIONS",
+        "UNGROUNDED_RECOMMENDATION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE",
+        "USES_BRANDED_FRAMEWORK"
+      ]
+    }
+  },
+  {
+    "id": "relations-05",
+    "rationale": "One beat causing the next, at depth 1, detail 3. The mechanism is the one core field. A right output asks how the first leads to the second; a likely wrong one supplies the chain itself.",
+    "fromKind": "PLOT_BEAT",
+    "relationType": "causes",
+    "fromName": "The bridge gives way",
+    "toName": "The town turns on the mayor",
+    "bibleState": {
+      "mechanism": null
+    },
+    "priorAnswers": [],
+    "dials": {
+      "depth": 1,
+      "detail": 3
+    },
+    "expect": {
+      "targetsAnyOf": [
+        "mechanism"
+      ],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "EXCEEDS_DEPTH",
+        "MISMATCHES_DETAIL",
+        "MALFORMED_OPTIONS",
+        "UNGROUNDED_RECOMMENDATION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE",
+        "USES_BRANDED_FRAMEWORK"
+      ]
+    }
+  },
+  {
+    "id": "relations-06",
+    "rationale": "A plotline and one of its beats, at depth 2, detail 2, with an earlier answer already settling the fit in this session: nothing core is left, so a right round asks nothing.",
+    "fromKind": "PLOT",
+    "relationType": "has_beat",
+    "fromName": "The salt war",
+    "toName": "The cellar raid",
+    "bibleState": {
+      "fit": null
+    },
+    "priorAnswers": [
+      {
+        "id": "a1",
+        "questionKind": "OPEN",
+        "question": "How does this beat fit within the plotline, and what does it bring to it?",
+        "targetsFieldKeys": [
+          "fit"
+        ],
+        "status": "ANSWERED",
+        "answer": "It is the first time the smugglers fight back, so the war turns open."
+      }
+    ],
+    "dials": {
+      "depth": 2,
+      "detail": 2
+    },
+    "expect": {
+      "targetsAnyOf": [],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "EXCEEDS_DEPTH",
+        "MISMATCHES_DETAIL",
+        "MALFORMED_OPTIONS",
+        "UNGROUNDED_RECOMMENDATION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE",
+        "USES_BRANDED_FRAMEWORK"
+      ]
+    }
+  },
+  {
+    "id": "relations-07",
+    "rationale": "A character taking part in an event, at depth 1, detail 1. The part played is the core field. A right output offers kinds of part (acting, acted upon, looking on), never a specific deed.",
+    "fromKind": "CHARACTER",
+    "relationType": "takes_part_in",
+    "fromName": "Nell",
+    "toName": "The harvest fire",
+    "bibleState": {
+      "part_played": null
+    },
+    "priorAnswers": [],
+    "dials": {
+      "depth": 1,
+      "detail": 1
+    },
+    "expect": {
+      "targetsAnyOf": [
+        "part_played"
+      ],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "EXCEEDS_DEPTH",
+        "MISMATCHES_DETAIL",
+        "MALFORMED_OPTIONS",
+        "UNGROUNDED_RECOMMENDATION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE",
+        "USES_BRANDED_FRAMEWORK"
+      ]
+    }
+  },
+  {
+    "id": "relations-08",
+    "rationale": "A theme felt through a mood, at depth 3, detail 4. How it shows on the page is the core field. A right output asks where the reader meets the link; a wrong one asks the author to write the passage.",
+    "fromKind": "THEME",
+    "relationType": "felt_through",
+    "fromName": "Debt",
+    "toName": "Damp dread",
+    "bibleState": {
+      "how_shown": null
+    },
+    "priorAnswers": [],
+    "dials": {
+      "depth": 3,
+      "detail": 4
+    },
+    "expect": {
+      "targetsAnyOf": [
+        "how_shown"
+      ],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "EXCEEDS_DEPTH",
+        "MISMATCHES_DETAIL",
+        "MALFORMED_OPTIONS",
+        "UNGROUNDED_RECOMMENDATION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE",
+        "USES_BRANDED_FRAMEWORK"
+      ]
+    }
+  },
+  {
+    "id": "relations-09",
+    "rationale": "A faction drawing on research, at depth 2, detail 3, with the core field skipped earlier in the session: a skipped field is not asked again, so nothing core is left.",
+    "fromKind": "FACTION",
+    "relationType": "draws_on",
+    "fromName": "The Tide Court",
+    "toName": "Notes on salt-marsh law",
+    "bibleState": {
+      "what_is_drawn": null
+    },
+    "priorAnswers": [
+      {
+        "id": "a1",
+        "questionKind": "OPEN",
+        "question": "Which facts or details pass from this source into your book?",
+        "targetsFieldKeys": [
+          "what_is_drawn"
+        ],
+        "status": "SKIPPED",
+        "answer": null
+      }
+    ],
+    "dials": {
+      "depth": 2,
+      "detail": 3
+    },
+    "expect": {
+      "targetsAnyOf": [],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "EXCEEDS_DEPTH",
+        "MISMATCHES_DETAIL",
+        "MALFORMED_OPTIONS",
+        "UNGROUNDED_RECOMMENDATION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE",
+        "USES_BRANDED_FRAMEWORK"
+      ]
+    }
+  },
+  {
+    "id": "relations-10",
+    "rationale": "Two settings set against each other, at depth 1, detail 2. Where they meet or part is the core field. A right output makes the author commit to the point of contrast; a wrong one invents a difference.",
+    "fromKind": "SETTING",
+    "relationType": "contrasts_with",
+    "fromName": "The upper town",
+    "toName": "The flats",
+    "bibleState": {
+      "point": null
+    },
+    "priorAnswers": [],
+    "dials": {
+      "depth": 1,
+      "detail": 2
+    },
+    "expect": {
+      "targetsAnyOf": [
+        "point"
+      ],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "EXCEEDS_DEPTH",
+        "MISMATCHES_DETAIL",
+        "MALFORMED_OPTIONS",
+        "UNGROUNDED_RECOMMENDATION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE",
+        "USES_BRANDED_FRAMEWORK"
+      ]
+    }
+  },
+  {
+    "id": "relations-11",
+    "rationale": "The built-in relation between two different kinds, at depth 1, detail 3. Its generic core field, the nature of the link, is what a right round asks.",
+    "fromKind": "OBJECT",
+    "relationType": "related_to",
+    "fromName": "The cracked compass",
+    "toName": "Wren",
+    "bibleState": {
+      "nature": null
+    },
+    "priorAnswers": [],
+    "dials": {
+      "depth": 1,
+      "detail": 3
+    },
+    "expect": {
+      "targetsAnyOf": [
+        "nature"
+      ],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "EXCEEDS_DEPTH",
+        "MISMATCHES_DETAIL",
+        "MALFORMED_OPTIONS",
+        "UNGROUNDED_RECOMMENDATION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE",
+        "USES_BRANDED_FRAMEWORK"
+      ]
+    }
+  }
+]

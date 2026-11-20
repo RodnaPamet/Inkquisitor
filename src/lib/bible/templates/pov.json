@@ -256,6 +256,26 @@
       "inverseLabel": "has variant",
       "targetKinds": [
         "POV"
+      ],
+      "fields": [
+        {
+          "key": "fit",
+          "label": "How they fit together",
+          "help": "What each contributes to the other, and how the part sits within the whole.",
+          "type": "text",
+          "required": true,
+          "order": 1,
+          "dependsOn": []
+        },
+        {
+          "key": "difference",
+          "label": "What sets them apart",
+          "help": "What one holds that the other lacks, so that the two never blur together.",
+          "type": "text",
+          "required": false,
+          "order": 2,
+          "dependsOn": []
+        }
       ]
     },
     {
@@ -264,6 +284,26 @@
       "inverseLabel": "framed by",
       "targetKinds": [
         "POV"
+      ],
+      "fields": [
+        {
+          "key": "how_shown",
+          "label": "How it shows on the page",
+          "help": "Where and how the reader meets this link: in an action, an image, a setting or a choice.",
+          "type": "text",
+          "required": true,
+          "order": 1,
+          "dependsOn": []
+        },
+        {
+          "key": "why_it_matters",
+          "label": "Why it matters",
+          "help": "What this link does for the book: the meaning, pressure or effect it carries.",
+          "type": "text",
+          "required": false,
+          "order": 2,
+          "dependsOn": []
+        }
       ]
     },
     {
@@ -272,6 +312,26 @@
       "inverseLabel": "shapes the viewpoint of",
       "targetKinds": [
         "WORLD_RULE"
+      ],
+      "fields": [
+        {
+          "key": "how_shown",
+          "label": "How it shows on the page",
+          "help": "Where and how the reader meets this link: in an action, an image, a setting or a choice.",
+          "type": "text",
+          "required": true,
+          "order": 1,
+          "dependsOn": []
+        },
+        {
+          "key": "why_it_matters",
+          "label": "Why it matters",
+          "help": "What this link does for the book: the meaning, pressure or effect it carries.",
+          "type": "text",
+          "required": false,
+          "order": 2,
+          "dependsOn": []
+        }
       ]
     },
     {
@@ -280,6 +340,26 @@
       "inverseLabel": "marks a viewpoint switch in",
       "targetKinds": [
         "TIMELINE_EVENT"
+      ],
+      "fields": [
+        {
+          "key": "how_shown",
+          "label": "How it shows on the page",
+          "help": "Where and how the reader meets this link: in an action, an image, a setting or a choice.",
+          "type": "text",
+          "required": true,
+          "order": 1,
+          "dependsOn": []
+        },
+        {
+          "key": "why_it_matters",
+          "label": "Why it matters",
+          "help": "What this link does for the book: the meaning, pressure or effect it carries.",
+          "type": "text",
+          "required": false,
+          "order": 2,
+          "dependsOn": []
+        }
       ]
     },
     {
@@ -290,6 +370,26 @@
         "WORLD_RULE",
         "TIMELINE_EVENT",
         "OBJECT"
+      ],
+      "fields": [
+        {
+          "key": "how_shown",
+          "label": "How it shows on the page",
+          "help": "Where and how the reader meets this link: in an action, an image, a setting or a choice.",
+          "type": "text",
+          "required": true,
+          "order": 1,
+          "dependsOn": []
+        },
+        {
+          "key": "why_it_matters",
+          "label": "Why it matters",
+          "help": "What this link does for the book: the meaning, pressure or effect it carries.",
+          "type": "text",
+          "required": false,
+          "order": 2,
+          "dependsOn": []
+        }
       ]
     },
     {
@@ -298,6 +398,26 @@
       "inverseLabel": "seen from within by",
       "targetKinds": [
         "FACTION"
+      ],
+      "fields": [
+        {
+          "key": "how_shown",
+          "label": "How it shows on the page",
+          "help": "Where and how the reader meets this link: in an action, an image, a setting or a choice.",
+          "type": "text",
+          "required": true,
+          "order": 1,
+          "dependsOn": []
+        },
+        {
+          "key": "why_it_matters",
+          "label": "Why it matters",
+          "help": "What this link does for the book: the meaning, pressure or effect it carries.",
+          "type": "text",
+          "required": false,
+          "order": 2,
+          "dependsOn": []
+        }
       ]
     },
     {
@@ -306,6 +426,26 @@
       "inverseLabel": "informs",
       "targetKinds": [
         "RESEARCH"
+      ],
+      "fields": [
+        {
+          "key": "what_is_drawn",
+          "label": "What is drawn from it",
+          "help": "Which facts, methods or details pass from the source into the book.",
+          "type": "text",
+          "required": true,
+          "order": 1,
+          "dependsOn": []
+        },
+        {
+          "key": "liberties",
+          "label": "Liberties taken",
+          "help": "Where the book departs from the source on purpose, and why.",
+          "type": "text",
+          "required": false,
+          "order": 2,
+          "dependsOn": []
+        }
       ]
     }
   ]

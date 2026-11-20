@@ -18,14 +18,16 @@
 import type { FieldDef } from '@/lib/bible/template-schema';
 import type { FieldValue } from '@/lib/bible/field-values';
 import type { BibleKind } from '@/lib/bible/kinds';
-import { getFieldDef, getTemplate } from '@/lib/bible/templates';
+import { getTemplate, relationFieldDefs, relationTypesFrom } from '@/lib/bible/templates';
+import type { RelationSubject } from '@/lib/interview/subjects';
 import { buildReconcileRequest, storedForPrompt, type ReconcilePromptAnswer, type ReconcileRequest } from './prompt';
 import type { ReconcileCallResult, Reconciler } from './reconciler';
 import { parseReconcileOutput } from './schema';
-import { refusalCounts, validateReconcile, valueAsText, type ReconcileAnswerFact, type ValidationResult } from './validate';
+import { fieldDefOf, refusalCounts, validateReconcile, valueAsText, type ExistingRelation, type ReconcileAnswerFact, type RelationEnd, type ValidationResult } from './validate';
 import type { ReconcileOutcome, RefusalCode } from './vocabulary';
 
 export interface RoundElementInput {
+    /** The subject's id (Phase 3.3): an element's, a relation's, or `PENDING_SUBJECT_ID`. */
     elementId: string;
     kind: BibleKind;
     name: string;
@@ -34,6 +36,10 @@ export interface RoundElementInput {
     stored: ReadonlyMap<string, FieldValue>;
     /** The fields the round's questions targeted on this element, in template order. */
     scopeKeys: readonly string[];
+    /** Phase 3.3: a relation subject. */
+    relation?: RelationSubject;
+    /** Phase 3.3: the BETWEEN slot's element not yet created, between two neighbours. */
+    pending?: { afterName: string; beforeName: string };
 }
 
 export interface RoundAnswerInput {
@@ -57,6 +63,11 @@ export interface ReconcileRoundInput {
     answers: readonly RoundAnswerInput[];
     /** The book's elements by kind and name (new elements are judged against them). */
     bookElements: ReadonlyArray<{ kind: BibleKind; name: string }>;
+    /** Phase 3.3: the elements a new relation may join, and the relations the book holds between them. */
+    relationEnds?: readonly RelationEnd[];
+    existingRelations?: readonly ExistingRelation[];
+    /** Phase 3.3: a BETWEEN session's slot. */
+    slot?: { kind: BibleKind } | null;
 }
 
 /** An answer as text: the choice, the number and the words, joined; null unless ANSWERED. */
@@ -87,7 +98,23 @@ function promptAnswerOf(a: RoundAnswerInput): ReconcilePromptAnswer {
 }
 
 function scopeFieldsOf(e: RoundElementInput): FieldDef[] {
-    return getTemplate(e.kind).fields.filter((f) => e.scopeKeys.includes(f.key));
+    const fields: readonly FieldDef[] = e.relation ? relationFieldDefs(e.relation.fromKind, e.relation.type) : getTemplate(e.kind).fields;
+    return fields.filter((f) => e.scopeKeys.includes(f.key));
+}
+
+/** The relation types a new relation between the ends may take, by ordered pair of kinds (template product text). */
+export function relationTypesBetween(kinds: readonly BibleKind[]): Array<{ fromKind: BibleKind; toKind: BibleKind; types: Array<{ type: string; label: string }> }> {
+    const unique = [...new Set(kinds)];
+    const out: Array<{ fromKind: BibleKind; toKind: BibleKind; types: Array<{ type: string; label: string }> }> = [];
+    for (const from of unique) {
+        for (const to of unique) {
+            const types = relationTypesFrom(from)
+                .filter((t) => t.targetKinds.includes(to))
+                .map((t) => ({ type: t.key, label: t.label }));
+            if (types.length > 0) out.push({ fromKind: from, toKind: to, types });
+        }
+    }
+    return out;
 }
 
 /** The request one round's reconcile call sends. Pure. */
@@ -103,10 +130,15 @@ export function reconcileRequestFor(input: ReconcileRoundInput): ReconcileReques
                 customLabel: e.customLabel,
                 scopeFields,
                 stored: new Map(scopeFields.map((f) => [f.key, storedForPrompt(f, e.stored.get(f.key) ?? null, valueAsText)])),
+                ...(e.relation ? { relation: e.relation } : {}),
+                ...(e.pending ? { pending: e.pending } : {}),
             };
         }),
         answers: input.answers.map(promptAnswerOf),
         bookElements: input.bookElements,
+        relationEnds: input.relationEnds ?? [],
+        relationTypes: relationTypesBetween([...(input.relationEnds ?? []).map((e) => e.kind), ...(input.slot ? [input.slot.kind] : [])]),
+        slot: input.slot ?? null,
     });
 }
 
@@ -125,9 +157,22 @@ export function answerFactsOf(input: ReconcileRoundInput): ReconcileAnswerFact[]
 export function validateOutput(raw: unknown, input: ReconcileRoundInput): ValidationResult & { unreadable: boolean } {
     const parsed = parseReconcileOutput(raw);
     const result = validateReconcile(parsed, {
-        elements: input.elements.map((e) => ({ elementId: e.elementId, kind: e.kind, stored: e.stored, scopeKeys: e.scopeKeys.filter((k) => getFieldDef(e.kind, k)) })),
+        elements: input.elements.map((e) => {
+            const relation = e.relation ? { type: e.relation.type, fromKind: e.relation.fromKind, fromElementId: e.relation.fromElementId, toElementId: e.relation.toElementId } : undefined;
+            return {
+                elementId: e.elementId,
+                kind: e.kind,
+                stored: e.stored,
+                scopeKeys: e.scopeKeys.filter((k) => fieldDefOf({ kind: e.kind, relation }, k)),
+                ...(relation ? { relation } : {}),
+                ...(e.pending ? { pending: true } : {}),
+            };
+        }),
         answers: answerFactsOf(input),
         bookElementNames: input.bookElements.map((b) => b.name),
+        relationEnds: input.relationEnds ?? [],
+        existingRelations: input.existingRelations ?? [],
+        slot: input.slot ?? null,
     });
     return { ...result, unreadable: parsed.unreadable };
 }
@@ -138,8 +183,8 @@ export interface ReconcileMetrics {
     errorCode: string | null;
     scopeFields: number;
     answered: number;
-    /** Operations stored, by kind. */
-    proposed: { ADD: number; UPDATE: number; REMOVE: number; NEW_ELEMENT: number };
+    /** Operations stored, by kind (a relation's field's among ADD, UPDATE and REMOVE; Phase 3.3 adds NEW_RELATION). */
+    proposed: ProposedCounts;
     /** Of those, flagged POSSIBLE_INSTRUCTION (D14). */
     flagged: number;
     noChange: number;
@@ -153,6 +198,18 @@ export interface ReconcileMetrics {
     guardRuleIds: string[];
 }
 
+export interface ProposedCounts {
+    ADD: number;
+    UPDATE: number;
+    REMOVE: number;
+    NEW_ELEMENT: number;
+    NEW_RELATION: number;
+}
+
+export function emptyProposedCounts(): ProposedCounts {
+    return { ADD: 0, UPDATE: 0, REMOVE: 0, NEW_ELEMENT: 0, NEW_RELATION: 0 };
+}
+
 export interface ReconcileStepResult {
     outcome: ReconcileOutcome;
     validation: ValidationResult | null;
@@ -161,9 +218,9 @@ export interface ReconcileStepResult {
 }
 
 function metricsOf(input: ReconcileRoundInput, outcome: ReconcileOutcome, call: ReconcileCallResult | null, validation: (ValidationResult & { unreadable?: boolean }) | null): ReconcileMetrics {
-    const proposed = { ADD: 0, UPDATE: 0, REMOVE: 0, NEW_ELEMENT: 0 };
+    const proposed = emptyProposedCounts();
     for (const p of validation?.proposals ?? []) {
-        if (p.kind === 'NEW_ELEMENT') proposed.NEW_ELEMENT++;
+        if (p.kind === 'NEW_ELEMENT' || p.kind === 'NEW_RELATION') proposed[p.kind]++;
         else proposed[p.operation]++;
     }
     return {

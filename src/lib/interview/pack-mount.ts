@@ -64,7 +64,7 @@
  * PACK_CHANGED (`problem: PACK_NOT_PINNED`) on every round asked of it; its
  * history stays readable and the author starts a new session.
  */
-import { craftPackName, personaPackName, type PackFile, type PackRegistry } from './packs';
+import { craftPackName, personaPackName, RELATIONS_PACK_NAME, type PackFile, type PackRegistry } from './packs';
 import { checkPackRecord, questionPromptHash, type RecordKind, type RecordRefusal } from './pack-evaluation';
 import type { BibleKind } from '@/lib/bible/kinds';
 import { createHash } from 'node:crypto';
@@ -164,11 +164,12 @@ export async function packMounts(registry: PackRegistry, mode: PackRecordMode, n
 
 /**
  * The packs a session over these kinds with these personas mounts, by name:
- * the craft pack of each kind in scope (in kind order, as given) and each
- * persona's pack (in the session's order).
+ * the craft pack of each kind in scope (in kind order, as given), the
+ * relations pack when a relation is in scope (Phase 3.3), and each persona's
+ * pack (in the session's order).
  */
-export function packNamesFor(kinds: readonly BibleKind[], personas: readonly PersonaKey[]): string[] {
-    return [...kinds.map(craftPackName), ...personas.map(personaPackName)];
+export function packNamesFor(kinds: readonly BibleKind[], personas: readonly PersonaKey[], options: { relations?: boolean } = {}): string[] {
+    return [...kinds.map(craftPackName), ...(options.relations ? [RELATIONS_PACK_NAME] : []), ...personas.map(personaPackName)];
 }
 
 export interface PackRefusal {

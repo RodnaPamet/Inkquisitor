@@ -168,25 +168,105 @@
       "key": "builds_on",
       "label": "builds on",
       "inverseLabel": "supports",
-      "targetKinds": ["RESEARCH"]
+      "targetKinds": ["RESEARCH"],
+      "fields": [
+        {
+          "key": "what_is_drawn",
+          "label": "What is drawn from it",
+          "help": "Which facts, methods or details pass from the source into the book.",
+          "type": "text",
+          "required": true,
+          "order": 1,
+          "dependsOn": []
+        },
+        {
+          "key": "liberties",
+          "label": "Liberties taken",
+          "help": "Where the book departs from the source on purpose, and why.",
+          "type": "text",
+          "required": false,
+          "order": 2,
+          "dependsOn": []
+        }
+      ]
     },
     {
       "key": "part_of",
       "label": "part of",
       "inverseLabel": "includes",
-      "targetKinds": ["RESEARCH"]
+      "targetKinds": ["RESEARCH"],
+      "fields": [
+        {
+          "key": "fit",
+          "label": "How they fit together",
+          "help": "What each contributes to the other, and how the part sits within the whole.",
+          "type": "text",
+          "required": true,
+          "order": 1,
+          "dependsOn": []
+        },
+        {
+          "key": "difference",
+          "label": "What sets them apart",
+          "help": "What one holds that the other lacks, so that the two never blur together.",
+          "type": "text",
+          "required": false,
+          "order": 2,
+          "dependsOn": []
+        }
+      ]
     },
     {
       "key": "conflicts_with",
       "label": "conflicts with",
       "inverseLabel": "conflicts with",
-      "targetKinds": ["RESEARCH"]
+      "targetKinds": ["RESEARCH"],
+      "fields": [
+        {
+          "key": "point",
+          "label": "Where they meet or part",
+          "help": "The point on which the two stand against each other: one question answered two ways.",
+          "type": "text",
+          "required": true,
+          "order": 1,
+          "dependsOn": []
+        },
+        {
+          "key": "reveals",
+          "label": "What the comparison reveals",
+          "help": "What a reader understands from setting the two side by side that neither shows alone.",
+          "type": "text",
+          "required": false,
+          "order": 2,
+          "dependsOn": []
+        }
+      ]
     },
     {
       "key": "informs",
       "label": "informs",
       "inverseLabel": "draws on",
-      "targetKinds": ["CUSTOM"]
+      "targetKinds": ["CUSTOM"],
+      "fields": [
+        {
+          "key": "what_is_drawn",
+          "label": "What is drawn from it",
+          "help": "Which facts, methods or details pass from the source into the book.",
+          "type": "text",
+          "required": true,
+          "order": 1,
+          "dependsOn": []
+        },
+        {
+          "key": "liberties",
+          "label": "Liberties taken",
+          "help": "Where the book departs from the source on purpose, and why.",
+          "type": "text",
+          "required": false,
+          "order": 2,
+          "dependsOn": []
+        }
+      ]
     }
   ]
 }

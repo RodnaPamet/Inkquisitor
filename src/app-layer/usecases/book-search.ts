@@ -14,7 +14,8 @@
  * WHAT IS SEARCHED, per element: its name, custom label and summary, every
  * stored field of every template type (rich text through the HTML reader, a
  * list's items, a choice's label; a scale is a number and is not text) and
- * the notes of its relations (a note belongs to both of its ends); and the
+ * the notes of its relations (a note belongs to both of its ends) and, since
+ * Phase 3.3 (D24), its relations' fields, from both ends too; and the
  * book itself: its title and logline. Interview answers and research are
  * not searched yet (the 3.4 note lists them as later candidates). An element
  * belongs to one book, so a term from another book, or another workspace,
@@ -37,13 +38,14 @@
  */
 import type { WorkspaceRequestContext } from '@/app-layer/types';
 import { assertPermission } from '@/app-layer/policies/permission.policy';
-import { BibleElementRepository, BibleFieldRepository, BibleRelationRepository } from '@/app-layer/repositories/bible.repository';
+import { BibleElementRepository, BibleFieldRepository, BibleRelationFieldRepository, BibleRelationRepository } from '@/app-layer/repositories/bible.repository';
 import { BookSearchRequest } from '@/app-layer/schemas/search';
 import { runInWorkspaceContext, type PrismaTx } from '@/lib/db/rls-middleware';
 import { ValidationError } from '@/lib/errors/types';
 import { decodeFieldValue } from '@/lib/bible/field-values';
 import { BIBLE_KINDS, type BibleKind } from '@/lib/bible/kinds';
-import { getFieldDef, getTemplate } from '@/lib/bible/templates';
+import { RELATION_FIELDS_MAX } from '@/lib/bible/template-schema';
+import { getFieldDef, getRelationFieldDef, getTemplate } from '@/lib/bible/templates';
 import { createAnalyzer, SEARCH_ANALYZER_VERSION, type Analyzer, type SearchLanguage } from '@/lib/search/analyse';
 import { fieldValuePlainText, HtmlTextReader, tidyPlainText } from '@/lib/search/plain-text';
 import { parseQuery } from '@/lib/search/query';
@@ -158,6 +160,24 @@ export async function readSearchDocuments(
     }
 
     const html = new HtmlTextReader();
+    // Phase 3.3: the relations' fields (D24), read like the notes — from both ends, the relation cap applying to them too.
+    const relationFieldRows = await BibleRelationFieldRepository.listForBookSearch(db, ctx.workspaceId, book.id, limits.relations * RELATION_FIELDS_MAX + 1);
+    if (relationFieldRows.length > limits.relations * RELATION_FIELDS_MAX) cut ??= 'RELATIONS_CAP';
+    for (const f of relationFieldRows.slice(0, limits.relations * RELATION_FIELDS_MAX)) {
+        const def = getRelationFieldDef(f.relation.from.kind as BibleKind, f.relation.type, f.key);
+        const value = decodeFieldValue(f.value);
+        const text = def ? fieldValuePlainText(def, value, html) : tidyPlainText(typeof value === 'string' ? value : '');
+        if (text === '') continue;
+        for (const [self, other] of [
+            [f.relation.fromElementId, f.relation.toElementId],
+            [f.relation.toElementId, f.relation.fromElementId],
+        ] as const) {
+            if (!names.has(self)) continue;
+            const list = notesOf.get(self) ?? [];
+            list.push({ kind: 'relationField', text, fieldKey: f.key, fieldLabel: def?.label ?? null, otherElementName: names.get(other) ?? null });
+            notesOf.set(self, list);
+        }
+    }
     // Each chunk is at most `fieldChunk` elements AND `fieldChunkBytes` stored bytes (one element alone may
     // pass it), asked of the database before a value is read: a chunk is decrypted whole before the text
     // budget can stop the read, so the bytes bound is what bounds the memory one search holds.

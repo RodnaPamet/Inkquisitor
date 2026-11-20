@@ -27,8 +27,8 @@ describe('the sets', () => {
     const { enrichment, adversarial } = reconcileEvalSets();
     const ops = enrichment.flatMap((c) => c.expect.operations);
 
-    it('enrichment: forty cases, and the roadmap’s forty answer/field pairs exceeded', () => {
-        expect(enrichment).toHaveLength(40);
+    it('enrichment: forty-four cases (2.5’s forty and 3.3’s four), and the roadmap’s forty answer/field pairs exceeded', () => {
+        expect(enrichment).toHaveLength(44);
         expect(ops.length).toBeGreaterThanOrEqual(40);
         for (const op of ['ADD', 'UPDATE', 'REMOVE', 'NO_CHANGE']) expect([op, ops.filter((o) => o.op === op).length >= 8]).toEqual([op, true]);
         expect(new Set(enrichment.map((c) => c.kind)).size).toBeGreaterThanOrEqual(10);
@@ -41,6 +41,17 @@ describe('the sets', () => {
         expect(adversarial.length).toBeGreaterThanOrEqual(10);
         expect(new Set(adversarial.map((c) => c.attack))).toEqual(new Set(ATTACKS));
         for (const c of adversarial) expect([c.id, c.expect.mustNot.includes('FOLLOWS_EMBEDDED_INSTRUCTION')]).toEqual([c.id, true]);
+    });
+
+    it('relations (Phase 3.3, D24): a relation’s fields added and updated, a new relation, the slot’s beat and its links, and relation attacks', () => {
+        const all = [...enrichment, ...adversarial];
+        const rel = enrichment.filter((c) => c.subject === 'RELATION');
+        expect(rel.flatMap((c) => c.expect.operations.map((o) => o.op))).toEqual(expect.arrayContaining(['ADD', 'UPDATE']));
+        expect(enrichment.some((c) => (c.expect.newRelations?.length ?? 0) > 0 && c.subject === undefined)).toBe(true);
+        const slot = enrichment.filter((c) => c.subject === 'SLOT');
+        expect(slot.some((c) => c.expect.newElements.some((n) => n.fillsSlot) && (c.expect.newRelations?.length ?? 0) >= 2)).toBe(true);
+        expect(adversarial.filter((c) => c.subject === 'RELATION' || (c.ends?.length ?? 0) > 0).length).toBeGreaterThanOrEqual(2);
+        expect(all.filter((c) => c.subject === 'RELATION' || c.subject === 'SLOT' || (c.ends?.length ?? 0) > 0).length).toBeGreaterThanOrEqual(6);
     });
 });
 

@@ -53,6 +53,11 @@ export interface ScopeElement {
     id: string;
     name: string;
     kind: BibleKind;
+    /** Phase 3.3: a relation (its ends and label), with its type's field labels. */
+    relation?: { fromName: string; toName: string; label: string };
+    fieldLabels?: Record<string, string>;
+    /** Phase 3.3: the element not yet created between two beats. */
+    pending?: { afterName: string; beforeName: string };
 }
 
 export interface InterviewSessionProps {
@@ -96,9 +101,17 @@ export function InterviewSession(props: InterviewSessionProps) {
     const byId = useMemo(() => new Map(elements.map((e) => [e.id, e] as const)), [elements]);
     const naming: FieldNaming = useMemo(
         () => ({
-            elementName: (id) => byId.get(id)?.name ?? tScope('unknownElement'),
+            elementName: (id) => {
+                const subject = byId.get(id);
+                // The element not yet created (Phase 3.3) is named from its two neighbours.
+                if (subject?.pending) return tScope('pending', { a: subject.pending.afterName, b: subject.pending.beforeName });
+                return subject?.name ?? tScope('unknownElement');
+            },
             fieldLabel: (id, key) => {
-                const kind = byId.get(id)?.kind;
+                const subject = byId.get(id);
+                // A relation's fields are its type's (Phase 3.3).
+                if (subject?.fieldLabels) return subject.fieldLabels[key] ?? key;
+                const kind = subject?.kind;
                 return (kind && fieldLabels[kind]?.[key]) ?? key;
             },
         }),
@@ -236,7 +249,8 @@ export function InterviewSession(props: InterviewSessionProps) {
             // Phase 2.5: the closed round's answers were reconciled into proposed changes.
             if (reconcile?.status === 'DONE') {
                 const p = reconcile.proposed;
-                setNotice(t('reconciled', { count: p.ADD + p.UPDATE + p.REMOVE + p.NEW_ELEMENT }));
+                // Phase 3.3: new relations are proposed changes too (a relation's field changes count as ADD, UPDATE, REMOVE).
+                setNotice(t('reconciled', { count: p.ADD + p.UPDATE + p.REMOVE + p.NEW_ELEMENT + (p.NEW_RELATION ?? 0) }));
             }
             noteReconcileRuns(reconcile ? [reconcile] : []);
             // Straight on to the next round, unless the session ended.
@@ -270,12 +284,17 @@ export function InterviewSession(props: InterviewSessionProps) {
     const scope = session?.scope ?? (initial.kind === 'start' ? initial.target.scope : 'BOOK');
     const targetElementId = session?.targetElementId ?? (initial.kind === 'start' && initial.target.scope === 'ELEMENT' ? initial.target.elementId : null);
     const targetKind = session?.targetKind ?? (initial.kind === 'start' && initial.target.scope === 'KIND' ? initial.target.kind : null);
+    const pendingSubject = elements.find((e) => e.pending)?.pending;
     const title =
         scope === 'ELEMENT'
             ? t('titleElement', { name: (targetElementId && byId.get(targetElementId)?.name) || tScope('unknownElement') })
             : scope === 'KIND' && targetKind
               ? t('titleKind', { kind: kindLabels[targetKind] })
-              : t('titleBook');
+              : scope === 'SELECTION'
+                ? t('titleSelection', { count: elements.length })
+                : scope === 'BETWEEN'
+                  ? t('titleBetween', { a: pendingSubject?.afterName ?? tScope('unknownElement'), b: pendingSubject?.beforeName ?? tScope('unknownElement') })
+                  : t('titleBook');
 
     const progress = view?.progress;
     const progressText = !progress || progress.status === 'NOT_ASSESSED' ? t('progressNotAssessed') : t('progress', { answered: progress.answered, asked: progress.asked });
@@ -295,8 +314,10 @@ export function InterviewSession(props: InterviewSessionProps) {
                   : null;
 
     const personaName = (key: string | null) => (key && isPersonaKey(key) ? tPersona(`${key}.name`) : null);
-    const about = (q: { elementId: string; targetsFieldKeys: readonly string[] }) =>
-        `${naming.elementName(q.elementId)} · ${q.targetsFieldKeys.map((k) => naming.fieldLabel(q.elementId, k)).join(', ')}`;
+    const about = (q: { elementId: string; subjectId?: string; targetsFieldKeys: readonly string[] }) => {
+        const subject = q.subjectId ?? q.elementId;
+        return `${naming.elementName(subject)} · ${q.targetsFieldKeys.map((k) => naming.fieldLabel(subject, k)).join(', ')}`;
+    };
 
     const streamError = s.phase === 'done' && s.error ? errorMessage(s.error.reason, s.error.status, s.error.details) : null;
     const streamRefusal = s.phase === 'done' && s.refusal ? errorMessage(s.refusal) : null;

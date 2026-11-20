@@ -37,11 +37,21 @@ const dialFields = {
 /** The longest written answer any detail accepts, before sanitising (raw bound). */
 export const ANSWER_TEXT_RAW_MAX = Math.max(...Object.values(DETAIL).map((d) => d.answerMax)) * RAW_INPUT_FACTOR;
 
+/** A selection names at most this many elements and this many relations (Phase 3.3; the CHECK holds the same). */
+export const SELECTION_ELEMENTS_MAX = 60;
+export const SELECTION_RELATIONS_MAX = 60;
+
 export const InterviewStartInput = z
     .object({
         scope: z.enum(INTERVIEW_SCOPES),
         elementId: id.optional(),
         kind: z.enum(BIBLE_KINDS).optional(),
+        /** Phase 3.3, SELECTION: the elements and relations selected on a map (either may be empty, not both). */
+        elementIds: z.array(id).max(SELECTION_ELEMENTS_MAX).optional(),
+        relationIds: z.array(id).max(SELECTION_RELATIONS_MAX).optional(),
+        /** Phase 3.3, BETWEEN: the two neighbouring elements the new one would sit between, in story order. */
+        afterElementId: id.optional(),
+        beforeElementId: id.optional(),
         /** The session's own dials (Phase 2.3: up to three personas); unset ones come from the book's and workspace's defaults. */
         ...dialFields,
     })
@@ -49,6 +59,12 @@ export const InterviewStartInput = z
     .superRefine((v, ctx) => {
         if ((v.scope === 'ELEMENT') !== (v.elementId !== undefined)) ctx.addIssue({ code: 'custom', message: 'An element interview names its element, and only it does.', path: ['elementId'] });
         if ((v.scope === 'KIND') !== (v.kind !== undefined)) ctx.addIssue({ code: 'custom', message: 'A kind interview names its kind, and only it does.', path: ['kind'] });
+        const selecting = v.elementIds !== undefined || v.relationIds !== undefined;
+        if ((v.scope === 'SELECTION') !== selecting) ctx.addIssue({ code: 'custom', message: 'A selection names its elements and relations, and only it does.', path: ['elementIds'] });
+        const slot = v.afterElementId !== undefined || v.beforeElementId !== undefined;
+        if (v.scope === 'BETWEEN' ? v.afterElementId === undefined || v.beforeElementId === undefined : slot) {
+            ctx.addIssue({ code: 'custom', message: 'A between interview names both neighbours, and only it does.', path: ['afterElementId'] });
+        }
     });
 export type InterviewStartInput = z.infer<typeof InterviewStartInput>;
 

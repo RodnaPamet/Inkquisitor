@@ -47,6 +47,9 @@ export const ENCRYPTED_FIELDS: EncryptedFieldManifest = Object.freeze({
     BibleField: Object.freeze(['value']),
     BibleRelation: Object.freeze(['note']),
     BibleEntryVersion: Object.freeze(['snapshot', 'changeSummary']),
+    // Phase 3.3 (decision D24): a relation's fields and its version history.
+    BibleRelationField: Object.freeze(['value']),
+    BibleRelationVersion: Object.freeze(['snapshot', 'changeSummary']),
     Question: Object.freeze(['text', 'options', 'scaleLabels', 'recommendedAnswer', 'rationale', 'challengeQuote']),
     Answer: Object.freeze(['text', 'choice']),
     // Phase 2.5: a proposed value (drawn from the author's answers) and a proposed element's name and summary.

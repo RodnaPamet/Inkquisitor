@@ -176,6 +176,8 @@ describe('wiring', () => {
             BibleField: ['value'],
             BibleRelation: ['note'],
             BibleEntryVersion: ['snapshot', 'changeSummary'],
+            BibleRelationField: ['value'],
+            BibleRelationVersion: ['snapshot', 'changeSummary'],
             Question: ['text', 'options', 'scaleLabels', 'recommendedAnswer', 'rationale', 'challengeQuote'],
             Answer: ['text', 'choice'],
             EnrichmentProposal: ['proposedValue', 'newName', 'newSummary'],

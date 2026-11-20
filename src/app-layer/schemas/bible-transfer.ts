@@ -12,6 +12,7 @@
  */
 import { z } from 'zod';
 import { ORDER_RANK_MAX } from '@/lib/bible/story-order';
+import { RELATION_FIELDS_MAX } from '@/lib/bible/template-schema';
 import { BIBLE_ELEMENT_STATUSES, BIBLE_KINDS, BOOK_STAGES, IDENTIFIER_MAX, IDENTIFIER_PATTERN } from '@/lib/bible/kinds';
 import { SLUG_MAX, SLUG_PATTERN } from '@/lib/bible/slug';
 import { BUNDLE_FORMAT } from '@/lib/bible/bundle-format';
@@ -106,6 +107,11 @@ export const BundleRelationEntry = z
         type: identifier,
         to: slug,
         note: raw(RELATION_NOTE_MAX).optional(),
+        /** Phase 3.3 (D24): the relation's fields by key, checked against its type's template by the importer. */
+        fields: z
+            .record(identifier, BundleFieldValue)
+            .refine((f) => Object.keys(f).length <= RELATION_FIELDS_MAX, { message: 'Too many relation fields.' })
+            .optional(),
     })
     .strict();
 

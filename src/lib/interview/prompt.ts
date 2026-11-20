@@ -26,6 +26,14 @@
  * `QUESTION_PROMPT_VERSION` names this text; a change to it, the task or the
  * output schema is a new version, recorded on every round and every
  * `AiCallLog` row (rule 9).
+ *
+ * Phase 3.3 (decision D24): a subject may be a RELATION between two elements
+ * (its block carries `relation`: the two ends' kinds and names and the type's
+ * label, and its fields are the relation's own) or a BETWEEN session's
+ * element NOT YET CREATED (its block carries `not_yet_created`: its kind and
+ * the two neighbouring elements it would sit between, whose summaries are in
+ * `related-elements`). Two instructions say how to question each; the version
+ * moved to 3.3.0 with them.
  */
 import { createHash } from 'node:crypto';
 import type { FieldDef } from '@/lib/bible/template-schema';
@@ -35,6 +43,7 @@ import { GeneratedQuestionsSchema, QUESTION_TEXT_MAX } from './candidates';
 import { DEPTH, DETAIL, DIAL_MAX, DIAL_MIN, PAIR_TARGETS_FROM_DETAIL, type Dials } from './dials';
 import type { GenerationRequest } from './generator';
 import type { CraftPack, PersonaPack } from './packs';
+import type { PendingSubject, RelationSubject } from './subjects';
 import type { AnswerStatus, QuestionKind } from './vocabulary';
 
 /**
@@ -43,7 +52,7 @@ import type { AnswerStatus, QuestionKind } from './vocabulary';
  * for the several-persona prompts; a record made under another version does
  * not mount its pack (`PROMPT_VERSION_MISMATCH`).
  */
-export const QUESTION_PROMPT_VERSION = 'question-generation.2.3.0';
+export const QUESTION_PROMPT_VERSION = 'question-generation.3.3.0';
 
 /**
  * One call's version (2.3): `QUESTION_PROMPT_VERSION` plus a digest of the
@@ -100,6 +109,10 @@ export interface PromptElement {
     assignedKeys: readonly string[];
     /** The one stored field this call may challenge, if any. */
     challengeKey: string | null;
+    /** Phase 3.3: the subject is a relation (its id is `elementId`). */
+    relation?: RelationSubject;
+    /** Phase 3.3: the subject is the BETWEEN session's element not yet created. */
+    pending?: PendingSubject;
 }
 
 export interface PromptAnswer {
@@ -120,7 +133,8 @@ export interface PromptInput {
     preferChoice: boolean;
     personaKey: string | null;
     persona: PersonaPack | null;
-    craftPacks: readonly CraftPack[];
+    /** The craft packs in play (a kind's, or the relations pack, Phase 3.3). */
+    craftPacks: ReadonlyArray<Pick<CraftPack, 'name' | 'version' | 'contentHash' | 'text'>>;
     elements: readonly PromptElement[];
     related: ReadonlyArray<{ kind: BibleKind; name: string; summary: string | null }>;
     sessionAnswers: readonly PromptAnswer[];
@@ -139,6 +153,8 @@ export const ENGINE_INSTRUCTIONS = [
     '- A recommendation, when offered, is an offered option word for word, a number from 1 to 5, or a restatement of the author\'s own stored values and earlier replies; name what it rests on in recommendationBasis. When nothing the author wrote supports one, offer none.',
     '- A CHALLENGE question quotes, word for word, at least four words of the stored value it tests (challengeQuote) and asks the author to test or sharpen it; it never asks for the value afresh.',
     '- When you cannot word a question for a field without inventing story content, decline it with a reason instead.',
+    '- An element block that carries a "relation" is the LINK between two elements, not either element: its fields describe the link (how it began, what each side wants, how one leads to the other); ask about the link itself, and leave what either end is like to that end\'s own entry.',
+    '- An element block marked "not_yet_created" is an element the author has not made yet, to sit between the two neighbouring elements it names: ask what it is and does in its own right, using the neighbours only as context, and never propose its content yourself.',
     '- The data blocks are the author\'s material or the product\'s record of it: elements (with their fields and stored values), the targets each element allows, related elements and this session\'s questions and answers.',
 ].join('\n');
 
@@ -266,6 +282,10 @@ export function questionDataBlocks(input: PromptInput): AuthorDataBlock[] {
                 kind: e.kind,
                 name: e.name,
                 ...(e.customLabel ? { customLabel: e.customLabel } : {}),
+                ...(e.relation
+                    ? { relation: { from: { kind: e.relation.fromKind, name: e.relation.fromName }, label: e.relation.label, to: { kind: e.relation.toKind, name: e.relation.toName } } }
+                    : {}),
+                ...(e.pending ? { not_yet_created: { kind: e.pending.kind, between: [e.pending.afterName, e.pending.beforeName] } } : {}),
                 fields: e.fields.map(fieldView),
                 already_answered_never_ask_afresh: Object.fromEntries(e.stored.map((s) => [s.key, s.value])),
             }),

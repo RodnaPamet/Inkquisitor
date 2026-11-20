@@ -9,17 +9,26 @@
  * page mounts in a browser (tldraw needs one), with a quiet placeholder
  * meanwhile. If the chunk fails to load or the canvas throws, the boundary
  * says the map is safe and offers to try again; the rest of the page stays.
+ *
+ * Phase 3.3: below the canvas, OUTSIDE its boundary, the book's pending new
+ * elements and relations (`PendingStructureList`), the record the canvas's
+ * ghosts preview. The list reads them and hands them to the editor to draw;
+ * what the author accepts there goes to the editor (if it loaded) to be added
+ * through the map's own save.
  */
 import dynamic from 'next/dynamic';
-import { useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
 
 import { PageHeader } from '@/components/layout/PageHeader';
 import { WorkspaceShell } from '@/components/layout/WorkspaceShell';
 import { APP_ROUTES } from '@/lib/app-routes';
 import type { StoryMapView } from '@/lib/canvas/api-client';
-import type { StoryMapKindValue } from '@/lib/canvas/map-kinds';
+import { MAP_ELEMENT_KINDS, type StoryMapKindValue } from '@/lib/canvas/map-kinds';
+import type { AcceptedStructure } from '@/lib/canvas/structure-preview';
+import type { PendingStructureView } from '@/lib/enrichment/api-client';
 import { CanvasErrorBoundary } from './CanvasErrorBoundary';
+import { PendingStructureList } from './PendingStructureList';
 // Types only (erased): the editor's code arrives through `next/dynamic` below.
 import type { StoryMapEditorProps } from './StoryMapEditor';
 
@@ -62,6 +71,14 @@ export interface StoryMapWorkspaceProps {
 export function StoryMapWorkspace({ workspaceSlug, book, kind, kindSlug, initialMap, kindLabels, fieldCounts, relationOptions, fieldDefs, canEdit }: StoryMapWorkspaceProps) {
     const t = useTranslations('canvas');
     const mapLabel = t(`kinds.${kind}`);
+    const [structure, setStructure] = useState<readonly PendingStructureView[]>([]);
+    const [previewFailed, setPreviewFailed] = useState(false);
+    const acceptedHandler = useRef<((accepted: AcceptedStructure) => void) | null>(null);
+    const onRegisterAccepted = useCallback((handler: ((accepted: AcceptedStructure) => void) | null) => {
+        acceptedHandler.current = handler;
+    }, []);
+    const onAccepted = useCallback((accepted: AcceptedStructure) => acceptedHandler.current?.(accepted), []);
+    const onPreviewFailed = useCallback(() => setPreviewFailed(true), []);
     return (
         <WorkspaceShell>
             <WorkspaceShell.Header>
@@ -86,8 +103,23 @@ export function StoryMapWorkspace({ workspaceSlug, book, kind, kindSlug, initial
                     relationOptions={relationOptions}
                     fieldDefs={fieldDefs}
                     canEdit={canEdit}
+                    structure={structure}
+                    onPreviewFailed={onPreviewFailed}
+                    onRegisterAccepted={onRegisterAccepted}
                 />
             </CanvasErrorBoundary>
+            <div className="flex-shrink-0 md:max-h-[40vh] md:overflow-y-auto">
+                <PendingStructureList
+                    workspaceSlug={workspaceSlug}
+                    bookId={book.id}
+                    canEdit={canEdit}
+                    kindLabels={kindLabels}
+                    drawnKinds={MAP_ELEMENT_KINDS[kind]}
+                    onLoaded={setStructure}
+                    onAccepted={onAccepted}
+                    previewFailed={previewFailed}
+                />
+            </div>
         </WorkspaceShell>
     );
 }

@@ -401,6 +401,57 @@ export const BibleFieldRepository = {
 };
 
 export const BibleRelationRepository = {
+    /**
+     * Phase 3.3 (D24): the relation's transaction-scoped advisory lock, held to
+     * commit. Every save of a relation's fields, and the version it records,
+     * runs under it, so two saves of one relation queue and take consecutive
+     * version numbers. LOCK ORDER: after any element lock a path holds (a
+     * relation's save takes no element lock after it).
+     */
+    async lock(db: Db, relationId: string) {
+        await db.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${'bible-relation:' + relationId}))`;
+    },
+
+    /** One relation with its two ends' kinds and names (the relation fields' reads and writes, Phase 3.3). */
+    findWithEnds(db: Db, workspaceId: string, bookId: string, relationId: string) {
+        return db.bibleRelation.findFirst({
+            where: { id: relationId, workspaceId, bookId },
+            select: {
+                ...RELATION_SELECT,
+                symmetric: true,
+                from: { select: { id: true, kind: true, name: true, slug: true } },
+                to: { select: { id: true, kind: true, name: true, slug: true } },
+            },
+        });
+    },
+
+    /** Several relations of the book with their ends (an interview's scope, Phase 3.3); bounded by the ids asked for. */
+    listByIdsWithEnds(db: Db, workspaceId: string, bookId: string, ids: readonly string[]) {
+        if (ids.length === 0) return Promise.resolve([]);
+        return db.bibleRelation.findMany({
+            where: { workspaceId, bookId, id: { in: [...ids] } },
+            orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+            take: ids.length,
+            select: {
+                ...RELATION_SELECT,
+                symmetric: true,
+                from: { select: { id: true, kind: true, name: true, slug: true } },
+                to: { select: { id: true, kind: true, name: true, slug: true } },
+            },
+        });
+    },
+
+    /** The book's relations whose two ends are both among `elementIds` (a selection's relations, Phase 3.3), oldest first; `take` bounds it. */
+    listBetween(db: Db, workspaceId: string, bookId: string, elementIds: readonly string[], take: number) {
+        if (elementIds.length < 2) return Promise.resolve([]);
+        return db.bibleRelation.findMany({
+            where: { workspaceId, bookId, fromElementId: { in: [...elementIds] }, toElementId: { in: [...elementIds] } },
+            orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+            take,
+            select: { id: true, fromElementId: true, toElementId: true, type: true, symmetric: true },
+        });
+    },
+
     /** Relations touching the element, from either end, oldest first; `take` bounds it. */
     listForElement(db: Db, workspaceId: string, bookId: string, elementId: string, take: number) {
         return db.bibleRelation.findMany({
@@ -496,6 +547,129 @@ export const BibleRelationRepository = {
     async remove(db: Db, workspaceId: string, bookId: string, relationId: string) {
         const res = await db.bibleRelation.deleteMany({ where: { id: relationId, workspaceId, bookId } });
         return res.count;
+    },
+};
+
+/**
+ * A relation's fields (Phase 3.3, decision D24): the rows, as an element's
+ * fields are, keyed by the relation type's template fields.
+ */
+export const BibleRelationFieldRepository = {
+    listForRelation(db: Db, workspaceId: string, relationId: string) {
+        return db.bibleRelationField.findMany({
+            where: { workspaceId, relationId },
+            orderBy: [{ order: 'asc' }, { key: 'asc' }],
+            take: 50,
+            select: { key: true, value: true, order: true },
+        });
+    },
+
+    /** The stored fields of every relation asked for. Bounded by the relations asked for times `perRelation`. */
+    listForRelations(db: Db, workspaceId: string, relationIds: readonly string[], perRelation: number) {
+        if (relationIds.length === 0) return Promise.resolve([]);
+        return db.bibleRelationField.findMany({
+            where: { workspaceId, relationId: { in: [...relationIds] } },
+            orderBy: [{ relationId: 'asc' }, { order: 'asc' }, { key: 'asc' }],
+            select: { relationId: true, key: true, value: true },
+            take: relationIds.length * perRelation,
+        });
+    },
+
+    /** The book's relation fields, decrypted, oldest relation first, for word search (Phase 3.3 over 3.4). `take` bounds it. */
+    listForBookSearch(db: Db, workspaceId: string, bookId: string, take: number) {
+        return db.bibleRelationField.findMany({
+            where: { workspaceId, relation: { bookId } },
+            orderBy: [{ relationId: 'asc' }, { order: 'asc' }],
+            take,
+            select: { relationId: true, key: true, value: true, relation: { select: { fromElementId: true, toElementId: true, type: true, from: { select: { kind: true } } } } },
+        });
+    },
+
+    /** Set one field's stored value (JSON), creating its row if it has none. */
+    upsert(db: Db, workspaceId: string, relationId: string, field: { key: string; value: string; order: number }) {
+        return db.bibleRelationField.upsert({
+            where: { relationId_key: { relationId, key: field.key } },
+            create: { workspaceId, relationId, key: field.key, value: field.value, order: field.order },
+            update: { value: field.value, order: field.order },
+            select: { key: true },
+        });
+    },
+
+    async removeKeys(db: Db, workspaceId: string, relationId: string, keys: readonly string[]) {
+        if (keys.length === 0) return 0;
+        const res = await db.bibleRelationField.deleteMany({ where: { workspaceId, relationId, key: { in: [...keys] } } });
+        return res.count;
+    },
+};
+
+const RELATION_VERSION_META_SELECT = {
+    id: true,
+    relationId: true,
+    versionNumber: true,
+    changeSummary: true,
+    source: true,
+    sourceAnswerIds: true,
+    authorId: true,
+    createdAt: true,
+} as const satisfies Prisma.BibleRelationVersionSelect;
+
+/** A relation's history (Phase 3.3, D24): append-only by trigger, numbered under the relation's lock. */
+export const BibleRelationVersionRepository = {
+    async latestNumber(db: Db, workspaceId: string, relationId: string): Promise<number> {
+        const row = await db.bibleRelationVersion.findFirst({
+            where: { workspaceId, relationId },
+            orderBy: { versionNumber: 'desc' },
+            select: { versionNumber: true },
+        });
+        return row?.versionNumber ?? 0;
+    },
+
+    /** The latest version number of each relation asked for (0: none). Bounded by the relations asked for. */
+    async latestNumbers(db: Db, workspaceId: string, relationIds: readonly string[]): Promise<Map<string, number>> {
+        if (relationIds.length === 0) return new Map();
+        const rows = await db.bibleRelationVersion.groupBy({
+            by: ['relationId'],
+            where: { workspaceId, relationId: { in: [...relationIds] } },
+            _max: { versionNumber: true },
+            orderBy: { relationId: 'asc' },
+            take: relationIds.length,
+        });
+        return new Map(rows.map((r) => [r.relationId, r._max.versionNumber ?? 0]));
+    },
+
+    create(
+        db: Db,
+        workspaceId: string,
+        data: {
+            bookId: string;
+            relationId: string;
+            versionNumber: number;
+            snapshot: string;
+            changeSummary: string | null;
+            source: BibleVersionSource;
+            authorId: string;
+            /** The answers an INTERVIEW version is drawn from; empty for every other source (CHECK). */
+            sourceAnswerIds?: string[];
+        },
+    ) {
+        return db.bibleRelationVersion.create({ data: { ...data, workspaceId }, select: RELATION_VERSION_META_SELECT });
+    },
+
+    /** Newest first, without the snapshots. */
+    list(db: Db, workspaceId: string, bookId: string, relationId: string, take: number) {
+        return db.bibleRelationVersion.findMany({
+            where: { workspaceId, bookId, relationId },
+            orderBy: { versionNumber: 'desc' },
+            take,
+            select: RELATION_VERSION_META_SELECT,
+        });
+    },
+
+    find(db: Db, workspaceId: string, bookId: string, relationId: string, versionNumber: number) {
+        return db.bibleRelationVersion.findFirst({
+            where: { workspaceId, bookId, relationId, versionNumber },
+            select: { ...RELATION_VERSION_META_SELECT, snapshot: true },
+        });
     },
 };
 

@@ -149,6 +149,37 @@
       "inverseLabel": "caused by",
       "targetKinds": [
         "PLOT_BEAT"
+      ],
+      "fields": [
+        {
+          "key": "mechanism",
+          "label": "How one leads to the other",
+          "help": "The chain from the first to the second: what makes the second follow from it, rather than merely come after it.",
+          "type": "text",
+          "required": true,
+          "order": 1,
+          "dependsOn": []
+        },
+        {
+          "key": "reader_sees",
+          "label": "What the reader sees of the link",
+          "help": "Whether the reader notices the connection as it happens, later on, or only when looking back.",
+          "type": "text",
+          "required": false,
+          "order": 2,
+          "dependsOn": []
+        },
+        {
+          "key": "between",
+          "label": "What lies between them",
+          "help": "What happens, or is deliberately left out, between the first and the second.",
+          "type": "text",
+          "required": false,
+          "order": 3,
+          "dependsOn": [
+            "mechanism"
+          ]
+        }
       ]
     },
     {
@@ -157,6 +188,37 @@
       "inverseLabel": "made possible by",
       "targetKinds": [
         "PLOT_BEAT"
+      ],
+      "fields": [
+        {
+          "key": "mechanism",
+          "label": "How one leads to the other",
+          "help": "The chain from the first to the second: what makes the second follow from it, rather than merely come after it.",
+          "type": "text",
+          "required": true,
+          "order": 1,
+          "dependsOn": []
+        },
+        {
+          "key": "reader_sees",
+          "label": "What the reader sees of the link",
+          "help": "Whether the reader notices the connection as it happens, later on, or only when looking back.",
+          "type": "text",
+          "required": false,
+          "order": 2,
+          "dependsOn": []
+        },
+        {
+          "key": "between",
+          "label": "What lies between them",
+          "help": "What happens, or is deliberately left out, between the first and the second.",
+          "type": "text",
+          "required": false,
+          "order": 3,
+          "dependsOn": [
+            "mechanism"
+          ]
+        }
       ]
     },
     {
@@ -165,6 +227,37 @@
       "inverseLabel": "pays off",
       "targetKinds": [
         "PLOT_BEAT"
+      ],
+      "fields": [
+        {
+          "key": "mechanism",
+          "label": "How one leads to the other",
+          "help": "The chain from the first to the second: what makes the second follow from it, rather than merely come after it.",
+          "type": "text",
+          "required": true,
+          "order": 1,
+          "dependsOn": []
+        },
+        {
+          "key": "reader_sees",
+          "label": "What the reader sees of the link",
+          "help": "Whether the reader notices the connection as it happens, later on, or only when looking back.",
+          "type": "text",
+          "required": false,
+          "order": 2,
+          "dependsOn": []
+        },
+        {
+          "key": "between",
+          "label": "What lies between them",
+          "help": "What happens, or is deliberately left out, between the first and the second.",
+          "type": "text",
+          "required": false,
+          "order": 3,
+          "dependsOn": [
+            "mechanism"
+          ]
+        }
       ]
     },
     {
@@ -173,6 +266,37 @@
       "inverseLabel": "undone by",
       "targetKinds": [
         "PLOT_BEAT"
+      ],
+      "fields": [
+        {
+          "key": "mechanism",
+          "label": "How one leads to the other",
+          "help": "The chain from the first to the second: what makes the second follow from it, rather than merely come after it.",
+          "type": "text",
+          "required": true,
+          "order": 1,
+          "dependsOn": []
+        },
+        {
+          "key": "reader_sees",
+          "label": "What the reader sees of the link",
+          "help": "Whether the reader notices the connection as it happens, later on, or only when looking back.",
+          "type": "text",
+          "required": false,
+          "order": 2,
+          "dependsOn": []
+        },
+        {
+          "key": "between",
+          "label": "What lies between them",
+          "help": "What happens, or is deliberately left out, between the first and the second.",
+          "type": "text",
+          "required": false,
+          "order": 3,
+          "dependsOn": [
+            "mechanism"
+          ]
+        }
       ]
     },
     {
@@ -182,6 +306,28 @@
       "targetKinds": [
         "CHARACTER",
         "FACTION"
+      ],
+      "fields": [
+        {
+          "key": "part_played",
+          "label": "Part played",
+          "help": "What the one does in or for the other: who acts, who is acted upon, who only looks on.",
+          "type": "text",
+          "required": true,
+          "order": 1,
+          "dependsOn": []
+        },
+        {
+          "key": "aftermath",
+          "label": "What it leaves behind",
+          "help": "What this involvement costs, wins or changes for either side once it is over.",
+          "type": "text",
+          "required": false,
+          "order": 2,
+          "dependsOn": [
+            "part_played"
+          ]
+        }
       ]
     },
     {
@@ -190,6 +336,28 @@
       "inverseLabel": "setting of",
       "targetKinds": [
         "SETTING"
+      ],
+      "fields": [
+        {
+          "key": "part_played",
+          "label": "Part played",
+          "help": "What the one does in or for the other: who acts, who is acted upon, who only looks on.",
+          "type": "text",
+          "required": true,
+          "order": 1,
+          "dependsOn": []
+        },
+        {
+          "key": "aftermath",
+          "label": "What it leaves behind",
+          "help": "What this involvement costs, wins or changes for either side once it is over.",
+          "type": "text",
+          "required": false,
+          "order": 2,
+          "dependsOn": [
+            "part_played"
+          ]
+        }
       ]
     },
     {
@@ -198,6 +366,28 @@
       "inverseLabel": "staged in",
       "targetKinds": [
         "TIMELINE_EVENT"
+      ],
+      "fields": [
+        {
+          "key": "part_played",
+          "label": "Part played",
+          "help": "What the one does in or for the other: who acts, who is acted upon, who only looks on.",
+          "type": "text",
+          "required": true,
+          "order": 1,
+          "dependsOn": []
+        },
+        {
+          "key": "aftermath",
+          "label": "What it leaves behind",
+          "help": "What this involvement costs, wins or changes for either side once it is over.",
+          "type": "text",
+          "required": false,
+          "order": 2,
+          "dependsOn": [
+            "part_played"
+          ]
+        }
       ]
     },
     {
@@ -207,6 +397,26 @@
       "targetKinds": [
         "WORLD_RULE",
         "OBJECT"
+      ],
+      "fields": [
+        {
+          "key": "how_shown",
+          "label": "How it shows on the page",
+          "help": "Where and how the reader meets this link: in an action, an image, a setting or a choice.",
+          "type": "text",
+          "required": true,
+          "order": 1,
+          "dependsOn": []
+        },
+        {
+          "key": "why_it_matters",
+          "label": "Why it matters",
+          "help": "What this link does for the book: the meaning, pressure or effect it carries.",
+          "type": "text",
+          "required": false,
+          "order": 2,
+          "dependsOn": []
+        }
       ]
     }
   ]

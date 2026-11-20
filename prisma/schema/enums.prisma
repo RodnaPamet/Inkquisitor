@@ -68,6 +68,10 @@ enum InterviewScope {
   ELEMENT
   KIND
   BOOK
+  /// Phase 3.3 ("Grill this"): the elements and relations selected on a story map.
+  SELECTION
+  /// Phase 3.3 ("What happens between these?"): a beat not yet created, between two neighbouring beats.
+  BETWEEN
 }
 
 /// Where an interview stands. ACTIVE asks rounds; PAUSED stopped for a reason
@@ -156,6 +160,10 @@ enum EnrichmentOperation {
 enum EnrichmentProposalKind {
   FIELD
   NEW_ELEMENT
+  /// Phase 3.3 (D24): a change to one field of a relation.
+  RELATION_FIELD
+  /// Phase 3.3 (D24): a new relation between two elements (or a new element of the same run).
+  NEW_RELATION
 }
 
 /// Where a proposal stands. PENDING awaits the author; ACCEPTED and

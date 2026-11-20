@@ -301,14 +301,16 @@ describe('the routes', () => {
         return { status: res.status, json: (await res.json()) as Record<string, unknown> };
     }
 
-    it('GET interview-packs lists the six personas and sixteen craft packs (one per kind) with their mount status, and no pack text', async () => {
+    it('GET interview-packs lists the six personas and sixteen craft packs (one per kind) and the relations pack with their mount status, and no pack text', async () => {
         const res = await call(packsRoute, `/api/w/${owner.workspaceSlug}/interview-packs`, {});
         expect(res.status).toBe(200);
-        const body = res.json as { recordMode: string; personas: Array<Record<string, unknown>>; craft: Array<Record<string, unknown>>; mountable: number; total: number };
+        const body = res.json as { recordMode: string; personas: Array<Record<string, unknown>>; craft: Array<Record<string, unknown>>; relations: Array<Record<string, unknown>>; mountable: number; total: number };
         expect(body.recordMode).toBe('structural');
         expect(body.personas.map((p) => p.displayName)).toEqual(['Gentle Mentor', 'Ruthless Editor', 'Socratic', "Devil's Advocate", 'Target Reader', 'Genre Specialist']);
         expect(body.craft).toHaveLength(16);
-        expect(body).toMatchObject({ mountable: 22, total: 22 });
+        // Phase 3.3 (D24): one relations pack beside them, its own list.
+        expect(body.relations.map((p) => p.name)).toEqual(['relations']);
+        expect(body).toMatchObject({ mountable: 23, total: 23 });
         expect(body.personas[0]).toMatchObject({ name: 'persona-gentle-mentor', mountable: true, refusal: null, recordKind: 'structural', coverage: null });
         expect(body.craft.find((c) => c.key === 'CHARACTER')).toMatchObject({ name: 'craft-character', coverage: getPacks().craft.CHARACTER.coverage });
         expect(JSON.stringify(body)).not.toContain('## How to question');

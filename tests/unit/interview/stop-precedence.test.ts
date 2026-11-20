@@ -14,7 +14,8 @@ const EL = 'el-1';
 
 function session(over: Partial<SessionRow> = {}): SessionRow {
     return {
-        id: 's1', bookId: 'b1', scope: 'ELEMENT', targetElementId: EL, targetKind: null, depth: 1, detail: 3, personaKeys: [],
+        id: 's1', bookId: 'b1', scope: 'ELEMENT', targetElementId: EL, targetKind: null,
+        scopeElementIds: [], scopeRelationIds: [], slotKind: null, slotAfterElementId: null, slotBeforeElementId: null, slotAct: null, depth: 1, detail: 3, personaKeys: [],
         offerRecommended: true, preferChoice: false, packPins: null, status: 'ACTIVE', stopReason: null, stopDetail: null, roundBudget: 2, roundsRun: 0,
         tokenBudget: 30_000, tokensUsed: 0, createdById: null, createdAt: new Date(0), updatedAt: new Date(0), endedAt: null, ...over,
     };
@@ -23,7 +24,7 @@ function session(over: Partial<SessionRow> = {}): SessionRow {
 function state(stored: Record<string, string>): InterviewState {
     return {
         elements: [{ elementId: EL, kind: 'THEME', name: 'Grief', customLabel: null, fields: getTemplate('THEME').fields, storedText: new Map(Object.entries(stored)) }],
-        scopeTruncated: false, questions: [], latest: new Map(), answerFacts: [], promptAnswers: [], asked: [], related: [], rounds: [], challenged: [], challengesPlanned: 0,
+        checks: [], scopeTruncated: false, questions: [], latest: new Map(), answerFacts: [], promptAnswers: [], asked: [], related: [], rounds: [], challenged: [], challengesPlanned: 0,
     };
 }
 

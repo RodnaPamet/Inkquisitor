@@ -62,6 +62,9 @@ export const INTERVIEW_WORDED_REASONS = [
     'MODEL_RATE_LIMITED',
     // Phase 2.3: production with no passing evaluation record for a pack the session would mount.
     'PACKS_NOT_MOUNTABLE',
+    // Phase 3.3: a canvas interview's selection or slot.
+    'SCOPE_TOO_LARGE',
+    'SLOT_INVALID',
 ] as const;
 
 /** The `problem` a PACK_CHANGED stop records (`stopDetail.problem`): PACK_CHANGED, or PACK_NOT_PINNED for a session from before pinning. */
@@ -115,6 +118,7 @@ export function useInterviewErrorMessage(kindLabels?: Partial<Record<BibleKind, 
                         const pack = packOfName(name);
                         if (!pack) return null;
                         if (pack.group === 'persona') return t('packPersona', { name: tPersona(`${pack.key}.name`) });
+                        if (pack.group === 'relations') return t('packRelations');
                         const kind = kindLabels?.[pack.kind];
                         return kind ? t('packCraft', { kind }) : null;
                     })

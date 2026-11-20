@@ -34,6 +34,23 @@
  *                 refuses the whole request (409 BULK_INELIGIBLE), nothing
  *                 written.
  *
+ *
+ * PHASE 3.3 (decision D24). A RELATION_FIELD proposal is accepted as a FIELD
+ * one is, through the RELATION's versioned save (`relation-common.ts`: its
+ * lock, its `baseVersion`, one `BibleRelationVersion` INTERVIEW naming the
+ * answers). A NEW_RELATION proposal creates the relation through the one
+ * create path (`createRelationInTx`: the 1.1 rules, the symmetric pair index;
+ * a relation the book now holds is 409 RELATION_EXISTS), its first version
+ * INTERVIEW naming the answers — so the relation's creation is attributable to
+ * them. An end that is a NEW_ELEMENT proposal of the session is accepted
+ * FIRST: until it is, accepting the relation is 409 END_NOT_CREATED, and once
+ * it is rejected (or what it created is gone) 409 END_GONE. A NEW_ELEMENT that
+ * fills a BETWEEN slot is created with its first fields and the slot's act,
+ * then placed between the slot's neighbours by the order move
+ * (`placeNewElementInOrderTx`), under the order's lock taken before any other.
+ * Neither new kind is offered for bulk acceptance or edited on acceptance: a
+ * link is accepted as proposed or rejected, and its fields edited afterwards.
+ *
  * A decision is a conditional update from PENDING (`decide`): of two at once,
  * one lands and the other is 409 PROPOSAL_DECIDED. The database holds the
  * rest (`enrichment_proposal_fixed`: a proposal's content never changes).
@@ -49,7 +66,14 @@ import type { BibleElementKind } from '@prisma/client';
 import type { WorkspaceRequestContext } from '@/app-layer/types';
 import { logEvent } from '@/app-layer/events/audit';
 import { assertPermission } from '@/app-layer/policies/permission.policy';
-import { BibleElementRepository, BibleFieldRepository, BibleVersionRepository } from '@/app-layer/repositories/bible.repository';
+import {
+    BibleElementRepository,
+    BibleFieldRepository,
+    BibleRelationFieldRepository,
+    BibleRelationRepository,
+    BibleRelationVersionRepository,
+    BibleVersionRepository,
+} from '@/app-layer/repositories/bible.repository';
 import { EnrichmentAnswerReads, EnrichmentProposalRepository, ReconcileRunRepository, type ProposalRow } from '@/app-layer/repositories/enrichment.repository';
 import { InterviewRoundRepository, InterviewSessionRepository } from '@/app-layer/repositories/interview.repository';
 import { AcceptProposalInput, BulkAcceptInput, ProposalIdParam } from '@/app-layer/schemas/enrichment';
@@ -57,9 +81,9 @@ import { CHANGE_SUMMARY_MAX, ELEMENT_NAME_MAX, ELEMENT_SUMMARY_MAX } from '@/app
 import { runInWorkspaceContext, type PrismaTx } from '@/lib/db/rls-middleware';
 import { ConflictError, NotFoundError, ValidationError } from '@/lib/errors/types';
 import { decodeFieldValue, sameFieldValue, type FieldValue } from '@/lib/bible/field-values';
-import type { FieldDef } from '@/lib/bible/template-schema';
-import { getFieldDef } from '@/lib/bible/templates';
-import { decodeProposedValue } from '@/lib/enrichment/storage';
+import type { FieldDef, RelationFieldDef } from '@/lib/bible/template-schema';
+import { getFieldDef, getRelationFieldDef, getRelationType } from '@/lib/bible/templates';
+import { decodeNewElementFields, decodeNewRelation, decodeProposedValue } from '@/lib/enrichment/storage';
 import { bulkEligible, opFits } from '@/lib/enrichment/review-rules';
 import { effectiveRunState, PROPOSAL_FLAGS, type ProposalFlag, type ProposalStatus, type ReconcileOutcome, type StoredOp } from '@/lib/enrichment/vocabulary';
 import {
@@ -76,7 +100,10 @@ import {
     writeFieldValues,
 } from './bible-common';
 import { createElementInTx } from './bible-elements';
+import { ACT_FIELD_KEY, placeNewElementInOrderTx } from './bible-order';
+import { createRelationInTx, relationExists } from './bible-relations';
 import { bookHoldsElementName } from './enrichment-names';
+import { assertRelationBaseVersion, normaliseRelationFieldEntries, readRelationFieldValues, recordRelationVersion, relationForSave, requireRelationWithEnds, writeRelationFieldValues } from './relation-common';
 
 /** A session's proposals a review reads at most (it reads one more to say it was cut). */
 export const REVIEW_PROPOSALS_MAX = 400;
@@ -135,6 +162,59 @@ export interface NewElementProposalView {
     flags: ProposalFlag[];
     citedAnswerIds: string[];
     decidedAt: string | null;
+    /** Phase 3.3: its first field values with their template fields, in template order. */
+    fields: Array<{ field: FieldDef; value: FieldValue }>;
+    /** Phase 3.3: it fills a BETWEEN slot, placed between these two when accepted. */
+    slot: { afterElementId: string; afterName: string; beforeElementId: string; beforeName: string; act: string | null } | null;
+}
+
+/** Phase 3.3 (D24): a change to one field of a relation. */
+export interface RelationFieldProposalView {
+    id: string;
+    kind: 'RELATION_FIELD';
+    roundNumber: number | null;
+    status: ProposalStatus;
+    relationId: string;
+    /** The relation as the author reads it: its ends and its type's label. */
+    relation: { type: string; label: string; from: { id: string; name: string; kind: BibleElementKind }; to: { id: string; name: string; kind: BibleElementKind } };
+    fieldKey: string;
+    field: RelationFieldDef;
+    operation: StoredOp;
+    proposedValue: FieldValue | null;
+    currentValue: FieldValue | null;
+    baseVersion: number;
+    currentVersion: number;
+    flags: ProposalFlag[];
+    citedAnswerIds: string[];
+    decidedAt: string | null;
+}
+
+/** An end of a proposed relation: an element of the book, or a new element of the same session (by its proposal). */
+export interface NewRelationEndView {
+    elementId: string | null;
+    proposalId: string | null;
+    name: string;
+    kind: BibleElementKind | null;
+    /** Accepting the relation needs this end: false while a proposed end waits for its own acceptance. */
+    exists: boolean;
+}
+
+/** Phase 3.3 (D24): a proposed relation between two elements. */
+export interface NewRelationProposalView {
+    id: string;
+    kind: 'NEW_RELATION';
+    roundNumber: number | null;
+    status: ProposalStatus;
+    type: string;
+    label: string;
+    from: NewRelationEndView;
+    to: NewRelationEndView;
+    note: string | null;
+    fields: Array<{ field: FieldDef; value: FieldValue }>;
+    createdRelationId: string | null;
+    flags: ProposalFlag[];
+    citedAnswerIds: string[];
+    decidedAt: string | null;
 }
 
 export interface ReviewRunView {
@@ -149,6 +229,9 @@ export interface SessionReviewView {
     session: { id: string; bookId: string; scope: string; targetElementId: string | null; targetKind: BibleElementKind | null; status: string };
     fields: FieldProposalView[];
     newElements: NewElementProposalView[];
+    /** Phase 3.3 (D24). */
+    relationFields: RelationFieldProposalView[];
+    newRelations: NewRelationProposalView[];
     answers: Record<string, CitedAnswerView>;
     runs: ReviewRunView[];
     /** The session had more proposals than the review read. */
@@ -164,6 +247,159 @@ const citationIds = (p: ProposalRow) => p.citations.map((c) => c.answerId);
 /** A stored proposal's flags, those of the closed list only. */
 const flagsOf = (p: ProposalRow): ProposalFlag[] => p.flags.filter((f): f is ProposalFlag => (PROPOSAL_FLAGS as readonly string[]).includes(f));
 
+/** A stored proposal's first values with their template fields, in template order (a key the template no longer has is left out). */
+function labelledFields(values: ReadonlyMap<string, FieldValue>, defOf: (key: string) => FieldDef | undefined): Array<{ field: FieldDef; value: FieldValue }> {
+    return [...values]
+        .flatMap(([key, value]) => {
+            const field = defOf(key);
+            return field ? [{ field, value }] : [];
+        })
+        .sort((a, b) => a.field.order - b.field.order);
+}
+
+type SessionSlot = { id: string; slotAfterElementId: string | null; slotBeforeElementId: string | null; slotAct: string | null };
+
+/**
+ * Views of stored proposals, every kind (the review page, and Phase 3.3's map
+ * preview), with the current state of what each targets: an element's field
+ * and version, a relation's field and version, a new relation's ends (an
+ * element, or a new element proposal and whether it was accepted). A
+ * proposal whose target is gone is left out (its row goes with it by cascade).
+ */
+async function proposalViews(
+    db: PrismaTx,
+    ctx: WorkspaceRequestContext,
+    bookId: string,
+    proposals: readonly ProposalRow[],
+    numberOf: ReadonlyMap<string, number>,
+    sessions: ReadonlyMap<string, SessionSlot>,
+): Promise<{ fields: FieldProposalView[]; newElements: NewElementProposalView[]; relationFields: RelationFieldProposalView[]; newRelations: NewRelationProposalView[] }> {
+    const slotIds = [...sessions.values()].flatMap((s) => [s.slotAfterElementId, s.slotBeforeElementId].filter((x): x is string => x !== null));
+    const elementIds = [...new Set([...proposals.flatMap((p) => [p.elementId, p.newFromElementId, p.newToElementId].filter((x): x is string => x !== null)), ...slotIds])];
+    const elements = new Map((await BibleElementRepository.listByIds(db, ctx.workspaceId, bookId, elementIds)).map((e) => [e.id, e] as const));
+    const fieldElementIds = [...new Set(proposals.flatMap((p) => (p.elementId ? [p.elementId] : [])))].filter((id) => elements.has(id));
+    const values = new Map<string, Map<string, FieldValue>>();
+    for (const f of await BibleFieldRepository.listForElements(db, ctx.workspaceId, fieldElementIds, FIELDS_PER_ELEMENT)) {
+        if (!values.has(f.elementId)) values.set(f.elementId, new Map());
+        values.get(f.elementId)!.set(f.key, decodeFieldValue(f.value));
+    }
+    const versions = new Map<string, number>();
+    for (const id of fieldElementIds) versions.set(id, await BibleVersionRepository.latestNumber(db, ctx.workspaceId, id));
+
+    // Phase 3.3: the relations RELATION_FIELD proposals change, with their fields and versions.
+    const relationIds = [...new Set(proposals.flatMap((p) => (p.relationId ? [p.relationId] : [])))];
+    const relations = new Map((await BibleRelationRepository.listByIdsWithEnds(db, ctx.workspaceId, bookId, relationIds)).map((r) => [r.id, r] as const));
+    const relationValues = new Map<string, Map<string, FieldValue>>();
+    for (const f of await BibleRelationFieldRepository.listForRelations(db, ctx.workspaceId, [...relations.keys()], FIELDS_PER_ELEMENT)) {
+        if (!relationValues.has(f.relationId)) relationValues.set(f.relationId, new Map());
+        relationValues.get(f.relationId)!.set(f.key, decodeFieldValue(f.value));
+    }
+    const relationVersions = await BibleRelationVersionRepository.latestNumbers(db, ctx.workspaceId, [...relations.keys()]);
+    const byId = new Map(proposals.map((p) => [p.id, p] as const));
+    // A new relation's proposed end, when it is not among `proposals` (another page of the review): read by id.
+    const missingEnds = [...new Set(proposals.flatMap((p) => [p.newFromProposalId, p.newToProposalId].filter((x): x is string => x !== null && !byId.has(x))))];
+    for (const p of proposals.length > 0 && missingEnds.length > 0 ? await EnrichmentProposalRepository.listByIds(db, ctx.workspaceId, proposals[0].sessionId, missingEnds) : []) byId.set(p.id, p);
+    const createdIds = [...byId.values()].flatMap((p) => (p.createdElementId ? [p.createdElementId] : []));
+    const createdLive = new Set((await BibleElementRepository.listByIds(db, ctx.workspaceId, bookId, createdIds)).map((e) => e.id));
+
+    const out = { fields: [] as FieldProposalView[], newElements: [] as NewElementProposalView[], relationFields: [] as RelationFieldProposalView[], newRelations: [] as NewRelationProposalView[] };
+    for (const p of proposals) {
+        const roundNumber = numberOf.get(p.roundId) ?? null;
+        const common = { id: p.id, roundNumber, status: p.status, flags: flagsOf(p), citedAnswerIds: citationIds(p), decidedAt: p.decidedAt ? p.decidedAt.toISOString() : null };
+        if (p.kind === 'NEW_ELEMENT') {
+            const session = sessions.get(p.sessionId);
+            const after = session?.slotAfterElementId ? elements.get(session.slotAfterElementId) : undefined;
+            const before = session?.slotBeforeElementId ? elements.get(session.slotBeforeElementId) : undefined;
+            out.newElements.push({
+                ...common,
+                kind: 'NEW_ELEMENT',
+                newKind: p.newKind!,
+                name: p.newName ?? '',
+                summary: p.newSummary,
+                createdElementId: p.createdElementId,
+                fields: labelledFields(decodeNewElementFields(p.proposedValue), (key) => getFieldDef(p.newKind!, key)),
+                // A neighbour deleted since is no slot to show: acceptance places the beat where it can (placeNewElementInOrderTx).
+                slot: p.fillsSlot && after && before ? { afterElementId: after.id, afterName: after.name, beforeElementId: before.id, beforeName: before.name, act: session?.slotAct ?? null } : null,
+            });
+            continue;
+        }
+        if (p.kind === 'NEW_RELATION') {
+            const endOf = (elementId: string | null, proposalId: string | null): NewRelationEndView | null => {
+                if (elementId) {
+                    const e = elements.get(elementId);
+                    return e ? { elementId, proposalId: null, name: e.name, kind: e.kind, exists: true } : null;
+                }
+                const q = proposalId ? byId.get(proposalId) : undefined;
+                if (!q) return null;
+                const created = q.createdElementId && createdLive.has(q.createdElementId) ? q.createdElementId : null;
+                return { elementId: created, proposalId: q.id, name: q.newName ?? '', kind: q.newKind, exists: created !== null };
+            };
+            const from = endOf(p.newFromElementId, p.newFromProposalId);
+            const to = endOf(p.newToElementId, p.newToProposalId);
+            if (!from || !to) continue;
+            const fromKind = from.kind;
+            const type = fromKind ? getRelationType(fromKind, p.newRelationType!) : undefined;
+            const decoded = decodeNewRelation(p.proposedValue);
+            out.newRelations.push({
+                ...common,
+                kind: 'NEW_RELATION',
+                type: p.newRelationType!,
+                label: type?.label ?? p.newRelationType!,
+                from,
+                to,
+                note: decoded.note,
+                fields: labelledFields(decoded.fields, (key) => (fromKind ? getRelationFieldDef(fromKind, p.newRelationType!, key) : undefined)),
+                createdRelationId: p.createdRelationId,
+            });
+            continue;
+        }
+        if (p.kind === 'RELATION_FIELD') {
+            const r = relations.get(p.relationId!);
+            const def = r ? getRelationFieldDef(r.from.kind, r.type, p.fieldKey!) : undefined;
+            if (!r || !def) continue;
+            out.relationFields.push({
+                ...common,
+                kind: 'RELATION_FIELD',
+                relationId: r.id,
+                relation: {
+                    type: r.type,
+                    label: getRelationType(r.from.kind, r.type)?.label ?? r.type,
+                    from: { id: r.from.id, name: r.from.name, kind: r.from.kind },
+                    to: { id: r.to.id, name: r.to.name, kind: r.to.kind },
+                },
+                fieldKey: def.key,
+                field: def,
+                operation: p.operation!,
+                proposedValue: decodeProposedValue(p.proposedValue),
+                currentValue: relationValues.get(r.id)?.get(def.key) ?? null,
+                baseVersion: p.baseVersion!,
+                currentVersion: relationVersions.get(r.id) ?? 0,
+            });
+            continue;
+        }
+        const element = elements.get(p.elementId!);
+        const def = element ? getFieldDef(element.kind, p.fieldKey!) : undefined;
+        if (!element || !def) continue;
+        const current = values.get(element.id)?.get(def.key) ?? null;
+        out.fields.push({
+            ...common,
+            kind: 'FIELD',
+            elementId: element.id,
+            elementName: element.name,
+            elementKind: element.kind,
+            fieldKey: def.key,
+            field: def,
+            operation: p.operation!,
+            proposedValue: decodeProposedValue(p.proposedValue),
+            currentValue: current,
+            baseVersion: p.baseVersion!,
+            currentVersion: versions.get(element.id) ?? 0,
+            bulkEligible: bulkEligible({ status: p.status, operation: p.operation!, flags: p.flags }, current),
+        });
+    }
+    return out;
+}
+
 /** Every proposal of a session, with the current state of what each targets and the answers each cites (`bible.view`). */
 export async function getSessionReview(ctx: WorkspaceRequestContext, bookId: string, sessionId: string): Promise<SessionReviewView> {
     await assertPermission(ctx, 'bible.view');
@@ -176,62 +412,7 @@ export async function getSessionReview(ctx: WorkspaceRequestContext, bookId: str
         const rounds = await InterviewRoundRepository.listForSession(db, ctx.workspaceId, sessionId, REVIEW_ROUNDS_READ);
         const numberOf = new Map(rounds.map((r) => [r.id, r.number] as const));
 
-        const elementIds = [...new Set(proposals.flatMap((p) => (p.elementId ? [p.elementId] : [])))];
-        const elements = new Map((await BibleElementRepository.listByIds(db, ctx.workspaceId, bookId, elementIds)).map((e) => [e.id, e] as const));
-        const values = new Map<string, Map<string, FieldValue>>();
-        for (const f of await BibleFieldRepository.listForElements(db, ctx.workspaceId, [...elements.keys()], FIELDS_PER_ELEMENT)) {
-            if (!values.has(f.elementId)) values.set(f.elementId, new Map());
-            values.get(f.elementId)!.set(f.key, decodeFieldValue(f.value));
-        }
-        const versions = new Map<string, number>();
-        for (const id of elements.keys()) versions.set(id, await BibleVersionRepository.latestNumber(db, ctx.workspaceId, id));
-
-        const fields: FieldProposalView[] = [];
-        const newElements: NewElementProposalView[] = [];
-        for (const p of proposals) {
-            const roundNumber = numberOf.get(p.roundId) ?? null;
-            if (p.kind === 'NEW_ELEMENT') {
-                newElements.push({
-                    id: p.id,
-                    kind: 'NEW_ELEMENT',
-                    roundNumber,
-                    status: p.status,
-                    newKind: p.newKind!,
-                    name: p.newName ?? '',
-                    summary: p.newSummary,
-                    createdElementId: p.createdElementId,
-                    flags: flagsOf(p),
-                    citedAnswerIds: citationIds(p),
-                    decidedAt: p.decidedAt ? p.decidedAt.toISOString() : null,
-                });
-                continue;
-            }
-            const element = elements.get(p.elementId!);
-            const def = element ? getFieldDef(element.kind, p.fieldKey!) : undefined;
-            if (!element || !def) continue;
-            const current = values.get(element.id)?.get(def.key) ?? null;
-            fields.push({
-                id: p.id,
-                kind: 'FIELD',
-                roundNumber,
-                status: p.status,
-                elementId: element.id,
-                elementName: element.name,
-                elementKind: element.kind,
-                fieldKey: def.key,
-                field: def,
-                operation: p.operation!,
-                proposedValue: decodeProposedValue(p.proposedValue),
-                currentValue: current,
-                baseVersion: p.baseVersion!,
-                currentVersion: versions.get(element.id) ?? 0,
-                bulkEligible: bulkEligible({ status: p.status, operation: p.operation!, flags: p.flags }, current),
-                flags: flagsOf(p),
-                citedAnswerIds: citationIds(p),
-                decidedAt: p.decidedAt ? p.decidedAt.toISOString() : null,
-            });
-        }
-
+        const views = await proposalViews(db, ctx, bookId, proposals, numberOf, new Map([[session.id, session]]));
         const cited = [...new Set(proposals.flatMap(citationIds))];
         const answers: Record<string, CitedAnswerView> = {};
         for (const a of await EnrichmentAnswerReads.listCited(db, ctx.workspaceId, sessionId, cited)) {
@@ -244,12 +425,55 @@ export async function getSessionReview(ctx: WorkspaceRequestContext, bookId: str
         });
         return {
             session: { id: session.id, bookId, scope: session.scope, targetElementId: session.targetElementId, targetKind: session.targetKind, status: session.status },
-            fields,
-            newElements,
+            ...views,
             answers,
             runs,
             truncated: rows.length > REVIEW_PROPOSALS_MAX,
         };
+    });
+}
+
+/** The book's pending structural proposals a story map previews, at most (one more is read to say it was cut). */
+export const PENDING_STRUCTURE_MAX = 200;
+
+/** Phase 3.3: a structural proposal as a story map previews and lists it, with the session it belongs to (its review page). */
+export type PendingStructureView =
+    | (NewElementProposalView & { sessionId: string })
+    | (NewRelationProposalView & { sessionId: string });
+
+/**
+ * The book's PENDING new elements and new relations (Phase 3.3, `bible.view`):
+ * what a story map shows as ghost nodes and edges, and lists beside them as
+ * the record — each with the answers it cites, so the list stands on its own
+ * whether or not the canvas draws. Accepting or rejecting goes through the
+ * session's ordinary review routes.
+ */
+export async function listPendingStructure(
+    ctx: WorkspaceRequestContext,
+    bookId: string,
+): Promise<{ proposals: PendingStructureView[]; answers: Record<string, CitedAnswerView>; truncated: boolean }> {
+    await assertPermission(ctx, 'bible.view');
+    return runInWorkspaceContext(ctx, async (db) => {
+        await requireBook(db, ctx, bookId);
+        const rows = await EnrichmentProposalRepository.pendingStructuralForBook(db, ctx.workspaceId, bookId, PENDING_STRUCTURE_MAX + 1);
+        const pending = rows.slice(0, PENDING_STRUCTURE_MAX);
+        const out: PendingStructureView[] = [];
+        const answers: Record<string, CitedAnswerView> = {};
+        // Grouped by session: a review's reads are per session (its rounds, its proposals' ends, its answers).
+        const bySession = new Map<string, ProposalRow[]>();
+        for (const p of pending) bySession.set(p.sessionId, [...(bySession.get(p.sessionId) ?? []), p]);
+        for (const [sessionId, proposals] of bySession) {
+            const session = await InterviewSessionRepository.find(db, ctx.workspaceId, bookId, sessionId);
+            if (!session) continue;
+            const rounds = await InterviewRoundRepository.listForSession(db, ctx.workspaceId, sessionId, REVIEW_ROUNDS_READ);
+            const views = await proposalViews(db, ctx, bookId, proposals, new Map(rounds.map((r) => [r.id, r.number] as const)), new Map([[session.id, session]]));
+            for (const v of views.newElements) out.push({ ...v, sessionId });
+            for (const v of views.newRelations) out.push({ ...v, sessionId });
+            for (const a of await EnrichmentAnswerReads.listCited(db, ctx.workspaceId, sessionId, [...new Set(proposals.flatMap(citationIds))])) {
+                answers[a.id] = { answerId: a.id, question: a.question.text, questionKind: a.question.kind, answer: answerText(a), status: a.status };
+            }
+        }
+        return { proposals: out, answers, truncated: rows.length > PENDING_STRUCTURE_MAX };
     });
 }
 
@@ -299,6 +523,10 @@ export interface DecisionResult {
     /** The version an acceptance wrote, or the element it created. */
     elementId: string | null;
     versionNumber: number | null;
+    /** Phase 3.3: the relation an acceptance changed or created. */
+    relationId?: string | null;
+    /** Phase 3.3: a slot's new element was placed between its neighbours (false: no neighbour remained). */
+    placed?: boolean;
 }
 
 async function requirePending(db: PrismaTx, ctx: WorkspaceRequestContext, bookId: string, sessionId: string, proposalId: string): Promise<ProposalRow> {
@@ -381,6 +609,11 @@ async function acceptField(db: PrismaTx, ctx: WorkspaceRequestContext, bookId: s
 }
 
 async function acceptNewElement(db: PrismaTx, ctx: WorkspaceRequestContext, bookId: string, sessionId: string, proposalId: string, input: AcceptProposalInput): Promise<DecisionResult> {
+    const peek = await EnrichmentProposalRepository.find(db, ctx.workspaceId, sessionId, ProposalIdParam.parse(proposalId));
+    if (!peek || peek.bookId !== bookId) throw new NotFoundError('Proposal not found.');
+    // A slot's element (Phase 3.3) is placed in its kind's order: the order's lock first, before the names lock and any element lock.
+    const session = peek.fillsSlot ? await InterviewSessionRepository.find(db, ctx.workspaceId, bookId, sessionId) : null;
+    if (peek.fillsSlot && peek.newKind) await BibleElementRepository.lockOrder(db, bookId, peek.newKind);
     const p = await requirePending(db, ctx, bookId, sessionId, proposalId);
     if (p.kind !== 'NEW_ELEMENT') throw new ValidationError('This proposal changes a field.', { reason: 'EDIT_NOT_ALLOWED' });
     if (input.value !== undefined) throw new ValidationError('A new element takes a name and a summary, not a value.', { reason: 'EDIT_NOT_ALLOWED' });
@@ -388,13 +621,18 @@ async function acceptNewElement(db: PrismaTx, ctx: WorkspaceRequestContext, book
     const summary = input.summary !== undefined ? (optionalBlock(input.summary, ELEMENT_SUMMARY_MAX, 'Summary') ?? null) : (optionalBlock(p.newSummary, ELEMENT_SUMMARY_MAX, 'Summary') ?? null);
     if (await bookHoldsElementName(db, ctx, bookId, name)) throw new ConflictError('The book already has an element of that name.', { reason: 'ELEMENT_EXISTS' });
     const answerIds = citationIds(p);
+    // Its first fields (Phase 3.3): the slot's answers, and the act of the lane it was asked about.
+    const fields = [...decodeNewElementFields(p.proposedValue)].map(([key, value]) => ({ key, value }));
+    if (p.fillsSlot && session?.slotAct && getFieldDef(p.newKind!, ACT_FIELD_KEY)) fields.push({ key: ACT_FIELD_KEY, value: session.slotAct });
     const { element, version } = await createElementInTx(
         db,
         ctx,
         bookId,
-        { kind: p.newKind!, name, summary, customLabel: null, fields: [] },
+        { kind: p.newKind!, name, summary, customLabel: null, fields },
         { source: 'INTERVIEW', changeSummary: optionalBlock(input.changeSummary, CHANGE_SUMMARY_MAX, 'Change summary') ?? null, sourceAnswerIds: answerIds },
     );
+    // Between the slot's neighbours, through the 3.2 order move (one version, marked moved in order).
+    const placement = p.fillsSlot && session ? await placeNewElementInOrderTx(db, ctx, bookId, element, { after: session.slotAfterElementId, before: session.slotBeforeElementId }, { source: 'INTERVIEW', sourceAnswerIds: citationIds(p) }) : null;
     const edited = name !== p.newName || summary !== p.newSummary;
     const status: ProposalStatus = edited ? 'EDITED_ACCEPTED' : 'ACCEPTED';
     await decideOrConflict(db, ctx, p.id, { status, decidedById: ctx.userId, createdElementId: element.id });
@@ -404,11 +642,121 @@ async function acceptNewElement(db: PrismaTx, ctx: WorkspaceRequestContext, book
             action: 'ENRICHMENT_PROPOSAL_ACCEPTED',
             entityType: 'EnrichmentProposal',
             entityId: p.id,
-            details: { bookId, sessionId, elementId: element.id, kind: p.newKind, newElement: true, edited, versionNumber: version.versionNumber, citedAnswerCount: answerIds.length },
+            details: {
+                bookId,
+                sessionId,
+                elementId: element.id,
+                kind: p.newKind,
+                newElement: true,
+                edited,
+                versionNumber: placement?.versionNumber ?? version.versionNumber,
+                citedAnswerCount: answerIds.length,
+                ...(p.fillsSlot ? { fillsSlot: true, placed: placement?.placed ?? false } : {}),
+            },
         },
         { db },
     );
-    return { proposalId: p.id, status, elementId: element.id, versionNumber: version.versionNumber };
+    return { proposalId: p.id, status, elementId: element.id, versionNumber: placement?.versionNumber ?? version.versionNumber, ...(p.fillsSlot ? { placed: placement?.placed ?? false } : {}) };
+}
+
+/**
+ * Accept a RELATION_FIELD proposal (Phase 3.3): as a FIELD proposal, through
+ * the relation's versioned save. The relation's lock first, then the proposal
+ * under it; `baseVersion` is the relation's latest (0: none yet).
+ */
+async function acceptRelationField(db: PrismaTx, ctx: WorkspaceRequestContext, bookId: string, sessionId: string, proposalId: string, input: AcceptProposalInput): Promise<DecisionResult> {
+    const peek = await EnrichmentProposalRepository.find(db, ctx.workspaceId, sessionId, ProposalIdParam.parse(proposalId));
+    if (!peek || peek.bookId !== bookId || !peek.relationId) throw new NotFoundError('Proposal not found.');
+    await BibleRelationRepository.lock(db, peek.relationId);
+    const p = await requirePending(db, ctx, bookId, sessionId, proposalId);
+    const r = await requireRelationWithEnds(db, ctx, bookId, p.relationId!);
+    if (input.baseVersion === undefined) throw new ValidationError('An acceptance names the version it was reviewed against.', { reason: 'BASE_VERSION_REQUIRED' });
+    await assertRelationBaseVersion(db, ctx, r.id, input.baseVersion);
+    if (p.baseVersion !== input.baseVersion && !input.reviewedCurrent) {
+        throw new ConflictError('The relation changed since this was proposed; review its current value first.', { reason: 'PROPOSAL_OUTDATED', currentVersion: input.baseVersion, proposedAgainst: p.baseVersion });
+    }
+    const op = p.operation!;
+    const key = p.fieldKey!;
+    const current = (await readRelationFieldValues(db, ctx, r.id)).get(key) ?? null;
+    if (!opFits(op, current)) throw new ConflictError('The field no longer holds what this proposal was made for.', { reason: 'PROPOSAL_STALE', operation: op });
+    const relation = relationForSave(bookId, r);
+    const proposed = decodeProposedValue(p.proposedValue);
+    let value: FieldValue | null = proposed;
+    let edited = false;
+    if (input.value !== undefined) {
+        if (op === 'REMOVE') throw new ValidationError('A removal has no value to edit.', { reason: 'EDIT_NOT_ALLOWED' });
+        const next = normaliseRelationFieldEntries(relation, [{ key, value: input.value }]).get(key) ?? null;
+        if (next === null) throw new ValidationError('An edit cannot empty the field; reject the proposal instead.', { reason: 'EDIT_NOT_ALLOWED' });
+        edited = !sameFieldValue(next, proposed);
+        value = next;
+    }
+    const changed = await writeRelationFieldValues(db, ctx, relation, [{ key, value }]);
+    if (changed.length === 0) throw new ValidationError('That would change nothing.', { reason: 'EDIT_CHANGES_NOTHING' });
+    const answerIds = citationIds(p);
+    const version = await recordRelationVersion(db, ctx, relation, { source: 'INTERVIEW', changeSummary: optionalBlock(input.changeSummary, CHANGE_SUMMARY_MAX, 'Change summary') ?? null, sourceAnswerIds: answerIds });
+    const status: ProposalStatus = edited ? 'EDITED_ACCEPTED' : 'ACCEPTED';
+    await decideOrConflict(db, ctx, p.id, { status, decidedById: ctx.userId, versionId: version.id });
+    const others = await EnrichmentProposalRepository.pendingForRelationField(db, ctx.workspaceId, r.id, key, p.id, 100);
+    for (const o of others) await EnrichmentProposalRepository.decide(db, ctx.workspaceId, o.id, { status: 'SUPERSEDED', decidedById: ctx.userId });
+    await logEvent(
+        ctx,
+        {
+            action: 'ENRICHMENT_PROPOSAL_ACCEPTED',
+            entityType: 'EnrichmentProposal',
+            entityId: p.id,
+            details: { bookId, sessionId, relationId: r.id, fieldKey: key, operation: op, edited, flags: p.flags, versionNumber: version.versionNumber, citedAnswerCount: answerIds.length, superseded: others.length },
+        },
+        { db },
+    );
+    return { proposalId: p.id, status, elementId: null, relationId: r.id, versionNumber: version.versionNumber };
+}
+
+/**
+ * Accept a NEW_RELATION proposal (Phase 3.3): each end resolved (an element of
+ * the book; or a NEW_ELEMENT proposal of the session, which must have been
+ * accepted first — 409 END_NOT_CREATED — and whose element must still be
+ * there — 409 END_GONE), then the relation created through the one create path
+ * with its note and fields, its first version INTERVIEW naming the answers.
+ * Accepted as proposed: its fields are edited afterwards, like any relation's.
+ */
+async function acceptNewRelation(db: PrismaTx, ctx: WorkspaceRequestContext, bookId: string, sessionId: string, proposalId: string, input: AcceptProposalInput): Promise<DecisionResult> {
+    const p = await requirePending(db, ctx, bookId, sessionId, proposalId);
+    if (p.kind !== 'NEW_RELATION') throw new ValidationError('This is not a proposed relation.', { reason: 'EDIT_NOT_ALLOWED' });
+    if (input.value !== undefined || input.name !== undefined || input.summary !== undefined) {
+        throw new ValidationError('A proposed relation is accepted as proposed; edit its fields afterwards.', { reason: 'EDIT_NOT_ALLOWED' });
+    }
+    const proposedEnds = await EnrichmentProposalRepository.listEnds(db, ctx.workspaceId, sessionId, [p.newFromProposalId, p.newToProposalId].filter((x): x is string => x !== null));
+    const endOf = async (elementId: string | null, endProposalId: string | null): Promise<string> => {
+        if (elementId) return elementId;
+        const end = proposedEnds.find((e) => e.id === endProposalId);
+        if (!end || end.status === 'REJECTED' || end.status === 'SUPERSEDED') throw new ConflictError('An element this relation joins was not created.', { reason: 'END_GONE' });
+        if (end.status === 'PENDING' || !end.createdElementId) throw new ConflictError('Accept the new element this relation joins first.', { reason: 'END_NOT_CREATED', proposalId: end.id });
+        if (!(await BibleElementRepository.find(db, ctx.workspaceId, bookId, end.createdElementId))) throw new ConflictError('An element this relation joins has been deleted.', { reason: 'END_GONE' });
+        return end.createdElementId;
+    };
+    const from = await endOf(p.newFromElementId, p.newFromProposalId);
+    const to = await endOf(p.newToElementId, p.newToProposalId);
+    const decoded = decodeNewRelation(p.proposedValue);
+    const answerIds = citationIds(p);
+    const created = await createRelationInTx(
+        db,
+        ctx,
+        bookId,
+        { fromElementId: from, toElementId: to, type: p.newRelationType!, note: decoded.note, fields: [...decoded.fields].map(([key, value]) => ({ key, value })) },
+        { source: 'INTERVIEW', sourceAnswerIds: answerIds, changeSummary: optionalBlock(input.changeSummary, CHANGE_SUMMARY_MAX, 'Change summary') ?? null },
+    );
+    await decideOrConflict(db, ctx, p.id, { status: 'ACCEPTED', decidedById: ctx.userId, versionId: created.versionId, createdRelationId: created.relation.id });
+    await logEvent(
+        ctx,
+        {
+            action: 'ENRICHMENT_PROPOSAL_ACCEPTED',
+            entityType: 'EnrichmentProposal',
+            entityId: p.id,
+            details: { bookId, sessionId, relationId: created.relation.id, type: p.newRelationType, newRelation: true, flags: p.flags, versionNumber: created.versionNumber, citedAnswerCount: answerIds.length },
+        },
+        { db },
+    );
+    return { proposalId: p.id, status: 'ACCEPTED', elementId: null, relationId: created.relation.id, versionNumber: created.versionNumber };
 }
 
 /** Accept one proposal, as proposed or edited (`bible.edit`; the rules in the header). */
@@ -421,6 +769,15 @@ export async function acceptProposal(ctx: WorkspaceRequestContext, bookId: strin
     });
     if (kind === null) throw new NotFoundError('Proposal not found.');
     if (kind === 'FIELD') return runInWorkspaceContext(ctx, (db) => acceptField(db, ctx, bookId, sessionId, proposalId, parsed));
+    if (kind === 'RELATION_FIELD') return runInWorkspaceContext(ctx, (db) => acceptRelationField(db, ctx, bookId, sessionId, proposalId, parsed));
+    if (kind === 'NEW_RELATION') {
+        try {
+            return await runInWorkspaceContext(ctx, (db) => acceptNewRelation(db, ctx, bookId, sessionId, proposalId, parsed));
+        } catch (err) {
+            if (isUniqueViolation(err)) throw relationExists();
+            throw err;
+        }
+    }
     // A derived slug lost to a concurrent create is retried in a fresh transaction, as `createElement` does.
     for (let attempt = 1; ; attempt++) {
         try {

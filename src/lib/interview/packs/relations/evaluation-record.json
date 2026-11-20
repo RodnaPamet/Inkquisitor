@@ -1,0 +1,217 @@
+{
+  "format": "inkquisitor-pack-evaluation/1",
+  "pack": {
+    "name": "relations",
+    "version": 1,
+    "contentHash": "sha256:bf43bb8a9a871dc6cd2cd7c069315c89a9bee193c0906c0ae068d37c283b3fd2"
+  },
+  "set": {
+    "hash": "sha256:a68d393ec44d10d0857fbd60b5a6e2d393e6ac9808f3e39e45fa8a9f0d845d53"
+  },
+  "promptVersion": "question-generation.3.3.0",
+  "promptHash": "sha256:e323d027ca3f08b1fe46492f832fe827fed195bfd4d96ebd0647fe1b143137b1",
+  "generator": {
+    "kind": "structural",
+    "id": "structural-generator.1"
+  },
+  "ranAt": "2026-11-20T19:56:57.922Z",
+  "answers": [
+    {
+      "caseId": "relations-01",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-relations-01",
+              "targetsFieldKeys": [
+                "history"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the history.",
+              "kind": "CHOICE",
+              "text": "Which way does the history lean?",
+              "options": [
+                "history leans inward",
+                "history leans outward",
+                "history holds still"
+              ]
+            },
+            {
+              "elementId": "eval-relations-01",
+              "targetsFieldKeys": [
+                "wants"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the wants.",
+              "kind": "CHOICE",
+              "text": "Which way does the wants lean?",
+              "options": [
+                "wants leans inward",
+                "wants leans outward",
+                "wants holds still"
+              ]
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "relations-02",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-relations-02",
+              "targetsFieldKeys": [
+                "wants"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the wants.",
+              "kind": "OPEN",
+              "text": "What wants matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "relations-03",
+      "outputs": []
+    },
+    {
+      "caseId": "relations-04",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-relations-04",
+              "targetsFieldKeys": [
+                "basis"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the basis.",
+              "kind": "OPEN",
+              "text": "What basis matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "relations-05",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-relations-05",
+              "targetsFieldKeys": [
+                "mechanism"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the mechanism.",
+              "kind": "OPEN",
+              "text": "What mechanism matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "relations-06",
+      "outputs": []
+    },
+    {
+      "caseId": "relations-07",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-relations-07",
+              "targetsFieldKeys": [
+                "part_played"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the part played.",
+              "kind": "CHOICE",
+              "text": "Which way does the part played lean?",
+              "options": [
+                "part played leans inward",
+                "part played leans outward",
+                "part played holds still"
+              ]
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "relations-08",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-relations-08",
+              "targetsFieldKeys": [
+                "how_shown"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the how shown.",
+              "kind": "OPEN",
+              "text": "What how shown matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "relations-09",
+      "outputs": []
+    },
+    {
+      "caseId": "relations-10",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-relations-10",
+              "targetsFieldKeys": [
+                "point"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the point.",
+              "kind": "OPEN",
+              "text": "What point matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "relations-11",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-relations-11",
+              "targetsFieldKeys": [
+                "nature"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the nature.",
+              "kind": "OPEN",
+              "text": "What nature matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    }
+  ]
+}

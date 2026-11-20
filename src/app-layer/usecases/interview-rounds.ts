@@ -41,8 +41,6 @@ import { InterviewRoundRepository, InterviewSessionRepository, QuestionRepositor
 import { runInWorkspaceContext, type PrismaTx } from '@/lib/db/rls-middleware';
 import { ConflictError } from '@/lib/errors/types';
 import { AiUnavailableError, type AiUnavailableReason } from '@/lib/ai/errors';
-import { getTemplate } from '@/lib/bible/templates';
-import { BibleElementRepository } from '@/app-layer/repositories/bible.repository';
 import { isVerbatimQuote } from '@/lib/interview/candidates';
 import { dedupeTokens, exactKey, questionDedupeKey } from '@/lib/interview/dedupe';
 import type { FrontierResult } from '@/lib/interview/frontier';
@@ -64,7 +62,8 @@ import { chargeModelCalls } from '@/lib/security/model-call-rate-limit';
 import { env } from '@/env';
 import { encodeJson, sanitiseQuestionForStorage } from '@/lib/interview/storage';
 import { STATUS_AFTER_STOP, type PersonaKey, type StopReason } from '@/lib/interview/vocabulary';
-import { challengeableOf, frontierOf, frontierStop, loadInterviewState, nextRoundNumber, stopDetailFor, storedTextOf, type InterviewState } from './interview-state';
+import { PENDING_SUBJECT_ID, subjectIdOf } from '@/lib/interview/subjects';
+import { challengeableOf, frontierOf, frontierStop, loadInterviewState, nextRoundNumber, stopDetailFor, type InterviewState } from './interview-state';
 import { defaultQuestionEmbedder, findQuestionNeighbours, questionRecord, upsertQuestionVectors, type QuestionEmbedder } from './question-embeddings';
 
 /**
@@ -290,7 +289,7 @@ export async function claimRound(db: PrismaTx, ctx: WorkspaceRequestContext, ses
         return { kind: 'stopped', reason: stop.reason };
     }
     assertModelAvailable(generator);
-    const needed = packNamesFor([...new Set(state.elements.map((e) => e.kind))], session.personaKeys as PersonaKey[]);
+    const needed = packNamesForState(state, session.personaKeys as PersonaKey[]);
     const problem = pinMismatch(parsePackPins(session.packPins), needed, packs.registry, await packs.mounts(needed));
     if (problem?.reason === 'PACK_NOT_MOUNTABLE') {
         throw new PacksNotMountableError(problem.packs);
@@ -336,14 +335,23 @@ export async function claimRound(db: PrismaTx, ctx: WorkspaceRequestContext, ses
     return { kind: 'claimed', roundId: round.id, roundNumber, plan, state };
 }
 
+/**
+ * The packs a session's subjects are questioned with, by name (Phase 3.3): the
+ * craft pack of each element kind (the element not yet created's too), the
+ * relations pack when a relation is in scope, and each persona's.
+ */
+export function packNamesForState(state: Pick<InterviewState, 'elements'>, personaKeys: readonly PersonaKey[]): string[] {
+    const kinds = [...new Set(state.elements.filter((e) => !e.relation).map((e) => e.kind))];
+    return packNamesFor(kinds, personaKeys, { relations: state.elements.some((e) => e.relation) });
+}
+
 /** The questions whose ANSWERED answers settled `q`'s prerequisites in this session (derived; display and audit). */
 function dependsOnQuestionIds(q: PlannedQuestion, state: InterviewState): string[] {
     const element = state.elements.find((e) => e.elementId === q.elementId);
     if (!element) return [];
-    const template = getTemplate(element.kind);
-    const prereqs = new Set(q.targetsFieldKeys.flatMap((k) => template.fields.find((f) => f.key === k)?.dependsOn ?? []));
+    const prereqs = new Set(q.targetsFieldKeys.flatMap((k) => element.fields.find((f) => f.key === k)?.dependsOn ?? []));
     return state.questions
-        .filter((asked) => asked.elementId === q.elementId && asked.targetsFieldKeys.some((k) => prereqs.has(k)) && state.latest.get(asked.id)?.status === 'ANSWERED')
+        .filter((asked) => subjectIdOf(asked) === q.elementId && asked.targetsFieldKeys.some((k) => prereqs.has(k)) && state.latest.get(asked.id)?.status === 'ANSWERED')
         .map((asked) => asked.id);
 }
 
@@ -382,7 +390,7 @@ export async function generateClaimedRound(
                 generator,
                 embed: embedder ? (texts) => embedder.embed(texts) : undefined,
                 findNeighbours: embedder ? (vectors) => neighboursOrNone(ctx, session.bookId, embedder.revision, vectors, known) : undefined,
-                findExactRepeats: (probes) => exactRepeatsOrNone(ctx, session.bookId, probes),
+                findExactRepeats: (probes) => exactRepeatsOrNone(ctx, session.bookId, probes, new Set(state.elements.filter((e) => e.relation).map((e) => e.elementId))),
                 observer: streamObserver(deps.stream),
                 signal: deps.signal,
             },
@@ -441,7 +449,7 @@ export async function generateClaimedRound(
         // and is not asked (rule 5); an element deleted in the meantime is not
         // asked about; a challenge whose quote is no longer in the stored value
         // is not asked. Read again here, under the lock, and drop those.
-        const askable = await stillAskable(db, ctx, session.bookId, output.questions);
+        const askable = await stillAskable(db, ctx, session, output.questions);
         const questions = askable.map((q, i) => ({ ...q, position: i + 1 }));
         const metrics = { ...output.metrics, staleAtPersist: output.questions.length - questions.length } as unknown as Prisma.InputJsonValue;
 
@@ -473,7 +481,7 @@ export async function generateClaimedRound(
                 sessionId: session.id,
                 roundId: claim.roundId,
                 position: planned.position,
-                elementId: q.elementId,
+                ...storedSubject(q.elementId, state, session),
                 targetsFieldKeys: q.targetsFieldKeys,
                 mode: q.mode,
                 origin: planned.origin,
@@ -529,29 +537,53 @@ export async function generateClaimedRound(
 }
 
 /**
- * The produced questions the book still lets this round ask, in order: the
- * element still exists, a FRONTIER question's fields are all still empty (rule
- * 5), and a CHALLENGE's quote is still a verbatim run of its stored value.
+ * Where a question about this subject is filed (Phase 3.3, `subjects.ts`): an
+ * element's under the element; a relation's under its declaring element with
+ * `relationId`; the element not yet created's under the slot's earlier
+ * neighbour with `aboutPending`.
  */
-async function stillAskable(db: PrismaTx, ctx: WorkspaceRequestContext, bookId: string, questions: readonly PlannedQuestion[]): Promise<PlannedQuestion[]> {
-    const ids = [...new Set(questions.map((q) => q.elementId))];
-    const live = new Set((await BibleElementRepository.listByIds(db, ctx.workspaceId, bookId, ids)).map((e) => e.id));
-    const stored = await storedTextOf(db, ctx, [...live]);
+export function storedSubject(subjectId: string, state: Pick<InterviewState, 'elements'>, session: Pick<SessionRow, 'slotAfterElementId'>): { elementId: string; relationId: string | null; aboutPending: boolean } {
+    const subject = state.elements.find((e) => e.elementId === subjectId);
+    if (subject?.relation) return { elementId: subject.relation.fromElementId, relationId: subject.relation.relationId, aboutPending: false };
+    if (subject?.pending || subjectId === PENDING_SUBJECT_ID) return { elementId: session.slotAfterElementId!, relationId: null, aboutPending: true };
+    return { elementId: subjectId, relationId: null, aboutPending: false };
+}
+
+/**
+ * The produced questions the book still lets this round ask, in order: the
+ * subject still exists (an element, a relation, or the slot's neighbours), a
+ * FRONTIER question's fields are all still empty (rule 5), and a CHALLENGE's
+ * quote is still a verbatim run of its stored value. Read again under the
+ * session's lock (Phase 3.3: through the session's own state, which reads
+ * every kind of subject the way the round was planned).
+ */
+async function stillAskable(db: PrismaTx, ctx: WorkspaceRequestContext, session: SessionRow, questions: readonly PlannedQuestion[]): Promise<PlannedQuestion[]> {
+    const now = await loadInterviewState(db, ctx, session);
+    const subjects = new Map(now.elements.map((e) => [e.elementId, e] as const));
+    const answeredByCheck = new Set(frontierOf(now, session.depth).answered.filter((a) => a.by !== 'bible-values').map((a) => `${a.elementId}\u0000${a.fieldKey}`));
     return questions.filter((q) => {
-        if (!live.has(q.elementId)) return false;
-        const values = stored.get(q.elementId) ?? new Map<string, string>();
+        const subject = subjects.get(q.elementId);
+        if (!subject) return false;
+        const values = subject.storedText;
         if (q.mode === 'CHALLENGE') {
             const value = values.get(q.targetsFieldKeys[0]);
             return value !== undefined && q.challengeQuote !== null && isVerbatimQuote(q.challengeQuote, value);
         }
-        return q.targetsFieldKeys.every((k) => !values.has(k));
+        return q.targetsFieldKeys.every((k) => !values.has(k) && !answeredByCheck.has(`${q.elementId}\u0000${k}`));
     });
 }
 
 /** The book's exact repeats among these probes, or none when the read fails (deduplication keeps its other signals). */
-async function exactRepeatsOrNone(ctx: WorkspaceRequestContext, bookId: string, probes: ReadonlyArray<{ elementId: string; dedupeKey: string }>): Promise<Set<string>> {
+async function exactRepeatsOrNone(
+    ctx: WorkspaceRequestContext,
+    bookId: string,
+    probes: ReadonlyArray<{ elementId: string; dedupeKey: string }>,
+    relationIds: ReadonlySet<string>,
+): Promise<Set<string>> {
     try {
-        const rows = await runInWorkspaceContext(ctx, (db) => QuestionRepository.findExactRepeats(db, ctx.workspaceId, bookId, probes));
+        // Phase 3.3: a relation's probe names its relation; the element not yet created has no earlier question anywhere in the book.
+        const asked = probes.filter((p) => p.elementId !== PENDING_SUBJECT_ID).map((p) => ({ ...p, relation: relationIds.has(p.elementId) }));
+        const rows = await runInWorkspaceContext(ctx, (db) => QuestionRepository.findExactRepeats(db, ctx.workspaceId, bookId, asked));
         return new Set(rows.map((r) => exactKey(r.elementId, r.dedupeKey)));
     } catch (err) {
         logger.warn('interview.question_exact_repeats_unavailable', { component: 'interview', error: err instanceof Error ? err.name : 'unknown' });

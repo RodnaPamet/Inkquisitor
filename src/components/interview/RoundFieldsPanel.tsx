@@ -50,8 +50,9 @@ export function panelRows(questions: readonly QuestionView[] | null, planned: re
             const status = q.answer?.status ?? null;
             const state: FieldState = status === 'ANSWERED' ? 'pending' : status === 'SKIPPED' ? 'skipped' : status === 'DECIDE_LATER' ? 'deferred' : 'waiting';
             for (const fieldKey of q.targetsFieldKeys) {
-                const key = `${q.elementId}\u0000${fieldKey}`;
-                rows.set(key, { key, elementId: q.elementId, fieldKey, state, challenge: q.mode === 'CHALLENGE', answer: answerText(q) });
+                // Its subject (Phase 3.3): the element, the relation or the element not yet created it asks about.
+                const key = `${q.subjectId}\u0000${fieldKey}`;
+                rows.set(key, { key, elementId: q.subjectId, fieldKey, state, challenge: q.mode === 'CHALLENGE', answer: answerText(q) });
             }
         }
         return [...rows.values()];

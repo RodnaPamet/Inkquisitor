@@ -47,47 +47,63 @@
 
 /// One interview of a book's bible.
 model InterviewSession {
-  id               String               @id @default(cuid())
-  workspaceId      String
-  bookId           String
-  scope            InterviewScope
+  id                  String               @id @default(cuid())
+  workspaceId         String
+  bookId              String
+  scope               InterviewScope
   /// The element a scope-ELEMENT session questions (CHECK: set exactly then).
-  targetElementId  String?
+  targetElementId     String?
   /// The kind a scope-KIND session questions (CHECK: set exactly then).
-  targetKind       BibleElementKind?
+  targetKind          BibleElementKind?
+  /// Phase 3.3, a SELECTION session ("Grill this" on a story map): the
+  /// elements selected, and the relations in scope — those selected and those
+  /// between the selected elements — frozen when it starts. Ids, not foreign
+  /// keys: a scoped element or relation deleted later leaves the scope. Empty
+  /// for every other scope (CHECK).
+  scopeElementIds     String[]             @default([])
+  scopeRelationIds    String[]             @default([])
+  /// Phase 3.3, a BETWEEN session ("What happens between these?"): the kind of
+  /// the element not yet created (PLOT_BEAT), the two neighbouring elements it
+  /// would sit between in story order, and the act lane it would join (NULL:
+  /// the beats have no act). Set exactly for BETWEEN (CHECK). Ids, not foreign
+  /// keys, as above.
+  slotKind            BibleElementKind?
+  slotAfterElementId  String?
+  slotBeforeElementId String?
+  slotAct             String?
   /// How far down the field dependencies the session goes, 1..5 (CHECK).
-  depth            Int
+  depth               Int
   /// How specific a question is and how long a reply it invites, 1..5 (CHECK).
-  detail           Int
+  detail              Int
   /// The persona keys mounted, in the author's order: at most three, known,
   /// no repeats (CHECK; Phase 2.3). Each words its share of every round.
-  personaKeys      String[]
-  offerRecommended Boolean              @default(true)
+  personaKeys         String[]
+  offerRecommended    Boolean              @default(true)
   /// "Multiple choice where possible".
-  preferChoice     Boolean              @default(false)
-  status           InterviewStatus      @default(ACTIVE)
+  preferChoice        Boolean              @default(false)
+  status              InterviewStatus      @default(ACTIVE)
   /// Set exactly when the session is not ACTIVE (CHECK).
-  stopReason       InterviewStopReason?
+  stopReason          InterviewStopReason?
   /// Why, in ids and field keys: which fields wait on a deferred one, which are too deep.
-  stopDetail       Json?
+  stopDetail          Json?
   /// The rounds the depth allows (src/lib/interview/dials.ts).
-  roundBudget      Int
+  roundBudget         Int
   /// Rounds closed so far.
-  roundsRun        Int                  @default(0)
+  roundsRun           Int                  @default(0)
   /// The packs the session mounted, pinned when it started (Phase 2.3): a JSON
   /// array of `{ name, version, contentHash, recordHash, recordKind }`
   /// (src/lib/interview/pack-mount.ts). WRITTEN ONCE: a trigger refuses any
   /// change after the insert. NULL: the session predates pinning (2.2).
-  packPins         Json?
+  packPins            Json?
   /// Tokens the session may spend (input and output together); 2.1 counts `tokensUsed`.
-  tokenBudget      Int
-  tokensUsed       Int                  @default(0)
+  tokenBudget         Int
+  tokensUsed          Int                  @default(0)
   /// Who started it; NULL once that person is deleted.
-  createdById      String?
-  createdAt        DateTime             @default(now())
-  updatedAt        DateTime             @updatedAt
+  createdById         String?
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
   /// Set when the session is COMPLETED or STOPPED.
-  endedAt          DateTime?
+  endedAt             DateTime?
 
   book                Book                 @relation(fields: [workspaceId, bookId], references: [workspaceId, id], onDelete: Cascade)
   targetElement       BibleElement?        @relation(fields: [bookId, targetElementId], references: [bookId, id], onDelete: Cascade)
@@ -146,8 +162,17 @@ model Question {
   roundId              String
   /// Its number within the round, from 1.
   position             Int
-  /// The element it asks about.
+  /// The element it asks about. For a question about a relation (Phase 3.3),
+  /// the relation's declaring element; for one about a BETWEEN session's
+  /// element not yet created, the slot's earlier neighbour, its anchor (a
+  /// question names an element of the book; `aboutPending` says it is not
+  /// about this one).
   elementId            String
+  /// Phase 3.3 (D24): the relation whose fields it targets, or NULL.
+  relationId           String?
+  /// Phase 3.3: it asks about the BETWEEN session's element not yet created
+  /// (CHECK: never with a relation).
+  aboutPending         Boolean        @default(false)
   /// The one or two fields of that element it targets (CHECK).
   targetsFieldKeys     String[]
   mode                 QuestionMode
@@ -188,6 +213,7 @@ model Question {
   session    InterviewSession @relation(fields: [workspaceId, bookId, sessionId], references: [workspaceId, bookId, id], onDelete: Cascade)
   round      InterviewRound   @relation(fields: [sessionId, roundId], references: [sessionId, id], onDelete: Cascade)
   element    BibleElement     @relation(fields: [bookId, elementId], references: [bookId, id], onDelete: Cascade)
+  relation   BibleRelation?   @relation(fields: [bookId, relationId], references: [bookId, id], onDelete: Cascade)
   replaces   Question?        @relation("QuestionRephrase", fields: [workspaceId, sessionId, replacesQuestionId], references: [workspaceId, sessionId, id], onDelete: Cascade)
   replacedBy Question?        @relation("QuestionRephrase")
   answers    Answer[]
@@ -198,6 +224,8 @@ model Question {
   @@unique([workspaceId, sessionId, replacesQuestionId])
   /// An element's questions across the book's sessions (book-wide deduplication).
   @@index([bookId, elementId, createdAt])
+  /// Phase 3.3: a relation's questions across the book's sessions (the same).
+  @@index([bookId, relationId, createdAt])
   /// Exact repeats anywhere in the book.
   @@index([workspaceId, bookId, dedupeKey])
 }

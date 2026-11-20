@@ -41,6 +41,8 @@
  *     - type: allied_with
  *       to: the-salt-guild
  *       note: …            (when it has one)
+ *       fields:            (Phase 3.3: the relation's filled fields, in its type's template order, by key)
+ *         history: …
  *   ---
  *
  * The FRONTMATTER IS THE DATA. The body — the name as a heading, the summary,
@@ -70,7 +72,7 @@ import { isAlias, isMap, isNode, isScalar, parseDocument, stringify, visit } fro
 import { sanitizePlainText } from '@/lib/security/sanitize';
 import type { FieldValue } from './field-values';
 import { BIBLE_KINDS, kindRank, type BibleElementStatus, type BibleKind, type BookStage } from './kinds';
-import { getFieldDef, getRelationType, getTemplate } from './templates';
+import { getFieldDef, getRelationType, getTemplate, relationFieldDefs } from './templates';
 
 export const BUNDLE_FORMAT = 'inkquisitor-bible';
 export const BUNDLE_VERSION = 1;
@@ -109,6 +111,18 @@ export interface BundleRelation {
     /** The target element's slug. */
     to: string;
     note: string | null;
+    /** Phase 3.3 (D24): the relation's filled fields by key (absent: none). */
+    fields?: ReadonlyMap<string, FieldValue>;
+}
+
+/** A relation's filled fields in its type's template order (its declaring kind's), as frontmatter. */
+function relationFieldsFrontmatter(fromKind: BibleKind, r: BundleRelation): Record<string, FieldValue> {
+    const out: Record<string, FieldValue> = {};
+    for (const def of relationFieldDefs(fromKind, r.type)) {
+        const value = r.fields?.get(def.key);
+        if (value !== undefined) out[def.key] = value;
+    }
+    return out;
 }
 
 export interface BundleElement {
@@ -223,7 +237,12 @@ export function elementFrontmatter(e: BundleElement): Record<string, unknown> {
         ...(e.summary !== null ? { summary: e.summary } : {}),
         ...(Object.keys(fields).length > 0 ? { fields } : {}),
         ...(e.relations.length > 0
-            ? { relations: sortRelations(e.relations).map((r) => ({ type: r.type, to: r.to, ...(r.note !== null ? { note: r.note } : {}) })) }
+            ? {
+                  relations: sortRelations(e.relations).map((r) => {
+                      const fields = relationFieldsFrontmatter(e.kind, r);
+                      return { type: r.type, to: r.to, ...(r.note !== null ? { note: r.note } : {}), ...(Object.keys(fields).length > 0 ? { fields } : {}) };
+                  }),
+              }
             : {}),
     };
 }
@@ -232,6 +251,8 @@ export interface RelationLine {
     label: string;
     other: BundleElement;
     note: string | null;
+    /** Phase 3.3: the relation's filled fields, each as its label and its text. */
+    fields: Array<{ label: string; text: string }>;
 }
 
 function elementBody(e: BundleElement, relationLines: readonly RelationLine[]): string {
@@ -248,6 +269,7 @@ function elementBody(e: BundleElement, relationLines: readonly RelationLine[]): 
         out.push('## Relations', '');
         for (const r of relationLines) {
             out.push(`- ${r.label} [${r.other.name}](../${elementPath(r.other.kind, r.other.slug)})${r.note !== null ? `: ${r.note.replace(/\s+/g, ' ')}` : ''}`);
+            for (const f of r.fields) out.push(`  - ${f.label}: ${f.text}`);
         }
         out.push('');
     }
@@ -279,8 +301,14 @@ export function relationLinesBySlug(elements: readonly BundleElement[]): Map<str
             const other = bySlug.get(r.to);
             if (!other) continue;
             const type = getRelationType(e.kind, r.type);
-            add(e.slug, { label: type?.label ?? r.type, other, note: r.note });
-            add(other.slug, { label: type?.inverseLabel ?? r.type, other: e, note: r.note });
+            const fields = relationFieldDefs(e.kind, r.type).flatMap((def) => {
+                const value = r.fields?.get(def.key);
+                if (typeof value !== 'string') return [];
+                const text = (def.type === 'richtext' ? richTextLines(value) : [value]).join(' ').replace(/\s+/g, ' ').trim();
+                return text === '' ? [] : [{ label: def.label, text }];
+            });
+            add(e.slug, { label: type?.label ?? r.type, other, note: r.note, fields });
+            add(other.slug, { label: type?.inverseLabel ?? r.type, other: e, note: r.note, fields });
         }
     }
     const order = (a: RelationLine, b: RelationLine) =>

@@ -57,8 +57,37 @@
  *
  * The output is what may be STORED: the sanitised value, the citations, and
  * the refusals by code for the run's metrics.
+ *
+ * PHASE 3.3 (decision D24). An operation's element is its SUBJECT: a relation
+ * (its fields are its type's; stored as a RELATION_FIELD proposal) or a
+ * BETWEEN session's element not yet created (`PENDING_SUBJECT_ID`). The slot's
+ * element is proposed as a new element with `fillsSlot` (of the slot's kind,
+ * at most one); every operation on the slot's fields that passes the rules
+ * above becomes one of that new element's first field values (it cites what
+ * they cite), and with no such new element it is refused
+ * `PENDING_WITHOUT_ELEMENT`. A NEW RELATION passes when, in this order:
+ *
+ *   ends       each end is one of the session's relation ends (a selection's
+ *              elements and its relations' ends; a slot's neighbours) or
+ *              `new.N`, a new element of this answer that passed
+ *              (`RELATION_END_OUT_OF_SCOPE`, `RELATION_END_REFUSED`), and they
+ *              differ (`RELATION_SELF`);
+ *   type       the `from` end's kind declares the type for the `to` end's kind,
+ *              or it is `related_to` (`RELATION_TYPE_NOT_ALLOWED`): stored from
+ *              the declaring end, never turned round (a directed type turned
+ *              round says something else);
+ *   new        the book does not hold it (`RELATION_EXISTS`), the answer does
+ *              not propose it twice (`DUPLICATE_NEW_RELATION`);
+ *   cites      rule 3, and every end is named in a cited answer or was the
+ *              subject of a cited answer's question — a slot's neighbours by an
+ *              answer about the slot (`RELATION_NOT_IN_ANSWERS`);
+ *   values     the note within its bound, each field one of the type's, a
+ *              value it accepts, no field twice (`VALUE_INVALID`, `VALUE_MISSING`);
+ *   rules 5–6  over the note and every field, as for a field's value
+ *              (refused, or flagged `POSSIBLE_INSTRUCTION`).
  */
-import { getFieldDef } from '@/lib/bible/templates';
+import { getFieldDef, getRelationFieldDef, relationAllowed, getRelationType, isSymmetric } from '@/lib/bible/templates';
+import { PENDING_SUBJECT_ID } from '@/lib/interview/subjects';
 import type { FieldDef } from '@/lib/bible/template-schema';
 import type { BibleKind } from '@/lib/bible/kinds';
 import { normaliseFieldValue, sameFieldValue, type FieldValue } from '@/lib/bible/field-values';
@@ -70,7 +99,7 @@ import { polarityKept } from '@/lib/text/negation';
 import { disclosesInstructions, promptRuns } from '@/lib/text/prompt-disclosure';
 import { RECONCILE_PROMPT } from './prompt';
 import { groundSentence, normaliseText, sentences, stem, words } from '@/lib/interview/text';
-import { PROPOSABLE_KINDS, type NewElementOutput, type ParsedReconcile, type ReconcileOperation } from './schema';
+import { PROPOSABLE_KINDS, type NewElementOutput, type NewRelationOutput, type ParsedReconcile, type ReconcileOperation } from './schema';
 import type { ProposalFlag, RefusalCode, StoredOp } from './vocabulary';
 
 /** A new element's name, at most (the bible's own bound, `ELEMENT_NAME_MAX`). */
@@ -78,7 +107,7 @@ export const NEW_ELEMENT_NAME_MAX = 120;
 /** A new element's summary, at most once sanitised. */
 export const NEW_ELEMENT_SUMMARY_MAX = 1_200;
 
-/** An element of the round's scope, as reconcile sees it. */
+/** A subject of the round's scope, as reconcile sees it: an element, a relation (Phase 3.3) or the slot's element not yet created. */
 export interface ReconcileScopeElement {
     elementId: string;
     kind: BibleKind;
@@ -86,6 +115,32 @@ export interface ReconcileScopeElement {
     stored: ReadonlyMap<string, FieldValue>;
     /** The keys the round's questions targeted on this element. */
     scopeKeys: readonly string[];
+    /** Phase 3.3: a relation subject (its fields are its type's) and its two ends. */
+    relation?: { type: string; fromKind: BibleKind; fromElementId: string; toElementId: string };
+    /** Phase 3.3: the BETWEEN slot's element not yet created. */
+    pending?: boolean;
+}
+
+/** A subject's field definition: a relation type's field for a relation, the kind's template field otherwise. */
+export function fieldDefOf(e: Pick<ReconcileScopeElement, 'kind' | 'relation'>, key: string): FieldDef | undefined {
+    return e.relation ? getRelationFieldDef(e.relation.fromKind, e.relation.type, key) : getFieldDef(e.kind, key);
+}
+
+/** An element a new relation may join (Phase 3.3): a selection's, or a slot's neighbour. */
+export interface RelationEnd {
+    elementId: string;
+    kind: BibleKind;
+    name: string;
+    /** A BETWEEN slot's neighbour: an answer about the slot addresses it. */
+    neighbour?: boolean;
+}
+
+/** A relation the book holds between two relation ends. */
+export interface ExistingRelation {
+    fromElementId: string;
+    toElementId: string;
+    type: string;
+    symmetric: boolean;
 }
 
 /** One of the round's answers (its latest revision), as reconcile sees it. */
@@ -111,6 +166,12 @@ export interface ValidationContext {
     answers: readonly ReconcileAnswerFact[];
     /** Names of the book's elements (the new-element rule). */
     bookElementNames: readonly string[];
+    /** Phase 3.3: the elements a new relation may join (none: no new relation may be proposed). */
+    relationEnds?: readonly RelationEnd[];
+    /** Phase 3.3: the relations the book holds between them. */
+    existingRelations?: readonly ExistingRelation[];
+    /** Phase 3.3: a BETWEEN session's slot, its kind. */
+    slot?: { kind: BibleKind } | null;
 }
 
 export interface FieldProposalDraft {
@@ -133,9 +194,30 @@ export interface NewElementDraft {
     citedAnswerIds: string[];
     /** As a field proposal's, over the name and summary. */
     flags: ProposalFlag[];
+    /** Phase 3.3: it fills the BETWEEN session's slot. */
+    fillsSlot: boolean;
+    /** Phase 3.3: its first field values (the slot's element's operations that passed), by key. */
+    fields: Array<{ key: string; value: FieldValue }>;
+    /** Its place among the output's new elements, from 1 (`new.N`). */
+    outputIndex: number;
 }
 
-export type ProposalDraft = FieldProposalDraft | NewElementDraft;
+/** An end of a new relation: an element of the book, or a new element of the same answer (`new.N`). */
+export type RelationEndRef = { elementId: string } | { newElement: number };
+
+export interface NewRelationDraft {
+    kind: 'NEW_RELATION';
+    type: string;
+    from: RelationEndRef;
+    to: RelationEndRef;
+    note: string | null;
+    /** The relation's first field values, sanitised (prose: HTML for rich text). */
+    fields: Array<{ key: string; value: FieldValue }>;
+    citedAnswerIds: string[];
+    flags: ProposalFlag[];
+}
+
+export type ProposalDraft = FieldProposalDraft | NewElementDraft | NewRelationDraft;
 
 export interface Refusal {
     code: RefusalCode;
@@ -448,7 +530,116 @@ export function validateNewElement(item: NewElementOutput, ctx: ValidationContex
         return refuse('COPIES_INJECTED_TEXT');
     }
     seen.add(key);
-    return { ok: true, value: { kind: 'NEW_ELEMENT', newKind: item.kind, name, summary, citedAnswerIds: cites.value.ids, flags: flagsOf(summary === null ? [name] : [name, summary]) } };
+    return {
+        ok: true,
+        value: {
+            kind: 'NEW_ELEMENT',
+            newKind: item.kind,
+            name,
+            summary,
+            citedAnswerIds: cites.value.ids,
+            flags: flagsOf(summary === null ? [name] : [name, summary]),
+            fillsSlot: item.fillsSlot === true,
+            fields: [],
+            outputIndex: 0,
+        },
+    };
+}
+
+/** A new relation's note, at most once sanitised (the relation's own bound, `RELATION_NOTE_MAX`). */
+export const NEW_RELATION_NOTE_MAX = 2_000;
+
+const NEW_END = /^new\.(\d{1,2})$/;
+
+/** A new relation through its rules (the order in the header). `newElements` are this output's, by output index. */
+export function validateNewRelation(
+    item: NewRelationOutput,
+    ctx: ValidationContext,
+    newElements: ReadonlyMap<number, NewElementDraft | null>,
+    seen: Set<string>,
+): Verdict<NewRelationDraft> {
+    const ends = new Map((ctx.relationEnds ?? []).map((e) => [e.elementId, e] as const));
+    const resolve = (raw: string): Verdict<{ ref: RelationEndRef; kind: BibleKind; name: string; end: RelationEnd | null; draft: NewElementDraft | null }> => {
+        const m = NEW_END.exec(raw);
+        if (m) {
+            const index = Number(m[1]);
+            if (!newElements.has(index)) return refuse('RELATION_END_OUT_OF_SCOPE');
+            const draft = newElements.get(index)!;
+            if (!draft) return refuse('RELATION_END_REFUSED');
+            return { ok: true, value: { ref: { newElement: index }, kind: draft.newKind, name: draft.name, end: null, draft } };
+        }
+        const end = ends.get(raw);
+        if (!end) return refuse('RELATION_END_OUT_OF_SCOPE');
+        return { ok: true, value: { ref: { elementId: end.elementId }, kind: end.kind, name: end.name, end, draft: null } };
+    };
+    const from = resolve(item.fromElementId);
+    if (!from.ok) return from;
+    const to = resolve(item.toElementId);
+    if (!to.ok) return to;
+    const key = (r: RelationEndRef) => ('elementId' in r ? r.elementId : `new.${r.newElement}`);
+    const fromKey = key(from.value.ref);
+    const toKey = key(to.value.ref);
+    if (fromKey === toKey) return refuse('RELATION_SELF');
+    if (!relationAllowed(from.value.kind, item.type, to.value.kind)) return refuse('RELATION_TYPE_NOT_ALLOWED');
+    const symmetric = isSymmetric(getRelationType(from.value.kind, item.type)!);
+    const pairKey = symmetric ? [fromKey, toKey].sort().join('\u0000') : `${fromKey}\u0000${toKey}`;
+    const factKey = `${item.type}\u0000${pairKey}`;
+    if ('elementId' in from.value.ref && 'elementId' in to.value.ref) {
+        const a = from.value.ref.elementId;
+        const b = to.value.ref.elementId;
+        const held = (ctx.existingRelations ?? []).some(
+            (r) => r.type === item.type && ((r.fromElementId === a && r.toElementId === b) || (r.symmetric && symmetric && r.fromElementId === b && r.toElementId === a)),
+        );
+        if (held) return refuse('RELATION_EXISTS');
+    }
+    if (seen.has(factKey)) return refuse('DUPLICATE_NEW_RELATION');
+
+    const cites = checkCitations(item.cites, ctx.answers);
+    if (!cites.ok) return cites;
+    // Every end is what a cited answer is about: named in it, or the subject of its question (a relation's ends, the slot's neighbours).
+    const relationSubjects = ctx.elements.filter((e) => e.relation);
+    const addressed = (r: { end: RelationEnd | null; draft: NewElementDraft | null; name: string; ref: RelationEndRef }) =>
+        cites.value.facts.some((a) => {
+            if (a.text !== null && namedIn(r.name, a.text)) return true;
+            const about = a.about?.elementId;
+            if (!about) return false;
+            if ('elementId' in r.ref && about === r.ref.elementId) return true;
+            if ('elementId' in r.ref && relationSubjects.some((s) => s.elementId === about && (s.relation!.fromElementId === (r.ref as { elementId: string }).elementId || s.relation!.toElementId === (r.ref as { elementId: string }).elementId))) return true;
+            if (about === PENDING_SUBJECT_ID && (r.end?.neighbour === true || r.draft?.fillsSlot === true)) return true;
+            return false;
+        });
+    if (!addressed(from.value) || !addressed(to.value)) return refuse('RELATION_NOT_IN_ANSWERS');
+
+    let note: string | null = null;
+    if (item.note !== null && item.note.trim() !== '') {
+        note = plainBlock(item.note);
+        if (note.length > NEW_RELATION_NOTE_MAX) return refuse('VALUE_INVALID');
+        if (note === '') note = null;
+    }
+    const fields: Array<{ key: string; value: FieldValue }> = [];
+    const parts: string[] = [];
+    const prose: string[] = [];
+    if (note !== null) {
+        parts.push(item.note!);
+        prose.push(note);
+    }
+    for (const f of item.fields) {
+        const def = getRelationFieldDef(from.value.kind, item.type, f.key);
+        if (!def || fields.some((x) => x.key === f.key)) return refuse('VALUE_INVALID');
+        const input = def.type === 'richtext' ? paragraphsToHtml(f.value) : f.value;
+        const normalised = normaliseFieldValue(def, input);
+        if (!normalised.ok) return refuse('VALUE_INVALID');
+        if (normalised.value === null) return refuse('VALUE_MISSING');
+        fields.push({ key: f.key, value: normalised.value });
+        parts.push(f.value);
+        prose.push(valueAsText(def, normalised.value));
+    }
+    const answerIds = ctx.answers.map((a) => a.answerId);
+    if (parts.length > 0 && copiesInjectedText(parts, cites.value.facts, answerIds)) return refuse('COPIES_INJECTED_TEXT');
+    const sources = cites.value.facts.map((a) => a.text ?? '').filter((t) => t !== '');
+    if (!prose.every((p) => groundedText(p, sources))) return refuse('UNSOURCED_SENTENCE');
+    seen.add(factKey);
+    return { ok: true, value: { kind: 'NEW_RELATION', type: item.type, from: from.value.ref, to: to.value.ref, note, fields, citedAnswerIds: cites.value.ids, flags: flagsOf(parts) } };
 }
 
 /**
@@ -460,10 +651,12 @@ export function validateReconcile(parsed: ParsedReconcile, ctx: ValidationContex
     for (let i = 0; i < parsed.malformed; i++) result.refusals.push({ code: 'MALFORMED', target: {} });
     const byId = new Map(ctx.elements.map((e) => [e.elementId, e]));
     const done = new Set<string>();
+    // The slot's element's operations wait for the new element that carries them (Phase 3.3).
+    const pendingOps: FieldProposalDraft[] = [];
     for (const op of parsed.operations) {
         const target = { elementId: op.elementId, fieldKey: op.fieldKey };
         const element = byId.get(op.elementId);
-        const def = element ? getFieldDef(element.kind, op.fieldKey) : undefined;
+        const def = element ? fieldDefOf(element, op.fieldKey) : undefined;
         if (!element || !def || !element.scopeKeys.includes(op.fieldKey)) {
             result.refusals.push({ code: 'TARGETS_OUT_OF_SCOPE_FIELD', target });
             continue;
@@ -477,13 +670,47 @@ export function validateReconcile(parsed: ParsedReconcile, ctx: ValidationContex
         const verdict = validateFieldOperation(op, element, def, ctx.answers);
         if (!verdict.ok) result.refusals.push({ code: verdict.code, target });
         else if (verdict.value === null) result.noChange++;
+        else if (element.pending) pendingOps.push(verdict.value);
         else result.proposals.push(verdict.value);
     }
     const seen = new Set<string>();
-    for (const item of parsed.newElements) {
-        const verdict = validateNewElement(item, ctx, seen);
+    const newByIndex = new Map<number, NewElementDraft | null>();
+    let slotDraft: NewElementDraft | null = null;
+    parsed.newElements.forEach((item, i) => {
+        const index = i + 1;
+        newByIndex.set(index, null);
+        if (item === null) return; // counted MALFORMED above
+        let verdict: Verdict<NewElementDraft> = validateNewElement(item, ctx, seen);
+        if (verdict.ok && verdict.value.fillsSlot) {
+            if (!ctx.slot) verdict = refuse('SLOT_NOT_OFFERED');
+            else if (verdict.value.newKind !== ctx.slot.kind) verdict = refuse('SLOT_KIND_MISMATCH');
+            else if (slotDraft) verdict = refuse('SLOT_TAKEN');
+        }
+        if (!verdict.ok) {
+            result.refusals.push({ code: verdict.code, target: { kind: item.kind } });
+            return;
+        }
+        const draft = { ...verdict.value, outputIndex: index };
+        if (draft.fillsSlot) slotDraft = draft;
+        newByIndex.set(index, draft);
+        result.proposals.push(draft);
+    });
+    // The slot's operations become the new element's first values, citing what they cite; with none to carry them, refused.
+    const slot = slotDraft as NewElementDraft | null;
+    for (const op of pendingOps) {
+        if (!slot || op.operation !== 'ADD' || op.value === null) {
+            result.refusals.push({ code: 'PENDING_WITHOUT_ELEMENT', target: { elementId: op.elementId, fieldKey: op.fieldKey } });
+            continue;
+        }
+        slot.fields.push({ key: op.fieldKey, value: op.value });
+        slot.citedAnswerIds = [...new Set([...slot.citedAnswerIds, ...op.citedAnswerIds])];
+        if (op.flags.length > 0) slot.flags = [...new Set([...slot.flags, ...op.flags])];
+    }
+    const seenRelations = new Set<string>();
+    for (const item of parsed.newRelations ?? []) {
+        const verdict = validateNewRelation(item, ctx, newByIndex, seenRelations);
         if (verdict.ok) result.proposals.push(verdict.value);
-        else result.refusals.push({ code: verdict.code, target: { kind: item.kind } });
+        else result.refusals.push({ code: verdict.code, target: { kind: item.type } });
     }
     return result;
 }

@@ -190,6 +190,8 @@ function sourceLabel(t: T, m: SearchMatchView): string {
             return m.fieldLabel ?? t('source.field');
         case 'relationNote':
             return m.otherElementName ? t('source.relationNote', { name: m.otherElementName }) : t('source.relationNoteUnnamed');
+        case 'relationField':
+            return m.otherElementName ? t('source.relationField', { field: m.fieldLabel ?? t('source.field'), name: m.otherElementName }) : t('source.relationFieldUnnamed', { field: m.fieldLabel ?? t('source.field') });
         default:
             return t(`source.${m.source}`);
     }

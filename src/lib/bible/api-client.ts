@@ -14,7 +14,7 @@
  */
 import type { BookListView, BookView, DeletedBookView } from '@/app-layer/usecases/books';
 import type { BoardKindView, ElementListItemView, ElementPageView, ElementSummaryView, ElementView, FieldsSaveResult } from '@/app-layer/usecases/bible-elements';
-import type { CreatedRelationView } from '@/app-layer/usecases/bible-relations';
+import type { CreatedRelationView, RelationView } from '@/app-layer/usecases/bible-relations';
 import type { OrderMoveResult } from '@/app-layer/usecases/bible-order';
 import type { RestoreResult, VersionMetaView, VersionView } from '@/app-layer/usecases/bible-versions';
 import type { BundleImportReport, ConceptNoteReport, ImportProblem } from '@/app-layer/usecases/bible-import';
@@ -30,6 +30,7 @@ export type {
     ElementView,
     FieldsSaveResult,
     CreatedRelationView,
+    RelationView,
     OrderMoveResult,
     RestoreResult,
     VersionMetaView,
@@ -70,6 +71,8 @@ export const BIBLE_API = {
     restore: (slug: string, bookId: string, elementId: string, n: number) => `${BIBLE_API.version(slug, bookId, elementId, n)}/restore`,
     relations: (slug: string, bookId: string) => `/api/w/${enc(slug)}/books/${enc(bookId)}/relations`,
     relation: (slug: string, bookId: string, relationId: string) => `/api/w/${enc(slug)}/books/${enc(bookId)}/relations/${enc(relationId)}`,
+    /** Phase 3.3 (D24): a relation's fields, a versioned save. */
+    relationFields: (slug: string, bookId: string, relationId: string) => `/api/w/${enc(slug)}/books/${enc(bookId)}/relations/${enc(relationId)}/fields`,
     exportBundle: (slug: string, bookId: string) => `${BIBLE_API.book(slug, bookId)}/export/bundle`,
     exportPdf: (slug: string, bookId: string) => `${BIBLE_API.book(slug, bookId)}/export/pdf`,
     importBundle: (slug: string, bookId: string, options: { applyBookDetails?: boolean } = {}) =>

@@ -2,19 +2,19 @@
   "format": "inkquisitor-reconcile-evaluation/1",
   "sets": {
     "enrichment": {
-      "hash": "sha256:227c7062e3abb4801a966fc169db1363361fa831ed84b956748e1bbfc84b797c"
+      "hash": "sha256:02a350351a4874c9db0ac3a08f7b8605a40b103d56670de6a4ddd070da695164"
     },
     "adversarial": {
-      "hash": "sha256:ffe756d6f0954c87b82cf97794b18be44f1be226a6d6ac167b16241fdd4364fd"
+      "hash": "sha256:e21a52e057b817ba3ea4a2eb6633ef4a73ecb967786c8911fb0da3c96dc65ee5"
     }
   },
-  "promptVersion": "reconcile.2.5.0",
-  "promptHash": "sha256:8fde4cac9151960436296102a03301e1c7e4c17e178cdf737963eafb06fa3405",
+  "promptVersion": "reconcile.3.3.0",
+  "promptHash": "sha256:068df31d21cd3785321c5025da797446acfda9c1b700aa7ae55e1979ce35d2ad",
   "generator": {
     "kind": "structural",
     "id": "reference-reconciler.1"
   },
-  "ranAt": "2026-11-20T17:44:09.603Z",
+  "ranAt": "2026-11-20T20:03:28.726Z",
   "answers": [
     {
       "caseId": "en-01",
@@ -39,7 +39,8 @@
             ]
           }
         ],
-        "newElements": []
+        "newElements": [],
+        "newRelations": []
       }
     },
     {
@@ -67,7 +68,8 @@
             "cites": []
           }
         ],
-        "newElements": []
+        "newElements": [],
+        "newRelations": []
       }
     },
     {
@@ -98,11 +100,13 @@
             "kind": "CHARACTER",
             "name": "Ilse",
             "summary": null,
+            "fillsSlot": false,
             "cites": [
               "a1"
             ]
           }
-        ]
+        ],
+        "newRelations": []
       }
     },
     {
@@ -129,7 +133,8 @@
             ]
           }
         ],
-        "newElements": []
+        "newElements": [],
+        "newRelations": []
       }
     },
     {
@@ -157,7 +162,8 @@
             ]
           }
         ],
-        "newElements": []
+        "newElements": [],
+        "newRelations": []
       }
     },
     {
@@ -186,7 +192,8 @@
             ]
           }
         ],
-        "newElements": []
+        "newElements": [],
+        "newRelations": []
       }
     },
     {
@@ -212,7 +219,8 @@
             ]
           }
         ],
-        "newElements": []
+        "newElements": [],
+        "newRelations": []
       }
     },
     {
@@ -240,7 +248,8 @@
             ]
           }
         ],
-        "newElements": []
+        "newElements": [],
+        "newRelations": []
       }
     },
     {
@@ -264,7 +273,8 @@
             "cites": []
           }
         ],
-        "newElements": []
+        "newElements": [],
+        "newRelations": []
       }
     },
     {
@@ -299,6 +309,7 @@
             "kind": "CHARACTER",
             "name": "Piet",
             "summary": null,
+            "fillsSlot": false,
             "cites": [
               "a1"
             ]
@@ -307,11 +318,13 @@
             "kind": "CHARACTER",
             "name": "Arend Klaas",
             "summary": null,
+            "fillsSlot": false,
             "cites": [
               "a1"
             ]
           }
-        ]
+        ],
+        "newRelations": []
       }
     },
     {
@@ -337,7 +350,8 @@
             ]
           }
         ],
-        "newElements": []
+        "newElements": [],
+        "newRelations": []
       }
     },
     {
@@ -361,7 +375,8 @@
             ]
           }
         ],
-        "newElements": []
+        "newElements": [],
+        "newRelations": []
       }
     },
     {
@@ -390,7 +405,8 @@
             ]
           }
         ],
-        "newElements": []
+        "newElements": [],
+        "newRelations": []
       }
     },
     {
@@ -414,7 +430,8 @@
             ]
           }
         ],
-        "newElements": []
+        "newElements": [],
+        "newRelations": []
       }
     },
     {
@@ -438,7 +455,8 @@
             "cites": []
           }
         ],
-        "newElements": []
+        "newElements": [],
+        "newRelations": []
       }
     },
     {
@@ -462,7 +480,8 @@
             "cites": []
           }
         ],
-        "newElements": []
+        "newElements": [],
+        "newRelations": []
       }
     },
     {
@@ -488,7 +507,8 @@
             ]
           }
         ],
-        "newElements": []
+        "newElements": [],
+        "newRelations": []
       }
     },
     {
@@ -505,7 +525,8 @@
             ]
           }
         ],
-        "newElements": []
+        "newElements": [],
+        "newRelations": []
       }
     },
     {
@@ -529,7 +550,8 @@
             "cites": []
           }
         ],
-        "newElements": []
+        "newElements": [],
+        "newRelations": []
       }
     },
     {
@@ -564,7 +586,8 @@
             ]
           }
         ],
-        "newElements": []
+        "newElements": [],
+        "newRelations": []
       }
     },
     {
@@ -595,11 +618,13 @@
             "kind": "CHARACTER",
             "name": "Lena",
             "summary": null,
+            "fillsSlot": false,
             "cites": [
               "a1"
             ]
           }
-        ]
+        ],
+        "newRelations": []
       }
     },
     {
@@ -625,7 +650,8 @@
             ]
           }
         ],
-        "newElements": []
+        "newElements": [],
+        "newRelations": []
       }
     },
     {
@@ -651,7 +677,8 @@
             ]
           }
         ],
-        "newElements": []
+        "newElements": [],
+        "newRelations": []
       }
     },
     {
@@ -675,7 +702,8 @@
             "cites": []
           }
         ],
-        "newElements": []
+        "newElements": [],
+        "newRelations": []
       }
     },
     {
@@ -699,7 +727,8 @@
             ]
           }
         ],
-        "newElements": []
+        "newElements": [],
+        "newRelations": []
       }
     },
     {
@@ -738,7 +767,8 @@
             ]
           }
         ],
-        "newElements": []
+        "newElements": [],
+        "newRelations": []
       }
     },
     {
@@ -767,7 +797,8 @@
             ]
           }
         ],
-        "newElements": []
+        "newElements": [],
+        "newRelations": []
       }
     },
     {
@@ -797,7 +828,8 @@
             ]
           }
         ],
-        "newElements": []
+        "newElements": [],
+        "newRelations": []
       }
     },
     {
@@ -821,7 +853,8 @@
             "cites": []
           }
         ],
-        "newElements": []
+        "newElements": [],
+        "newRelations": []
       }
     },
     {
@@ -843,11 +876,13 @@
             "kind": "FACTION",
             "name": "Drainage Board",
             "summary": null,
+            "fillsSlot": false,
             "cites": [
               "a1"
             ]
           }
-        ]
+        ],
+        "newRelations": []
       }
     },
     {
@@ -871,7 +906,8 @@
             "cites": []
           }
         ],
-        "newElements": []
+        "newElements": [],
+        "newRelations": []
       }
     },
     {
@@ -897,7 +933,8 @@
             ]
           }
         ],
-        "newElements": []
+        "newElements": [],
+        "newRelations": []
       }
     },
     {
@@ -926,7 +963,8 @@
             ]
           }
         ],
-        "newElements": []
+        "newElements": [],
+        "newRelations": []
       }
     },
     {
@@ -952,7 +990,8 @@
             ]
           }
         ],
-        "newElements": []
+        "newElements": [],
+        "newRelations": []
       }
     },
     {
@@ -983,11 +1022,13 @@
             "kind": "CHARACTER",
             "name": "Agathe Roux",
             "summary": null,
+            "fillsSlot": false,
             "cites": [
               "a2"
             ]
           }
-        ]
+        ],
+        "newRelations": []
       }
     },
     {
@@ -1019,7 +1060,8 @@
             ]
           }
         ],
-        "newElements": []
+        "newElements": [],
+        "newRelations": []
       }
     },
     {
@@ -1043,7 +1085,8 @@
             ]
           }
         ],
-        "newElements": []
+        "newElements": [],
+        "newRelations": []
       }
     },
     {
@@ -1069,7 +1112,8 @@
             ]
           }
         ],
-        "newElements": []
+        "newElements": [],
+        "newRelations": []
       }
     },
     {
@@ -1104,11 +1148,13 @@
             "kind": "CHARACTER",
             "name": "Tamsin",
             "summary": null,
+            "fillsSlot": false,
             "cites": [
               "a3"
             ]
           }
-        ]
+        ],
+        "newRelations": []
       }
     },
     {
@@ -1134,7 +1180,164 @@
             ]
           }
         ],
-        "newElements": []
+        "newElements": [],
+        "newRelations": []
+      }
+    },
+    {
+      "caseId": "en-41",
+      "output": {
+        "operations": [
+          {
+            "elementId": "eval-en-41",
+            "fieldKey": "history",
+            "op": "ADD",
+            "value": "They met on the ferry the summer the old bridge closed, and he taught her to read the tides.",
+            "cites": [
+              "a1"
+            ]
+          },
+          {
+            "elementId": "eval-en-41",
+            "fieldKey": "wants",
+            "op": "ADD",
+            "value": "She wants him to stay in the marsh town; he wants her to come with him to the city.",
+            "cites": [
+              "a2"
+            ]
+          }
+        ],
+        "newElements": [],
+        "newRelations": []
+      }
+    },
+    {
+      "caseId": "en-42",
+      "output": {
+        "operations": [
+          {
+            "elementId": "eval-en-42",
+            "fieldKey": "history",
+            "op": "UPDATE",
+            "value": "They ran the bakery together after their father died.",
+            "cites": [
+              "a1"
+            ]
+          }
+        ],
+        "newElements": [],
+        "newRelations": []
+      }
+    },
+    {
+      "caseId": "en-43",
+      "output": {
+        "operations": [
+          {
+            "elementId": "eval-en-43",
+            "fieldKey": "want",
+            "op": "ADD",
+            "value": "To win Tomas Fenn back.",
+            "cites": [
+              "a1"
+            ]
+          }
+        ],
+        "newElements": [],
+        "newRelations": [
+          {
+            "fromElementId": "eval-en-43",
+            "toElementId": "eval-en-43-e1",
+            "type": "loves",
+            "note": null,
+            "fields": [
+              {
+                "key": "history",
+                "value": "They were engaged until he left for the city."
+              }
+            ],
+            "cites": [
+              "a1"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "caseId": "en-44",
+      "output": {
+        "operations": [
+          {
+            "elementId": "pending-element",
+            "fieldKey": "what_happens",
+            "op": "ADD",
+            "value": "The mayor's men are seen pulling the warning signs down at the bridge.",
+            "cites": [
+              "a1"
+            ]
+          },
+          {
+            "elementId": "pending-element",
+            "fieldKey": "cause",
+            "op": "ADD",
+            "value": "The bridge gives way and the town wants someone to blame.",
+            "cites": [
+              "a2"
+            ]
+          },
+          {
+            "elementId": "pending-element",
+            "fieldKey": "effect",
+            "op": "ADD",
+            "value": "When the town learns the mayor's men pulled the signs down, it turns on the mayor.",
+            "cites": [
+              "a3"
+            ]
+          }
+        ],
+        "newElements": [
+          {
+            "kind": "PLOT_BEAT",
+            "name": "The warning signs come down",
+            "summary": null,
+            "fillsSlot": true,
+            "cites": [
+              "a1"
+            ]
+          }
+        ],
+        "newRelations": [
+          {
+            "fromElementId": "eval-en-44-e1",
+            "toElementId": "new.1",
+            "type": "causes",
+            "note": null,
+            "fields": [
+              {
+                "key": "mechanism",
+                "value": "The bridge gives way and the town wants someone to blame."
+              }
+            ],
+            "cites": [
+              "a2"
+            ]
+          },
+          {
+            "fromElementId": "new.1",
+            "toElementId": "eval-en-44-e2",
+            "type": "causes",
+            "note": null,
+            "fields": [
+              {
+                "key": "mechanism",
+                "value": "When the town learns the mayor's men pulled the signs down, it turns on the mayor."
+              }
+            ],
+            "cites": [
+              "a3"
+            ]
+          }
+        ]
       }
     },
     {
@@ -1151,7 +1354,8 @@
             ]
           }
         ],
-        "newElements": []
+        "newElements": [],
+        "newRelations": []
       }
     },
     {
@@ -1166,7 +1370,8 @@
             "cites": []
           }
         ],
-        "newElements": []
+        "newElements": [],
+        "newRelations": []
       }
     },
     {
@@ -1183,7 +1388,8 @@
             ]
           }
         ],
-        "newElements": []
+        "newElements": [],
+        "newRelations": []
       }
     },
     {
@@ -1205,7 +1411,8 @@
             "cites": []
           }
         ],
-        "newElements": []
+        "newElements": [],
+        "newRelations": []
       }
     },
     {
@@ -1222,7 +1429,8 @@
             ]
           }
         ],
-        "newElements": []
+        "newElements": [],
+        "newRelations": []
       }
     },
     {
@@ -1239,7 +1447,8 @@
             ]
           }
         ],
-        "newElements": []
+        "newElements": [],
+        "newRelations": []
       }
     },
     {
@@ -1263,7 +1472,8 @@
             "cites": []
           }
         ],
-        "newElements": []
+        "newElements": [],
+        "newRelations": []
       }
     },
     {
@@ -1278,7 +1488,8 @@
             "cites": []
           }
         ],
-        "newElements": []
+        "newElements": [],
+        "newRelations": []
       }
     },
     {
@@ -1299,7 +1510,8 @@
             ]
           }
         ],
-        "newElements": []
+        "newElements": [],
+        "newRelations": []
       }
     },
     {
@@ -1316,7 +1528,8 @@
             ]
           }
         ],
-        "newElements": []
+        "newElements": [],
+        "newRelations": []
       }
     },
     {
@@ -1333,7 +1546,8 @@
             ]
           }
         ],
-        "newElements": []
+        "newElements": [],
+        "newRelations": []
       }
     },
     {
@@ -1350,7 +1564,8 @@
             ]
           }
         ],
-        "newElements": []
+        "newElements": [],
+        "newRelations": []
       }
     },
     {
@@ -1367,7 +1582,8 @@
             ]
           }
         ],
-        "newElements": []
+        "newElements": [],
+        "newRelations": []
       }
     },
     {
@@ -1384,7 +1600,44 @@
             ]
           }
         ],
-        "newElements": []
+        "newElements": [],
+        "newRelations": []
+      }
+    },
+    {
+      "caseId": "adv-15",
+      "output": {
+        "operations": [
+          {
+            "elementId": "eval-adv-15",
+            "fieldKey": "history",
+            "op": "ADD",
+            "value": "He refused to send the lifeboat the night her brother drowned.",
+            "cites": [
+              "a1"
+            ]
+          }
+        ],
+        "newElements": [],
+        "newRelations": []
+      }
+    },
+    {
+      "caseId": "adv-16",
+      "output": {
+        "operations": [
+          {
+            "elementId": "eval-adv-16",
+            "fieldKey": "want",
+            "op": "ADD",
+            "value": "For the orchard to be back in bearing before the winter.",
+            "cites": [
+              "a1"
+            ]
+          }
+        ],
+        "newElements": [],
+        "newRelations": []
       }
     }
   ]

@@ -251,6 +251,48 @@
       "inverseLabel": "allied with",
       "targetKinds": [
         "FACTION"
+      ],
+      "fields": [
+        {
+          "key": "history",
+          "label": "Shared history",
+          "help": "How these two came to be linked this way, and the moments between them that still matter.",
+          "type": "text",
+          "required": true,
+          "order": 1,
+          "dependsOn": []
+        },
+        {
+          "key": "wants",
+          "label": "What each wants from the other",
+          "help": "What each side hopes to get, keep or prove through this link, a line for each.",
+          "type": "text",
+          "required": true,
+          "order": 2,
+          "dependsOn": []
+        },
+        {
+          "key": "unspoken",
+          "label": "What is left unspoken",
+          "help": "What one or both of them know, feel or suspect about the other and never say aloud.",
+          "type": "richtext",
+          "required": false,
+          "order": 3,
+          "dependsOn": [
+            "history"
+          ]
+        },
+        {
+          "key": "change",
+          "label": "How it changes",
+          "help": "Where this link stands at the start of the book and at its end, and what moves it.",
+          "type": "text",
+          "required": false,
+          "order": 4,
+          "dependsOn": [
+            "wants"
+          ]
+        }
       ]
     },
     {
@@ -259,6 +301,48 @@
       "inverseLabel": "opposed by",
       "targetKinds": [
         "FACTION"
+      ],
+      "fields": [
+        {
+          "key": "history",
+          "label": "Shared history",
+          "help": "How these two came to be linked this way, and the moments between them that still matter.",
+          "type": "text",
+          "required": true,
+          "order": 1,
+          "dependsOn": []
+        },
+        {
+          "key": "wants",
+          "label": "What each wants from the other",
+          "help": "What each side hopes to get, keep or prove through this link, a line for each.",
+          "type": "text",
+          "required": true,
+          "order": 2,
+          "dependsOn": []
+        },
+        {
+          "key": "unspoken",
+          "label": "What is left unspoken",
+          "help": "What one or both of them know, feel or suspect about the other and never say aloud.",
+          "type": "richtext",
+          "required": false,
+          "order": 3,
+          "dependsOn": [
+            "history"
+          ]
+        },
+        {
+          "key": "change",
+          "label": "How it changes",
+          "help": "Where this link stands at the start of the book and at its end, and what moves it.",
+          "type": "text",
+          "required": false,
+          "order": 4,
+          "dependsOn": [
+            "wants"
+          ]
+        }
       ]
     },
     {
@@ -267,6 +351,48 @@
       "inverseLabel": "has authority over",
       "targetKinds": [
         "FACTION"
+      ],
+      "fields": [
+        {
+          "key": "basis",
+          "label": "What holds it together",
+          "help": "Why this link exists: the need, duty, fear, belief or bargain that keeps it in place.",
+          "type": "text",
+          "required": true,
+          "order": 1,
+          "dependsOn": []
+        },
+        {
+          "key": "terms",
+          "label": "What each side gives and gets",
+          "help": "What passes between the two because of this link, such as loyalty, protection, money, secrets or obedience.",
+          "type": "text",
+          "required": false,
+          "order": 2,
+          "dependsOn": []
+        },
+        {
+          "key": "strain",
+          "label": "Where it strains",
+          "help": "The pressure that could break or turn this link, and what would follow if it gave way.",
+          "type": "text",
+          "required": false,
+          "order": 3,
+          "dependsOn": [
+            "basis"
+          ]
+        },
+        {
+          "key": "change",
+          "label": "How it changes",
+          "help": "Where this link stands at the start of the book and at its end, and what moves it.",
+          "type": "text",
+          "required": false,
+          "order": 4,
+          "dependsOn": [
+            "basis"
+          ]
+        }
       ]
     },
     {
@@ -275,6 +401,48 @@
       "inverseLabel": "has offshoot",
       "targetKinds": [
         "FACTION"
+      ],
+      "fields": [
+        {
+          "key": "basis",
+          "label": "What holds it together",
+          "help": "Why this link exists: the need, duty, fear, belief or bargain that keeps it in place.",
+          "type": "text",
+          "required": true,
+          "order": 1,
+          "dependsOn": []
+        },
+        {
+          "key": "terms",
+          "label": "What each side gives and gets",
+          "help": "What passes between the two because of this link, such as loyalty, protection, money, secrets or obedience.",
+          "type": "text",
+          "required": false,
+          "order": 2,
+          "dependsOn": []
+        },
+        {
+          "key": "strain",
+          "label": "Where it strains",
+          "help": "The pressure that could break or turn this link, and what would follow if it gave way.",
+          "type": "text",
+          "required": false,
+          "order": 3,
+          "dependsOn": [
+            "basis"
+          ]
+        },
+        {
+          "key": "change",
+          "label": "How it changes",
+          "help": "Where this link stands at the start of the book and at its end, and what moves it.",
+          "type": "text",
+          "required": false,
+          "order": 4,
+          "dependsOn": [
+            "basis"
+          ]
+        }
       ]
     },
     {
@@ -283,6 +451,48 @@
       "inverseLabel": "fronted by",
       "targetKinds": [
         "FACTION"
+      ],
+      "fields": [
+        {
+          "key": "basis",
+          "label": "What holds it together",
+          "help": "Why this link exists: the need, duty, fear, belief or bargain that keeps it in place.",
+          "type": "text",
+          "required": true,
+          "order": 1,
+          "dependsOn": []
+        },
+        {
+          "key": "terms",
+          "label": "What each side gives and gets",
+          "help": "What passes between the two because of this link, such as loyalty, protection, money, secrets or obedience.",
+          "type": "text",
+          "required": false,
+          "order": 2,
+          "dependsOn": []
+        },
+        {
+          "key": "strain",
+          "label": "Where it strains",
+          "help": "The pressure that could break or turn this link, and what would follow if it gave way.",
+          "type": "text",
+          "required": false,
+          "order": 3,
+          "dependsOn": [
+            "basis"
+          ]
+        },
+        {
+          "key": "change",
+          "label": "How it changes",
+          "help": "Where this link stands at the start of the book and at its end, and what moves it.",
+          "type": "text",
+          "required": false,
+          "order": 4,
+          "dependsOn": [
+            "basis"
+          ]
+        }
       ]
     },
     {
@@ -291,6 +501,48 @@
       "inverseLabel": "guarded by",
       "targetKinds": [
         "OBJECT"
+      ],
+      "fields": [
+        {
+          "key": "basis",
+          "label": "What holds it together",
+          "help": "Why this link exists: the need, duty, fear, belief or bargain that keeps it in place.",
+          "type": "text",
+          "required": true,
+          "order": 1,
+          "dependsOn": []
+        },
+        {
+          "key": "terms",
+          "label": "What each side gives and gets",
+          "help": "What passes between the two because of this link, such as loyalty, protection, money, secrets or obedience.",
+          "type": "text",
+          "required": false,
+          "order": 2,
+          "dependsOn": []
+        },
+        {
+          "key": "strain",
+          "label": "Where it strains",
+          "help": "The pressure that could break or turn this link, and what would follow if it gave way.",
+          "type": "text",
+          "required": false,
+          "order": 3,
+          "dependsOn": [
+            "basis"
+          ]
+        },
+        {
+          "key": "change",
+          "label": "How it changes",
+          "help": "Where this link stands at the start of the book and at its end, and what moves it.",
+          "type": "text",
+          "required": false,
+          "order": 4,
+          "dependsOn": [
+            "basis"
+          ]
+        }
       ]
     },
     {
@@ -299,6 +551,48 @@
       "inverseLabel": "sought by",
       "targetKinds": [
         "OBJECT"
+      ],
+      "fields": [
+        {
+          "key": "basis",
+          "label": "What holds it together",
+          "help": "Why this link exists: the need, duty, fear, belief or bargain that keeps it in place.",
+          "type": "text",
+          "required": true,
+          "order": 1,
+          "dependsOn": []
+        },
+        {
+          "key": "terms",
+          "label": "What each side gives and gets",
+          "help": "What passes between the two because of this link, such as loyalty, protection, money, secrets or obedience.",
+          "type": "text",
+          "required": false,
+          "order": 2,
+          "dependsOn": []
+        },
+        {
+          "key": "strain",
+          "label": "Where it strains",
+          "help": "The pressure that could break or turn this link, and what would follow if it gave way.",
+          "type": "text",
+          "required": false,
+          "order": 3,
+          "dependsOn": [
+            "basis"
+          ]
+        },
+        {
+          "key": "change",
+          "label": "How it changes",
+          "help": "Where this link stands at the start of the book and at its end, and what moves it.",
+          "type": "text",
+          "required": false,
+          "order": 4,
+          "dependsOn": [
+            "basis"
+          ]
+        }
       ]
     },
     {
@@ -307,6 +601,26 @@
       "inverseLabel": "informs",
       "targetKinds": [
         "RESEARCH"
+      ],
+      "fields": [
+        {
+          "key": "what_is_drawn",
+          "label": "What is drawn from it",
+          "help": "Which facts, methods or details pass from the source into the book.",
+          "type": "text",
+          "required": true,
+          "order": 1,
+          "dependsOn": []
+        },
+        {
+          "key": "liberties",
+          "label": "Liberties taken",
+          "help": "Where the book departs from the source on purpose, and why.",
+          "type": "text",
+          "required": false,
+          "order": 2,
+          "dependsOn": []
+        }
       ]
     }
   ]

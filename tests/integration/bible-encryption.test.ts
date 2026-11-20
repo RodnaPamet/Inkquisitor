@@ -16,7 +16,7 @@ import { runWithDbContext } from '@/lib/db/db-context';
 import { DecryptIntegrityError } from '@/lib/db/encryption-middleware';
 import { ENCRYPTED_FIELDS } from '@/lib/security/encrypted-fields';
 import { createElement, getElement } from '@/app-layer/usecases/bible-elements';
-import { addRelation } from '@/app-layer/usecases/bible-relations';
+import { addRelation, saveRelationFields } from '@/app-layer/usecases/bible-relations';
 import { getVersion } from '@/app-layer/usecases/bible-versions';
 import { createBook, getBook } from '@/app-layer/usecases/books';
 import { answerQuestion } from '@/app-layer/usecases/interview-answers';
@@ -63,6 +63,8 @@ beforeAll(async () => {
     });
     const other = await createElement(ctx, book.id, { kind: 'FACTION', name: 'Plain faction' });
     const rel = await addRelation(ctx, book.id, { fromElementId: el.id, toElementId: other.id, type: 'member_of', note: `note ${MARK}` });
+    // Phase 3.3 (D24): a relation's field, and the version that records it.
+    await saveRelationFields(ctx, book.id, rel.id, { baseVersion: 1, fields: [{ key: 'terms', value: `terms ${MARK}` }], changeSummary: `relation change ${MARK}` });
     Object.assign(ids, { Book: book.id, BibleElement: el.id, BibleRelation: rel.id });
 
     // An interview whose questions carry the mark in every encrypted column (a pick with
@@ -98,7 +100,7 @@ beforeAll(async () => {
         const a = f.answers.find((x) => x.status === 'ANSWERED')!;
         return {
             operations: [{ elementId: f.elements[0].elementId, fieldKey: 'want', op: 'ADD', value: `reason ${MARK}`, cites: [a.answerId] }],
-            newElements: [{ kind: 'CHARACTER', name: `Opt ${MARK}`, summary: `reason ${MARK}`, cites: [a.answerId] }],
+            newElements: [{ kind: 'CHARACTER', name: `Opt ${MARK}`, summary: `reason ${MARK}`, fillsSlot: false, cites: [a.answerId] }],
         };
     });
     const closed = await closeRoundAndReconcile(ctx, book.id, interview.session.id, String(interview.round!.number), { skipUnanswered: true }, { reconciler });
@@ -174,8 +176,9 @@ async function rawValues(model: string, field: string): Promise<string[]> {
     const byRun = model === 'ResearchFinding' || model === 'ResearchCitation' || model === 'ResearchProposal' || model === 'ResearchEgress';
     const byBrief = model === 'ResearchSource';
     const byMap = model === 'MapSnapshot';
-    const where = byElement ? `"elementId" = $1` : bySession ? `"sessionId" = $1` : byRun ? `"runId" = $1` : byBrief ? `"briefId" = $1` : byMap ? `"mapId" = $1` : `"id" = $1`;
-    const id = byElement ? ids.BibleElement : bySession ? ids.Session : byRun ? ids.Run : byBrief ? ids.ResearchBrief : byMap ? ids.StoryMap : ids[model];
+    const byRelation = model === 'BibleRelationField' || model === 'BibleRelationVersion';
+    const where = byElement ? `"elementId" = $1` : bySession ? `"sessionId" = $1` : byRun ? `"runId" = $1` : byBrief ? `"briefId" = $1` : byMap ? `"mapId" = $1` : byRelation ? `"relationId" = $1` : `"id" = $1`;
+    const id = byElement ? ids.BibleElement : bySession ? ids.Session : byRun ? ids.Run : byBrief ? ids.ResearchBrief : byMap ? ids.StoryMap : byRelation ? ids.BibleRelation : ids[model];
     const rows = await prisma.$queryRawUnsafe<Array<{ v: string | null }>>(`SELECT "${field}" AS v FROM "${model}" WHERE ${where}`, id);
     return rows.map((r) => r.v).filter((v): v is string => v !== null);
 }
@@ -190,6 +193,9 @@ it('the manifest covers the bible, interview and research author text the briefs
             'BibleEntryVersion.snapshot',
             'BibleField.value',
             'BibleRelation.note',
+            'BibleRelationField.value',
+            'BibleRelationVersion.changeSummary',
+            'BibleRelationVersion.snapshot',
             'Book.logline',
             'Question.text',
             'Question.options',

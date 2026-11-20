@@ -19,6 +19,11 @@
  *   a new entry      shown apart: its kind, name and summary, the answers that
  *                    name it; Accept creates it, Edit changes the name and
  *                    summary first, Reject drops it
+ *   a relation's     (Phase 3.3) a change to one of a relation's fields is a
+ *     field          field change, named "A — label — B"
+ *   a new relation   (Phase 3.3) its ends, note and fields, the answers it is
+ *                    drawn from; one that joins a new entry waits until that
+ *                    entry is accepted (`StructuralProposals`)
  *   the rounds       each round's reconcile run, in plain words; a failed or
  *                    refused one can be run again
  *
@@ -54,9 +59,12 @@ import {
     type CitedAnswerView,
     type FieldProposalView,
     type NewElementProposalView,
+    type NewRelationProposalView,
+    type RelationFieldProposalView,
     type ReviewIds,
     type SessionReviewView,
 } from '@/lib/enrichment/api-client';
+import { NewRelationCard, ProposalFlags, ProposalSources, ProposedFields, proposalStatusVariant } from './StructuralProposals';
 
 export interface SessionReviewProps {
     workspaceSlug: string;
@@ -89,62 +97,25 @@ function useErrorText() {
     );
 }
 
-function Sources({ ids, answers }: { ids: readonly string[]; answers: Record<string, CitedAnswerView> }) {
-    const t = useTranslations('enrichment');
-    return (
-        <div className="space-y-tight">
-            <p className="text-xs font-medium uppercase tracking-wide text-content-muted">{t('citesTitle')}</p>
-            <ul className="space-y-tight" data-testid="proposal-sources">
-                {ids.map((id) => {
-                    const a = answers[id];
-                    return (
-                        <li key={id} className="rounded-md border border-border-subtle bg-bg-muted p-2 text-sm">
-                            {a ? (
-                                <>
-                                    <p className="text-content-muted">{a.question}</p>
-                                    <p className="whitespace-pre-wrap text-content-default">{a.answer ?? t('notAnswered')}</p>
-                                </>
-                            ) : (
-                                <p className="text-content-muted">{t('answerMissing')}</p>
-                            )}
-                        </li>
-                    );
-                })}
-            </ul>
-        </div>
-    );
-}
-
-/** The warnings a proposal carries (D14), each a badge and a sentence saying what it means. */
-function Flags({ id, flags }: { id: string; flags: readonly string[] }) {
-    const t = useTranslations('enrichment.flag');
-    if (flags.length === 0) return null;
-    return (
-        <div className="space-y-tight rounded-md border border-border-emphasis bg-bg-subtle p-3" data-testid="proposal-flag" id={`proposal-${id}-flags`}>
-            {flags.map((f) => (
-                <div key={f} className="space-y-1">
-                    <StatusBadge variant="warning">{t(`${f}.label`)}</StatusBadge>
-                    <p className="text-sm text-content-default">{t(`${f}.explained`)}</p>
-                </div>
-            ))}
-        </div>
-    );
-}
-
-function statusVariant(status: string): 'info' | 'success' | 'neutral' | 'warning' {
-    if (status === 'PENDING') return 'info';
-    if (status === 'ACCEPTED' || status === 'EDITED_ACCEPTED') return 'success';
-    return 'neutral';
-}
+type ChangeProposal = FieldProposalView | RelationFieldProposalView;
 
 interface CardActions {
     busy: boolean;
-    accept: (p: FieldProposalView, value?: FieldValue | null) => Promise<boolean>;
+    accept: (p: ChangeProposal, value?: FieldValue | null) => Promise<boolean>;
     reject: (id: string) => Promise<void>;
 }
 
-function FieldProposalCard({ p, answers, canEdit, actions, scaleOf, workspaceSlug, bookId }: { p: FieldProposalView; answers: Record<string, CitedAnswerView>; canEdit: boolean; actions: CardActions; scaleOf: (n: number) => string; workspaceSlug: string; bookId: string }) {
+/**
+ * A change to one field: an element's (FIELD) or, since Phase 3.3, a
+ * relation's (RELATION_FIELD), named "A — label — B" and linked to the
+ * declaring end's page, where the relation is read.
+ */
+function FieldProposalCard({ p, answers, canEdit, actions, scaleOf, workspaceSlug, bookId }: { p: ChangeProposal; answers: Record<string, CitedAnswerView>; canEdit: boolean; actions: CardActions; scaleOf: (n: number) => string; workspaceSlug: string; bookId: string }) {
     const t = useTranslations('enrichment');
+    const subject =
+        p.kind === 'RELATION_FIELD'
+            ? { href: APP_ROUTES.bibleElement(workspaceSlug, bookId, p.relation.from.id), name: t('relationAria', { from: p.relation.from.name, label: p.relation.label, to: p.relation.to.name }), testId: 'relation-field-proposal' }
+            : { href: APP_ROUTES.bibleElement(workspaceSlug, bookId, p.elementId), name: p.elementName, testId: 'field-proposal' };
     const [editing, setEditing] = useState(false);
     const [draft, setDraft] = useState<FieldValue | null>(p.proposedValue);
     const pending = p.status === 'PENDING';
@@ -155,27 +126,27 @@ function FieldProposalCard({ p, answers, canEdit, actions, scaleOf, workspaceSlu
         { id: 'proposed', versionNumber: Math.max(p.currentVersion, 1) + 1, contentType: 'HTML', text: valueAsDiffHtml(p.field, p.proposedValue, scaleOf) },
     ];
     return (
-        <Card className="space-y-default p-5" id={`proposal-${p.id}`} data-testid="field-proposal" data-status={p.status} data-op={p.operation} aria-labelledby={headingId}>
+        <Card className="space-y-default p-5" id={`proposal-${p.id}`} data-testid={subject.testId} data-status={p.status} data-op={p.operation} aria-labelledby={headingId}>
             <div className="flex flex-wrap items-start justify-between gap-tight">
                 <div className="min-w-0 space-y-1">
                     <h3 id={headingId} className="text-base font-semibold text-content-emphasis">
                         {p.field.label}
                     </h3>
                     <p className="text-sm text-content-muted">
-                        <Link href={APP_ROUTES.bibleElement(workspaceSlug, bookId, p.elementId)} className="hover:underline">
-                            {p.elementName}
+                        <Link href={subject.href} className="hover:underline">
+                            {subject.name}
                         </Link>
                         {p.roundNumber !== null ? ` · ${t('roundLabel', { number: p.roundNumber })}` : null}
                     </p>
                 </div>
                 <div className="flex flex-wrap items-center gap-tight">
                     <StatusBadge variant={p.operation === 'REMOVE' ? 'warning' : 'info'}>{t(`op.${p.operation}`)}</StatusBadge>
-                    <StatusBadge variant={statusVariant(p.status)} data-testid="proposal-status">
+                    <StatusBadge variant={proposalStatusVariant(p.status)} data-testid="proposal-status">
                         {t(`status.${p.status}`)}
                     </StatusBadge>
                 </div>
             </div>
-            {pending ? <Flags id={p.id} flags={p.flags} /> : null}
+            {pending ? <ProposalFlags id={p.id} flags={p.flags} /> : null}
             {pending && changed ? (
                 <p className="rounded-md border border-border-default bg-bg-subtle p-3 text-sm text-content-default" data-testid="proposal-changed">
                     {t('changedSince', { base: p.baseVersion, current: p.currentVersion })}
@@ -191,7 +162,7 @@ function FieldProposalCard({ p, answers, canEdit, actions, scaleOf, workspaceSlu
                     <FieldEditor def={p.field} value={draft} onChange={setDraft} readOnly={false} />
                 </div>
             ) : null}
-            <Sources ids={p.citedAnswerIds} answers={answers} />
+            <ProposalSources ids={p.citedAnswerIds} answers={answers} />
             {canEdit && pending ? (
                 <div className="flex flex-wrap items-center gap-tight">
                     {editing ? (
@@ -218,7 +189,7 @@ function FieldProposalCard({ p, answers, canEdit, actions, scaleOf, workspaceSlu
                                 icon={<Check className="size-4" aria-hidden="true" />}
                                 loading={actions.busy}
                                 onClick={() => void actions.accept(p)}
-                                aria-label={t('acceptAria', { field: p.field.label, element: p.elementName })}
+                                aria-label={t('acceptAria', { field: p.field.label, element: subject.name })}
                                 id={`accept-${p.id}`}
                             >
                                 {t('accept')}
@@ -241,7 +212,7 @@ function FieldProposalCard({ p, answers, canEdit, actions, scaleOf, workspaceSlu
                                 icon={<X className="size-4" aria-hidden="true" />}
                                 disabled={actions.busy}
                                 onClick={() => void actions.reject(p.id)}
-                                aria-label={t('rejectAria', { field: p.field.label, element: p.elementName })}
+                                aria-label={t('rejectAria', { field: p.field.label, element: subject.name })}
                                 id={`reject-${p.id}`}
                             >
                                 {t('reject')}
@@ -290,12 +261,18 @@ function NewElementCard({
                     </h3>
                     <p className="text-sm text-content-muted">{t('kindLabel', { kind: kindLabel })}</p>
                 </div>
-                <StatusBadge variant={statusVariant(p.status)} data-testid="proposal-status">
+                <StatusBadge variant={proposalStatusVariant(p.status)} data-testid="proposal-status">
                     {t(`status.${p.status}`)}
                 </StatusBadge>
             </div>
-            {pending ? <Flags id={p.id} flags={p.flags} /> : null}
+            {pending ? <ProposalFlags id={p.id} flags={p.flags} /> : null}
             {p.summary && !editing ? <p className="whitespace-pre-wrap text-sm text-content-default">{p.summary}</p> : null}
+            {p.slot && pending ? (
+                <p className="text-sm text-content-muted" data-testid="slot-placement">
+                    {t('slotPlacement', { a: p.slot.afterName, b: p.slot.beforeName })}
+                </p>
+            ) : null}
+            <ProposedFields fields={p.fields} title={t('firstFields')} />
             {p.createdElementId ? (
                 <Link href={APP_ROUTES.bibleElement(workspaceSlug, bookId, p.createdElementId)} className="text-sm text-content-emphasis hover:underline">
                     {t('openElement')}
@@ -311,7 +288,7 @@ function NewElementCard({
                     </FormField>
                 </div>
             ) : null}
-            <Sources ids={p.citedAnswerIds} answers={answers} />
+            <ProposalSources ids={p.citedAnswerIds} answers={answers} />
             {canEdit && pending ? (
                 <div className="flex flex-wrap items-center gap-tight">
                     {editing ? (
@@ -379,7 +356,7 @@ export function SessionReview({ workspaceSlug, book, review: initial, canEdit, k
             } catch (err) {
                 toast.error(errorText(err));
                 const reason = err instanceof BibleApiError ? err.reason : null;
-                if (reason === 'VERSION_CONFLICT' || reason === 'PROPOSAL_OUTDATED' || reason === 'PROPOSAL_STALE' || reason === 'PROPOSAL_DECIDED' || reason === 'BULK_INELIGIBLE') await reload();
+                if (reason === 'VERSION_CONFLICT' || reason === 'PROPOSAL_OUTDATED' || reason === 'PROPOSAL_STALE' || reason === 'PROPOSAL_DECIDED' || reason === 'BULK_INELIGIBLE' || reason === 'RELATION_EXISTS' || reason === 'END_NOT_CREATED' || reason === 'END_GONE') await reload();
                 return false;
             } finally {
                 setBusy(false);
@@ -388,7 +365,7 @@ export function SessionReview({ workspaceSlug, book, review: initial, canEdit, k
         [reload, errorText],
     );
 
-    const acceptField = (p: FieldProposalView, value?: FieldValue | null) =>
+    const acceptField = (p: ChangeProposal, value?: FieldValue | null) =>
         run(async () => {
             await enrichmentApi.accept(ids, p.id, {
                 baseVersion: p.currentVersion,
@@ -402,6 +379,11 @@ export function SessionReview({ workspaceSlug, book, review: initial, canEdit, k
             const name = edit?.name ?? p.name;
             await enrichmentApi.accept(ids, p.id, edit ? { name: edit.name, summary: edit.summary } : {});
             return t('acceptedNew', { name });
+        });
+    const acceptRelation = (p: NewRelationProposalView) =>
+        run(async () => {
+            await enrichmentApi.accept(ids, p.id, {});
+            return t('acceptedRelation');
         });
     const reject = async (id: string) => {
         await run(async () => {
@@ -425,7 +407,8 @@ export function SessionReview({ workspaceSlug, book, review: initial, canEdit, k
             return t('runRetried', { number: roundNumber });
         });
 
-    const nothing = review.fields.length === 0 && review.newElements.length === 0;
+    const total = review.fields.length + review.newElements.length + review.relationFields.length + review.newRelations.length;
+    const nothing = total === 0;
     const actions: CardActions = { busy, accept: acceptField, reject };
 
     return (
@@ -446,7 +429,7 @@ export function SessionReview({ workspaceSlug, book, review: initial, canEdit, k
         >
             <div className="space-y-section">
                 {!canEdit ? <p className="text-sm text-content-muted">{t('readOnly')}</p> : null}
-                {review.truncated ? <p className="text-sm text-content-warning">{t('truncated', { count: review.fields.length + review.newElements.length })}</p> : null}
+                {review.truncated ? <p className="text-sm text-content-warning">{t('truncated', { count: total })}</p> : null}
 
                 {review.runs.length > 0 ? (
                     <section aria-labelledby="review-runs-title" className="space-y-tight">
@@ -491,6 +474,18 @@ export function SessionReview({ workspaceSlug, book, review: initial, canEdit, k
                     </section>
                 ) : null}
 
+                {review.relationFields.length > 0 ? (
+                    <section aria-labelledby="review-relation-fields-title" className="space-y-default">
+                        <h2 id="review-relation-fields-title" className="text-base font-semibold text-content-emphasis">
+                            {t('relationFieldsTitle')}
+                        </h2>
+                        <p className="text-sm text-content-muted">{t('relationFieldsHelp')}</p>
+                        {review.relationFields.map((p) => (
+                            <FieldProposalCard key={p.id} p={p} answers={review.answers} canEdit={canEdit} actions={actions} scaleOf={scaleOf} workspaceSlug={workspaceSlug} bookId={book.id} />
+                        ))}
+                    </section>
+                ) : null}
+
                 {review.newElements.length > 0 ? (
                     <section aria-labelledby="review-new-title" className="space-y-default">
                         <h2 id="review-new-title" className="text-base font-semibold text-content-emphasis">
@@ -510,6 +505,18 @@ export function SessionReview({ workspaceSlug, book, review: initial, canEdit, k
                                 workspaceSlug={workspaceSlug}
                                 bookId={book.id}
                             />
+                        ))}
+                    </section>
+                ) : null}
+
+                {review.newRelations.length > 0 ? (
+                    <section aria-labelledby="review-new-relations-title" className="space-y-default">
+                        <h2 id="review-new-relations-title" className="text-base font-semibold text-content-emphasis">
+                            {t('newRelationsTitle')}
+                        </h2>
+                        <p className="text-sm text-content-muted">{t('newRelationsHelp')}</p>
+                        {review.newRelations.map((p) => (
+                            <NewRelationCard key={p.id} p={p} answers={review.answers} canEdit={canEdit} busy={busy} onAccept={acceptRelation} onReject={reject} />
                         ))}
                     </section>
                 ) : null}

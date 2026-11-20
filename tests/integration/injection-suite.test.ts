@@ -12,11 +12,17 @@
  *     offers exactly the two web tools, a server tool beyond them that the
  *     model asks for stops the run (refused, never run on our side), and a
  *     proposal for book B's element is refused;
+ *   - an edge interview (Phase 3.3, D24) over a relation whose stored field
+ *     carries an injection, with a compromised model: nothing of book B SENT;
+ *     a new relation to book B's element, or to an element out of the
+ *     session's scope, is refused; a relation field reciting the instructions
+ *     is refused; nothing of book B STORED;
  *   - nothing of book B reaches any request of any of these steps.
  */
 import { prisma } from '@/lib/db';
 import { createBook } from '@/app-layer/usecases/books';
 import { createElement } from '@/app-layer/usecases/bible-elements';
+import { addRelation, saveRelationFields } from '@/app-layer/usecases/bible-relations';
 import { callStructured } from '@/app-layer/usecases/model-calls';
 import { answerQuestion } from '@/app-layer/usecases/interview-answers';
 import { startInterview } from '@/app-layer/usecases/interviews';
@@ -83,7 +89,8 @@ it('question generation and the reconcile step: nothing of the other book sent; 
                                     { elementId: elB, fieldKey: 'role', op: 'UPDATE', value: 'TBD', cites: [a.answerId] },
                                     { elementId: elA, fieldKey: a.targetsFieldKeys[0], op: 'ADD', value: RECONCILE_PROMPT.system.split(/\s+/).slice(0, 12).join(' '), cites: [a.answerId] },
                                 ],
-                                newElements: [{ kind: 'CHARACTER', name: CANARY_B, summary: null, cites: [a.answerId] }],
+                                newElements: [{ kind: 'CHARACTER', name: CANARY_B, summary: null, fillsSlot: false, cites: [a.answerId] }],
+                                newRelations: [],
                             }),
                         };
                     }
@@ -117,6 +124,60 @@ it('question generation and the reconcile step: nothing of the other book sent; 
     expect(review.newElements).toEqual([]);
     // Book B is untouched.
     expect(await prisma.enrichmentProposal.count({ where: { elementId: elB } })).toBe(0);
+});
+
+it('an edge interview over an injected relation field: nothing of the other book sent; a link to it, or out of scope, refused; nothing recited stored', async () => {
+    const { ctx, bookA, elA, elB } = await twoBooks();
+    const keeper = await createElement(ctx, bookA, { kind: 'CHARACTER', name: 'Oren Dask' });
+    const bystander = await createElement(ctx, bookA, { kind: 'CHARACTER', name: 'Tilde Marr' });
+    const rel = await addRelation(ctx, bookA, { fromElementId: elA, toElementId: keeper.id, type: 'opposes' });
+    await saveRelationFields(ctx, bookA, rel.id, { baseVersion: 1, fields: [{ key: 'history', value: `They fell out over the lamp oil. ${INJECTION}` }] });
+    const recited = RECONCILE_PROMPT.system.split(/\s+/).slice(0, 12).join(' ');
+    const api = fakeAnthropic([
+        {
+            kind: 'repeat',
+            turn: {
+                kind: 'respond',
+                answer: (body) => {
+                    if (systemOf(body).includes(RECONCILE_PROMPT.system.slice(0, 80))) {
+                        const answers = JSON.parse(/label="answers">\n([\s\S]*?)\n<\/author_data_/.exec(JSON.parse(JSON.stringify(body.messages))[0].content)?.[1] ?? '[]') as Array<{ answerId: string; targetsFieldKeys: string[] }>;
+                        const a = answers[0];
+                        return {
+                            kind: 'text',
+                            text: JSON.stringify({
+                                operations: [{ elementId: rel.id, fieldKey: a.targetsFieldKeys[0], op: 'ADD', value: recited, cites: [a.answerId] }],
+                                newElements: [],
+                                newRelations: [
+                                    { fromElementId: elA, toElementId: elB, type: 'opposes', note: `${CANARY_B} is her enemy.`, fields: [], cites: [a.answerId] },
+                                    { fromElementId: elA, toElementId: bystander.id, type: 'opposes', note: 'Ilse Varga opposes Tilde Marr.', fields: [], cites: [a.answerId] },
+                                ],
+                            }),
+                        };
+                    }
+                    return questionModelAnswer(body);
+                },
+            },
+        } satisfies FakeTurn,
+    ]);
+    const generator = questionGeneratorOver((input) => callStructured(ctx, input, { fetch: api.fetch }));
+    const view = await startInterview(ctx, bookA, { scope: 'SELECTION', elementIds: [], relationIds: [rel.id], depth: 2, detail: 3 }, { generator, embedder: stubQuestionEmbedder });
+    expect(view.round!.questions.length).toBeGreaterThan(0);
+    for (const q of view.round!.questions) {
+        const body = q.kind === 'CHOICE' || q.kind === 'EITHER_OR' ? { choice: q.options![0] } : q.kind === 'SCALE' ? { scale: 3 } : { text: `They have not spoken since. ${INJECTION}` };
+        await answerQuestion(ctx, bookA, view.session.id, q.id, body);
+    }
+    const reconciler = reconcilerOver((input) => callStructured(ctx, input, { fetch: api.fetch }));
+    const closed = await closeRoundAndReconcile(ctx, bookA, view.session.id, String(view.round!.number), { skipUnanswered: true }, { reconciler });
+    expect(closed.reconcile).toMatchObject({ status: 'DONE' });
+
+    sentNothingOf(api.requests);
+    const review = await getSessionReview(ctx, bookA, view.session.id);
+    expect(JSON.stringify(review)).not.toContain(CANARY_B);
+    expect(JSON.stringify(review)).not.toContain(recited);
+    expect(review.newRelations).toEqual([]);
+    expect(review.relationFields).toEqual([]);
+    expect(await prisma.enrichmentProposal.count({ where: { OR: [{ newFromElementId: elB }, { newToElementId: elB }, { elementId: elB }] } })).toBe(0);
+    expect(await prisma.enrichmentProposal.count({ where: { sessionId: view.session.id } })).toBe(0);
 });
 
 it('the research run: exactly the two web tools offered; a server tool beyond them stops the run; nothing of the other book sent or stored', async () => {

@@ -233,8 +233,16 @@ interface StubAnswer {
  * number), citing it; every other field NO_CHANGE; no new element. It never
  * updates or removes and invents nothing — the product's validation still
  * judges every word. Pure.
+ *
+ * Phase 3.3 (D24), so the canvas E2E can walk a proposal to a ghost and back:
+ * a request offering `relation-ends` (a selection) proposes ONE `related_to`
+ * link between its first two ends, its nature the first answer's own words,
+ * citing every answer; a request with a `slot` (between two beats) proposes
+ * the slot's new element, named by the first four words of the first answer
+ * about it, and a `causes` link from the earlier neighbour to it and from it to
+ * the later one, each in an answer's own words. Validation judges all of it.
  */
-export function stubReconcileAnswer(body: Record<string, unknown>): { operations: Array<Record<string, unknown>>; newElements: [] } | null {
+export function stubReconcileAnswer(body: Record<string, unknown>): { operations: Array<Record<string, unknown>>; newElements: Array<Record<string, unknown>>; newRelations: Array<Record<string, unknown>> } | null {
     const blocks = fencedBlocks(body);
     const answersText = blocks.get('answers');
     if (answersText === undefined) return null;
@@ -242,7 +250,7 @@ export function stubReconcileAnswer(body: Record<string, unknown>): { operations
     try {
         answers = JSON.parse(answersText) as StubAnswer[];
     } catch {
-        return { operations: [], newElements: [] };
+        return { operations: [], newElements: [], newRelations: [] };
     }
     const operations: Array<Record<string, unknown>> = [];
     for (const [label, text] of blocks) {
@@ -269,7 +277,41 @@ export function stubReconcileAnswer(body: Record<string, unknown>): { operations
             else operations.push({ elementId: e.elementId, fieldKey: key, op: 'NO_CHANGE', value: null, cites: [] });
         }
     }
-    return { operations: operations.slice(0, 40), newElements: [] };
+    const answered = answers.filter((a): a is StubAnswer & { answerId: string; answer: string } => a.status === 'ANSWERED' && typeof a.answerId === 'string' && typeof a.answer === 'string' && a.answer.trim() !== '');
+    const newElements: Array<Record<string, unknown>> = [];
+    const newRelations: Array<Record<string, unknown>> = [];
+    let ends: Array<{ elementId?: unknown }> = [];
+    try {
+        ends = JSON.parse(blocks.get('relation-ends') ?? '[]') as Array<{ elementId?: unknown }>;
+    } catch {
+        ends = [];
+    }
+    let slot: { kind?: unknown } | null = null;
+    try {
+        slot = blocks.has('slot') ? (JSON.parse(blocks.get('slot')!) as { kind?: unknown }) : null;
+    } catch {
+        slot = null;
+    }
+    if (slot && typeof slot.kind === 'string' && ends.length >= 2) {
+        const about = answered.find((a) => a.elementId === 'pending-element') ?? answered[0];
+        if (about) {
+            const name = about.answer.split(/\s+/).slice(0, 4).join(' ').replace(/[.,;:!?]+$/, '');
+            newElements.push({ kind: slot.kind, name, summary: null, fillsSlot: true, cites: [about.answerId] });
+            const words = (i: number) => answered[Math.min(i, answered.length - 1)];
+            newRelations.push({ fromElementId: ends[0].elementId, toElementId: 'new.1', type: 'causes', note: null, fields: [{ key: 'mechanism', value: words(1).answer }], cites: [words(1).answerId] });
+            newRelations.push({ fromElementId: 'new.1', toElementId: ends[1].elementId, type: 'causes', note: null, fields: [{ key: 'mechanism', value: words(2).answer }], cites: [words(2).answerId] });
+        }
+    } else if (ends.length >= 2 && answered.length > 0) {
+        newRelations.push({
+            fromElementId: ends[0].elementId,
+            toElementId: ends[1].elementId,
+            type: 'related_to',
+            note: null,
+            fields: [{ key: 'nature', value: answered[0].answer }],
+            cites: answered.map((a) => a.answerId),
+        });
+    }
+    return { operations: operations.slice(0, 40), newElements, newRelations };
 }
 
 // ─── The research agent (Phase 2.6) ────────────────────────────────

@@ -58,6 +58,15 @@ const COVERAGE: Readonly<Record<string, Classification>> = {
             'The snapshot is serialised from the element and field rows as they stand in the same transaction, every one of which ' +
             'came through the sanitisers above; a restore re-sanitises each value it applies.',
     },
+    // Phase 3.3 (D24): a relation's fields and its version history, as an element's.
+    'BibleRelationField.value': { repository: 'BibleRelationFieldRepository', writeMethods: ['upsert'], sanitiser: 'normaliseFieldValue' },
+    'BibleRelationVersion.changeSummary': { repository: 'BibleRelationVersionRepository', writeMethods: ['create'], sanitiser: 'optionalBlock' },
+    'BibleRelationVersion.snapshot': {
+        repository: 'BibleRelationVersionRepository',
+        writeMethods: ['create'],
+        sanitiser: 'buildRelationSnapshot',
+        derived: 'The snapshot is serialised from the relation and relation-field rows as they stand in the same transaction, every one of which came through the sanitisers above.',
+    },
     // Phase 2.2: a generated question is model output built from author text, sanitised as author text.
     'Question.text': { repository: 'QuestionRepository', writeMethods: ['create'], sanitiser: 'sanitiseQuestionForStorage' },
     'Question.options': { repository: 'QuestionRepository', writeMethods: ['create'], sanitiser: 'sanitiseQuestionForStorage' },
@@ -106,6 +115,8 @@ const REPOSITORIES: Readonly<Record<string, { file: string; model: string }>> = 
     BibleFieldRepository: { file: 'src/app-layer/repositories/bible.repository.ts', model: 'BibleField' },
     BibleRelationRepository: { file: 'src/app-layer/repositories/bible.repository.ts', model: 'BibleRelation' },
     BibleVersionRepository: { file: 'src/app-layer/repositories/bible.repository.ts', model: 'BibleEntryVersion' },
+    BibleRelationFieldRepository: { file: 'src/app-layer/repositories/bible.repository.ts', model: 'BibleRelationField' },
+    BibleRelationVersionRepository: { file: 'src/app-layer/repositories/bible.repository.ts', model: 'BibleRelationVersion' },
     QuestionRepository: { file: 'src/app-layer/repositories/interview.repository.ts', model: 'Question' },
     AnswerRepository: { file: 'src/app-layer/repositories/interview.repository.ts', model: 'Answer' },
     EnrichmentProposalRepository: { file: 'src/app-layer/repositories/enrichment.repository.ts', model: 'EnrichmentProposal' },
@@ -128,7 +139,8 @@ const WRAPPERS: Readonly<Record<string, { file: string; calls: readonly string[]
     plainLine: { file: 'src/lib/bible/text.ts', calls: ['sanitizePlainText'] },
     normaliseFieldValue: { file: 'src/lib/bible/field-values.ts', calls: ['plainLine', 'sanitizeRichTextHtml'] },
     sanitiseQuestionForStorage: { file: 'src/lib/interview/storage.ts', calls: ['plainLine', 'plainBlock'] },
-    sanitiseProposalForStorage: { file: 'src/lib/enrichment/storage.ts', calls: ['normaliseFieldValue', 'plainBlock'] },
+    sanitiseProposalForStorage: { file: 'src/lib/enrichment/storage.ts', calls: ['storedValue', 'plainBlock'] },
+    storedValue: { file: 'src/lib/enrichment/storage.ts', calls: ['normaliseFieldValue'] },
     sanitiseBriefForStorage: { file: 'src/lib/research/storage.ts', calls: ['plainBlock', 'plainLine'] },
     sanitiseSourceForStorage: { file: 'src/lib/research/storage.ts', calls: ['plainBlock', 'plainLine'] },
     sanitiseFindingForStorage: { file: 'src/lib/research/storage.ts', calls: ['plainBlock', 'plainLine'] },

@@ -34,6 +34,7 @@
  * Nothing acceptable to ask is 409 NO_REPHRASE: the original stands, and the
  * author can still answer, skip or defer it.
  */
+import { subjectIdOf } from '@/lib/interview/subjects';
 import { Prisma } from '@prisma/client';
 import type { WorkspaceRequestContext } from '@/app-layer/types';
 import { logEvent } from '@/app-layer/events/audit';
@@ -52,8 +53,8 @@ import { isPersonaKey } from '@/lib/interview/vocabulary';
 import { logger } from '@/lib/observability/logger';
 import { packNamesFor, parsePackPins, pinMismatch, PacksNotMountableError } from '@/lib/interview/pack-mount';
 import { requireAnswerable } from './interview-answers';
-import { assertModelAvailable, generatorOf, type InterviewDeps } from './interview-rounds';
-import { loadInterviewState, questionView, SESSION_QUESTIONS_MAX, storedTextOf, type QuestionView } from './interview-state';
+import { assertModelAvailable, generatorOf, storedSubject, type InterviewDeps } from './interview-rounds';
+import { loadInterviewState, questionView, SESSION_QUESTIONS_MAX, type QuestionView } from './interview-state';
 import { deploymentPackMounts } from './interview-packs';
 import { chargeModelCalls } from '@/lib/security/model-call-rate-limit';
 import { defaultQuestionEmbedder, questionRecord, upsertQuestionVectors } from './question-embeddings';
@@ -64,7 +65,7 @@ function originalOf(q: QuestionRow): RephraseOriginal {
     return {
         id: q.id,
         scope: 'SESSION',
-        elementId: q.elementId,
+        elementId: subjectIdOf(q),
         targetsFieldKeys: q.targetsFieldKeys,
         kind: q.kind,
         text: q.text,
@@ -106,7 +107,8 @@ export async function rephraseQuestion(
         if (signals.killSwitch) throw new AiUnavailableError('AI_DISABLED');
         assertModelAvailable(generator);
         if (signals.workspaceCeilingReached) throw new ConflictError('The monthly AI limit for this workspace has been reached.', { reason: 'WORKSPACE_CEILING' });
-        const element = state.elements.find((e) => e.elementId === question.elementId);
+        // The question's subject (Phase 3.3): an element, a relation, or the element not yet created.
+        const element = state.elements.find((e) => e.elementId === subjectIdOf(question));
         if (!element) throw new NotFoundError('Element not found.');
         // Rule 5: a field the bible answers now (the author filled it since the round opened) is not asked again.
         if (answeredInBible(question, element.storedText)) throw new ConflictError('The bible answers this now; it is not asked again.', { reason: 'ANSWERED_IN_BIBLE' });
@@ -117,7 +119,7 @@ export async function rephraseQuestion(
     const personaKey = question.personaKey && isPersonaKey(question.personaKey) ? question.personaKey : null;
 
     // The packs the call is taught: the ones the session pinned, unchanged, and mountable here — as a round's (D11).
-    const needed = packNamesFor([element.kind], personaKey ? [personaKey] : []);
+    const needed = element.relation ? packNamesFor([], personaKey ? [personaKey] : [], { relations: true }) : packNamesFor([element.kind], personaKey ? [personaKey] : []);
     const problem = pinMismatch(parsePackPins(session.packPins), needed, packs, await deploymentPackMounts(packs, deps.packRecordMode, needed));
     if (problem?.reason === 'PACK_NOT_MOUNTABLE') throw new PacksNotMountableError(problem.packs);
     if (problem) throw new ConflictError('A question pack this interview was started with has changed.', { reason: 'PACK_CHANGED', problem: problem.reason, packs: problem.packs });
@@ -136,6 +138,7 @@ export async function rephraseQuestion(
                 preferChoice: session.preferChoice,
                 persona: personaKey ? packs.personas[personaKey] : null,
                 craft: packs.craft,
+                relations: packs.relations,
                 element,
                 original: originalOf(question),
                 related: state.related,
@@ -167,7 +170,8 @@ export async function rephraseQuestion(
         const roundQuestions = await QuestionRepository.listForRound(db, ctx.workspaceId, sessionId, question.roundId, SESSION_QUESTIONS_MAX);
         if (roundQuestions.filter((x) => x.replacesQuestionId !== null).length >= REPHRASES_PER_ROUND_MAX) return { refused: 'REPHRASE_LIMIT' } as const;
         // And the bible read again under the lock (rule 5), as a round's persist does.
-        const stored = (await storedTextOf(db, ctx, [element.elementId])).get(element.elementId) ?? new Map<string, string>();
+        const now = (await loadInterviewState(db, ctx, session)).elements.find((e) => e.elementId === element.elementId);
+        const stored = now?.storedText ?? new Map<string, string>();
         if (answeredInBible(question, stored)) return { refused: 'ANSWERED_IN_BIBLE' } as const;
 
         const q = sanitiseQuestionForStorage(output.question);
@@ -178,7 +182,7 @@ export async function rephraseQuestion(
             sessionId,
             roundId: question.roundId,
             position,
-            elementId: q.elementId,
+            ...storedSubject(element.elementId, state, session),
             targetsFieldKeys: q.targetsFieldKeys,
             mode: q.mode,
             origin: output.question.origin,

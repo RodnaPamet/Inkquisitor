@@ -7,9 +7,14 @@
  *
  * THE STATE a round is planned from, read in one transaction:
  *
- *   elements    the scope's elements (one; one kind's; the book's), in kind
+ *   elements    the scope's SUBJECTS (`src/lib/interview/subjects.ts`): its
+ *               elements (one; one kind's; the book's; a selection's), in kind
  *               then creation order, each with its template and its stored
  *               values as text (rich text without markup, a list joined);
+ *               since Phase 3.3 a selection's relations too (each with its
+ *               type's relation fields and stored values), and a BETWEEN
+ *               session's element not yet created (its kind's fields, nothing
+ *               stored, its act answered by the slot: `checks`);
  *   answers     this session's questions and the LATEST answer of each;
  *   asked       this session's questions, and earlier sessions' questions
  *               about the same elements (book-wide deduplication), bounded;
@@ -20,7 +25,7 @@
  */
 import type { Prisma } from '@prisma/client';
 import type { WorkspaceRequestContext } from '@/app-layer/types';
-import { BibleElementRepository, BibleFieldRepository, BibleRelationRepository } from '@/app-layer/repositories/bible.repository';
+import { BibleElementRepository, BibleFieldRepository, BibleRelationFieldRepository, BibleRelationRepository } from '@/app-layer/repositories/bible.repository';
 import {
     AnswerRepository,
     InterviewRoundRepository,
@@ -35,10 +40,11 @@ import type { PrismaTx } from '@/lib/db/rls-middleware';
 import { NotFoundError } from '@/lib/errors/types';
 import { decodeFieldValue, type FieldValue } from '@/lib/bible/field-values';
 import type { BibleKind } from '@/lib/bible/kinds';
-import { getTemplate } from '@/lib/bible/templates';
+import { getFieldDef, getRelationType, getTemplate, relationFieldDefs } from '@/lib/bible/templates';
 import { plainBlock } from '@/lib/bible/text';
 import type { AskedQuestion } from '@/lib/interview/dedupe';
-import { computeFrontier, emptyFrontierReason, type AnswerFact, type BlockedField, type FieldRef, type FrontierResult } from '@/lib/interview/frontier';
+import { computeFrontier, emptyFrontierReason, refsCheck, type AlreadyAnsweredCheck, type AnswerFact, type BlockedField, type FieldRef, type FrontierResult } from '@/lib/interview/frontier';
+import { PENDING_SUBJECT_ID, relationSubjectName, subjectIdOf, type RelationSubject } from '@/lib/interview/subjects';
 import type { RoundPlan } from '@/lib/interview/plan';
 import type { PromptAnswer } from '@/lib/interview/prompt';
 import type { RoundElement } from '@/lib/interview/round';
@@ -50,6 +56,10 @@ import { parsePackPins } from '@/lib/interview/pack-mount';
 
 /** At most this many elements a kind or book session questions (a larger scope is cut, and says so). */
 export const SCOPE_ELEMENTS_MAX = 60;
+/** At most this many relations a selection questions (Phase 3.3; the start refuses more, and the CHECK holds it). */
+export const SCOPE_RELATIONS_MAX = 60;
+/** Stored relation fields read per relation (a type declares at most four). */
+const FIELDS_PER_RELATION = 10;
 /**
  * Questions of a session read at most: six rounds of at most eight and a
  * challenge, each with up to `REPHRASES_PER_ROUND_MAX` rephrases (Phase 2.4;
@@ -85,7 +95,10 @@ export async function storedTextOf(db: PrismaTx, ctx: WorkspaceRequestContext, e
 }
 
 export interface InterviewState {
+    /** The scope's subjects: elements, and since Phase 3.3 relations and a BETWEEN session's element not yet created. */
     elements: RoundElement[];
+    /** Already-answered checks beyond the bible's own values (Phase 3.3: the BETWEEN slot's act). */
+    checks: AlreadyAnsweredCheck[];
     /** The scope held more elements than `SCOPE_ELEMENTS_MAX`; the rest are not asked about. */
     scopeTruncated: boolean;
     questions: QuestionRow[];
@@ -125,7 +138,7 @@ function asAsked(q: QuestionRow, scope: 'SESSION' | 'BOOK'): AskedQuestion {
     return {
         id: q.id,
         scope,
-        elementId: q.elementId,
+        elementId: subjectIdOf(q),
         targetsFieldKeys: q.targetsFieldKeys,
         kind: q.kind,
         text: q.text,
@@ -140,11 +153,86 @@ async function scopeElements(db: PrismaTx, ctx: WorkspaceRequestContext, session
         if (!element) throw new NotFoundError('Element not found.');
         return { rows: [element], truncated: false };
     }
+    if (session.scope === 'SELECTION') {
+        // Phase 3.3: the elements the author selected; one deleted since is no longer in scope.
+        return { rows: await BibleElementRepository.listByIds(db, ctx.workspaceId, session.bookId, session.scopeElementIds.slice(0, SCOPE_ELEMENTS_MAX)), truncated: false };
+    }
+    if (session.scope === 'BETWEEN') return { rows: [], truncated: false };
     const rows = await BibleElementRepository.listForInterview(db, ctx.workspaceId, session.bookId, {
         kind: session.scope === 'KIND' ? session.targetKind! : undefined,
         take: SCOPE_ELEMENTS_MAX + 1,
     });
     return { rows: rows.slice(0, SCOPE_ELEMENTS_MAX), truncated: rows.length > SCOPE_ELEMENTS_MAX };
+}
+
+/** A relation's stored fields as text, by relation then key (filled fields only). */
+async function relationStoredText(db: PrismaTx, ctx: WorkspaceRequestContext, relationIds: readonly string[]): Promise<Map<string, Map<string, string>>> {
+    const fields = await BibleRelationFieldRepository.listForRelations(db, ctx.workspaceId, relationIds, FIELDS_PER_RELATION);
+    const stored = new Map<string, Map<string, string>>(relationIds.map((id) => [id, new Map()]));
+    for (const f of fields) {
+        const text = fieldText(decodeFieldValue(f.value));
+        if (text.length > 0) stored.get(f.relationId)?.set(f.key, text);
+    }
+    return stored;
+}
+
+/** A SELECTION's relations as subjects (Phase 3.3): each with its type's relation fields and its stored values. One deleted since is not asked about. */
+async function relationSubjects(db: PrismaTx, ctx: WorkspaceRequestContext, session: SessionRow): Promise<RoundElement[]> {
+    if (session.scope !== 'SELECTION' || session.scopeRelationIds.length === 0) return [];
+    const rows = await BibleRelationRepository.listByIdsWithEnds(db, ctx.workspaceId, session.bookId, session.scopeRelationIds.slice(0, SCOPE_RELATIONS_MAX));
+    const stored = await relationStoredText(db, ctx, rows.map((r) => r.id));
+    return rows.map((r) => {
+        const relation: RelationSubject = {
+            relationId: r.id,
+            type: r.type,
+            label: getRelationType(r.from.kind, r.type)?.label ?? r.type,
+            fromElementId: r.fromElementId,
+            toElementId: r.toElementId,
+            fromKind: r.from.kind,
+            toKind: r.to.kind,
+            fromName: r.from.name,
+            toName: r.to.name,
+        };
+        return {
+            elementId: r.id,
+            kind: r.from.kind,
+            name: relationSubjectName(relation),
+            customLabel: null,
+            fields: relationFieldDefs(r.from.kind, r.type),
+            storedText: stored.get(r.id) ?? new Map(),
+            relation,
+        };
+    });
+}
+
+/**
+ * A BETWEEN session's element not yet created (Phase 3.3), as a subject, and
+ * its two neighbours as the prompt's related elements. The slot's act is
+ * answered by the slot itself (`checks`): the element joins the lane it was
+ * asked about. When a neighbour has gone, there is no slot to ask about.
+ */
+async function pendingSubject(db: PrismaTx, ctx: WorkspaceRequestContext, session: SessionRow) {
+    if (session.scope !== 'BETWEEN' || !session.slotKind || !session.slotAfterElementId || !session.slotBeforeElementId) return null;
+    const ends = await BibleElementRepository.listByIds(db, ctx.workspaceId, session.bookId, [session.slotAfterElementId, session.slotBeforeElementId]);
+    const after = ends.find((e) => e.id === session.slotAfterElementId);
+    const before = ends.find((e) => e.id === session.slotBeforeElementId);
+    if (!after || !before) return null;
+    const kind = session.slotKind as BibleKind;
+    const stored = await storedTextOf(db, ctx, [after.id, before.id]);
+    // The neighbours' context: their summary, or failing that what happens in them.
+    const contextOf = (e: typeof after) => e.summary ?? stored.get(e.id)?.get('what_happens') ?? null;
+    const element: RoundElement = {
+        elementId: PENDING_SUBJECT_ID,
+        kind,
+        name: `${after.name} → … → ${before.name}`,
+        customLabel: null,
+        fields: getTemplate(kind).fields,
+        storedText: new Map(),
+        pending: { kind, afterElementId: after.id, beforeElementId: before.id, afterName: after.name, beforeName: before.name, act: session.slotAct },
+    };
+    const checks: AlreadyAnsweredCheck[] = session.slotAct && getFieldDef(kind, 'act') ? [refsCheck('between-slot', [{ elementId: PENDING_SUBJECT_ID, fieldKey: 'act' }])] : [];
+    const related = [after, before].map((e) => ({ kind: e.kind as BibleKind, name: e.name, summary: contextOf(e) }));
+    return { element, checks, related };
 }
 
 export async function loadInterviewState(db: PrismaTx, ctx: WorkspaceRequestContext, session: SessionRow): Promise<InterviewState> {
@@ -159,6 +247,10 @@ export async function loadInterviewState(db: PrismaTx, ctx: WorkspaceRequestCont
         fields: getTemplate(e.kind).fields,
         storedText: stored.get(e.id) ?? new Map(),
     }));
+    const relationRows = await relationSubjects(db, ctx, session);
+    elements.push(...relationRows);
+    const pending = await pendingSubject(db, ctx, session);
+    if (pending) elements.push(pending.element);
 
     const questions = await QuestionRepository.listForSession(db, ctx.workspaceId, session.id, SESSION_QUESTIONS_MAX);
     const latest = latestAnswers(await AnswerRepository.listForSession(db, ctx.workspaceId, session.id, SESSION_ANSWERS_MAX));
@@ -167,10 +259,11 @@ export async function loadInterviewState(db: PrismaTx, ctx: WorkspaceRequestCont
     for (const q of questions) {
         const a = latest.get(q.id);
         if (!a) continue;
-        answerFacts.push({ status: a.status, targets: q.targetsFieldKeys.map((fieldKey) => ({ elementId: q.elementId, fieldKey })) });
+        const subject = subjectIdOf(q);
+        answerFacts.push({ status: a.status, targets: q.targetsFieldKeys.map((fieldKey) => ({ elementId: subject, fieldKey })) });
         promptAnswers.push({
             answerId: a.id,
-            elementId: q.elementId,
+            elementId: subject,
             targetsFieldKeys: q.targetsFieldKeys,
             questionKind: q.kind,
             question: q.text,
@@ -179,7 +272,8 @@ export async function loadInterviewState(db: PrismaTx, ctx: WorkspaceRequestCont
         });
     }
     const elsewhere = await QuestionRepository.listForElementsElsewhere(db, ctx.workspaceId, session.bookId, ids, session.id, BOOK_QUESTIONS_MAX);
-    const asked = [...questions.map((q) => asAsked(q, 'SESSION')), ...elsewhere.map((q) => asAsked(q, 'BOOK'))];
+    const relationsElsewhere = await QuestionRepository.listForRelationsElsewhere(db, ctx.workspaceId, session.bookId, relationRows.map((r) => r.elementId), session.id, BOOK_QUESTIONS_MAX);
+    const asked = [...questions.map((q) => asAsked(q, 'SESSION')), ...elsewhere.map((q) => asAsked(q, 'BOOK')), ...relationsElsewhere.map((q) => asAsked(q, 'BOOK'))];
 
     let related: InterviewState['related'] = [];
     if (session.scope === 'ELEMENT') {
@@ -187,13 +281,34 @@ export async function loadInterviewState(db: PrismaTx, ctx: WorkspaceRequestCont
         const otherIds = [...new Set(relations.map((r) => (r.fromElementId === session.targetElementId ? r.toElementId : r.fromElementId)))];
         const others = await BibleElementRepository.listByIds(db, ctx.workspaceId, session.bookId, otherIds);
         related = others.map((o) => ({ kind: o.kind, name: o.name, summary: o.summary }));
+    } else if (session.scope === 'SELECTION') {
+        // A selected relation's ends that are not themselves selected: the link's context (Phase 3.3).
+        const inScope = new Set(ids);
+        const endIds = [...new Set(relationRows.flatMap((r) => [r.relation!.fromElementId, r.relation!.toElementId]))].filter((id) => !inScope.has(id)).slice(0, RELATED_MAX);
+        const ends = await BibleElementRepository.listByIds(db, ctx.workspaceId, session.bookId, endIds);
+        related = ends.map((o) => ({ kind: o.kind, name: o.name, summary: o.summary }));
+    } else if (pending) {
+        related = pending.related;
     }
 
     const rounds = await InterviewRoundRepository.listForSession(db, ctx.workspaceId, session.id, SESSION_ROUNDS_READ);
-    const challenged = questions.filter((q) => q.mode === 'CHALLENGE').map((q) => ({ elementId: q.elementId, fieldKey: q.targetsFieldKeys[0] }));
+    const challenged = questions.filter((q) => q.mode === 'CHALLENGE').map((q) => ({ elementId: subjectIdOf(q), fieldKey: q.targetsFieldKeys[0] }));
     const challengesPlanned = challengesPlannedOf(rounds);
 
-    return { elements, scopeTruncated: scope.truncated, questions, latest, answerFacts, promptAnswers, asked, related, rounds, challenged, challengesPlanned };
+    return {
+        elements,
+        checks: pending?.checks ?? [],
+        scopeTruncated: scope.truncated,
+        questions,
+        latest,
+        answerFacts,
+        promptAnswers,
+        asked,
+        related,
+        rounds,
+        challenged,
+        challengesPlanned,
+    };
 }
 
 /**
@@ -216,6 +331,7 @@ export function frontierOf(state: InterviewState, depth: number): FrontierResult
     return computeFrontier({
         elements: state.elements.map((e) => ({ elementId: e.elementId, kind: e.kind, fields: e.fields, storedKeys: new Set(e.storedText.keys()) })),
         sessionAnswers: state.answerFacts,
+        checks: state.checks,
         depth,
     });
 }
@@ -250,7 +366,12 @@ export function frontierStop(frontier: FrontierResult, plan: RoundPlan): StopRea
 export interface QuestionView {
     id: string;
     position: number;
+    /** The element it is filed under (for a relation, its declaring end; for the element not yet created, the slot's anchor). */
     elementId: string;
+    /** What it asks about (Phase 3.3, `subjectIdOf`): the element's id, the relation's, or `PENDING_SUBJECT_ID`. */
+    subjectId: string;
+    /** Phase 3.3: the relation it asks about, or null. */
+    relationId: string | null;
     targetsFieldKeys: string[];
     mode: 'FRONTIER' | 'CHALLENGE';
     origin: QuestionRow['origin'];
@@ -285,6 +406,8 @@ export function questionView(q: QuestionRow, a: AnswerRow | undefined): Question
         id: q.id,
         position: q.position,
         elementId: q.elementId,
+        subjectId: subjectIdOf(q),
+        relationId: q.relationId,
         targetsFieldKeys: q.targetsFieldKeys,
         mode: q.mode,
         origin: q.origin,
@@ -314,6 +437,10 @@ export interface SessionSummaryView {
     /** The ELEMENT session's element's name, where the request read it (the list, Phase 2.4); else null. */
     targetElementName: string | null;
     targetKind: SessionRow['targetKind'];
+    /** Phase 3.3: a SELECTION's elements and relations, and a BETWEEN session's slot. */
+    scopeElementIds: string[];
+    scopeRelationIds: string[];
+    slot: { kind: string; afterElementId: string; beforeElementId: string; act: string | null } | null;
     dials: { depth: number; detail: number };
     personaKeys: string[];
     offerRecommended: boolean;
@@ -337,6 +464,9 @@ export function sessionSummaryView(s: SessionRow, targetElementName: string | nu
         targetElementId: s.targetElementId,
         targetElementName,
         targetKind: s.targetKind,
+        scopeElementIds: s.scopeElementIds,
+        scopeRelationIds: s.scopeRelationIds,
+        slot: s.slotKind && s.slotAfterElementId && s.slotBeforeElementId ? { kind: s.slotKind, afterElementId: s.slotAfterElementId, beforeElementId: s.slotBeforeElementId, act: s.slotAct } : null,
         dials: { depth: s.depth, detail: s.detail },
         personaKeys: s.personaKeys,
         offerRecommended: s.offerRecommended,

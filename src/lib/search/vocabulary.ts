@@ -64,6 +64,7 @@ export const SOURCE_WEIGHTS = {
     logline: 1.5,
     field: 1,
     relationNote: 0.8,
+    relationField: 0.8,
 } as const satisfies Record<SearchSourceKind, number>;
 export const SOURCE_LENGTH_NORMALISATION = {
     title: 0.3,
@@ -73,13 +74,14 @@ export const SOURCE_LENGTH_NORMALISATION = {
     logline: 0.75,
     field: 0.75,
     relationNote: 0.75,
+    relationField: 0.75,
 } as const satisfies Record<SearchSourceKind, number>;
 /** How much one matching word counts: an exact-case match of a capitalised query word, a surface match, a match by stem alone. */
 export const MATCH_WEIGHTS = { exactCase: 1.3, surface: 1, stem: 0.6 } as const;
 /** A quoted phrase's own signal, beside its words. */
 export const PHRASE_BOOST = 1.5;
 
-export const SEARCH_SOURCE_KINDS = ['title', 'logline', 'name', 'label', 'summary', 'field', 'relationNote'] as const;
+export const SEARCH_SOURCE_KINDS = ['title', 'logline', 'name', 'label', 'summary', 'field', 'relationNote', 'relationField'] as const;
 export type SearchSourceKind = (typeof SEARCH_SOURCE_KINDS)[number];
 
 /** Why a query is refused (400, `details.reason`). */
@@ -108,10 +110,10 @@ export interface SearchSnippet {
 
 export interface SearchMatchView {
     source: SearchSourceKind;
-    /** A template field's key and label (`source` = `field`). */
+    /** A template field's key and label (`source` = `field`, or `relationField`: a field of a relation, Phase 3.3). */
     fieldKey: string | null;
     fieldLabel: string | null;
-    /** The element at the relation's other end (`source` = `relationNote`). */
+    /** The element at the relation's other end (`source` = `relationNote` or `relationField`). */
     otherElementName: string | null;
     snippet: SearchSnippet;
 }

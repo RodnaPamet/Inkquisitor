@@ -39,14 +39,21 @@ import { kindsAllowed, type Dials } from './dials';
 import { dedupe, dedupeTokens, exactKey, questionDedupeKey, type AskedQuestion, type CosineThresholds, type DedupeTextContext, type DuplicateSignal, type EmbeddingNeighbour } from './dedupe';
 import { refKey, type FieldRef } from './frontier';
 import { GenerationStop, type GenerationFailureKind, type GenerationResult, type QuestionGenerator } from './generator';
-import type { CraftPack, PackRegistry } from './packs';
+import type { CraftPack, PackRegistry, RelationsPack } from './packs';
+import type { PendingSubject, RelationSubject } from './subjects';
 import type { RoundPlan } from './plan';
 import { buildGenerationRequest, QUESTION_PROMPT, type PromptAnswer, type PromptElement } from './prompt';
 import { disclosesInstructions, promptRuns } from '@/lib/text/prompt-disclosure';
 import { sanitiseQuestionForStorage } from './storage';
 import type { PersonaKey, QuestionOrigin } from './vocabulary';
 
-/** One element in the round's scope, with what the prompt and validation need. */
+/**
+ * One SUBJECT in the round's scope, with what the prompt and validation need
+ * (`subjects.ts`): an element, or since Phase 3.3 a relation (`relation` set:
+ * `elementId` is the relation's id, `kind` its declaring end's, `fields` its
+ * type's relation fields) or a BETWEEN session's element not yet created
+ * (`pending` set: `elementId` is `PENDING_SUBJECT_ID`).
+ */
 export interface RoundElement {
     elementId: string;
     kind: BibleKind;
@@ -55,6 +62,16 @@ export interface RoundElement {
     fields: readonly FieldDef[];
     /** Stored values as text, filled fields only. */
     storedText: ReadonlyMap<string, string>;
+    relation?: RelationSubject;
+    pending?: PendingSubject;
+}
+
+/** A pack that teaches how to question a subject: a kind's craft pack, or the relations pack (Phase 3.3). */
+export type QuestionPack = CraftPack | RelationsPack;
+
+/** The pack a subject is questioned with: the relations pack for a relation, its kind's craft pack otherwise. */
+export function packForSubject(e: Pick<RoundElement, 'kind' | 'relation'>, craft: Readonly<Record<BibleKind, CraftPack>>, relations: RelationsPack | undefined): QuestionPack | undefined {
+    return e.relation ? relations : craft[e.kind];
 }
 
 export interface RoundInput {
@@ -73,7 +90,7 @@ export interface RoundInput {
     asked: readonly AskedQuestion[];
     /** Exact-repeat keys (`exactKey`) already known to the caller; `findExactRepeats` adds the book's own. */
     askedKeys?: ReadonlySet<string>;
-    packs: Pick<PackRegistry, 'craft' | 'personas'>;
+    packs: Pick<PackRegistry, 'craft' | 'personas'> & { relations?: RelationsPack };
     /** The cosine thresholds of the embedder's revision (`cosineThresholdsFor`, issue #32 item 1); default: uncalibrated. */
     cosineThresholds?: CosineThresholds;
 }
@@ -239,13 +256,14 @@ export function fillGapsFromPack(
     craft: Readonly<Record<BibleKind, CraftPack>>,
     detail: number,
     isDuplicate: (q: Candidate, filledSoFar: readonly Candidate[]) => boolean,
+    relations?: RelationsPack,
 ): { filled: Candidate[]; noQuestion: FieldRef[] } {
     const filled: Candidate[] = [];
     const noQuestion: FieldRef[] = [];
     const allowed = kindsAllowed(detail);
     for (const gap of gaps) {
         const element = elements.get(gap.elementId);
-        const pack = element ? craft[element.kind] : undefined;
+        const pack = element ? packForSubject(element, craft, relations) : undefined;
         const example = pack?.examples.find((e) => {
             if (e.keys.length !== 1 || e.keys[0] !== gap.fieldKey || !allowed.includes(e.kind)) return false;
             return !isDuplicate(asCandidate(gap, e), filled);
@@ -256,7 +274,7 @@ export function fillGapsFromPack(
     return { filled, noQuestion };
 }
 
-function asCandidate(gap: FieldRef, e: CraftPack['examples'][number]): Candidate {
+function asCandidate(gap: FieldRef, e: QuestionPack['examples'][number]): Candidate {
     return {
         elementId: gap.elementId,
         targetsFieldKeys: [gap.fieldKey],
@@ -382,8 +400,14 @@ export async function produceRound(input: RoundInput, deps: RoundDeps): Promise<
             stored: [...e.storedText].map(([key, value]) => ({ key, value })),
             assignedKeys: mine.filter((t) => t.elementId === e.elementId).map((t) => t.fieldKey),
             challengeKey: challenge?.elementId === e.elementId ? challenge.fieldKey : null,
+            ...(e.relation ? { relation: e.relation } : {}),
+            ...(e.pending ? { pending: e.pending } : {}),
         }));
-        const kinds = [...new Set(inPlay.map((e) => e.kind))];
+        // The packs the call's subjects are questioned with, once each, in subject order (Phase 3.3: a relation's is the relations pack).
+        const craftPacks = [...new Map(inPlay.flatMap((e) => {
+            const pack = packForSubject(e, input.packs.craft, input.packs.relations);
+            return pack ? [[pack.name, pack] as const] : [];
+        })).values()];
         const request = buildGenerationRequest({
             bookId: input.bookId,
             dials: input.dials,
@@ -391,7 +415,7 @@ export async function produceRound(input: RoundInput, deps: RoundDeps): Promise<
             preferChoice: input.preferChoice,
             personaKey,
             persona: personaKey ? input.packs.personas[personaKey as PersonaKey] ?? null : null,
-            craftPacks: kinds.map((k) => input.packs.craft[k]),
+            craftPacks,
             elements: promptElements,
             related: input.related,
             sessionAnswers: input.sessionAnswers,
@@ -400,7 +424,7 @@ export async function produceRound(input: RoundInput, deps: RoundDeps): Promise<
         const call: RoundCall = {
             personaKey,
             promptVersion: request.template.version,
-            packs: [...kinds.map((k) => input.packs.craft[k]), ...(personaKey && input.packs.personas[personaKey as PersonaKey] ? [input.packs.personas[personaKey as PersonaKey]] : [])].map(
+            packs: [...craftPacks, ...(personaKey && input.packs.personas[personaKey as PersonaKey] ? [input.packs.personas[personaKey as PersonaKey]] : [])].map(
                 (p) => `${p.name}@${p.version}`,
             ),
             costBudgetMicroUsd: request.template.costBudgetMicroUsd ?? null,
@@ -483,7 +507,7 @@ export async function produceRound(input: RoundInput, deps: RoundDeps): Promise<
     if (deps.findExactRepeats) {
         const fallbackProbes = input.plan.targets.flatMap((t) => {
             const element = elements.get(t.elementId);
-            const pack = element ? input.packs.craft[element.kind] : undefined;
+            const pack = element ? packForSubject(element, input.packs.craft, input.packs.relations) : undefined;
             const allowed = kindsAllowed(input.dials.detail);
             return (pack?.examples ?? []).filter((e) => e.keys.length === 1 && e.keys[0] === t.fieldKey && allowed.includes(e.kind)).map((e) => asCandidate(t, e));
         });
@@ -529,11 +553,18 @@ export async function produceRound(input: RoundInput, deps: RoundDeps): Promise<
     // 5. Pack fallback for every target nothing kept covers.
     const covered = new Set(kept.flatMap((c) => c.targetsFieldKeys.map((k) => refKey({ elementId: c.elementId, fieldKey: k }))));
     const gaps = input.plan.targets.filter((t) => !covered.has(refKey(t)));
-    const { filled, noQuestion } = fillGapsFromPack(gaps, elements, input.packs.craft, input.dials.detail, (q, filledSoFar) => {
-        const before = [...kept, ...filledSoFar];
-        const check = dedupe({ candidates: [...before, q], asked: input.asked, ctx: textCtx, askedKeys });
-        return !check.keptIndexes.includes(before.length);
-    });
+    const { filled, noQuestion } = fillGapsFromPack(
+        gaps,
+        elements,
+        input.packs.craft,
+        input.dials.detail,
+        (q, filledSoFar) => {
+            const before = [...kept, ...filledSoFar];
+            const check = dedupe({ candidates: [...before, q], asked: input.asked, ctx: textCtx, askedKeys });
+            return !check.keptIndexes.includes(before.length);
+        },
+        input.packs.relations,
+    );
     metrics.packFallbacks = filled.length;
     metrics.noQuestion = noQuestion.map((r) => ({ elementId: r.elementId, fieldKey: r.fieldKey }));
 

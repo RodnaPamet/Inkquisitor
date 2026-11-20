@@ -54,10 +54,16 @@ import type { MapState } from '@/lib/canvas/map-state';
 import { MapConflictError } from '@/lib/canvas/map-save';
 import { relationPickerChoices, type PickerChoice } from '@/lib/canvas/relation-picker';
 import { useMapAutosave } from '@/lib/canvas/use-map-autosave';
+import { betweenSlots, type AcceptedStructure, type BetweenSlot } from '@/lib/canvas/structure-preview';
+import type { PendingStructureView } from '@/lib/enrichment/api-client';
+import type { InterviewTarget } from '@/lib/interview/setup';
+import { InterviewSetupSheet } from '@/components/interview/InterviewSetupSheet';
 import { AddElementPicker } from './AddElementPicker';
 import { CanvasDiffOverlay } from './CanvasDiffOverlay';
 import { CanvasExportMenu } from './CanvasExportMenu';
 import { CanvasHistorySidebar } from './CanvasHistorySidebar';
+import { BetweenPicker, GrillThisButton, useCanvasSelection, type CanvasSelection } from './CanvasInterviewControls';
+import type { StructurePreviewValue } from './GhostLayer';
 import { ElementSheet, type SheetOrderControls } from './ElementSheet';
 import { MapConflictNotice } from './MapConflictNotice';
 import { RelationTypePicker } from './RelationTypePicker';
@@ -87,7 +93,15 @@ export interface StoryMapEditorProps {
     relationOptions: Readonly<Record<string, RelationOption[]>>;
     fieldDefs: Readonly<Record<string, FieldDef[]>>;
     canEdit: boolean;
+    /** Phase 3.3: the book's pending new elements and relations (drawn as ghosts; the list beside the canvas is the record). */
+    structure?: readonly PendingStructureView[];
+    /** Phase 3.3: the ghosts could not be drawn (the list says so). */
+    onPreviewFailed?: () => void;
+    /** Phase 3.3: the list hands what the author accepted to the map, to add it through the map's own save. */
+    onRegisterAccepted?: (handler: ((accepted: AcceptedStructure) => void) | null) => void;
 }
+
+const NO_STRUCTURE: readonly PendingStructureView[] = [];
 
 /** The save refusals worded in `canvas.errors`; any other is the generic sentence. */
 const SAVE_REFUSALS: ReadonlySet<string> = new Set([
@@ -126,6 +140,9 @@ export default function StoryMapEditor({
     relationOptions,
     fieldDefs,
     canEdit,
+    structure = NO_STRUCTURE,
+    onPreviewFailed,
+    onRegisterAccepted,
 }: StoryMapEditorProps) {
     const t = useTranslations('canvas');
     const toast = useToast();
@@ -259,7 +276,7 @@ export default function StoryMapEditor({
     }, [conflict, workspaceSlug, bookId, kindSlug, rebase, saveNow]);
 
     const addElement = useCallback(
-        (element: ElementListItemView) => {
+        (element: Pick<ElementListItemView, 'id' | 'name' | 'kind' | 'customLabel' | 'filledFieldCount' | 'orderRank'>) => {
             if (!editor) return;
             const shown = nodeDisplayFor(
                 { name: element.name, kind: element.kind, customLabel: element.customLabel, filledFieldCount: element.filledFieldCount, fieldCount: fieldCounts[element.kind] ?? 0 },
@@ -379,6 +396,59 @@ export default function StoryMapEditor({
         [pending, editor, markDirty, refresh],
     );
 
+    // ─── Canvas interviews and the structural preview (Phase 3.3) ──
+    const drawnKinds = useMemo(() => new Set<string>(MAP_ELEMENT_KINDS[mapKind]), [mapKind]);
+
+    /** Add what the author accepted from the map's list: a card, or an edge between two cards, saved like any edit. */
+    const onAccepted = useCallback(
+        (accepted: AcceptedStructure) => {
+            if (editor && canEdit) {
+                if (accepted.kind === 'NEW_ELEMENT') {
+                    if (drawnKinds.has(accepted.elementKind)) {
+                        addElement({ id: accepted.elementId, name: accepted.name, kind: accepted.elementKind as ElementListItemView['kind'], customLabel: null, filledFieldCount: accepted.filledFieldCount, orderRank: null });
+                    }
+                } else {
+                    const known = { relationId: accepted.relationId, sourceElementId: accepted.sourceElementId, targetElementId: accepted.targetElementId };
+                    madeHere.current = [...madeHere.current, known];
+                    relationsRef.current = [...relationsRef.current, known];
+                    if (drawRelationEdge(editor, known, accepted.label)) markDirty();
+                }
+            }
+            void refresh();
+        },
+        [editor, canEdit, drawnKinds, addElement, markDirty, refresh],
+    );
+    useEffect(() => {
+        if (!onRegisterAccepted) return;
+        onRegisterAccepted(onAccepted);
+        return () => onRegisterAccepted(null);
+    }, [onRegisterAccepted, onAccepted]);
+
+    const [interview, setInterview] = useState<{ target: InterviewTarget; title: string } | null>(null);
+    const selection = useCanvasSelection(editor);
+    const grill = useCallback(
+        (chosen: CanvasSelection) =>
+            setInterview({ target: { scope: 'SELECTION', elementIds: chosen.elementIds, relationIds: chosen.relationIds }, title: t('interview.grillTitle', { count: chosen.elementIds.length + chosen.relationIds.length }) }),
+        [t],
+    );
+    const askBetween = useCallback(
+        (slot: BetweenSlot) => setInterview({ target: { scope: 'BETWEEN', afterElementId: slot.afterElementId, beforeElementId: slot.beforeElementId }, title: t('interview.betweenTitle', { a: slot.afterName, b: slot.beforeName }) }),
+        [t],
+    );
+    const slots = useMemo(() => betweenSlots(lanes), [lanes]);
+    const preview: StructurePreviewValue = useMemo(
+        () => ({
+            pending: structure,
+            drawnKinds,
+            kindLabels,
+            words: { proposed: t('ghost.proposed'), between: (a: string, b: string) => t('interview.betweenAria', { a, b }) },
+            lanes,
+            onSlot: canEdit ? askBetween : undefined,
+            onPreviewFailed,
+        }),
+        [structure, drawnKinds, kindLabels, t, lanes, canEdit, askBetween, onPreviewFailed],
+    );
+
     const onEdgeRemoved = useCallback(
         (edge: { relationId: string; sourceElementId: string; targetElementId: string }) => {
             if (!editor) return;
@@ -479,6 +549,8 @@ export default function StoryMapEditor({
                         searchPlaceholder={t('toolbar.openSearch')}
                         emptyState={t('toolbar.openNone')}
                     />
+                    {canEdit ? <GrillThisButton selection={selection} onGrill={grill} /> : null}
+                    {canEdit && mapKind === 'PLOT' ? <BetweenPicker slots={slots} onPick={askBetween} /> : null}
                     {canEdit && layoutMode === 'free' ? (
                         <>
                             <Button variant="secondary" size="sm" disabled={!editor} onClick={() => editor && runAutoLayout(editor, 'LR')} data-testid="map-arrange-lr">
@@ -532,6 +604,7 @@ export default function StoryMapEditor({
                         onCardsDropped={canEdit ? onCardsDropped : undefined}
                         onNodeOpen={setOpenElementId}
                         onEditorReady={setEditor}
+                        preview={preview}
                     />
                 </div>
             </WorkspaceShell.Body>
@@ -561,6 +634,18 @@ export default function StoryMapEditor({
                         dropArrow(pending.request.arrowId);
                         setPending(null);
                     }}
+                />
+            ) : null}
+            {interview ? (
+                <InterviewSetupSheet
+                    open
+                    setOpen={(next) => {
+                        if (!next) setInterview(null);
+                    }}
+                    workspaceSlug={workspaceSlug}
+                    bookId={bookId}
+                    target={interview.target}
+                    title={interview.title}
                 />
             ) : null}
             <CanvasHistorySidebar
