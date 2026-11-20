@@ -142,6 +142,23 @@ function registerDefaultExecutors(): void {
             };
         });
     });
+
+    // Phase 2.6: one research run, named by id (decision D9).
+    executorRegistry.register('research-run', async (payload) => {
+        const startedAt = new Date().toISOString();
+        const startMs = performance.now();
+        return runJob('research-run', async () => {
+            const { executeResearchRun } = await import('@/app-layer/usecases/research-run');
+            const r = await executeResearchRun(payload);
+            return {
+                ...emptyResult('research-run', startedAt, startMs),
+                itemsScanned: 1,
+                itemsActioned: r.ran ? 1 : 0,
+                itemsSkipped: r.ran ? 0 : 1,
+                details: { runId: payload.runId, outcome: r.outcome },
+            };
+        });
+    });
 }
 
 registerDefaultExecutors();

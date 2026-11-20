@@ -146,6 +146,8 @@ export const AiCallRepository = {
                 errorCode: record.errorCode,
                 guardRuleIds: [...record.guardRuleIds],
                 guardReviewRequired: record.guardReviewRequired,
+                webSearchRequests: record.webSearchRequests ?? 0,
+                webFetchRequests: record.webFetchRequests ?? 0,
                 startedAt: record.startedAt,
             },
         });

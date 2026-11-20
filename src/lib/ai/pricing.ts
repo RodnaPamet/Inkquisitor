@@ -144,3 +144,19 @@ export function worstCaseCostMicroUsd(modelId: string, bounds: { inputTokens: nu
         tokensCost(bounds.outputTokens, rates.output)
     );
 }
+
+/**
+ * The web search server tool's fee (Phase 2.6): $10 per 1,000 searches on the
+ * Claude API ("Web search tool", Usage and pricing, read 2026-11-20), so
+ * 10 000 µUSD a search, on top of the tokens its results add. Web fetch has no
+ * fee of its own (its content is billed as input tokens). A search that fails
+ * still counts against `max_uses`; the provider's `server_tool_use` usage
+ * reports the billed requests, and that count is what is charged.
+ */
+export const WEB_SEARCH_MICRO_USD_PER_REQUEST = 10_000;
+export const PRICES_WEB_TOOLS_READ_ON = '2026-11-20';
+
+/** What `searches` web searches cost, in µUSD. */
+export function webSearchCostMicroUsd(searches: number): number {
+    return searches > 0 ? searches * WEB_SEARCH_MICRO_USD_PER_REQUEST : 0;
+}

@@ -76,12 +76,15 @@
  *         type is one the CLIENT was built to allow, and every type a client
  *         may be built to allow is in `PERMITTED_SERVER_TOOL_TYPES`.
  *
- * `PERMITTED_SERVER_TOOL_TYPES` is EMPTY in 2.1, typed so that no caller can
- * name a server tool at all. Subphase 2.6 (decision D9) adds exactly the web
- * search and web fetch tool types to that one list, in a reviewed diff, and
- * the research run asks for them by name; every other client still allows
- * none. (Read the current Anthropic documentation then: dynamic filtering on
- * the `_20260209` variants is not zero-retention eligible.)
+ * `PERMITTED_SERVER_TOOL_TYPES` was EMPTY in 2.1. Subphase 2.6 (decision D9)
+ * added exactly the web search and web fetch tool types, `web_search_20260209`
+ * and `web_fetch_20260209`, in this one reviewed list; the research run's gather
+ * step asks for them by name and every other client still allows none. A
+ * permitted tool is further held to `SERVER_TOOL_SHAPES`: its definition's
+ * members, its own name, a bounded `max_uses`, and `allowed_callers: ["direct"]`
+ * (dynamic filtering runs the tools from code execution, which is not
+ * zero-retention eligible and would hide the queries; documentation read
+ * 2026-11-20). Their result blocks pass only in an assistant turn.
  *
  * ── THE TEST SEAM ───────────────────────────────────────────────────────────
  *
@@ -112,12 +115,43 @@ export const MESSAGES_PATH = '/v1/messages';
 export const CLIENT_MAX_RETRIES = 2;
 
 /**
- * THE server tools a client may ever be built to allow. Empty: no model call
- * in 2.1 runs a tool at Anthropic. Subphase 2.6 adds the web search and web
- * fetch types HERE and nowhere else (see the header).
+ * THE server tools a client may ever be built to allow: the web search and web
+ * fetch tools (subphase 2.6, decision D9), HERE and nowhere else (see the
+ * header). A client allows none unless its caller names them.
  */
-export const PERMITTED_SERVER_TOOL_TYPES = [] as const;
+export const PERMITTED_SERVER_TOOL_TYPES = ['web_search_20260209', 'web_fetch_20260209'] as const;
 export type PermittedServerToolType = (typeof PERMITTED_SERVER_TOOL_TYPES)[number];
+
+/**
+ * What each permitted server tool may be sent as, and the blocks it adds to
+ * the conversation (Phase 2.6, the research run; decision D9). A tool
+ * definition carries ONLY these members, its `name` is the tool's own, its
+ * `max_uses` is a bounded integer (a server tool with no cap is refused), and
+ * its `allowed_callers` is exactly `["direct"]`: the `_20260209` variants
+ * otherwise run their searches from inside code execution ("dynamic
+ * filtering"), which is not zero-retention eligible (Anthropic's server-tools
+ * documentation, read 2026-11-20) and hides each query inside generated code,
+ * where the research run's egress check could not see it. The result blocks
+ * may come back only in an ASSISTANT turn (a pause_turn continuation passes
+ * the model's own turn back), never in a user turn.
+ */
+export const SERVER_TOOL_SHAPES: Readonly<
+    Record<PermittedServerToolType, { readonly name: string; readonly members: ReadonlySet<string>; readonly resultBlock: string }>
+> = {
+    web_search_20260209: {
+        name: 'web_search',
+        members: new Set(['type', 'name', 'max_uses', 'allowed_callers', 'allowed_domains', 'blocked_domains']),
+        resultBlock: 'web_search_tool_result',
+    },
+    web_fetch_20260209: {
+        name: 'web_fetch',
+        members: new Set(['type', 'name', 'max_uses', 'allowed_callers', 'allowed_domains', 'blocked_domains', 'max_content_tokens', 'citations']),
+        resultBlock: 'web_fetch_tool_result',
+    },
+};
+
+/** A server tool's `max_uses` may not exceed this (the deepest research depth asks far fewer). */
+export const SERVER_TOOL_MAX_USES_CEILING = 50;
 
 export type ClientChoice = { ok: true; client: Anthropic } | { ok: false; reason: AiUnavailableReason };
 
@@ -245,7 +279,7 @@ function refusalOf(
         if (outputConfig === null || typeof outputConfig !== 'object' || Array.isArray(outputConfig)) return 'BODY_UNREADABLE';
         if (Object.keys(outputConfig).some((name) => !PERMITTED_OUTPUT_CONFIG_MEMBERS.has(name))) return 'SERVER_HELD_STATE';
     }
-    const contentRefusal = contentRefusalOf(members.system, members.messages);
+    const contentRefusal = contentRefusalOf(members.system, members.messages, allowedServerTools);
     if (contentRefusal) return contentRefusal;
     const tools = members.tools;
     if (tools !== undefined) {
@@ -254,21 +288,61 @@ function refusalOf(
             if (tool === null || typeof tool !== 'object') return true;
             const type = (tool as { type?: unknown }).type;
             if (type === undefined || type === null || type === 'custom') return false;
-            return typeof type !== 'string' || !allowedServerTools.includes(type);
+            if (typeof type !== 'string' || !allowedServerTools.includes(type)) return true;
+            return !serverToolDefinitionAllowed(type as PermittedServerToolType, tool as Record<string, unknown>);
         });
         if (refused) return 'SERVER_TOOL';
     }
     return null;
 }
 
-/** A block list (or a string) whose every block is of a permitted type; `nested` for a tool result's content. */
-function blocksRefusal(content: unknown, nested: boolean): RequestRefusal | null {
+/** A permitted server tool's definition, held to its shape (`SERVER_TOOL_SHAPES`). */
+function serverToolDefinitionAllowed(type: PermittedServerToolType, tool: Record<string, unknown>): boolean {
+    const shape = SERVER_TOOL_SHAPES[type];
+    if (!shape) return false;
+    if (Object.keys(tool).some((k) => !shape.members.has(k))) return false;
+    if (tool.name !== shape.name) return false;
+    const maxUses = tool.max_uses;
+    if (typeof maxUses !== 'number' || !Number.isInteger(maxUses) || maxUses < 1 || maxUses > SERVER_TOOL_MAX_USES_CEILING) return false;
+    const callers = tool.allowed_callers;
+    if (!Array.isArray(callers) || callers.length !== 1 || callers[0] !== 'direct') return false;
+    return true;
+}
+
+/** The server-tool blocks an assistant turn may carry for a client that allows `allowedServerTools`. */
+function serverBlocksFor(allowedServerTools: readonly string[]): { blockTypes: ReadonlySet<string>; toolNames: ReadonlySet<string> } {
+    const blockTypes = new Set<string>();
+    const toolNames = new Set<string>();
+    for (const type of allowedServerTools) {
+        const shape = SERVER_TOOL_SHAPES[type as PermittedServerToolType];
+        if (!shape) continue;
+        blockTypes.add(shape.resultBlock);
+        toolNames.add(shape.name);
+    }
+    if (toolNames.size > 0) blockTypes.add('server_tool_use');
+    return { blockTypes, toolNames };
+}
+
+/**
+ * A block list (or a string) whose every block is of a permitted type;
+ * `nested` for a tool result's content. `server` names the server-tool blocks
+ * an ASSISTANT turn may carry (none for a user turn or the system prompt).
+ */
+function blocksRefusal(
+    content: unknown,
+    nested: boolean,
+    server: { blockTypes: ReadonlySet<string>; toolNames: ReadonlySet<string> } = NO_SERVER_BLOCKS,
+): RequestRefusal | null {
     if (typeof content === 'string') return null;
     if (!Array.isArray(content)) return 'BODY_UNREADABLE';
     for (const block of content) {
         if (block === null || typeof block !== 'object' || Array.isArray(block)) return 'BODY_UNREADABLE';
         const type = (block as { type?: unknown }).type;
         if (typeof type !== 'string') return 'BODY_UNREADABLE';
+        if (!nested && server.blockTypes.has(type)) {
+            if (type === 'server_tool_use' && !server.toolNames.has(String((block as { name?: unknown }).name))) return 'CONTENT_BLOCK';
+            continue;
+        }
         if (nested ? type !== 'text' : !PERMITTED_CONTENT_BLOCK_TYPES.has(type)) return 'CONTENT_BLOCK';
         if (type === 'tool_result') {
             const inner = (block as { content?: unknown }).content;
@@ -281,8 +355,15 @@ function blocksRefusal(content: unknown, nested: boolean): RequestRefusal | null
     return null;
 }
 
-/** The system prompt's and every message's content, against `PERMITTED_CONTENT_BLOCK_TYPES`. */
-function contentRefusalOf(system: unknown, messages: unknown): RequestRefusal | null {
+const NO_SERVER_BLOCKS = { blockTypes: new Set<string>(), toolNames: new Set<string>() } as const;
+
+/**
+ * The system prompt's and every message's content, against
+ * `PERMITTED_CONTENT_BLOCK_TYPES` (and, in an assistant turn only, the
+ * server-tool blocks of the tools this client allows).
+ */
+function contentRefusalOf(system: unknown, messages: unknown, allowedServerTools: readonly string[] = []): RequestRefusal | null {
+    const server = serverBlocksFor(allowedServerTools);
     if (system !== undefined) {
         const refusal = blocksRefusal(system, false);
         if (refusal) return refusal;
@@ -292,7 +373,7 @@ function contentRefusalOf(system: unknown, messages: unknown): RequestRefusal | 
         if (message === null || typeof message !== 'object' || Array.isArray(message)) return 'BODY_UNREADABLE';
         const role = (message as { role?: unknown }).role;
         if (role !== 'user' && role !== 'assistant') return 'BODY_UNREADABLE';
-        const refusal = blocksRefusal((message as { content?: unknown }).content, false);
+        const refusal = blocksRefusal((message as { content?: unknown }).content, false, role === 'assistant' ? server : NO_SERVER_BLOCKS);
         if (refusal) return refusal;
     }
     return null;
@@ -321,7 +402,7 @@ function messagesOnlyFor(call: { readonly callId?: string }, allowedServerTools:
 export interface ClientOptions {
     /** Correlates the client's request log lines with the call record. */
     readonly callId?: string;
-    /** Server tools this client may send, each from `PERMITTED_SERVER_TOOL_TYPES`. None in 2.1. */
+    /** Server tools this client may send, each from `PERMITTED_SERVER_TOOL_TYPES`. None unless named (the research run). */
     readonly serverTools?: readonly PermittedServerToolType[];
     /** The SDK's own per-request timeout; the caller's deadline signal is the real bound. */
     readonly timeoutMs?: number;

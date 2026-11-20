@@ -12,8 +12,10 @@ import { SETUP_OPTIONS_TIMEOUT_MS, STUB_BASE_URL } from './stub-server';
  *     delete dialogs, and the recently-deleted page;
  *   - and on the interview pages and dialogs (Phase 2.4): the setup sheet, a
  *     session with a round open, the stop dialog and a book's interviews, and
- *     the review of an interview's proposed changes (Phase 2.5) —
- *     against the stubbed-model server, so a round really opens;
+ *     the review of an interview's proposed changes (Phase 2.5), and the
+ *     Research page with a finished run (Phase 2.6) — against the
+ *     stubbed-model server (and its worker), so a round really opens and a
+ *     research run really runs;
  *   - an author can create, edit, relate and restore with the KEYBOARD ONLY:
  *     after the page is opened, every step is a key press — focus moves by
  *     Tab, controls answer Enter, Space, typing and the arrow keys — and no
@@ -270,3 +272,55 @@ test.describe('the interview pages (Phase 2.4, the stubbed-model server)', () =>
         await expect(main.locator('[data-testid="round-questions"][data-round="2"]')).toBeVisible({ timeout: 20_000 });
     });
 });
+
+test.describe('the Research page (Phase 2.6, the stubbed-model server and its worker)', () => {
+    test.use({ baseURL: STUB_BASE_URL });
+
+    /** A book whose brief has run to the end, its finding and proposal on the page. */
+    async function researched(page: Page) {
+        const { slug, bookId, elementId } = await bookWithCharacter(page);
+        const base = `/api/w/${slug}/books/${bookId}/research`;
+        const brief = (await (await page.request.post(`${base}/briefs`, { data: { question: 'How did medieval falconers train hawks?', purpose: 'Believable methods.', scopeElementIds: [elementId], depth: 'QUICK' } })).json()) as { brief: { id: string } };
+        expect((await page.request.post(`${base}/briefs/${brief.brief.id}/runs`)).status()).toBe(202);
+        await page.goto(`/w/${slug}/books/${bookId}/research`);
+        const main = page.getByRole('main');
+        await expect(main.getByTestId('run-summary').first()).toHaveAttribute('data-outcome', 'OK', { timeout: 90_000 });
+        await expect(main.getByTestId('research-field-proposal').first()).toBeVisible({ timeout: 20_000 });
+        return { slug, bookId };
+    }
+
+    test('axe finds no WCAG 2.1 AA violation on the Research page: the brief form, a run, its findings and proposals', async ({ page }) => {
+        test.setTimeout(180_000);
+        await researched(page);
+        await expectNoAxeViolations(page, 'research page with a finished run');
+        await page.getByRole('main').getByTestId('research-field-proposal').first().getByRole('button', { name: 'Edit, then accept' }).click();
+        await expectNoAxeViolations(page, 'research page, a proposal being edited');
+    });
+
+    test('write a brief and accept a research proposal with the keyboard alone', async ({ page }) => {
+        test.setTimeout(180_000);
+        await researched(page);
+        const main = page.getByRole('main');
+        // A brief: focus moves by Tab, text is typed, the depth is chosen with the arrow keys.
+        await tabTo(page, main.locator('#brief-question'));
+        await page.keyboard.type('What did a Victorian lighthouse keeper do each night?');
+        await tabTo(page, main.locator('#brief-purpose'));
+        await page.keyboard.type('My keeper is alone on the rock.');
+        await tabTo(page, main.locator('#brief-depth-QUICK'));
+        // The arrow moves focus (Radix moves it on a timer, so whether the arrow ALSO checks it races the
+        // key's release); Space checks the focused radio, as it does for any keyboard user.
+        await page.keyboard.press('ArrowDown');
+        await expect(main.locator('#brief-depth-STANDARD')).toBeFocused();
+        await page.keyboard.press('Space');
+        await expect(main.locator('#brief-depth-STANDARD')).toBeChecked();
+        await tabTo(page, main.locator('#brief-submit'));
+        await page.keyboard.press('Enter');
+        await expect(main.getByTestId('research-brief').first()).toContainText('Victorian lighthouse keeper', { timeout: 10_000 });
+        // The earlier run's proposal, accepted by keyboard.
+        const proposal = main.getByTestId('research-field-proposal').first();
+        await tabTo(page, proposal.getByRole('button', { name: /^Accept the change/ }), { max: 200 });
+        await page.keyboard.press('Enter');
+        await expect(proposal.getByTestId('proposal-status')).toHaveText('Accepted', { timeout: 10_000 });
+    });
+});
+

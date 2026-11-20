@@ -64,11 +64,14 @@ it('refuses a file past 2 MiB and a bundle past 24 MiB inflated, before parsing'
     expect(await problemsOf(importBibleBundle(ctx, bookId, writeZip(new Map([['manifest.json', manifest], ['theme/big.md', big]])), {}, clean))).toEqual([
         { path: 'theme/big.md', reason: 'ENTRY_TOO_LARGE' },
     ]);
-    // Incompressible, so no entry trips the bomb ratio first.
-    const chunk = randomBytes(1_400_000).toString('base64');
+    // Fourteen ~1.9 MB files, past 24 MiB together. Stored, not deflated
+    // (writeZip with the import's own ratio), so no entry trips the bomb ratio
+    // first, and the archive costs no slow compression of random bytes: the
+    // refusal reads only the declared sizes, before anything is inflated.
+    const filler = 'x'.repeat(1_870_000);
     const many = new Map<string, string>([['manifest.json', manifest]]);
-    for (let i = 0; i < 14; i++) many.set(`theme/t${i}.md`, `---\nkind: THEME\nname: T${i}\nslug: t${i}\nstatus: DRAFT\nsummary: "${chunk}"\n---\n`);
-    expect(await problemsOf(importBibleBundle(ctx, bookId, writeZip(many), {}, clean))).toEqual([{ path: '', reason: 'ARCHIVE_TOO_LARGE' }]);
+    for (let i = 0; i < 14; i++) many.set(`theme/t${i}.md`, `---\nkind: THEME\nname: T${i}\nslug: t${i}\nstatus: DRAFT\nsummary: "${filler}"\n---\n`);
+    expect(await problemsOf(importBibleBundle(ctx, bookId, writeZip(many, { maxRatio: BUNDLE_ZIP_LIMITS.maxRatio }), {}, clean))).toEqual([{ path: '', reason: 'ARCHIVE_TOO_LARGE' }]);
 });
 
 it('yields between files: a bundle never holds the event loop for more than one file\'s parse', async () => {

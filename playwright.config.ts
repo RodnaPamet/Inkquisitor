@@ -121,5 +121,20 @@ export default defineConfig({
                   reuseExistingServer: !isCI,
                   timeout: 120_000,
               },
+              {
+                  // The research worker (Phase 2.6): a research run is a BullMQ
+                  // job, so the stub server's runs need a worker. It runs from
+                  // source (tsx, as `npm run worker`), as production, with the
+                  // same stubbed model and loopback URLs as the stub server, so
+                  // the run's gather turn is answered by the stub's fake web and
+                  // nothing is sent anywhere. Ready when it logs that it listens.
+                  name: 'worker',
+                  command: 'npx tsx scripts/worker.ts',
+                  env: { ...serverEnv(STUB_BASE_URL), APP_URL: STUB_BASE_URL, AI_MODEL_STUB: '1', AI_DISABLED: '0', NODE_ENV: 'production', LOG_LEVEL: 'info' },
+                  wait: { stdout: /listening for jobs/ },
+                  stdout: 'pipe',
+                  reuseExistingServer: !isCI,
+                  timeout: 120_000,
+              },
           ],
 });

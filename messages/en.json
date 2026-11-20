@@ -296,7 +296,8 @@
         "source": {
             "MANUAL": "Manual edit",
             "INTERVIEW": "Interview",
-            "IMPORT": "Import"
+            "IMPORT": "Import",
+            "RESEARCH": "Research"
         },
         "books": {
             "title": "Books",
@@ -949,6 +950,165 @@
             "RECONCILE_RUNNING": "This round is being reconciled now.",
             "AI_UNAVAILABLE": "AI is not available on this server right now.",
             "generic": "That did not work. Try again."
+        }
+    },
+    "research": {
+        "meta": {
+            "title": "Research"
+        },
+        "title": "Research",
+        "description": "Ask a question. The agent searches the web and reads the files you attach, and every finding is quoted from its source. Nothing reaches your bible until you accept it.",
+        "readOnly": "You can read this book's research. Only an editor can start research or accept a change.",
+        "newBrief": {
+            "title": "New research brief",
+            "privacy": "Searches are written from your question and its purpose only. Nothing from your bible or manuscript is put in a query.",
+            "question": "Question",
+            "questionHelp": "The real-world topic or question to research.",
+            "purpose": "What it is for",
+            "purposeHelp": "A character's profession, a setting's period, a world rule's plausibility, a historical event.",
+            "scope": "Bible entries it is about",
+            "scopeHelp": "Findings are fitted to these entries and the entries related to them.",
+            "scopePlaceholder": "Choose entries",
+            "scopeSearch": "Search entries…",
+            "urls": "URLs to read",
+            "urlsHelp": "Optional: one address per line.",
+            "depth": "Depth",
+            "depths": {
+                "QUICK": "Quick",
+                "STANDARD": "Standard",
+                "THOROUGH": "Thorough"
+            },
+            "depthHelp": {
+                "QUICK": "a few searches and pages",
+                "STANDARD": "a wider search",
+                "THOROUGH": "reads widely; costs the most"
+            },
+            "submit": "Save brief",
+            "required": "Write the question and what it is for.",
+            "created": "Brief saved."
+        },
+        "briefs": {
+            "title": "Briefs",
+            "emptyTitle": "No research yet",
+            "empty": "Write a brief above to start.",
+            "truncated": "Showing the {count} newest briefs.",
+            "scopeLabel": "About: {names}",
+            "urlsLabel": "URLs to read",
+            "files": "Attached: {names}",
+            "neverRun": "Not run yet.",
+            "run": "Run research",
+            "rerun": "Run again",
+            "attach": "Attach a file",
+            "attached": "{name} attached.",
+            "dispatched": "Research started.",
+            "viewResults": "Show results",
+            "hideResults": "Hide results"
+        },
+        "status": {
+            "READY": "Ready",
+            "QUEUED": "Waiting",
+            "RUNNING": "Researching",
+            "DONE": "Done",
+            "FAILED": "Failed",
+            "REFUSED": "Refused"
+        },
+        "phase": {
+            "queued": "Waiting for a worker",
+            "searching": "Searching",
+            "reading": "Reading sources",
+            "drafting_findings": "Drafting findings",
+            "fitting": "Fitting findings to your bible",
+            "saving": "Saving",
+            "finished": "Finished"
+        },
+        "counts": "{searches} searches · {fetches} pages fetched · {sources} sources read · {findings} findings · {proposals} proposals",
+        "outcome": {
+            "OK": "The research finished. Each finding below rests on a passage quoted from its source.",
+            "NO_SOURCES": "Nothing was found to read: no page came back as text and no file is attached. Try another question, add URLs or attach a file.",
+            "NO_FINDINGS": "Sources were read, but the agent drew no finding from them that answers the question.",
+            "ALL_REFUSED": "Findings were drafted, but every one was refused because its quote could not be found in its source or a sentence was not supported. Nothing unverified is shown.",
+            "BUDGET_SPENT": "The depth's budget was spent before anything could be read. Try a deeper run or a narrower question.",
+            "GUARD_REFUSED": "The safety check refused to send or use the text. Nothing was kept.",
+            "QUERY_REFUSED": "A search query quoted text from your book, so the run stopped. Queries never carry bible text.",
+            "TIMEOUT": "The model took too long to answer. Run the brief again.",
+            "ABORTED": "The run was cancelled.",
+            "PROVIDER_FAILURE": "The model provider could not complete the research. Run the brief again.",
+            "INVALID_OUTPUT": "The model returned an answer that could not be used. Run the brief again.",
+            "KILL_SWITCH": "AI features are switched off for this deployment.",
+            "WORKSPACE_CEILING": "This workspace has reached its monthly AI spend limit.",
+            "PROMPT_INVALID": "The research could not be prepared. Nothing was sent.",
+            "CLAIM_EXPIRED": "The run stopped before it finished. Run the brief again.",
+            "INTERNAL": "Something went wrong while researching. Run the brief again.",
+            "AI_UNAVAILABLE": "AI features are not available right now.",
+            "RESEARCH_NOT_EVALUATED": "Research is not available in this deployment yet.",
+            "BRIEF_QUOTES_BIBLE": "The brief repeats text from your book, so it was not sent. Rephrase it in your own words.",
+            "REQUESTER_NOT_PERMITTED": "The person who started this run may no longer edit the bible."
+        },
+        "guardFlag": "A source carried text that reads like an instruction to the model. It was treated as data; read these findings with care.",
+        "egress": {
+            "title": "What this run sent out",
+            "description": "Every search query and page address this run sent, in order, exactly as written. Searches go to Anthropic and its search provider; addresses go to the sites that hold the pages.",
+            "none": "This run sent no query and fetched no page.",
+            "tool": {
+                "web_search": "Search:",
+                "web_fetch": "Fetched:"
+            },
+            "refusal": {
+                "QUOTES_BOOK_TEXT": "Stopped the run: it repeated text from your book",
+                "CARRIES_SECRET": "Stopped the run: it looked like a password or key",
+                "INDEX_INCOMPLETE": "Stopped the run: your book is too large to check against",
+                "UNREADABLE_TOOL_INPUT": "Stopped the run: it could not be read",
+                "TOOL_NOT_PERMITTED": "Stopped the run: not a search or a page fetch",
+                "generic": "Stopped the run"
+            },
+            "unlisted": "Not listed: {count} more sent by this run (the list keeps the first 100)."
+        },
+        "findings": {
+            "title": "Findings",
+            "sources": "Sources",
+            "attachedFile": "Attached file: {name}",
+            "noFit": "No fit: {reason}",
+            "keep": "Keep as research note",
+            "kept": "Kept as a research note.",
+            "openNote": "Open the research note",
+            "confidence": {
+                "LOW": "Low confidence",
+                "MEDIUM": "Medium confidence",
+                "HIGH": "High confidence"
+            }
+        },
+        "proposals": {
+            "title": "Proposed changes",
+            "newTitle": "Proposed new entries",
+            "rationale": "How it fits:",
+            "cites": "Drawn from findings",
+            "findingMissing": "That finding is no longer available.",
+            "possibleInstruction": "This text reads like an instruction to the product rather than a fact. Accept it only if you meant it."
+        },
+        "errors": {
+            "generic": "That did not work. Try again.",
+            "BRIEF_QUOTES_BIBLE": "The brief repeats text from your book. Queries never carry bible text: rephrase it in your own words.",
+            "BRIEF_EMPTY": "Write the question and what it is for in words.",
+            "SCOPE_ELEMENT_NOT_IN_BOOK": "One of the chosen entries is no longer in this book.",
+            "URL_INVALID": "Each URL must start with http:// or https://.",
+            "RUN_IN_PROGRESS": "This brief is already being researched.",
+            "SOURCE_TYPE": "Attach a plain-text (.txt) or Markdown (.md) file.",
+            "SOURCE_NOT_TEXT": "That file is not readable text.",
+            "SOURCE_EMPTY": "That file is empty.",
+            "SOURCES_FULL": "This brief already holds as many files as it can.",
+            "UPLOAD_INFECTED": "The virus scan refused that file.",
+            "SCAN_UNAVAILABLE": "The virus scan is unavailable. Try again shortly.",
+            "TOO_LARGE": "That file is too large.",
+            "AI_UNAVAILABLE": "AI features are not available right now.",
+            "RESEARCH_NOT_EVALUATED": "Research is not available in this deployment yet.",
+            "PROPOSAL_DECIDED": "This proposal has already been decided.",
+            "VERSION_CONFLICT": "The entry was saved by someone else since you opened this. It has been reloaded.",
+            "PROPOSAL_OUTDATED": "The entry changed since this was proposed. Review its current value, then accept again.",
+            "PROPOSAL_STALE": "The field no longer holds what this proposal was made for.",
+            "EDIT_NOT_ALLOWED": "That edit cannot be made here.",
+            "EDIT_CHANGES_NOTHING": "That would change nothing.",
+            "ELEMENT_EXISTS": "The book already has an entry of that name.",
+            "FINDING_KEPT": "This finding is already kept as a research note."
         }
     }
 }

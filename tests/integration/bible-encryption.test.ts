@@ -28,6 +28,11 @@ import { allowedTargets, fakeGenerator, fakeQuestion, kindsInPrompt } from '../h
 import { stubQuestionEmbedder } from '../helpers/interview';
 import { scripted } from '../helpers/enrichment';
 import { createAccount, workspaceCtx } from '../helpers/workspaces';
+import { attachResearchSource, createResearchBrief, dispatchResearchRun } from '@/app-layer/usecases/research-briefs';
+import { executeResearchRun } from '@/app-layer/usecases/research-run';
+import type { Researcher } from '@/lib/research/researcher';
+import { CLEAN_SCAN, MOUNTED_GATE } from '../helpers/research';
+import { setFakeApiKey } from '../helpers/fake-anthropic';
 
 afterAll(() => prisma.$disconnect());
 
@@ -97,21 +102,75 @@ beforeAll(async () => {
     });
     const closed = await closeRoundAndReconcile(ctx, book.id, interview.session.id, String(interview.round!.number), { skipUnanswered: true }, { reconciler });
     expect(closed.reconcile?.proposed).toMatchObject({ ADD: 1, NEW_ELEMENT: 1 });
+
+    // Research (Phase 2.6): a brief, an attached file, a fetched page, findings
+    // citing both (one with no fit), an ADD and a new element, each carrying the
+    // mark. The researcher is scripted: what it returns still passes the run's
+    // validation, so every row below was written by the product's own path.
+    const falconer = await createElement(ctx, book.id, { kind: 'CHARACTER', name: 'Falconer' });
+    const pageUrl = `https://research.example/${MARK}`;
+    const page = [`Falconers say the falcon ${MARK} rests calmly on the fist for hours.`, `The Hawking Guild ${MARK} trained hawks with patience and food rewards.`].join(' ');
+    const fileText = `Field notes say the falcon ${MARK} stays quiet in the dark mews.`;
+    const cost = { tokensUsed: 10, costMicroUsd: 1, callIds: [] as string[] };
+    const researcher: Researcher = {
+        gather: async (request) => {
+            // The tool uses go through the run's tripwire, as the stream delivers them: each is listed (D15).
+            if (request.inspectToolUse({ tool: 'web_search', input: { query: `falcon ${MARK} hooding` } })) throw new Error('the query was refused');
+            if (request.inspectToolUse({ tool: 'web_fetch', input: { url: pageUrl } })) throw new Error('the URL was refused');
+            return { ok: true, output: { ...cost, stop: 'END_TURN', searches: [], requests: 1, fetches: [{ url: pageUrl, title: `Title ${MARK}`, text: page, retrievedAt: null, errorCode: null }] } };
+        },
+        findings: async () => ({
+            ok: true,
+            ...cost,
+            output: {
+                findings: [
+                    { claim: `The falcon ${MARK} rests calmly on the fist for hours.`, summary: `Falconers say the falcon ${MARK} rests calmly on the fist.`, confidence: 'HIGH', citations: [{ ref: 'web.1', quote: `the falcon ${MARK} rests calmly on the fist for hours` }] },
+                    { claim: `The Hawking Guild ${MARK} trained hawks with patience.`, summary: `The Hawking Guild ${MARK} trained hawks with food rewards.`, confidence: 'MEDIUM', citations: [{ ref: 'web.1', quote: `The Hawking Guild ${MARK} trained hawks with patience` }] },
+                    { claim: `The falcon ${MARK} stays quiet in the dark mews.`, summary: `Field notes say the falcon ${MARK} stays quiet.`, confidence: 'LOW', citations: [{ ref: 'file.1', quote: `the falcon ${MARK} stays quiet in the dark mews` }] },
+                ],
+            },
+        }),
+        fit: async () => ({
+            ok: true,
+            ...cost,
+            output: {
+                proposals: [
+                    { op: 'ADD', elementId: falconer.id, fieldKey: 'want', value: `The falcon ${MARK} rests calmly on the fist.`, newKind: null, newName: null, newSummary: null, rationale: `The falcon ${MARK} rests calmly on the fist, the finding says.`, cites: ['f1'] },
+                    { op: 'NEW_ELEMENT', elementId: null, fieldKey: null, value: null, newKind: 'FACTION', newName: `Hawking Guild ${MARK}`, newSummary: `The Hawking Guild ${MARK} trained hawks with patience.`, rationale: `The Hawking Guild ${MARK} trained hawks, the finding says.`, cites: ['f2'] },
+                ],
+                noFit: [{ finding: 'f3', reason: `The mews of the falcon ${MARK} is not in scope.` }],
+            },
+        }),
+    };
+    const brief = await createResearchBrief(ctx, book.id, { question: `How does a falcon ${MARK} rest when hooded?`, purpose: `The hawks ${MARK} must ring true.`, scopeElementIds: [falconer.id], urls: [pageUrl], depth: 'QUICK' });
+    await attachResearchSource(ctx, book.id, brief.id, { bytes: new TextEncoder().encode(fileText), mediaType: 'text/plain', filename: `notes-${MARK}.txt` }, { scan: CLEAN_SCAN });
+    const undoKey = setFakeApiKey();
+    const { runId, ran } = await (async () => {
+        const { runId } = await dispatchResearchRun(ctx, book.id, brief.id, { gate: MOUNTED_GATE, enqueue: async () => undefined });
+        return { runId, ran: await executeResearchRun({ workspaceId: ctx.workspaceId, runId }, { gate: MOUNTED_GATE, researcher: () => researcher }) };
+    })().finally(undoKey);
+    expect(ran).toMatchObject({ outcome: 'OK' });
+    expect(await prisma.researchProposal.count({ where: { runId } })).toBe(2);
+    expect(await prisma.researchFinding.count({ where: { runId, noFitReason: { not: null } } })).toBe(1);
+    expect(await prisma.researchEgress.count({ where: { runId } })).toBe(2);
+    Object.assign(ids, { ResearchBrief: brief.id, Run: runId });
 });
 
 /** The raw stored values of `field` on every row of `model` this suite wrote, read as the owner. */
 async function rawValues(model: string, field: string): Promise<string[]> {
     const byElement = model === 'BibleField' || model === 'BibleEntryVersion';
     const bySession = model === 'Question' || model === 'Answer' || model === 'EnrichmentProposal';
-    const where = byElement ? `"elementId" = $1` : bySession ? `"sessionId" = $1` : `"id" = $1`;
-    const id = byElement ? ids.BibleElement : bySession ? ids.Session : ids[model];
+    const byRun = model === 'ResearchFinding' || model === 'ResearchCitation' || model === 'ResearchProposal' || model === 'ResearchEgress';
+    const byBrief = model === 'ResearchSource';
+    const where = byElement ? `"elementId" = $1` : bySession ? `"sessionId" = $1` : byRun ? `"runId" = $1` : byBrief ? `"briefId" = $1` : `"id" = $1`;
+    const id = byElement ? ids.BibleElement : bySession ? ids.Session : byRun ? ids.Run : byBrief ? ids.ResearchBrief : ids[model];
     const rows = await prisma.$queryRawUnsafe<Array<{ v: string | null }>>(`SELECT "${field}" AS v FROM "${model}" WHERE ${where}`, id);
     return rows.map((r) => r.v).filter((v): v is string => v !== null);
 }
 
 const manifest = Object.entries(ENCRYPTED_FIELDS).flatMap(([model, fields]) => fields.map((field) => [model, field] as const));
 
-it('the manifest covers the bible and interview author text the briefs name', () => {
+it('the manifest covers the bible, interview and research author text the briefs name', () => {
     expect(manifest.map(([m, f]) => `${m}.${f}`).sort()).toEqual(
         [
             'BibleElement.summary',
@@ -131,6 +190,22 @@ it('the manifest covers the bible and interview author text the briefs name', ()
             'EnrichmentProposal.proposedValue',
             'EnrichmentProposal.newName',
             'EnrichmentProposal.newSummary',
+            'ResearchBrief.question',
+            'ResearchBrief.purpose',
+            'ResearchBrief.sourceUrls',
+            'ResearchSource.filename',
+            'ResearchSource.text',
+            'ResearchFinding.claim',
+            'ResearchFinding.summary',
+            'ResearchFinding.noFitReason',
+            'ResearchCitation.url',
+            'ResearchCitation.title',
+            'ResearchCitation.quotedSpan',
+            'ResearchProposal.proposedValue',
+            'ResearchProposal.newName',
+            'ResearchProposal.newSummary',
+            'ResearchProposal.rationale',
+            'ResearchEgress.text',
         ].sort(),
     );
 });

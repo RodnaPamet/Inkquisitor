@@ -51,6 +51,14 @@ export const ENCRYPTED_FIELDS: EncryptedFieldManifest = Object.freeze({
     Answer: Object.freeze(['text', 'choice']),
     // Phase 2.5: a proposed value (drawn from the author's answers) and a proposed element's name and summary.
     EnrichmentProposal: Object.freeze(['proposedValue', 'newName', 'newSummary']),
+    // Phase 2.6: a research brief, an attached file, a finding and its citations, a research proposal.
+    ResearchBrief: Object.freeze(['question', 'purpose', 'sourceUrls']),
+    ResearchSource: Object.freeze(['filename', 'text']),
+    ResearchFinding: Object.freeze(['claim', 'summary', 'noFitReason']),
+    ResearchCitation: Object.freeze(['url', 'title', 'quotedSpan']),
+    ResearchProposal: Object.freeze(['proposedValue', 'newName', 'newSummary', 'rationale']),
+    // Decision D15: every query and fetch URL a research run sent.
+    ResearchEgress: Object.freeze(['text']),
 });
 
 /** The lookups the extension runs per operation, compiled once per manifest. */

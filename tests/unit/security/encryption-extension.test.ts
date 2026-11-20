@@ -179,6 +179,12 @@ describe('wiring', () => {
             Question: ['text', 'options', 'scaleLabels', 'recommendedAnswer', 'rationale', 'challengeQuote'],
             Answer: ['text', 'choice'],
             EnrichmentProposal: ['proposedValue', 'newName', 'newSummary'],
+            ResearchBrief: ['question', 'purpose', 'sourceUrls'],
+            ResearchSource: ['filename', 'text'],
+            ResearchFinding: ['claim', 'summary', 'noFitReason'],
+            ResearchCitation: ['url', 'title', 'quotedSpan'],
+            ResearchProposal: ['proposedValue', 'newName', 'newSummary', 'rationale'],
+            ResearchEgress: ['text'],
         });
         expect(compileManifest(ENCRYPTED_FIELDS).isEmpty).toBe(false);
     });

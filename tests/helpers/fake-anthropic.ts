@@ -23,6 +23,8 @@ export type FakeTurn =
     | { kind: 'tool'; name: string; input: unknown; usage?: Usage }
     | { kind: 'http-error'; status: number; type: string }
     | { kind: 'hang'; usage?: Usage }
+    /** A message streamed as exactly these SSE events (server tool blocks, Phase 2.6). */
+    | { kind: 'events'; events: Array<Record<string, unknown>> }
     /** A text answer held back until `gate` resolves: a call kept in flight on purpose. */
     | { kind: 'gated'; gate: Promise<void>; text: string; usage?: Usage }
     /** The turn computed from the request body the SDK sent (a model that reads its prompt). */
@@ -123,6 +125,9 @@ export function fakeAnthropic(turns: readonly FakeTurn[]): FakeAnthropic {
                 status: 200,
                 headers: { 'content-type': 'text/event-stream' },
             });
+        }
+        if (turn.kind === 'events') {
+            return new Response(sse(turn.events), { status: 200, headers: { 'content-type': 'text/event-stream' } });
         }
         if (turn.kind === 'hang') {
             const signal = init?.signal;

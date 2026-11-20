@@ -30,6 +30,7 @@ import { ForbiddenError, NotFoundError } from '@/lib/errors/types';
 import { exportsOf, readRoute, routeHandlerFiles, urlAndParamsFor } from '../helpers/api-routes';
 import { seedInterview } from '../helpers/interview';
 import { seedBible } from '../helpers/bible';
+import { seedResearchRun } from '../helpers/research';
 import { REPO_ROOT } from '../helpers/repo-files';
 import { seedVectors } from '../helpers/vectors';
 import { addMember, createAccount, createBareUser, workspaceCtx } from '../helpers/workspaces';
@@ -91,6 +92,9 @@ describe('a deleted book', () => {
     it('answers 404 on every route under it, for its OWNER', async () => {
         const seeded = await seedBible(ctx, 'routes');
         const interview = await seedInterview(ctx, seeded.bookId, seeded.characterId, 'routes');
+        const research = await seedResearchRun(ctx, seeded.bookId, seeded.characterId);
+        const finding = await prisma.researchFinding.findFirstOrThrow({ where: { runId: research.runId } });
+        const proposal = await prisma.researchProposal.findFirstOrThrow({ where: { runId: research.runId } });
         const routes = routeHandlerFiles().filter((f) => f.startsWith('src/app/api/w/[workspaceSlug]/books/[bookId]/'));
         expect(routes.length).toBeGreaterThanOrEqual(10);
         const value = (p: string) =>
@@ -103,6 +107,10 @@ describe('a deleted book', () => {
                 sessionId: interview.sessionId,
                 questionId: interview.questionId,
                 roundNumber: '1',
+                briefId: research.briefId,
+                runId: research.runId,
+                findingId: finding.id,
+                proposalId: proposal.id,
             })[p] ?? `probe-${p}`;
         const call = async (file: string, method: string) => {
             // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -122,12 +130,22 @@ describe('a deleted book', () => {
                 'POST interviews/stream/route.ts': { scope: 'ELEMENT', elementId: seeded.characterId },
                 'POST interviews/[sessionId]/questions/[questionId]/answer/route.ts': { text: 'After deletion.' },
                 'POST interviews/[sessionId]/proposals/bulk-accept/route.ts': { items: [{ proposalId: 'after-deletion', baseVersion: 1 }] },
+                'POST research/briefs/route.ts': { question: 'How were hawks hooded?', purpose: 'After deletion.', scopeElementIds: [seeded.characterId], depth: 'QUICK' },
+                'POST research/proposals/[proposalId]/accept/route.ts': { baseVersion: 1 },
             };
-            const body = ['GET', 'DELETE'].includes(method) ? undefined : tail === 'import/bundle/route.ts' ? 'PK\u0005\u0006' : JSON.stringify(valid[`${method} ${tail}`] ?? {});
+            const upload = tail === 'research/briefs/[briefId]/sources/route.ts';
+            const body = ['GET', 'DELETE'].includes(method)
+                ? undefined
+                : tail === 'import/bundle/route.ts'
+                  ? 'PK\u0005\u0006'
+                  : upload
+                    ? 'Notes after deletion.'
+                    : JSON.stringify(valid[`${method} ${tail}`] ?? {});
+            const contentType = tail === 'import/bundle/route.ts' ? 'application/zip' : upload ? 'text/plain' : 'application/json';
             return handler(
-                new NextRequest(`http://localhost${url}`, {
+                new NextRequest(`http://localhost${url}${upload ? '?filename=notes.txt' : ''}`, {
                     method,
-                    headers: { 'content-type': tail === 'import/bundle/route.ts' ? 'application/zip' : 'application/json', 'x-forwarded-for': '198.51.100.81' },
+                    headers: { 'content-type': contentType, 'x-forwarded-for': '198.51.100.81' },
                     body,
                 }),
                 { params: Promise.resolve(params) },

@@ -71,6 +71,22 @@ const COVERAGE: Readonly<Record<string, Classification>> = {
     'EnrichmentProposal.proposedValue': { repository: 'EnrichmentProposalRepository', writeMethods: ['create'], sanitiser: 'sanitiseProposalForStorage' },
     'EnrichmentProposal.newName': { repository: 'EnrichmentProposalRepository', writeMethods: ['create'], sanitiser: 'sanitiseProposalForStorage' },
     'EnrichmentProposal.newSummary': { repository: 'EnrichmentProposalRepository', writeMethods: ['create'], sanitiser: 'sanitiseProposalForStorage' },
+    'ResearchBrief.question': { repository: 'ResearchBriefRepository', writeMethods: ['create'], sanitiser: 'sanitiseBriefForStorage' },
+    'ResearchBrief.purpose': { repository: 'ResearchBriefRepository', writeMethods: ['create'], sanitiser: 'sanitiseBriefForStorage' },
+    'ResearchBrief.sourceUrls': { repository: 'ResearchBriefRepository', writeMethods: ['create'], sanitiser: 'sanitiseBriefForStorage' },
+    'ResearchSource.filename': { repository: 'ResearchSourceRepository', writeMethods: ['create'], sanitiser: 'sanitiseSourceForStorage' },
+    'ResearchSource.text': { repository: 'ResearchSourceRepository', writeMethods: ['create'], sanitiser: 'sanitiseSourceForStorage' },
+    'ResearchFinding.claim': { repository: 'ResearchFindingRepository', writeMethods: ['create'], sanitiser: 'sanitiseFindingForStorage' },
+    'ResearchFinding.summary': { repository: 'ResearchFindingRepository', writeMethods: ['create'], sanitiser: 'sanitiseFindingForStorage' },
+    'ResearchFinding.noFitReason': { repository: 'ResearchFindingRepository', writeMethods: ['create'], sanitiser: 'sanitiseFindingForStorage' },
+    'ResearchCitation.url': { repository: 'ResearchCitationRepository', writeMethods: ['create'], sanitiser: 'sanitiseFindingForStorage' },
+    'ResearchCitation.title': { repository: 'ResearchCitationRepository', writeMethods: ['create'], sanitiser: 'sanitiseFindingForStorage' },
+    'ResearchCitation.quotedSpan': { repository: 'ResearchCitationRepository', writeMethods: ['create'], sanitiser: 'sanitiseFindingForStorage' },
+    'ResearchProposal.proposedValue': { repository: 'ResearchProposalRepository', writeMethods: ['create'], sanitiser: 'sanitiseResearchProposalForStorage' },
+    'ResearchProposal.newName': { repository: 'ResearchProposalRepository', writeMethods: ['create'], sanitiser: 'sanitiseResearchProposalForStorage' },
+    'ResearchProposal.newSummary': { repository: 'ResearchProposalRepository', writeMethods: ['create'], sanitiser: 'sanitiseResearchProposalForStorage' },
+    'ResearchProposal.rationale': { repository: 'ResearchProposalRepository', writeMethods: ['create'], sanitiser: 'sanitiseResearchProposalForStorage' },
+    'ResearchEgress.text': { repository: 'ResearchEgressRepository', writeMethods: ['createMany'], sanitiser: 'sanitiseEgressForStorage' },
 };
 
 /** Each repository object and the one file allowed to write its model through Prisma. */
@@ -83,6 +99,12 @@ const REPOSITORIES: Readonly<Record<string, { file: string; model: string }>> = 
     QuestionRepository: { file: 'src/app-layer/repositories/interview.repository.ts', model: 'Question' },
     AnswerRepository: { file: 'src/app-layer/repositories/interview.repository.ts', model: 'Answer' },
     EnrichmentProposalRepository: { file: 'src/app-layer/repositories/enrichment.repository.ts', model: 'EnrichmentProposal' },
+    ResearchBriefRepository: { file: 'src/app-layer/repositories/research.repository.ts', model: 'ResearchBrief' },
+    ResearchSourceRepository: { file: 'src/app-layer/repositories/research.repository.ts', model: 'ResearchSource' },
+    ResearchFindingRepository: { file: 'src/app-layer/repositories/research.repository.ts', model: 'ResearchFinding' },
+    ResearchCitationRepository: { file: 'src/app-layer/repositories/research.repository.ts', model: 'ResearchCitation' },
+    ResearchProposalRepository: { file: 'src/app-layer/repositories/research.repository.ts', model: 'ResearchProposal' },
+    ResearchEgressRepository: { file: 'src/app-layer/repositories/research.repository.ts', model: 'ResearchEgress' },
 };
 
 /** Wrappers, where each is defined and what it must call; the chain must end at a primitive. */
@@ -95,6 +117,11 @@ const WRAPPERS: Readonly<Record<string, { file: string; calls: readonly string[]
     normaliseFieldValue: { file: 'src/lib/bible/field-values.ts', calls: ['plainLine', 'sanitizeRichTextHtml'] },
     sanitiseQuestionForStorage: { file: 'src/lib/interview/storage.ts', calls: ['plainLine', 'plainBlock'] },
     sanitiseProposalForStorage: { file: 'src/lib/enrichment/storage.ts', calls: ['normaliseFieldValue', 'plainBlock'] },
+    sanitiseBriefForStorage: { file: 'src/lib/research/storage.ts', calls: ['plainBlock', 'plainLine'] },
+    sanitiseSourceForStorage: { file: 'src/lib/research/storage.ts', calls: ['plainBlock', 'plainLine'] },
+    sanitiseFindingForStorage: { file: 'src/lib/research/storage.ts', calls: ['plainBlock', 'plainLine'] },
+    sanitiseResearchProposalForStorage: { file: 'src/lib/research/storage.ts', calls: ['normaliseFieldValue', 'plainBlock'] },
+    sanitiseEgressForStorage: { file: 'src/lib/research/storage.ts', calls: ['plainLine'] },
 };
 
 const WRITE_OPS = ['create', 'createMany', 'createManyAndReturn', 'update', 'updateMany', 'updateManyAndReturn', 'upsert'];

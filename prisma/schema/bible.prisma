@@ -60,6 +60,8 @@ model Book {
   interviewSessions InterviewSession[]
   interviewDefaults BookInterviewDefaults?
   aiCalls           AiCallLog[]
+  /// Phase 2.6: the book's research briefs (and through them its runs).
+  researchBriefs    ResearchBrief[]
 
   @@unique([workspaceId, id])
   /// The books list: a workspace's live books, most recently updated first.
@@ -96,6 +98,8 @@ model BibleElement {
   questions           Question[]
   /// Phase 2.5: proposed changes to this element's fields.
   enrichmentProposals EnrichmentProposal[]
+  /// Phase 2.6: research proposals for this element's fields.
+  researchProposals   ResearchProposal[]
 
   @@unique([bookId, slug])
   @@unique([bookId, id])
@@ -176,6 +180,13 @@ model BibleEntryVersion {
   /// when `source` is INTERVIEW (CHECK). Ids only: an answer deleted later
   /// leaves its id here, as the history it was.
   sourceAnswerIds     String[]           @default([])
+  /// The research findings a RESEARCH version is drawn from (Phase 2.6, rule
+  /// 1): non-empty exactly when `source` is RESEARCH (CHECK). Ids only, set at
+  /// insert, never changed.
+  sourceFindingIds    String[]           @default([])
+  /// The research proposal a RESEARCH version accepted (NULL for a finding
+  /// kept as a research note, and for every other source; CHECK).
+  sourceResearchProposalId String?
   /// Who saved it; NULL once that person is deleted.
   authorId            String?
   createdAt           DateTime           @default(now())

@@ -35,6 +35,11 @@ export const WorkspaceRepository = {
         return db.workspace.findFirst({ where: { id: workspaceId }, select: { name: true } }).then((row) => row?.name ?? null);
     },
 
+    /** The workspace's slug, inside its own context (a background job rebuilding a context, Phase 2.6). */
+    findSlug(db: Db, workspaceId: string) {
+        return db.workspace.findFirst({ where: { id: workspaceId }, select: { slug: true } }).then((row) => row?.slug ?? null);
+    },
+
     findBySlug(db: Db, slug: string) {
         return db.workspace.findUnique({ where: { slug }, select: { id: true, slug: true, name: true } });
     },

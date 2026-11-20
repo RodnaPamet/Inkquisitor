@@ -52,9 +52,22 @@ export interface HeartbeatPayload {
  */
 export type BookPurgePayload = Record<string, never>;
 
+/**
+ * One research run (Phase 2.6, decision D9): the run's id and its workspace,
+ * never the brief's text. The executor reads the run, rebuilds the requester's
+ * context from their CURRENT membership (refused if they may no longer edit
+ * the bible) and runs it (`usecases/research-run.ts`). Idempotent: a run that
+ * is no longer QUEUED is left alone.
+ */
+export interface ResearchRunPayload {
+    workspaceId: string;
+    runId: string;
+}
+
 export interface JobPayloadMap {
     heartbeat: HeartbeatPayload;
     'book-purge': BookPurgePayload;
+    'research-run': ResearchRunPayload;
 }
 
 export type JobName = keyof JobPayloadMap;
@@ -83,6 +96,15 @@ export const JOB_DEFAULTS: Record<JobName, JobDefaults> = {
         backoff: { type: 'exponential', delay: 60_000 },
         removeOnComplete: 30,
         removeOnFail: 100,
+    },
+    'research-run': {
+        // One attempt: a retry would search the web again and spend again. A
+        // run that fails ends with its named outcome; the author runs the brief
+        // again, which is a new run.
+        attempts: 1,
+        backoff: { type: 'fixed', delay: 0 },
+        removeOnComplete: 100,
+        removeOnFail: 200,
     },
 };
 
