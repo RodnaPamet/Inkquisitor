@@ -195,6 +195,21 @@ describe('skipping sources that cannot match', () => {
         },
     );
 
+    it('finds a word spelled with any apostrophe, skipping or not, whichever apostrophe the query uses', () => {
+        const spellings = ["'", '’', '`', '´', '′'];
+        for (const inText of spellings) {
+            const docs = [el('Ilse', [{ kind: 'field', text: `She said don${inText}t go to the reef.` }]), ...background];
+            for (const inQuery of spellings) {
+                const a = createAnalyzer('en');
+                const skipped = rankDocuments(docs, q(`don${inQuery}t`, a), a, { limit: 50 });
+                const full = rankDocuments(docs, q(`don${inQuery}t`), createAnalyzer('en'), { limit: 50, skipUnmatchable: false });
+                expect([inText, inQuery, skipped.hits.map((h) => h.name), full.hits.map((h) => h.name)]).toEqual([inText, inQuery, ['Ilse'], ['Ilse']]);
+                const snippet = skipped.hits[0].matches[0].snippet;
+                expect(snippet.highlights.map((h) => snippet.text.slice(h.start, h.end))).toEqual([`don${inText}t`]);
+            }
+        }
+    });
+
     it('a word skips every source that does not hold its needle', () => {
         const r = rank(corpus, 'lantern');
         expect(r.work.sourcesTokenised).toBe(1);

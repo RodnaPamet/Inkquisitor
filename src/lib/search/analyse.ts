@@ -8,9 +8,11 @@
  * Unicode word-boundary rules); a segment is a word when it `isWordLike`.
  * Every word keeps its offsets into the plain text, for highlighting.
  *
- * NORMALISATION of a word (`foldWord`): NFKC (full-width and ligature forms
- * become plain letters), every apostrophe spelled `'` (curly, modifier
- * letter, prime, full-width, grave and acute accents used as apostrophes),
+ * NORMALISATION of a word (`foldWord`): every apostrophe spelled `'` (curly,
+ * modifier letter, prime, full-width, grave and acute accents used as
+ * apostrophes; unified before the text is segmented, so a word spelled with
+ * any of them is one word), NFKC (full-width and ligature forms become plain
+ * letters),
  * invisible format characters removed, lower case, diacritics folded
  * (café → cafe; ß → ss, æ → ae, œ → oe, ø → o, ł → l, đ and ð → d, þ → th,
  * dotless ı → i; the Greek final sigma read as sigma), and a possessive stripped (Wren's → wren, the authors' →
@@ -42,7 +44,7 @@ import { porter2Stem, PORTER2_VERSION } from './porter2';
 export type SearchLanguage = 'en' | 'other';
 
 /** Moves whenever any term a text yields moves: the normaliser's own version, the stemmer's and the irregular table's. */
-export const SEARCH_ANALYZER_VERSION = `analyse-1+${PORTER2_VERSION}+${IRREGULAR_FORMS_VERSION}`;
+export const SEARCH_ANALYZER_VERSION = `analyse-2+${PORTER2_VERSION}+${IRREGULAR_FORMS_VERSION}`;
 
 /** A word longer than this (a pasted URL, a run of letters) is matched by its surface form only. */
 export const STEMMED_WORD_MAX_CHARS = 48;
@@ -78,13 +80,23 @@ const FINAL_SIGMA = /\u03C2/g;
 /** A text of ASCII characters only (the common case, which every fold leaves alone). */
 const ASCII = /^[\u0000-\u007F]*$/;
 
-/** The character-level folds every term and every folded text share: NFKC, apostrophes, format characters, diacritics, letter folds. */
+/**
+ * Every apostrophe spelled `'`. Each spelling is one UTF-16 code unit and so
+ * is `'`, so a text's offsets survive it: the tokeniser segments the unified
+ * text and slices the original at the same offsets.
+ */
+function unifyApostrophes(text: string): string {
+    return text.replace(APOSTROPHES, "'");
+}
+
+/** The character-level folds every term and every folded text share: apostrophes, NFKC, format characters, diacritics, letter folds. */
 function foldCharacters(text: string): string {
     // ASCII has nothing to normalise, no format character, no mark and no letter fold: only the grave accent as an apostrophe.
     if (ASCII.test(text)) return text.includes('`') ? text.replaceAll('`', "'") : text;
-    return text
-        .normalize('NFKC')
-        .replace(APOSTROPHES, "'")
+    // Apostrophes BEFORE NFKC: NFKC turns the acute accent (U+00B4) into a space and a combining mark, which
+    // the marks fold then drops, so "don´t" would fold to "don t" and never hold the needle "don'".
+    // And after it too, for the compatibility characters NFKC turns into a grave accent (U+1FEF).
+    return unifyApostrophes(unifyApostrophes(text).normalize('NFKC'))
         .replace(FORMAT_CHARS, '')
         .normalize('NFD')
         .replace(MARKS, '')
@@ -208,7 +220,10 @@ export function createAnalyzer(language: SearchLanguage = 'en'): Analyzer {
         tokenise(text: string, mode: CaseMode = 'prose'): Token[] {
             const out: Token[] = [];
             let sentenceStart = true;
-            for (const seg of segmenter.segment(text)) {
+            // Segment with every apostrophe spelled `'`: the word rules join "don't" (U+0027 is MidNumLet) but
+            // split "don`t", "don´t" and "don′t" in two, which would never match the same word typed with `'`.
+            // The offsets are the original text's (`unifyApostrophes` keeps the length).
+            for (const seg of segmenter.segment(unifyApostrophes(text))) {
                 if (!seg.isWordLike) {
                     if (SENTENCE_BREAK.test(seg.segment)) sentenceStart = true;
                     continue;

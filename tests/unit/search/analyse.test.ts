@@ -76,6 +76,17 @@ describe('tokenise', () => {
         expect(a.wordsSegmented).toBe(8);
     });
 
+    it('reads a word spelled with any apostrophe as one word, keeping the offsets of the text as written', () => {
+        // The word rules join "don't" (U+0027) but split a grave, an acute or a prime in two; they are unified first.
+        for (const apostrophe of ["'", '’', 'ʼ', '`', '´', '′', '＇']) {
+            const text = `She said don${apostrophe}t go.`;
+            const tokens = en.tokenise(text);
+            expect([apostrophe, tokens.map((t) => t.surface)]).toEqual([apostrophe, ['she', 'said', "don't", 'go']]);
+            expect(text.slice(tokens[2].start, tokens[2].end)).toBe(`don${apostrophe}t`);
+            expect(foldText(text)).toContain("don't");
+        }
+    });
+
     it('another language matches surface forms: no stemming', () => {
         const other = createAnalyzer('other');
         expect(other.tokenise('Les chevaux couraient').map((t) => [t.surface, t.stem])).toEqual([
