@@ -8,7 +8,9 @@
  * and its findings, a model answer that fails validation, and an unexpected
  * error whose message carries it, a model-call rate-limit refusal of a
  * request about it, and a word search for it (Phase 3.4: the query, and the
- * snippets that quote it back, refused and answered) — through the product's own usecases, the
+ * snippets that quote it back, answered and refused — through its route with
+ * a real body: a malformed one, a member past its raw bound, each of the
+ * parser's refusals, and a rate-limited one) — through the product's own usecases, the
  * model layer (over the fake Messages API) and the request wrapper. Then every
  * sink is read: every log line the logger was handed (as the redacting
  * formatter would write it, and as it was handed), every span an in-memory
@@ -32,6 +34,11 @@ jest.mock('@sentry/nextjs', () => ({
         return 'evt';
     },
 }));
+// The session seam (`auth()`), for the routes called with a real request below (word search's route, Phase 3.4).
+const session: { userId: string | null } = { userId: null };
+jest.mock('@/auth', () => ({
+    auth: async () => (session.userId ? { user: { id: session.userId, email: 'x@example.test', name: null }, expires: '' } : null),
+}));
 
 import { NextRequest } from 'next/server';
 import { context, trace } from '@opentelemetry/api';
@@ -40,6 +47,9 @@ import { InMemorySpanExporter, SimpleSpanProcessor, TracerProvider } from '@open
 import { prisma } from '@/lib/db';
 import { saveStoryMap } from '@/app-layer/usecases/story-maps';
 import { searchBook } from '@/app-layer/usecases/book-search';
+import { POST as searchRoute } from '@/app/api/w/[workspaceSlug]/books/[bookId]/search/route';
+import { enforceRateLimit } from '@/lib/security/rate-limit-middleware';
+import { API_READ_LIMIT } from '@/lib/security/rate-limit';
 import { pinoInstance } from '@/lib/observability/logger';
 import { redactLogObject } from '@/lib/observability/redaction';
 import { _resetSentryForTests, initSentry } from '@/lib/observability/sentry';
@@ -155,6 +165,44 @@ it('a marker planted in every author-text path reaches no log line, span, Sentry
     const refusedSearch = await wrapped(() => searchBook(ctx, bookId, { q: `${MARKER} a b c d e f g h i j k l` }));
     expect(refusedSearch.status).toBe(400);
     expect((await refusedSearch.text()).toLowerCase()).not.toContain(MARKER.toLowerCase());
+    // And through the route itself, with real request bodies: the body reader, the request schema and the
+    // rate limit each refuse a body carrying the marker, and none of their answers echoes it.
+    session.userId = owner.userId;
+    try {
+        const ip = '198.51.100.77';
+        const search = (body: string) =>
+            searchRoute(new NextRequest(`http://localhost/api/w/${owner.workspaceSlug}/books/${bookId}/search`, { method: 'POST', body, headers: { 'content-type': 'application/json', 'x-forwarded-for': ip } }), {
+                params: Promise.resolve({ workspaceSlug: owner.workspaceSlug, bookId }),
+            });
+        const answered = await search(JSON.stringify({ q: `${MARKER} keeper` }));
+        expect(answered.status).toBe(200);
+        expect(await answered.text()).toContain(MARKER);
+        const refusals: Array<[string, string, string]> = [
+            ['malformed JSON', `{"q": "${MARKER} keeper`, 'BODY_NOT_JSON'],
+            ['past the raw bound', JSON.stringify({ q: `${MARKER} ${'x'.repeat(900)}` }), 'VALIDATION_ERROR'],
+            ['past the trimmed bound', JSON.stringify({ q: `${MARKER} ${'y'.repeat(250)}` }), 'QUERY_TOO_LONG'],
+            ['too many words', JSON.stringify({ q: `${MARKER} a b c d e f g h i j k l` }), 'QUERY_TOO_MANY_TERMS'],
+            ['too many phrases', JSON.stringify({ q: `"${MARKER} a" "b c" "d e" "f g" "h i"` }), 'QUERY_TOO_MANY_PHRASES'],
+            ['not a string', JSON.stringify({ q: [MARKER] }), 'VALIDATION_ERROR'],
+        ];
+        for (const [label, body, code] of refusals) {
+            const res = await search(body);
+            const text = await res.text();
+            expect([label, res.status, text.includes(code), text.toLowerCase().includes(MARKER.toLowerCase())]).toEqual([label, 400, true, false]);
+        }
+        process.env.RATE_LIMIT_ENABLED = '1';
+        try {
+            const probe = new NextRequest('http://localhost/', { headers: { 'x-forwarded-for': ip } });
+            for (let i = 0; i < API_READ_LIMIT.maxAttempts; i++) enforceRateLimit(probe, { config: API_READ_LIMIT, scope: 'book-search' });
+            const limitedSearch = await search(JSON.stringify({ q: `${MARKER} keeper` }));
+            expect(limitedSearch.status).toBe(429);
+            expect((await limitedSearch.text()).toLowerCase()).not.toContain(MARKER.toLowerCase());
+        } finally {
+            delete process.env.RATE_LIMIT_ENABLED;
+        }
+    } finally {
+        session.userId = null;
+    }
 
     // An unexpected error carrying author text, through the wrapper: logged, traced and reported, its message withheld.
     const failed = await withApiErrorHandling(async () => {
