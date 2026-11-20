@@ -82,6 +82,8 @@ export interface ElementSummaryView {
     status: string;
     customLabel: string | null;
     summary: string | null;
+    /** A plot beat's or timeline event's place in its story order (Phase 3.2), or null. */
+    orderRank: string | null;
     updatedAt: string;
 }
 
@@ -97,6 +99,7 @@ function summaryView(e: ElementRow): ElementSummaryView {
         status: e.status,
         customLabel: e.customLabel,
         summary: e.summary,
+        orderRank: e.orderRank,
         updatedAt: e.updatedAt.toISOString(),
     };
 }
@@ -175,6 +178,7 @@ function listItemView(r: ElementListRow, filled: ReadonlyMap<string, number>): E
         slug: r.slug,
         status: r.status,
         customLabel: r.customLabel,
+        orderRank: r.orderRank,
         updatedAt: (r.updatedAt instanceof Date ? r.updatedAt : new Date(r.updatedAt)).toISOString(),
         filledFieldCount: filled.get(r.id) ?? 0,
     };

@@ -453,7 +453,7 @@ export interface PackRegistry {
     craftEvals: Readonly<Record<BibleKind, CraftEvalCase[]>>;
     personaEvals: Readonly<Record<PersonaKey, PersonaEvalCase[]>>;
     situations: Readonly<Record<SituationId, Situation>>;
-    /** Every pack, by name: 15 craft, then 6 personas. */
+    /** Every pack, by name: 16 craft (one per kind), then 6 personas. */
     files: Readonly<Record<string, PackFile>>;
     personaEvalCount: number;
 }

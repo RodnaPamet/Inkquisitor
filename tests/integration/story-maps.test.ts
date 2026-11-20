@@ -50,34 +50,34 @@ async function refusal(p: Promise<unknown>): Promise<{ status: number; reason?: 
     throw new Error('expected a refusal');
 }
 
-const mapRow = (bookId: string) => prisma.storyMap.findFirst({ where: { bookId, kind: 'PLOT' } });
+const mapRow = (bookId: string) => prisma.storyMap.findFirst({ where: { bookId, kind: 'RELATIONSHIP' } });
 
 describe('a map nobody has saved', () => {
     it('reads as empty at version 0 and creates nothing (a read never writes)', async () => {
         const book = await freshBook('lazy');
-        const map = await getStoryMap(ctx, book.bookId, 'plot');
-        expect(map).toMatchObject({ kind: 'PLOT', version: 0, nodes: [], edges: [], freeform: [] });
+        const map = await getStoryMap(ctx, book.bookId, 'relationship');
+        expect(map).toMatchObject({ kind: 'RELATIONSHIP', version: 0, nodes: [], edges: [], freeform: [] });
         expect(map.relations.map((r) => r.relationId)).toEqual([book.rel]);
         expect(await prisma.storyMap.count({ where: { bookId: book.bookId } })).toBe(0);
-        expect(await listMapSnapshots(ctx, book.bookId, 'plot')).toEqual({ snapshots: [], truncated: false });
+        expect(await listMapSnapshots(ctx, book.bookId, 'relationship')).toEqual({ snapshots: [], truncated: false });
     });
 
     it('an unknown kind and a deleted or foreign book are 404', async () => {
         expect((await refusal(getStoryMap(ctx, seeded.bookId, 'scenes'))).status).toBe(404);
-        expect((await refusal(getStoryMap(ctx, 'no-such-book', 'plot'))).status).toBe(404);
+        expect((await refusal(getStoryMap(ctx, 'no-such-book', 'relationship'))).status).toBe(404);
         const stranger = workspaceCtx(await createAccount({ workspaceName: 'Stranger' }));
-        expect((await refusal(getStoryMap(stranger, seeded.bookId, 'plot'))).status).toBe(404);
+        expect((await refusal(getStoryMap(stranger, seeded.bookId, 'relationship'))).status).toBe(404);
     });
 
     it('its first save creates it at version 1 with one snapshot; an empty first save writes nothing', async () => {
         const book = await freshBook('first');
-        expect(await saveStoryMap(ctx, book.bookId, 'plot', { expectedVersion: 0, nodes: [], edges: [], freeform: [] })).toMatchObject({ saved: false, map: { version: 0 } });
+        expect(await saveStoryMap(ctx, book.bookId, 'relationship', { expectedVersion: 0, nodes: [], edges: [], freeform: [] })).toMatchObject({ saved: false, map: { version: 0 } });
         expect(await mapRow(book.bookId)).toBeNull();
-        const first = await saveStoryMap(ctx, book.bookId, 'plot', { expectedVersion: 0, nodes: [node(book.a), node(book.b, 400)], edges: [{ relationId: book.rel, sourceElementId: book.a, targetElementId: book.b }], freeform: [] });
+        const first = await saveStoryMap(ctx, book.bookId, 'relationship', { expectedVersion: 0, nodes: [node(book.a), node(book.b, 400)], edges: [{ relationId: book.rel, sourceElementId: book.a, targetElementId: book.b }], freeform: [] });
         expect(first.saved).toBe(true);
         expect(first.map.version).toBe(1);
         expect(first.map.nodes.map((n) => n.element.name).sort()).toEqual(['A first', 'B first']);
-        expect(first.map.edges).toEqual([{ relationId: book.rel, sourceElementId: book.a, targetElementId: book.b, label: expect.any(String) }]);
+        expect(first.map.edges).toEqual([{ relationId: book.rel, sourceElementId: book.a, targetElementId: book.b, type: 'member_of', label: expect.any(String) }]);
         expect(await prisma.mapSnapshot.count({ where: { mapId: (await mapRow(book.bookId))!.id } })).toBe(1);
     });
 });
@@ -85,10 +85,10 @@ describe('a map nobody has saved', () => {
 describe('the version lock', () => {
     it('a stale save is refused 409 naming the current version, and writes nothing', async () => {
         const book = await freshBook('stale');
-        await saveStoryMap(ctx, book.bookId, 'plot', { expectedVersion: 0, nodes: [node(book.a)], edges: [], freeform: [] });
-        await saveStoryMap(ctx, book.bookId, 'plot', { expectedVersion: 1, nodes: [node(book.a, 50)], edges: [], freeform: [] });
+        await saveStoryMap(ctx, book.bookId, 'relationship', { expectedVersion: 0, nodes: [node(book.a)], edges: [], freeform: [] });
+        await saveStoryMap(ctx, book.bookId, 'relationship', { expectedVersion: 1, nodes: [node(book.a, 50)], edges: [], freeform: [] });
         const before = await prisma.mapNode.findMany({ where: { bookId: book.bookId } });
-        const r = await refusal(saveStoryMap(ctx, book.bookId, 'plot', { expectedVersion: 1, nodes: [node(book.a, 999), node(book.b)], edges: [], freeform: [] }));
+        const r = await refusal(saveStoryMap(ctx, book.bookId, 'relationship', { expectedVersion: 1, nodes: [node(book.a, 999), node(book.b)], edges: [], freeform: [] }));
         expect(r).toMatchObject({ status: 409, reason: 'VERSION_CONFLICT', details: { currentVersion: 2, expectedVersion: 1 } });
         expect((await mapRow(book.bookId))!.version).toBe(2);
         expect(await prisma.mapNode.findMany({ where: { bookId: book.bookId } })).toEqual(before);
@@ -97,9 +97,9 @@ describe('the version lock', () => {
 
     it('two tabs saving the same version at once: exactly one wins, the other is 409, and the winner’s map is what is stored', async () => {
         const book = await freshBook('race');
-        await saveStoryMap(ctx, book.bookId, 'plot', { expectedVersion: 0, nodes: [node(book.a)], edges: [], freeform: [] });
-        const tab1 = saveStoryMap(ctx, book.bookId, 'plot', { expectedVersion: 1, nodes: [node(book.a, 111)], edges: [], freeform: [] });
-        const tab2 = saveStoryMap(ctx, book.bookId, 'plot', { expectedVersion: 1, nodes: [node(book.a, 222), node(book.b)], edges: [], freeform: [] });
+        await saveStoryMap(ctx, book.bookId, 'relationship', { expectedVersion: 0, nodes: [node(book.a)], edges: [], freeform: [] });
+        const tab1 = saveStoryMap(ctx, book.bookId, 'relationship', { expectedVersion: 1, nodes: [node(book.a, 111)], edges: [], freeform: [] });
+        const tab2 = saveStoryMap(ctx, book.bookId, 'relationship', { expectedVersion: 1, nodes: [node(book.a, 222), node(book.b)], edges: [], freeform: [] });
         const results = await Promise.allSettled([tab1, tab2]);
         const won = results.filter((r) => r.status === 'fulfilled');
         const lost = results.filter((r): r is PromiseRejectedResult => r.status === 'rejected');
@@ -107,7 +107,7 @@ describe('the version lock', () => {
         expect(lost).toHaveLength(1);
         expect((lost[0].reason as { details?: { reason?: string } }).details?.reason).toBe('VERSION_CONFLICT');
         const winner = results[0].status === 'fulfilled' ? 111 : 222;
-        const stored = await getStoryMap(ctx, book.bookId, 'plot');
+        const stored = await getStoryMap(ctx, book.bookId, 'relationship');
         expect(stored.version).toBe(2);
         expect(stored.nodes.find((n) => n.elementId === book.a)?.x).toBe(winner);
         expect(await prisma.mapSnapshot.count({ where: { mapId: (await mapRow(book.bookId))!.id } })).toBe(2);
@@ -116,9 +116,9 @@ describe('the version lock', () => {
     it('a save that changes nothing writes no version and no snapshot', async () => {
         const book = await freshBook('noop');
         const state = { nodes: [node(book.a, 7.5, -3.25)], edges: [], freeform: [note('shape:n1', 'kept')] };
-        await saveStoryMap(ctx, book.bookId, 'plot', { expectedVersion: 0, ...state });
+        await saveStoryMap(ctx, book.bookId, 'relationship', { expectedVersion: 0, ...state });
         // The same state in another order is the same state.
-        const again = await saveStoryMap(ctx, book.bookId, 'plot', { expectedVersion: 1, ...state });
+        const again = await saveStoryMap(ctx, book.bookId, 'relationship', { expectedVersion: 1, ...state });
         expect(again).toMatchObject({ saved: false, map: { version: 1 } });
         expect(await prisma.mapSnapshot.count({ where: { mapId: (await mapRow(book.bookId))!.id } })).toBe(1);
     });
@@ -165,7 +165,7 @@ describe('references stay inside the book', () => {
 
     it('the database refuses a node drawing another book’s element, whoever writes it', async () => {
         const book = await freshBook('fk');
-        await saveStoryMap(ctx, book.bookId, 'plot', { expectedVersion: 0, nodes: [node(book.a)], edges: [], freeform: [] });
+        await saveStoryMap(ctx, book.bookId, 'relationship', { expectedVersion: 0, nodes: [node(book.a)], edges: [], freeform: [] });
         const map = (await mapRow(book.bookId))!;
         await expect(
             prisma.mapNode.create({ data: { workspaceId: ctx.workspaceId, bookId: book.bookId, mapId: map.id, bibleElementId: otherBook.characterId, x: 0, y: 0, w: 10, h: 10 } }),
@@ -177,10 +177,11 @@ describe('references stay inside the book', () => {
 
     it('one map of each kind per book (D18): a second row of a kind is refused by the database', async () => {
         const book = await freshBook('d18');
-        await saveStoryMap(ctx, book.bookId, 'timeline', { expectedVersion: 0, nodes: [node(book.a)], edges: [], freeform: [] });
+        const ev = await createElement(ctx, book.bookId, { kind: 'TIMELINE_EVENT', name: 'Event d18' });
+        await saveStoryMap(ctx, book.bookId, 'timeline', { expectedVersion: 0, nodes: [node(ev.id)], edges: [], freeform: [] });
         await expect(prisma.storyMap.create({ data: { workspaceId: ctx.workspaceId, bookId: book.bookId, kind: 'TIMELINE' } })).rejects.toThrow(/Unique constraint/);
         // The three kinds are three maps.
-        await saveStoryMap(ctx, book.bookId, 'plot', { expectedVersion: 0, nodes: [node(book.b)], edges: [], freeform: [] });
+        await saveStoryMap(ctx, book.bookId, 'relationship', { expectedVersion: 0, nodes: [node(book.b)], edges: [], freeform: [] });
         expect(await prisma.storyMap.count({ where: { bookId: book.bookId } })).toBe(2);
     });
 });
@@ -209,58 +210,58 @@ async function untilWaitingOnAdvisoryLock() {
 describe('the bible’s deletions', () => {
     it('deleting an element removes its node and edges and moves the version ONCE, with a snapshot of the map as it now stands (D20)', async () => {
         const book = await freshBook('cascade');
-        const c = await createElement(ctx, book.bookId, { kind: 'SETTING', name: 'C cascade' });
-        await saveStoryMap(ctx, book.bookId, 'plot', {
+        const c = await createElement(ctx, book.bookId, { kind: 'CHARACTER', name: 'C cascade' });
+        await saveStoryMap(ctx, book.bookId, 'relationship', {
             expectedVersion: 0,
             nodes: [node(book.a), node(book.b), node(c.id)],
             edges: [{ relationId: book.rel, sourceElementId: book.a, targetElementId: book.b }],
             freeform: [note('shape:n1', 'kept through the cascade')],
         });
         await deleteElement(ctx, book.bookId, book.b);
-        const after = await getStoryMap(ctx, book.bookId, 'plot');
+        const after = await getStoryMap(ctx, book.bookId, 'relationship');
         expect(after.nodes.map((n) => n.elementId).sort()).toEqual([book.a, c.id].sort());
         expect(after.edges).toEqual([]);
         // A node and an edge went: one deletion, one version.
         expect(after.version).toBe(2);
         await expectUnbrokenHistory(book.bookId);
-        const snapshot = await getMapSnapshot(ctx, book.bookId, 'plot', '2');
+        const snapshot = await getMapSnapshot(ctx, book.bookId, 'relationship', '2');
         expect(snapshot).toMatchObject({ fromBibleDeletion: true, restoredFromVersion: null, nodeCount: 2, edgeCount: 0 });
         expect(snapshot.nodes.map((n) => n.elementId).sort()).toEqual([book.a, c.id].sort());
         expect(snapshot.freeform).toEqual([note('shape:n1', 'kept through the cascade')]);
         const row = await prisma.mapSnapshot.findFirst({ where: { mapId: (await mapRow(book.bookId))!.id, version: 2 } });
         expect(row?.createdById).toBe(ctx.userId);
-        const listed = (await listMapSnapshots(ctx, book.bookId, 'plot')).snapshots[0];
+        const listed = (await listMapSnapshots(ctx, book.bookId, 'relationship')).snapshots[0];
         expect(listed).toMatchObject({ version: 2, fromBibleDeletion: true });
-        const stale = await refusal(saveStoryMap(ctx, book.bookId, 'plot', { expectedVersion: 1, nodes: [node(book.a), node(book.b)], edges: [], freeform: [] }));
+        const stale = await refusal(saveStoryMap(ctx, book.bookId, 'relationship', { expectedVersion: 1, nodes: [node(book.a), node(book.b)], edges: [], freeform: [] }));
         expect(stale).toMatchObject({ status: 409, reason: 'VERSION_CONFLICT' });
     });
 
     it('removing a relation removes its edge, moves the version and writes its snapshot too', async () => {
         const book = await freshBook('rel-cascade');
-        await saveStoryMap(ctx, book.bookId, 'plot', { expectedVersion: 0, nodes: [node(book.a), node(book.b)], edges: [{ relationId: book.rel, sourceElementId: book.a, targetElementId: book.b }], freeform: [] });
+        await saveStoryMap(ctx, book.bookId, 'relationship', { expectedVersion: 0, nodes: [node(book.a), node(book.b)], edges: [{ relationId: book.rel, sourceElementId: book.a, targetElementId: book.b }], freeform: [] });
         await removeRelation(ctx, book.bookId, book.rel);
-        const after = await getStoryMap(ctx, book.bookId, 'plot');
+        const after = await getStoryMap(ctx, book.bookId, 'relationship');
         expect(after.edges).toEqual([]);
         expect(after.nodes).toHaveLength(2);
         expect(after.version).toBe(2);
         await expectUnbrokenHistory(book.bookId);
-        expect(await getMapSnapshot(ctx, book.bookId, 'plot', '2')).toMatchObject({ fromBibleDeletion: true, edges: [], nodeCount: 2 });
+        expect(await getMapSnapshot(ctx, book.bookId, 'relationship', '2')).toMatchObject({ fromBibleDeletion: true, edges: [], nodeCount: 2 });
     });
 
     it('a deletion that touches no map writes nothing to it; one map moved leaves the others alone', async () => {
         const book = await freshBook('untouched');
-        const c = await createElement(ctx, book.bookId, { kind: 'SETTING', name: 'C untouched' });
-        await saveStoryMap(ctx, book.bookId, 'plot', { expectedVersion: 0, nodes: [node(book.a)], edges: [], freeform: [] });
+        const c = await createElement(ctx, book.bookId, { kind: 'TIMELINE_EVENT', name: 'C untouched' });
+        await saveStoryMap(ctx, book.bookId, 'relationship', { expectedVersion: 0, nodes: [node(book.a)], edges: [], freeform: [] });
         await saveStoryMap(ctx, book.bookId, 'timeline', { expectedVersion: 0, nodes: [node(c.id)], edges: [], freeform: [] });
         await deleteElement(ctx, book.bookId, c.id);
-        expect((await getStoryMap(ctx, book.bookId, 'plot')).version).toBe(1);
+        expect((await getStoryMap(ctx, book.bookId, 'relationship')).version).toBe(1);
         expect((await getStoryMap(ctx, book.bookId, 'timeline')).version).toBe(2);
         await expectUnbrokenHistory(book.bookId);
     });
 
     it('a deletion waits for a save of the book’s maps in progress, and its snapshot follows that save', async () => {
         const book = await freshBook('serialised');
-        await saveStoryMap(ctx, book.bookId, 'plot', { expectedVersion: 0, nodes: [node(book.a), node(book.b)], edges: [], freeform: [] });
+        await saveStoryMap(ctx, book.bookId, 'relationship', { expectedVersion: 0, nodes: [node(book.a), node(book.b)], edges: [], freeform: [] });
         // Stand in for a save holding the map's lock.
         let release!: () => void;
         const held = new Promise<void>((r) => (release = r));
@@ -282,23 +283,23 @@ describe('the bible’s deletions', () => {
         release();
         await holder;
         await deletion;
-        expect((await getStoryMap(ctx, book.bookId, 'plot')).version).toBe(2);
+        expect((await getStoryMap(ctx, book.bookId, 'relationship')).version).toBe(2);
         await expectUnbrokenHistory(book.bookId);
     });
 
     it('a save and a deletion racing: whichever wins, every version has one snapshot and the map is its latest snapshot', async () => {
         for (let round = 0; round < 4; round++) {
             const book = await freshBook(`race-del-${round}`);
-            await saveStoryMap(ctx, book.bookId, 'plot', { expectedVersion: 0, nodes: [node(book.a), node(book.b)], edges: [{ relationId: book.rel, sourceElementId: book.a, targetElementId: book.b }], freeform: [] });
+            await saveStoryMap(ctx, book.bookId, 'relationship', { expectedVersion: 0, nodes: [node(book.a), node(book.b)], edges: [{ relationId: book.rel, sourceElementId: book.a, targetElementId: book.b }], freeform: [] });
             const results = await Promise.allSettled([
-                saveStoryMap(ctx, book.bookId, 'plot', { expectedVersion: 1, nodes: [node(book.a, 50), node(book.b, 60)], edges: [{ relationId: book.rel, sourceElementId: book.a, targetElementId: book.b }], freeform: [] }),
+                saveStoryMap(ctx, book.bookId, 'relationship', { expectedVersion: 1, nodes: [node(book.a, 50), node(book.b, 60)], edges: [{ relationId: book.rel, sourceElementId: book.a, targetElementId: book.b }], freeform: [] }),
                 deleteElement(ctx, book.bookId, book.b),
             ]);
             expect(results[1].status).toBe('fulfilled');
             if (results[0].status === 'rejected') expect((results[0].reason as { details?: { reason?: string } }).details?.reason).toBe('VERSION_CONFLICT');
             await expectUnbrokenHistory(book.bookId);
-            const map = await getStoryMap(ctx, book.bookId, 'plot');
-            const latest = await getMapSnapshot(ctx, book.bookId, 'plot', String(map.version));
+            const map = await getStoryMap(ctx, book.bookId, 'relationship');
+            const latest = await getMapSnapshot(ctx, book.bookId, 'relationship', String(map.version));
             expect(latest.nodes).toEqual(map.nodes.map((n) => ({ elementId: n.elementId, x: n.x, y: n.y, w: n.w, h: n.h, lane: n.lane })));
             expect(map.nodes.map((n) => n.elementId)).toEqual([book.a]);
         }
@@ -306,7 +307,7 @@ describe('the bible’s deletions', () => {
 
     it('the database refuses a deletion that leaves a map at a version with no snapshot, whoever deletes', async () => {
         const book = await freshBook('no-snapshot');
-        await saveStoryMap(ctx, book.bookId, 'plot', { expectedVersion: 0, nodes: [node(book.a), node(book.b)], edges: [], freeform: [] });
+        await saveStoryMap(ctx, book.bookId, 'relationship', { expectedVersion: 0, nodes: [node(book.a), node(book.b)], edges: [], freeform: [] });
         await expect(prisma.$executeRaw`DELETE FROM "BibleElement" WHERE "id" = ${book.b}`).rejects.toThrow(/MAP_VERSION_WITHOUT_SNAPSHOT/);
         expect(await prisma.bibleElement.count({ where: { id: book.b } })).toBe(1);
         expect((await mapRow(book.bookId))!.version).toBe(1);
@@ -314,8 +315,8 @@ describe('the bible’s deletions', () => {
 
     it('the map’s own save deleting a node does NOT move the version twice', async () => {
         const book = await freshBook('own-delete');
-        await saveStoryMap(ctx, book.bookId, 'plot', { expectedVersion: 0, nodes: [node(book.a), node(book.b)], edges: [], freeform: [] });
-        const r = await saveStoryMap(ctx, book.bookId, 'plot', { expectedVersion: 1, nodes: [node(book.a)], edges: [], freeform: [] });
+        await saveStoryMap(ctx, book.bookId, 'relationship', { expectedVersion: 0, nodes: [node(book.a), node(book.b)], edges: [], freeform: [] });
+        const r = await saveStoryMap(ctx, book.bookId, 'relationship', { expectedVersion: 1, nodes: [node(book.a)], edges: [], freeform: [] });
         expect(r.map.version).toBe(2);
     });
 });
@@ -323,35 +324,35 @@ describe('the bible’s deletions', () => {
 describe('snapshots', () => {
     it('lists one per save newest first, reads one back, and restores it as a NEW save naming what it restored', async () => {
         const book = await freshBook('restore');
-        await saveStoryMap(ctx, book.bookId, 'plot', { expectedVersion: 0, nodes: [node(book.a, 1, 1)], edges: [], freeform: [note('shape:n1', 'first')] });
-        await saveStoryMap(ctx, book.bookId, 'plot', { expectedVersion: 1, nodes: [node(book.a, 2, 2), node(book.b)], edges: [], freeform: [] });
-        const list = await listMapSnapshots(ctx, book.bookId, 'plot');
+        await saveStoryMap(ctx, book.bookId, 'relationship', { expectedVersion: 0, nodes: [node(book.a, 1, 1)], edges: [], freeform: [note('shape:n1', 'first')] });
+        await saveStoryMap(ctx, book.bookId, 'relationship', { expectedVersion: 1, nodes: [node(book.a, 2, 2), node(book.b)], edges: [], freeform: [] });
+        const list = await listMapSnapshots(ctx, book.bookId, 'relationship');
         expect(list.snapshots.map((s) => [s.version, s.nodeCount])).toEqual([
             [2, 2],
             [1, 1],
         ]);
-        const v1 = await getMapSnapshot(ctx, book.bookId, 'plot', '1');
+        const v1 = await getMapSnapshot(ctx, book.bookId, 'relationship', '1');
         expect(v1.nodes).toEqual([node(book.a, 1, 1)]);
         expect(v1.freeform).toEqual([note('shape:n1', 'first')]);
 
-        const stale = await refusal(restoreMapSnapshot(ctx, book.bookId, 'plot', '1', { expectedVersion: 1 }));
+        const stale = await refusal(restoreMapSnapshot(ctx, book.bookId, 'relationship', '1', { expectedVersion: 1 }));
         expect(stale).toMatchObject({ status: 409, reason: 'VERSION_CONFLICT' });
 
-        const restored = await restoreMapSnapshot(ctx, book.bookId, 'plot', '1', { expectedVersion: 2 });
+        const restored = await restoreMapSnapshot(ctx, book.bookId, 'relationship', '1', { expectedVersion: 2 });
         expect(restored).toMatchObject({ saved: true, restoredFromVersion: 1, dropped: { nodes: 0, edges: 0 }, map: { version: 3 } });
         expect(restored.map.nodes.map((n) => [n.elementId, n.x])).toEqual([[book.a, 1]]);
         expect(restored.map.freeform).toEqual([note('shape:n1', 'first')]);
-        const top = (await listMapSnapshots(ctx, book.bookId, 'plot')).snapshots[0];
+        const top = (await listMapSnapshots(ctx, book.bookId, 'relationship')).snapshots[0];
         expect(top).toMatchObject({ version: 3, restoredFromVersion: 1 });
     });
 
     it('a restore leaves out, and counts, what the bible no longer holds', async () => {
         const book = await freshBook('restore-dropped');
-        await saveStoryMap(ctx, book.bookId, 'plot', { expectedVersion: 0, nodes: [node(book.a), node(book.b)], edges: [{ relationId: book.rel, sourceElementId: book.a, targetElementId: book.b }], freeform: [] });
+        await saveStoryMap(ctx, book.bookId, 'relationship', { expectedVersion: 0, nodes: [node(book.a), node(book.b)], edges: [{ relationId: book.rel, sourceElementId: book.a, targetElementId: book.b }], freeform: [] });
         await deleteElement(ctx, book.bookId, book.b);
-        const version = (await getStoryMap(ctx, book.bookId, 'plot')).version;
+        const version = (await getStoryMap(ctx, book.bookId, 'relationship')).version;
         expect(version).toBe(2);
-        const restored = await restoreMapSnapshot(ctx, book.bookId, 'plot', '1', { expectedVersion: version });
+        const restored = await restoreMapSnapshot(ctx, book.bookId, 'relationship', '1', { expectedVersion: version });
         expect(restored.dropped).toEqual({ nodes: 1, edges: 1 });
         expect(restored.map.nodes.map((n) => n.elementId)).toEqual([book.a]);
         // What survives of version 1 IS the map the deletion left (version 2): nothing to write.
@@ -361,7 +362,7 @@ describe('snapshots', () => {
 
     it('is append-only for every role: UPDATE and DELETE refused even to the superuser; a book’s purge takes them with it', async () => {
         const book = await freshBook('append-only');
-        await saveStoryMap(ctx, book.bookId, 'plot', { expectedVersion: 0, nodes: [node(book.a)], edges: [], freeform: [] });
+        await saveStoryMap(ctx, book.bookId, 'relationship', { expectedVersion: 0, nodes: [node(book.a)], edges: [], freeform: [] });
         const map = (await mapRow(book.bookId))!;
         await expect(prisma.$executeRaw`UPDATE "MapSnapshot" SET "nodeCount" = 9 WHERE "mapId" = ${map.id}`).rejects.toThrow(/MAP_SNAPSHOT_APPEND_ONLY/);
         await expect(prisma.$executeRaw`DELETE FROM "MapSnapshot" WHERE "mapId" = ${map.id}`).rejects.toThrow(/MAP_SNAPSHOT_APPEND_ONLY/);
@@ -381,7 +382,7 @@ describe('snapshots', () => {
 describe('author text in the freeform layer', () => {
     it('is sanitised on the way in and encrypted at rest, in the map and in its snapshot', async () => {
         const book = await freshBook('freeform');
-        const saved = await saveStoryMap(ctx, book.bookId, 'plot', { expectedVersion: 0, nodes: [], edges: [], freeform: [note('shape:n1', 'FREEFORM-MARKER <script>alert(1)</script>')] });
+        const saved = await saveStoryMap(ctx, book.bookId, 'relationship', { expectedVersion: 0, nodes: [], edges: [], freeform: [note('shape:n1', 'FREEFORM-MARKER <script>alert(1)</script>')] });
         expect(saved.map.freeform).toEqual([note('shape:n1', 'FREEFORM-MARKER ')]);
         const [raw] = await prisma.$queryRaw<Array<{ freeformJson: string }>>`SELECT "freeformJson" FROM "StoryMap" WHERE "bookId" = ${book.bookId}`;
         expect(raw.freeformJson.startsWith('v2:')).toBe(true);
@@ -393,7 +394,7 @@ describe('author text in the freeform layer', () => {
 
     it('a record of the canvas’s own types, or a prototype key, is refused FREEFORM_REFUSED and nothing is written', async () => {
         const book = await freshBook('freeform-refused');
-        const r = await refusal(saveStoryMap(ctx, book.bookId, 'plot', { expectedVersion: 0, nodes: [], edges: [], freeform: [{ id: 'shape:x', typeName: 'shape', type: 'story-node' }] }));
+        const r = await refusal(saveStoryMap(ctx, book.bookId, 'relationship', { expectedVersion: 0, nodes: [], edges: [], freeform: [{ id: 'shape:x', typeName: 'shape', type: 'story-node' }] }));
         expect(r).toMatchObject({ status: 400, reason: 'FREEFORM_REFUSED', details: { problem: 'STRUCTURED_TYPE' } });
         expect(await mapRow(book.bookId)).toBeNull();
     });
@@ -402,12 +403,12 @@ describe('author text in the freeform layer', () => {
         const book = await freshBook('freeform-reserved');
         const edge = { relationId: book.rel, sourceElementId: book.a, targetElementId: book.b };
         for (const id of [`shape:${book.a}`, `shape:edge-${book.rel}`, `binding:${book.rel}`]) {
-            const r = await refusal(saveStoryMap(ctx, book.bookId, 'plot', { expectedVersion: 0, nodes: [node(book.a), node(book.b, 400)], edges: [edge], freeform: [note(id, 'over the row')] }));
+            const r = await refusal(saveStoryMap(ctx, book.bookId, 'relationship', { expectedVersion: 0, nodes: [node(book.a), node(book.b, 400)], edges: [edge], freeform: [note(id, 'over the row')] }));
             expect([id, r]).toMatchObject([id, { status: 400, reason: 'FREEFORM_REFUSED', details: { problem: 'RESERVED_ID' } }]);
         }
         expect(await mapRow(book.bookId)).toBeNull();
         // A snapshot carrying one (written before the rule) is not restored over the live map either.
-        await saveStoryMap(ctx, book.bookId, 'plot', { expectedVersion: 0, nodes: [node(book.a)], edges: [], freeform: [] });
+        await saveStoryMap(ctx, book.bookId, 'relationship', { expectedVersion: 0, nodes: [node(book.a)], edges: [], freeform: [] });
         const map = (await mapRow(book.bookId))!;
         await runInWorkspaceContext(ctx, async (db) => {
             await db.mapSnapshot.create({
@@ -415,7 +416,7 @@ describe('author text in the freeform layer', () => {
             });
             await db.storyMap.update({ where: { id: map.id }, data: { version: 2 } });
         });
-        const r = await refusal(restoreMapSnapshot(ctx, book.bookId, 'plot', 2, { expectedVersion: 2 }));
+        const r = await refusal(restoreMapSnapshot(ctx, book.bookId, 'relationship', 2, { expectedVersion: 2 }));
         expect(r).toMatchObject({ status: 400, reason: 'FREEFORM_REFUSED', details: { problem: 'RESERVED_ID' } });
         expect((await mapRow(book.bookId))!.version).toBe(2);
     });
@@ -429,8 +430,8 @@ describe('permissions', () => {
         const reader = await createBareUser();
         await addMember(owner.workspaceId, reader.id, 'READER');
         const readerCtx = workspaceCtx({ userId: reader.id, workspaceId: owner.workspaceId, workspaceSlug: owner.workspaceSlug }, 'READER');
-        expect((await getStoryMap(readerCtx, book.id, 'plot')).version).toBe(0);
-        expect((await refusal(saveStoryMap(readerCtx, book.id, 'plot', { expectedVersion: 0, nodes: [], edges: [], freeform: [] }))).status).toBe(403);
-        expect((await refusal(restoreMapSnapshot(readerCtx, book.id, 'plot', '1', { expectedVersion: 0 }))).status).toBe(403);
+        expect((await getStoryMap(readerCtx, book.id, 'relationship')).version).toBe(0);
+        expect((await refusal(saveStoryMap(readerCtx, book.id, 'relationship', { expectedVersion: 0, nodes: [], edges: [], freeform: [] }))).status).toBe(403);
+        expect((await refusal(restoreMapSnapshot(readerCtx, book.id, 'relationship', '1', { expectedVersion: 0 }))).status).toBe(403);
     });
 });

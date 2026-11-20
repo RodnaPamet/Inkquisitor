@@ -53,6 +53,11 @@ export const IMPORT_REASONS = [
     'RELATION_TYPE_NOT_ALLOWED',
     'SELF_RELATION',
     'DUPLICATE_RELATION',
+    // A story-order rank (Phase 3.2): on a kind with no order, not a rank, twice in the bundle, or another element's.
+    'ORDER_NOT_ALLOWED',
+    'ORDER_INVALID',
+    'ORDER_DUPLICATE',
+    'ORDER_TAKEN',
     // A value
     'EMPTY',
     // A field whose template type changed since the bundle was written, with no lossless coercion (issue #27, item 8).

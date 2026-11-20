@@ -9,6 +9,7 @@
  *   - a capped read takes one more than the cap and says it was cut: the
  *     books list (`truncated`) and an element's relations (`relationsTruncated`).
  */
+import { BIBLE_KINDS } from '@/lib/bible/kinds';
 import { prisma } from '@/lib/db';
 import { BOARD_ENTRIES_PER_KIND, createElement, getBookBoard, getElement, listElements, RELATIONS_SHOWN_MAX } from '@/app-layer/usecases/bible-elements';
 import { BOOK_LIST_MAX, createBook, listBooks } from '@/app-layer/usecases/books';
@@ -135,7 +136,7 @@ describe('the board', () => {
         expect([setting.entryCount, setting.entries.length, setting.nextCursor]).toEqual([3, 3, null]);
         // Every kind is present, the empty ones as zero: "not started", never a percentage.
         expect(board.find((k) => k.kind === 'THEME')).toEqual({ kind: 'THEME', entryCount: 0, filledFieldCount: 0, entries: [], nextCursor: null });
-        expect(board).toHaveLength(15);
+        expect(board).toHaveLength(BIBLE_KINDS.length);
     });
 
     it('a key no longer in the template is not counted (keys only; nothing decrypted)', async () => {

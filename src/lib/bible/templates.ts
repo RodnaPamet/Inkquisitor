@@ -35,6 +35,7 @@ import faction from './templates/faction.json';
 import mood from './templates/mood.json';
 import object from './templates/object.json';
 import plot from './templates/plot.json';
+import plotBeat from './templates/plot_beat.json';
 import pov from './templates/pov.json';
 import premise from './templates/premise.json';
 import research from './templates/research.json';
@@ -49,6 +50,7 @@ import worldRule from './templates/world_rule.json';
 export const RAW_TEMPLATES: Readonly<Record<BibleKind, unknown>> = Object.freeze({
     PREMISE: premise,
     PLOT: plot,
+    PLOT_BEAT: plotBeat,
     CHARACTER: character,
     SETTING: setting,
     THEME: theme,

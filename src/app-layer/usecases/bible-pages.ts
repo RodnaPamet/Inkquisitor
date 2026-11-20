@@ -9,12 +9,16 @@
  *   loadBookPage      the book and its board: per-kind counts and filled
  *                     fields by aggregate, the first entries of each kind
  *   loadElementPage   the book, the element (fields, relations), the first
- *                     page of versions. The relation picker searches the book
- *                     itself (`listElements` with `q`), so the page no longer
- *                     reads every element of the book.
+ *                     page of versions, and (Phase 3.2) the story maps that
+ *                     draw its kind, for their read-only views. The relation
+ *                     picker searches the book itself (`listElements` with
+ *                     `q`), so the page no longer reads every element of the
+ *                     book.
  */
 import type { WorkspaceRequestContext } from '@/app-layer/types';
+import { mapKindSlug, mapsDrawingKind, type StoryMapKindValue } from '@/lib/canvas/map-kinds';
 import { getBookBoard, getElement } from './bible-elements';
+import { getStoryMap, type StoryMapView } from './story-maps';
 import { listVersions } from './bible-versions';
 import { getBook, listBooks } from './books';
 
@@ -36,5 +40,9 @@ export async function loadElementPage(ctx: WorkspaceRequestContext, bookId: stri
         getElement(ctx, bookId, elementId),
         listVersions(ctx, bookId, elementId, { take: VERSION_PAGE_SIZE }),
     ]);
-    return { book, element, versions };
+    // The maps that draw this kind (a character: the relationship map; a beat: the plot board; an event: the timeline).
+    const maps: Array<{ kind: StoryMapKindValue; map: StoryMapView }> = await Promise.all(
+        mapsDrawingKind(element.kind).map(async (kind) => ({ kind, map: await getStoryMap(ctx, bookId, mapKindSlug(kind)) })),
+    );
+    return { book, element, versions, maps };
 }

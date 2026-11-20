@@ -51,7 +51,7 @@ const SOCRATIC_VOICE = 'You sound like someone genuinely interested in how the a
 describe('the shipped packs (D11)', () => {
     it('every pack mounts in development and test, on its structural record', async () => {
         const mounts = await packMounts(packs, 'structural');
-        expect(mounts.size).toBe(21);
+        expect(mounts.size).toBe(22);
         const refused = [...mounts].filter(([, v]) => !v.ok).map(([n, v]) => [n, !v.ok && v.reason, !v.ok && v.detail]);
         expect(refused).toEqual([]);
         for (const [name, v] of mounts) {

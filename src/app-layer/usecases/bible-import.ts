@@ -101,7 +101,8 @@ import {
     parseYamlFrontmatter,
     sortElements,
 } from '@/lib/bible/bundle-format';
-import type { BibleKind } from '@/lib/bible/kinds';
+import { isOrderedKind, ORDERED_KINDS, type BibleKind } from '@/lib/bible/kinds';
+import { isRank } from '@/lib/bible/story-order';
 import { SLUG_PATTERN, slugify } from '@/lib/bible/slug';
 import { coerceImportedFieldValue } from '@/lib/bible/field-coercion';
 import { getRelationType, getTemplate, isSymmetric, relationAllowed } from '@/lib/bible/templates';
@@ -125,6 +126,7 @@ import {
     type FieldEntry,
 } from './bible-common';
 import { bookWrite } from './books';
+import { ORDER_SCOPE_MAX } from './bible-order';
 
 // ─── Shared ─────────────────────────────────────────────────────────
 
@@ -217,6 +219,12 @@ interface PreparedElement {
     customLabel: string | null;
     summary: string | null;
     /**
+     * Its place in its story order (Phase 3.2): the file's rank, or undefined
+     * when the file states none, which leaves the element's place as it stands
+     * (a bundle written before 3.2, or an element not placed yet).
+     */
+    orderRank: string | undefined;
+    /**
      * Every template field the file gives, and every one its writer knew and
      * it leaves out (null: the file is the element's whole state over the
      * keys it knew), then any unknown key (refused).
@@ -271,6 +279,15 @@ function prepareElement(path: string, fm: BundleElementFrontmatter, knownKeys: R
     const name = attempt('name', () => requiredLine(fm.name, ELEMENT_NAME_MAX, 'Name'));
     const summary = attempt('summary', () => optionalBlock(fm.summary, ELEMENT_SUMMARY_MAX, 'Summary') ?? null);
     const customLabel = attempt('customLabel', () => customLabelFor(fm.kind, fm.customLabel));
+    if (fm.order !== undefined) {
+        if (!isOrderedKind(fm.kind)) {
+            problems.add({ path, reason: 'ORDER_NOT_ALLOWED', key: 'order' });
+            ok = false;
+        } else if (!isRank(fm.order)) {
+            problems.add({ path, reason: 'ORDER_INVALID', key: 'order' });
+            ok = false;
+        }
+    }
 
     // A field whose template type changed since the bundle was written: a
     // lossless coercion, or FIELD_TYPE_CHANGED naming it (issue #27, item 8;
@@ -315,7 +332,7 @@ function prepareElement(path: string, fm: BundleElementFrontmatter, knownKeys: R
     });
 
     if (!ok || name === undefined || summary === undefined || customLabel === undefined) return null;
-    return { path, kind: fm.kind, name, slug: fm.slug, status: fm.status, customLabel, summary, fields, relations };
+    return { path, kind: fm.kind, name, slug: fm.slug, status: fm.status, customLabel, summary, orderRank: fm.order, fields, relations };
 }
 
 interface ParsedBundle {
@@ -412,6 +429,14 @@ async function parseBundle(entries: ReadonlyMap<string, Uint8Array>, wantBook: b
         const prepared = prepareElement(path, fm, knownKeysOf(fm.kind), problems);
         if (prepared) elements.push(prepared);
     }
+    // One element per place in an order, within the bundle.
+    const claimed = new Map<string, string>();
+    for (const e of elements) {
+        if (e.orderRank === undefined) continue;
+        const place = `${e.kind}:${e.orderRank}`;
+        if (claimed.has(place)) problems.add({ path: e.path, reason: 'ORDER_DUPLICATE', key: 'order' });
+        else claimed.set(place, e.path);
+    }
     if (elementFiles === 0 && !problems.any) problems.add({ path: '', reason: 'BUNDLE_EMPTY' });
     if (wantBook && book === null && !entries.has(BOOK_FILE)) problems.add({ path: BOOK_FILE, reason: 'BOOK_FILE_MISSING' });
     return { book, elements: sortElements(elements) };
@@ -451,6 +476,36 @@ async function existingBySlug(db: PrismaTx, ctx: WorkspaceRequestContext, bookId
     return out;
 }
 
+/**
+ * Check the bundle's ranks against the book's (Phase 3.2), adding
+ * `ORDER_TAKEN` for a rank another element keeps; answer the ids of the
+ * book's elements whose rank the bundle changes (they vacate their places
+ * before any is written).
+ */
+async function placesFromBundle(
+    db: PrismaTx,
+    ctx: WorkspaceRequestContext,
+    bookId: string,
+    elements: readonly PreparedElement[],
+    existing: ReadonlyMap<string, ExistingRow>,
+    problems: Problems,
+): Promise<string[]> {
+    const reranked: string[] = [];
+    for (const kind of ORDERED_KINDS) {
+        const given = elements.filter((e) => e.kind === kind && e.orderRank !== undefined);
+        if (given.length === 0) continue;
+        const moving = new Set(given.flatMap((e) => (existing.get(e.slug) ? [existing.get(e.slug)!.id] : [])));
+        const ranked = await BibleElementRepository.rankedInOrder(db, ctx.workspaceId, bookId, kind, ORDER_SCOPE_MAX + 1);
+        const kept = new Set(ranked.filter((r) => !moving.has(r.id)).map((r) => r.orderRank as string));
+        for (const e of given) if (kept.has(e.orderRank!)) problems.add({ path: e.path, reason: 'ORDER_TAKEN', key: 'order' });
+        for (const e of given) {
+            const row = existing.get(e.slug);
+            if (row && row.orderRank !== null && row.orderRank !== e.orderRank) reranked.push(row.id);
+        }
+    }
+    return reranked;
+}
+
 /** Bring one element to its file's state: create it, or change what differs. One version if anything changed. */
 async function applyElement(db: PrismaTx, ctx: WorkspaceRequestContext, bookId: string, p: PreparedElement, existing: ExistingRow | undefined): Promise<ImportedElementView> {
     const base = { kind: p.kind, slug: p.slug, name: p.name };
@@ -462,6 +517,7 @@ async function applyElement(db: PrismaTx, ctx: WorkspaceRequestContext, bookId: 
             status: p.status,
             summary: p.summary,
             customLabel: p.customLabel,
+            orderRank: p.orderRank ?? null,
         });
         await BibleElementRepository.lock(db, element.id);
         await writeFieldValues(db, ctx, element, p.fields);
@@ -476,7 +532,13 @@ async function applyElement(db: PrismaTx, ctx: WorkspaceRequestContext, bookId: 
     // in between, the file creates it again.
     const current = await BibleElementRepository.find(db, ctx.workspaceId, bookId, existing.id);
     if (!current) return applyElement(db, ctx, bookId, p, undefined);
-    const wanted: ElementWrite = { name: p.name, status: p.status, summary: p.summary, customLabel: p.customLabel };
+    const wanted: ElementWrite = {
+        name: p.name,
+        status: p.status,
+        summary: p.summary,
+        customLabel: p.customLabel,
+        ...(p.orderRank !== undefined ? { orderRank: p.orderRank } : {}),
+    };
     const data: ElementWrite = {};
     for (const k of Object.keys(wanted) as Array<keyof ElementWrite>) {
         if (wanted[k] !== current[k]) Object.assign(data, { [k]: wanted[k] });
@@ -547,6 +609,11 @@ export async function importBibleBundle(
                 // The bundle may create and rename elements: the names lock
                 // before any element's (its order; issue #39 item 5).
                 await BibleElementRepository.lockNames(db, bookId);
+                // And it may place elements in a story order: each order's lock
+                // before any element's (Phase 3.2), as a move takes it.
+                for (const kind of ORDERED_KINDS) {
+                    if (bundle.elements.some((e) => e.kind === kind && e.orderRank !== undefined)) await BibleElementRepository.lockOrder(db, bookId, kind);
+                }
                 const book = await requireBook(db, ctx, bookId);
                 const bundleSlugs = new Set(bundle.elements.map((e) => e.slug));
                 const targets = new Set(bundle.elements.flatMap((e) => e.relations.map((r) => r.to)));
@@ -578,7 +645,17 @@ export async function importBibleBundle(
                         }
                     });
                 }
+                // Story order (Phase 3.2): a rank the bundle gives must not be
+                // another element's — one that keeps its place, because the
+                // bundle gives it no rank or it is not in the bundle at all.
+                const reranked = await placesFromBundle(db, ctx, bookId, bundle.elements, existing, problems);
                 if (problems.any) throw problems.refusal();
+                // Vacate first: a bundle that swaps two elements' places would
+                // otherwise meet the unique index halfway through.
+                for (const id of reranked) {
+                    await BibleElementRepository.lock(db, id);
+                    await BibleElementRepository.setOrderRank(db, ctx.workspaceId, bookId, id, null);
+                }
 
                 const items: ImportedElementView[] = [];
                 const idBySlug = new Map<string, string>([...existing].map(([slug, row]) => [slug, row.id]));

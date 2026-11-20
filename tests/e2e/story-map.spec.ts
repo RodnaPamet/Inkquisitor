@@ -10,13 +10,13 @@ import { newCredentials, signIn, signUp } from './helpers';
  * the version lock's notice rather than overwriting each other.
  */
 
-async function bookWithElements(page: Page, names: string[]) {
+async function bookWithElements(page: Page, names: string[], kind = 'PLOT_BEAT') {
     const slug = await signUp(page, newCredentials('canvas'));
     const book = await page.request.post(`/api/w/${slug}/books`, { data: { title: 'Lantern Street' } });
     const bookId = ((await book.json()) as { book: { id: string } }).book.id;
     const ids: string[] = [];
     for (const name of names) {
-        const el = await page.request.post(`/api/w/${slug}/books/${bookId}/elements`, { data: { kind: 'CHARACTER', name } });
+        const el = await page.request.post(`/api/w/${slug}/books/${bookId}/elements`, { data: { kind, name } });
         ids.push(((await el.json()) as { element: { id: string } }).element.id);
     }
     return { slug, bookId, ids };
@@ -86,7 +86,7 @@ test('two tabs on one map: the second save is refused with a notice, and Reload 
     const slug = await signUp(a, creds);
     const book = await a.request.post(`/api/w/${slug}/books`, { data: { title: 'Two tabs' } });
     const bookId = ((await book.json()) as { book: { id: string } }).book.id;
-    for (const name of ['Ines Vale', 'Tomas Reed']) await a.request.post(`/api/w/${slug}/books/${bookId}/elements`, { data: { kind: 'CHARACTER', name } });
+    for (const name of ['Ines Vale', 'Tomas Reed']) await a.request.post(`/api/w/${slug}/books/${bookId}/elements`, { data: { kind: 'TIMELINE_EVENT', name } });
     const b = await (await browser.newContext()).newPage();
     await signIn(b, creds);
     await expect(b).toHaveURL(/\/w\//);

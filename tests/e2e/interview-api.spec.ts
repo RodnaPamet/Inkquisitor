@@ -40,7 +40,7 @@ test('a production server without real-model pack records refuses every intervie
     const packs = await api.get(`/api/w/${slug}/interview-packs`);
     expect(packs.status()).toBe(200);
     const body = await packs.json();
-    expect(body).toMatchObject({ recordMode: 'model', mountable: 0, total: 21 });
+    expect(body).toMatchObject({ recordMode: 'model', mountable: 0, total: 22 });
     expect(body.personas).toHaveLength(6);
     expect([...body.personas, ...body.craft].every((p: { refusal: { reason: string } }) => p.refusal.reason === 'STRUCTURAL_RECORD_REFUSED')).toBe(true);
 });

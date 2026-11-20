@@ -88,6 +88,6 @@ describe('the pack mount report (Phase 2.3, D11)', () => {
         const { mountReport } = await import('@/instrumentation-node');
         const { packMounts } = await import('@/lib/interview/pack-mount');
         const { getPacks } = await import('@/lib/interview/packs');
-        expect(mountReport(await packMounts(getPacks(), 'model'))).toMatch(/^21 of 21 interview packs cannot mount \(STRUCTURAL_RECORD_REFUSED ×21\)/);
+        expect(mountReport(await packMounts(getPacks(), 'model'))).toMatch(/^22 of 22 interview packs cannot mount \(STRUCTURAL_RECORD_REFUSED ×22\)/);
     });
 });

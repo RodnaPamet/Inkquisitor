@@ -280,6 +280,14 @@
       "targetKinds": [
         "FACTION"
       ]
+    },
+    {
+      "key": "takes_part_in",
+      "label": "takes part in",
+      "inverseLabel": "involves",
+      "targetKinds": [
+        "TIMELINE_EVENT"
+      ]
     }
   ]
 }

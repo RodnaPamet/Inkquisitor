@@ -185,6 +185,14 @@
       ]
     },
     {
+      "key": "has_beat",
+      "label": "has beat",
+      "inverseLabel": "beat of",
+      "targetKinds": [
+        "PLOT_BEAT"
+      ]
+    },
+    {
       "key": "complicates",
       "label": "complicates",
       "inverseLabel": "complicated by",

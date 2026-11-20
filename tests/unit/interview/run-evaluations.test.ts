@@ -41,7 +41,7 @@ describe('the command line', () => {
         expect(() => parseEvalArgs(['--surprise'])).toThrow(/unknown/);
         expect(() => parseEvalArgs(['--packs'])).toThrow(/value/);
         expect(() => selectedPacks(packs, ['craft-plot', 'craft-nothing'])).toThrow(/craft-nothing/);
-        expect(selectedPacks(packs, 'all')).toHaveLength(21);
+        expect(selectedPacks(packs, 'all')).toHaveLength(22);
     });
 });
 

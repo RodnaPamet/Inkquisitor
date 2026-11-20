@@ -1,0 +1,213 @@
+{
+  "kind": "PLOT_BEAT",
+  "label": "Plot beat",
+  "description": "One step of a plotline: what happens, which act it falls in, what brings it about and what it sets in motion. Beats are ordered within their act on the plot board; the shape of the whole plotline belongs to Plot, and an event's place in story time to Timeline event.",
+  "fields": [
+    {
+      "key": "what_happens",
+      "label": "What happens",
+      "help": "The beat itself, in a sentence or two: who does what, and what is different afterwards.",
+      "type": "richtext",
+      "required": true,
+      "order": 1,
+      "dependsOn": []
+    },
+    {
+      "key": "act",
+      "label": "Act",
+      "help": "The part of the book this beat falls in, from the opening that breaks the world through escalation and crisis to the resolution. Beats are ordered within their act on the plot board.",
+      "type": "choice",
+      "options": [
+        {
+          "value": "opening",
+          "label": "Opening"
+        },
+        {
+          "value": "escalation",
+          "label": "Escalation"
+        },
+        {
+          "value": "crisis",
+          "label": "Crisis"
+        },
+        {
+          "value": "resolution",
+          "label": "Resolution"
+        }
+      ],
+      "required": true,
+      "order": 2,
+      "dependsOn": [
+        "what_happens"
+      ]
+    },
+    {
+      "key": "beat_function",
+      "label": "What the beat does",
+      "help": "The job this beat does for its plotline, judged by what it changes rather than where it falls.",
+      "type": "choice",
+      "options": [
+        {
+          "value": "sets_up",
+          "label": "Sets something up"
+        },
+        {
+          "value": "complicates",
+          "label": "Makes the goal harder"
+        },
+        {
+          "value": "reverses",
+          "label": "Turns fortune around"
+        },
+        {
+          "value": "reveals",
+          "label": "Brings something hidden to light"
+        },
+        {
+          "value": "forces_choice",
+          "label": "Forces a decision"
+        },
+        {
+          "value": "confronts",
+          "label": "Brings opposing sides face to face"
+        },
+        {
+          "value": "settles",
+          "label": "Settles something for good"
+        }
+      ],
+      "required": false,
+      "order": 3,
+      "dependsOn": [
+        "what_happens"
+      ]
+    },
+    {
+      "key": "cause",
+      "label": "What brings it about",
+      "help": "The decision, accident or earlier beat that makes this one happen, or a note that it arrives without warning.",
+      "type": "richtext",
+      "required": true,
+      "order": 4,
+      "dependsOn": [
+        "what_happens"
+      ]
+    },
+    {
+      "key": "effect",
+      "label": "What it sets in motion",
+      "help": "What follows from this beat, for the people in it and for the plotline, and which later beats depend on it.",
+      "type": "richtext",
+      "required": true,
+      "order": 5,
+      "dependsOn": [
+        "what_happens"
+      ]
+    },
+    {
+      "key": "stakes_shift",
+      "label": "How far the stakes move",
+      "help": "How much more, or less, there is to lose once this beat is over.",
+      "type": "scale",
+      "scaleLabels": {
+        "low": "Barely moves them",
+        "high": "Changes everything at risk"
+      },
+      "required": false,
+      "order": 6,
+      "dependsOn": [
+        "effect"
+      ]
+    },
+    {
+      "key": "reader_takeaway",
+      "label": "What the reader is left with",
+      "help": "The question, worry or expectation a reader should carry out of this beat into the next.",
+      "type": "text",
+      "required": false,
+      "order": 7,
+      "dependsOn": [
+        "effect"
+      ]
+    },
+    {
+      "key": "open_threads",
+      "label": "Threads left open",
+      "help": "What this beat starts or leaves unresolved that a later beat must pick up, one per item.",
+      "type": "list",
+      "required": false,
+      "order": 8,
+      "dependsOn": [
+        "effect"
+      ]
+    }
+  ],
+  "relationTypes": [
+    {
+      "key": "causes",
+      "label": "causes",
+      "inverseLabel": "caused by",
+      "targetKinds": [
+        "PLOT_BEAT"
+      ]
+    },
+    {
+      "key": "enables",
+      "label": "makes possible",
+      "inverseLabel": "made possible by",
+      "targetKinds": [
+        "PLOT_BEAT"
+      ]
+    },
+    {
+      "key": "sets_up",
+      "label": "sets up",
+      "inverseLabel": "pays off",
+      "targetKinds": [
+        "PLOT_BEAT"
+      ]
+    },
+    {
+      "key": "undoes",
+      "label": "undoes",
+      "inverseLabel": "undone by",
+      "targetKinds": [
+        "PLOT_BEAT"
+      ]
+    },
+    {
+      "key": "centres_on",
+      "label": "centres on",
+      "inverseLabel": "at the centre of",
+      "targetKinds": [
+        "CHARACTER",
+        "FACTION"
+      ]
+    },
+    {
+      "key": "takes_place_in",
+      "label": "takes place in",
+      "inverseLabel": "setting of",
+      "targetKinds": [
+        "SETTING"
+      ]
+    },
+    {
+      "key": "stages_event",
+      "label": "stages",
+      "inverseLabel": "staged in",
+      "targetKinds": [
+        "TIMELINE_EVENT"
+      ]
+    },
+    {
+      "key": "turns_on",
+      "label": "turns on",
+      "inverseLabel": "turning point of",
+      "targetKinds": [
+        "WORLD_RULE",
+        "OBJECT"
+      ]
+    }
+  ]
+}

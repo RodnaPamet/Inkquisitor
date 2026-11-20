@@ -38,6 +38,20 @@
  *   • a focused toolbar: select, hand, arrow (which draws an edge between
  *     two nodes), text, note, draw, eraser, frame.
  *
+ * ═══ THE THREE MAPS (Phase 3.2) ═══
+ *
+ * `layout: 'derived'` (the plot board, the timeline): a card's place is the
+ * bible's, so a dragged card is reported to the host on drop
+ * (`onCardsDropped`), which moves it in the story order and puts every card
+ * back where the bible then places it (`placeCards`, a remote change); a node's
+ * move or resize is not an edit (`classifyTldrawStoreDiff`'s
+ * `derivedPositions`), and the lanes are drawn behind the cards
+ * (`LaneBackdrop`, from `lanes`). Every map asks the host for a new relation
+ * when an arrow joins two nodes with none to draw (`onNeedsRelation`, the type
+ * picker), reports an edge the author deleted (`onEdgeRemoved`: the relation
+ * is removed from the bible, with undo) and a node double-clicked
+ * (`onNodeOpen`: the element sheet).
+ *
  * ═══ THE WATERMARK STAYS (decision D1) ═══
  *
  * No licence key is passed and nothing hides or restyles tldraw's watermark
@@ -71,9 +85,13 @@ import {
 } from 'tldraw';
 
 import { batchIsSubstantive } from '@/lib/canvas/canvas-changes';
+import type { LaneLayout } from '@/lib/canvas/lanes';
 import { classifyTldrawStoreDiff } from '@/lib/canvas/canvas-changes-tldraw';
 import { canvasAssetUrls } from '@/lib/canvas/tldraw-assets';
-import { installArrowToEdgeConversion, installEdgeLineRemovesEdge, installOneNodePerElement, type ArrowVerdict } from './tldraw/arrow-to-edge';
+import { installArrowToEdgeConversion, installEdgeLineRemovesEdge, installOneNodePerElement, type ArrowVerdict, type RelationRequest } from './tldraw/arrow-to-edge';
+import { installCardDrop } from './tldraw/lane-host';
+import { LaneBackdrop, LaneBackdropContext } from './LaneBackdrop';
+import { STORY_NODE_SHAPE_TYPE, type StoryNodeShape } from './tldraw/story-node-shape';
 import type { KnownRelation } from './tldraw/edge-validation';
 import { restoreFreeform } from './tldraw/restore-freeform';
 import { STORY_TEXT_OPTIONS } from './tldraw/rich-text-extensions';
@@ -115,7 +133,7 @@ function StoryToolbar() {
         </DefaultToolbar>
     );
 }
-const TLDRAW_COMPONENTS: TLComponents = { Toolbar: StoryToolbar };
+const TLDRAW_COMPONENTS: TLComponents = { Toolbar: StoryToolbar, OnTheCanvas: LaneBackdrop };
 
 export interface StoryMapCanvasProps {
     /** The map's rows, exactly as the API returns them. */
@@ -133,6 +151,18 @@ export interface StoryMapCanvasProps {
     /** An arrow between two nodes did not become an edge, and why. */
     onEdgeRefused?: (verdict: Extract<ArrowVerdict, { kind: 'refuse' | 'no-relation' }>) => void;
     onEditorReady?: (editor: Editor) => void;
+    /** `derived`: the plot board and the timeline, whose card positions are the bible's (Phase 3.2). */
+    layout?: 'free' | 'derived';
+    /** The derived map's lanes, drawn behind the cards; null on the relationship map. */
+    lanes?: LaneLayout | null;
+    /** Two nodes joined by an arrow have no relation to draw: the host may create one (the type picker). */
+    onNeedsRelation?: (request: RelationRequest) => void;
+    /** The author deleted an edge whose two nodes stay on the map. */
+    onEdgeRemoved?: (edge: { relationId: string; sourceElementId: string; targetElementId: string }) => void;
+    /** Cards dropped on a derived map, by element and page centre. */
+    onCardsDropped?: (drops: Array<{ elementId: string; center: { x: number; y: number } }>) => void;
+    /** A node was double-clicked: open its element. */
+    onNodeOpen?: (elementId: string) => void;
 }
 
 /** `shape:…`, checked rather than asserted: an id without it is a serializer bug. */
@@ -178,19 +208,42 @@ export function seedEditor(editor: Editor, rows: GraphRows, display: MapDisplay,
     restoreFreeform(editor, graph.freeform);
 }
 
-export function StoryMapCanvas({ rows, display, freeform = [], readOnly = false, relations, onDirty, onEdgeRefused, onEditorReady }: StoryMapCanvasProps) {
+export function StoryMapCanvas({
+    rows,
+    display,
+    freeform = [],
+    readOnly = false,
+    relations,
+    onDirty,
+    onEdgeRefused,
+    onEditorReady,
+    layout = 'free',
+    lanes = null,
+    onNeedsRelation,
+    onEdgeRemoved,
+    onCardsDropped,
+    onNodeOpen,
+}: StoryMapCanvasProps) {
     // Callbacks through refs: `onMount` runs once per editor, so a closure
     // would pin the first render's callbacks for the editor's whole life.
     const onDirtyRef = useRef(onDirty);
     const onEdgeRefusedRef = useRef(onEdgeRefused);
     const relationsRef = useRef(relations);
     const displayRef = useRef(display);
+    const onNeedsRelationRef = useRef(onNeedsRelation);
+    const onEdgeRemovedRef = useRef(onEdgeRemoved);
+    const onCardsDroppedRef = useRef(onCardsDropped);
+    const onNodeOpenRef = useRef(onNodeOpen);
     useEffect(() => {
         onDirtyRef.current = onDirty;
         onEdgeRefusedRef.current = onEdgeRefused;
         relationsRef.current = relations;
         displayRef.current = display;
-    }, [onDirty, onEdgeRefused, relations, display]);
+        onNeedsRelationRef.current = onNeedsRelation;
+        onEdgeRemovedRef.current = onEdgeRemoved;
+        onCardsDroppedRef.current = onCardsDropped;
+        onNodeOpenRef.current = onNodeOpen;
+    }, [onDirty, onEdgeRefused, relations, display, onNeedsRelation, onEdgeRemoved, onCardsDropped, onNodeOpen]);
 
     // The UI's locale is English (D12): pinned, so tldraw neither follows the
     // browser's language nor fetches another translation. ONE user for the
@@ -224,19 +277,41 @@ export function StoryMapCanvas({ rows, display, freeform = [], readOnly = false,
             });
             editor.registerExternalContentHandler('svg-text', () => {});
 
+            disposers.current.forEach((d) => d());
+            disposers.current = [];
             if (!readOnly) {
-                disposers.current.forEach((d) => d());
                 disposers.current = [
                     installOneNodePerElement(editor),
-                    installEdgeLineRemovesEdge(editor),
+                    installEdgeLineRemovesEdge(editor, { onAuthorRemoved: (edge) => onEdgeRemovedRef.current?.(edge) }),
                     installArrowToEdgeConversion(editor, {
                         relations: () => relationsRef.current(),
                         onRefuse: (v) => onEdgeRefusedRef.current?.(v),
+                        onNeedsRelation: (request) => {
+                            const ask = onNeedsRelationRef.current;
+                            if (!ask) return false;
+                            ask(request);
+                            return true;
+                        },
                         onConverted: () => onDirtyRef.current?.(),
                         resolveLabel: (relationId) => displayRef.current.edgeLabels.get(relationId) ?? '',
                     }),
+                    ...(layout === 'derived' ? [installCardDrop(editor, (drops) => onCardsDroppedRef.current?.(drops))] : []),
                 ];
             }
+            // A double-click on a node opens its element (readers too: the sheet is read-only for them).
+            // The canvas takes the pointer, so the event names the canvas: the node is the shape under it.
+            const onEvent = (info: { type: string; name: string; phase?: string; shape?: { type: string; props: unknown } }) => {
+                if (info.type !== 'click' || info.name !== 'double_click' || info.phase === 'settle') return;
+                const shape =
+                    info.shape ??
+                    editor.getHoveredShape() ??
+                    editor.getOnlySelectedShape() ??
+                    editor.getShapeAtPoint(editor.inputs.currentPagePoint, { hitInside: true });
+                if (shape?.type !== STORY_NODE_SHAPE_TYPE) return;
+                onNodeOpenRef.current?.((shape as StoryNodeShape).props.elementId);
+            };
+            editor.on('event', onEvent as never);
+            disposers.current.push(() => editor.off('event', onEvent as never));
 
             // Read-only LAST: the flag refuses writes, and the seed is writes.
             if (readOnly) editor.updateInstanceState({ isReadonly: true });
@@ -248,18 +323,19 @@ export function StoryMapCanvas({ rows, display, freeform = [], readOnly = false,
             // AFTER the seed — see the header.
             return editor.store.listen(
                 (entry) => {
-                    if (batchIsSubstantive(classifyTldrawStoreDiff(entry.changes))) onDirtyRef.current?.();
+                    if (batchIsSubstantive(classifyTldrawStoreDiff(entry.changes, { derivedPositions: layout === 'derived' }))) onDirtyRef.current?.();
                 },
                 { scope: 'document', source: 'user' },
             );
         },
-        [rows, freeform, readOnly, onEditorReady],
+        [rows, freeform, readOnly, onEditorReady, layout],
     );
 
     const components = useMemo(() => TLDRAW_COMPONENTS, []);
 
     return (
-        <div className="h-full w-full" data-story-canvas="true">
+        <div className="h-full w-full" data-story-canvas="true" data-map-layout={layout}>
+            <LaneBackdropContext.Provider value={lanes}>
             <Tldraw
                 shapeUtils={SHAPE_UTILS}
                 bindingUtils={BINDING_UTILS}
@@ -273,6 +349,7 @@ export function StoryMapCanvas({ rows, display, freeform = [], readOnly = false,
                 acceptedImageMimeTypes={NO_FILE_TYPES}
                 acceptedVideoMimeTypes={NO_FILE_TYPES}
             />
+            </LaneBackdropContext.Provider>
         </div>
     );
 }

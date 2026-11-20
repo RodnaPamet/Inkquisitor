@@ -28,6 +28,21 @@
  * and must both be on the map. An element or relation deleted meanwhile is a
  * 409 `MAP_REFERENCE_GONE` (its cascade also moved the version).
  *
+ * EACH MAP DRAWS ITS OWN KINDS (Phase 3.2): the relationship map characters
+ * and factions, the plot board plot beats, the timeline timeline events
+ * (`MAP_ELEMENT_KINDS`). A save naming any other is refused 400
+ * `KIND_NOT_ON_MAP`; a map saved before 3.2 that holds one shows without it
+ * (`excludedNodes` counts them) and its next save leaves it out, as a restore
+ * does.
+ *
+ * THE DERIVED MAPS' POSITIONS ARE THE BIBLE'S (Phase 3.2, decision D22). On
+ * the plot board and the timeline a node's lane and position come from its
+ * element's act and story order (`deriveLaneLayout`, `src/lib/canvas/lanes.ts`):
+ * the view hands the canvas the derived positions, and a save stores what it
+ * derives, whatever the request carried — so the map never holds a second
+ * opinion about an order the bible keeps. Moving a card is an order move
+ * (`bible-order.ts`), not a map save.
+ *
  * Permissions: `bible.view` reads, `bible.edit` saves and restores — the
  * canvas and the bible are one dataset.
  */
@@ -45,10 +60,12 @@ import {
 } from '@/app-layer/repositories/story-map.repository';
 import { MapRestoreInput, MapSaveInput } from '@/app-layer/schemas/canvas';
 import { VersionNumberParam } from '@/app-layer/schemas/bible';
+import { decodeFieldValue } from '@/lib/bible/field-values';
 import { getFieldDef, getRelationType, getTemplate } from '@/lib/bible/templates';
 import { assertFreeformIdsFree, parseStoredFreeform, sanitiseFreeformForStorage } from '@/lib/canvas/freeform';
 import { MAX_MAP_EDGES, MAX_MAP_NODES, SNAPSHOT_LIST_MAX } from '@/lib/canvas/limits';
-import { STORY_MAP_KINDS, mapKindFromSlug, type StoryMapKindValue } from '@/lib/canvas/map-kinds';
+import { deriveLaneLayout, type ActOption, type LaneNodeInput, type Participant } from '@/lib/canvas/lanes';
+import { MAP_ELEMENT_KINDS, STORY_MAP_KINDS, mapKindFromSlug, mapLayoutMode, mapTakesKind, type StoryMapKindValue } from '@/lib/canvas/map-kinds';
 import { parseMapState, serialiseMapState, type MapEdgeRow, type MapNodeRow, type MapState } from '@/lib/canvas/map-state';
 import { runInWorkspaceContext, type PrismaTx } from '@/lib/db/rls-middleware';
 import { ConflictError, NotFoundError, ValidationError } from '@/lib/errors/types';
@@ -63,6 +80,14 @@ export interface MapElementView {
     /** Template fields holding a value, and the template's field count (for `completeness()`). */
     filledFieldCount: number;
     fieldCount: number;
+    /** The element's place in its story order (a plot beat, a timeline event), or null. */
+    orderRank: string | null;
+    /** A plot beat's act (its `act` field's option value), or null. */
+    act: string | null;
+    /** A timeline event's "when it happens" (its `story_time` field, author text), shown as its label; or null. */
+    storyTime: string | null;
+    /** The element's latest version: an order move's base. */
+    versionNumber: number;
 }
 
 export interface MapNodeView extends MapNodeRow {
@@ -70,6 +95,8 @@ export interface MapNodeView extends MapNodeRow {
 }
 
 export interface MapRelationView extends MapEdgeRow {
+    /** The relation type's key (Phase 3.2: the type picker leaves out a relation the pair already holds). */
+    type: string;
     /** The relation type's label, read from its source element's template. */
     label: string;
 }
@@ -87,6 +114,14 @@ export interface StoryMapView {
      */
     relations: MapRelationView[];
     relationsTruncated: boolean;
+    /** Nodes stored on the map whose element is of a kind this map does not draw (a map saved before 3.2), left out. */
+    excludedNodes: number;
+    /** The plot board's acts, in order (the `act` field's options); empty on the other maps. */
+    acts: ActOption[];
+    /** The timeline's per-character lanes: the characters taking part in each event on it. Empty on the other maps. */
+    participants: Array<{ eventId: string; characterId: string; characterName: string }>;
+    /** True when the participants were cut at their bound. */
+    participantsTruncated: boolean;
 }
 
 export interface StoryMapSaveResult {
@@ -120,6 +155,11 @@ export interface MapSnapshotView extends MapSnapshotMetaView {
 
 /** Relations the map view carries as candidates at most. */
 export const MAP_RELATION_CANDIDATES_MAX = MAX_MAP_EDGES * 2;
+/** Participant links the timeline reads at most (characters × events). */
+export const MAP_PARTICIPANTS_MAX = MAX_MAP_NODES * 20;
+/** The template field a plot beat's act lives in, and a timeline event's label. */
+const ACT_FIELD = 'act';
+const STORY_TIME_FIELD = 'story_time';
 /** Stored field rows read per element when counting (a template has a few dozen fields). */
 const FIELD_KEYS_PER_ELEMENT = 200;
 
@@ -162,54 +202,143 @@ async function readState(db: PrismaTx, ctx: WorkspaceRequestContext, bookId: str
     };
 }
 
+/** The plot board's acts: the template's `act` options, in order (empty when the field is not a choice). */
+function actOptions(): ActOption[] {
+    const def = getFieldDef('PLOT_BEAT', ACT_FIELD);
+    return def?.type === 'choice' ? def.options.map((o) => ({ value: o.value, label: o.label })) : [];
+}
+
+interface ElementFacts {
+    id: string;
+    kind: BibleElementKind;
+    name: string;
+    customLabel: string | null;
+    orderRank: string | null;
+    act: string | null;
+    storyTime: string | null;
+}
+
+/** What a map needs of its elements: names, kinds, ranks, and a beat's act and an event's story time (decrypted). */
+async function elementFacts(db: PrismaTx, ctx: WorkspaceRequestContext, bookId: string, ids: readonly string[]): Promise<Map<string, ElementFacts>> {
+    const rows = await MapBibleReads.elements(db, ctx.workspaceId, bookId, ids);
+    const beats = rows.filter((r) => r.kind === 'PLOT_BEAT').map((r) => r.id);
+    const events = rows.filter((r) => r.kind === 'TIMELINE_EVENT').map((r) => r.id);
+    const text = (value: string) => {
+        const v = decodeFieldValue(value);
+        return typeof v === 'string' ? v : null;
+    };
+    const acts = new Map((await MapBibleReads.fieldValues(db, ctx.workspaceId, beats, ACT_FIELD)).map((f) => [f.elementId, text(f.value)] as const));
+    const times = new Map((await MapBibleReads.fieldValues(db, ctx.workspaceId, events, STORY_TIME_FIELD)).map((f) => [f.elementId, text(f.value)] as const));
+    return new Map(
+        rows.map((r) => [r.id, { id: r.id, kind: r.kind, name: r.name, customLabel: r.customLabel, orderRank: r.orderRank, act: acts.get(r.id) ?? null, storyTime: times.get(r.id) ?? null }] as const),
+    );
+}
+
+/** The timeline's participants: characters taking part in each of `eventIds`, by event. */
+async function participantsOf(db: PrismaTx, ctx: WorkspaceRequestContext, bookId: string, eventIds: readonly string[]) {
+    const rows = await MapBibleReads.participants(db, ctx.workspaceId, bookId, eventIds, MAP_PARTICIPANTS_MAX + 1);
+    const shown = rows.slice(0, MAP_PARTICIPANTS_MAX);
+    const byEvent = new Map<string, Participant[]>();
+    for (const r of shown) {
+        const list = byEvent.get(r.toElementId) ?? [];
+        if (!list.some((p) => p.id === r.from.id)) list.push({ id: r.from.id, name: r.from.name });
+        byEvent.set(r.toElementId, list);
+    }
+    return { byEvent, rows: shown, truncated: rows.length > MAP_PARTICIPANTS_MAX };
+}
+
+/**
+ * A state's nodes as THIS map draws them: only the kinds it takes, and on a
+ * derived map at the place the bible gives each (`deriveLaneLayout`), whatever
+ * position the state carried. The relationship map's nodes keep theirs.
+ */
+async function drawnNodes(
+    db: PrismaTx,
+    ctx: WorkspaceRequestContext,
+    bookId: string,
+    kind: StoryMapKind,
+    nodes: readonly MapNodeRow[],
+    facts: ReadonlyMap<string, ElementFacts>,
+): Promise<{ nodes: MapNodeRow[]; excluded: number; participants: Awaited<ReturnType<typeof participantsOf>> | null }> {
+    const kept = nodes.filter((n) => {
+        const f = facts.get(n.elementId);
+        return f !== undefined && mapTakesKind(kind, f.kind);
+    });
+    const excluded = nodes.filter((n) => facts.has(n.elementId)).length - kept.length;
+    if (mapLayoutMode(kind) === 'free') return { nodes: kept, excluded, participants: null };
+    const inputs: LaneNodeInput[] = kept.map((n) => {
+        const f = facts.get(n.elementId)!;
+        return { elementId: n.elementId, name: f.name, orderRank: f.orderRank, act: f.act };
+    });
+    const participants = kind === 'TIMELINE' ? await participantsOf(db, ctx, bookId, kept.map((n) => n.elementId)) : null;
+    const layout = deriveLaneLayout(kind, inputs, { acts: actOptions(), participants: participants?.byEvent })!;
+    return {
+        nodes: kept.map((n) => {
+            const at = layout.positions.get(n.elementId)!;
+            return { elementId: n.elementId, x: at.x, y: at.y, w: at.w, h: at.h, lane: at.lane };
+        }),
+        excluded,
+        participants,
+    };
+}
+
 async function buildView(db: PrismaTx, ctx: WorkspaceRequestContext, bookId: string, kind: StoryMapKind): Promise<StoryMapView> {
     const map = await StoryMapRepository.find(db, ctx.workspaceId, bookId, kind);
-    const state: MapState = map ? await readState(db, ctx, bookId, map) : { nodes: [], edges: [], freeform: [] };
+    const stored: MapState = map ? await readState(db, ctx, bookId, map) : { nodes: [], edges: [], freeform: [] };
+
+    const facts = await elementFacts(db, ctx, bookId, stored.nodes.map((n) => n.elementId));
+    const drawn = await drawnNodes(db, ctx, bookId, kind, stored.nodes, facts);
+    const onMap = new Set(drawn.nodes.map((n) => n.elementId));
+    const state: MapState = {
+        nodes: drawn.nodes,
+        edges: stored.edges.filter((e) => onMap.has(e.sourceElementId) && onMap.has(e.targetElementId)),
+        freeform: stored.freeform,
+    };
 
     const elementIds = state.nodes.map((n) => n.elementId);
-    const elements = await MapBibleReads.elements(db, ctx.workspaceId, bookId, elementIds);
     const keys = await BibleFieldRepository.keysForElements(db, ctx.workspaceId, elementIds, FIELD_KEYS_PER_ELEMENT);
-    const kindById = new Map(elements.map((e) => [e.id, e.kind] as const));
     const filled = new Map<string, number>();
     for (const { elementId, key } of keys) {
-        const k = kindById.get(elementId);
+        const k = facts.get(elementId)?.kind;
         if (k && getFieldDef(k, key)) filled.set(elementId, (filled.get(elementId) ?? 0) + 1);
     }
-    const elementById = new Map(elements.map((e) => [e.id, e]));
+    const versions = await MapBibleReads.latestVersions(db, ctx.workspaceId, elementIds);
 
     const candidates = await MapBibleReads.relationsOfBook(db, ctx.workspaceId, bookId, MAP_RELATION_CANDIDATES_MAX + 1);
     const relationView = (r: (typeof candidates)[number]): MapRelationView => ({
         relationId: r.id,
         sourceElementId: r.fromElementId,
         targetElementId: r.toElementId,
+        type: r.type,
         label: relationLabel(r.from.kind, r.type),
     });
-    const drawn = await MapBibleReads.relationsById(
+    const drawnRelations = await MapBibleReads.relationsById(
         db,
         ctx.workspaceId,
         bookId,
         state.edges.map((e) => e.relationId),
     );
-    const drawnById = new Map(drawn.map((r) => [r.id, relationView(r)]));
+    const drawnById = new Map(drawnRelations.map((r) => [r.id, relationView(r)]));
 
     return {
         kind,
         version: map?.version ?? 0,
-        nodes: state.nodes.flatMap((n) => {
-            const e = elementById.get(n.elementId);
-            if (!e) return [];
-            return [
-                {
-                    ...n,
-                    element: {
-                        name: e.name,
-                        kind: e.kind,
-                        customLabel: e.customLabel,
-                        filledFieldCount: filled.get(e.id) ?? 0,
-                        fieldCount: getTemplate(e.kind).fields.length,
-                    },
+        nodes: state.nodes.map((n) => {
+            const e = facts.get(n.elementId)!;
+            return {
+                ...n,
+                element: {
+                    name: e.name,
+                    kind: e.kind,
+                    customLabel: e.customLabel,
+                    filledFieldCount: filled.get(e.id) ?? 0,
+                    fieldCount: getTemplate(e.kind).fields.length,
+                    orderRank: e.orderRank,
+                    act: e.act,
+                    storyTime: e.storyTime,
+                    versionNumber: versions.get(e.id) ?? 0,
                 },
-            ];
+            };
         }),
         edges: state.edges.flatMap((e) => {
             const v = drawnById.get(e.relationId);
@@ -218,6 +347,10 @@ async function buildView(db: PrismaTx, ctx: WorkspaceRequestContext, bookId: str
         freeform: state.freeform,
         relations: candidates.slice(0, MAP_RELATION_CANDIDATES_MAX).map(relationView),
         relationsTruncated: candidates.length > MAP_RELATION_CANDIDATES_MAX,
+        excludedNodes: drawn.excluded,
+        acts: kind === 'PLOT' ? actOptions() : [],
+        participants: (drawn.participants?.rows ?? []).map((r) => ({ eventId: r.toElementId, characterId: r.from.id, characterName: r.from.name })),
+        participantsTruncated: drawn.participants?.truncated ?? false,
     };
 }
 
@@ -250,13 +383,25 @@ function assertStructure(state: Pick<MapState, 'nodes' | 'edges'>): void {
     }
 }
 
-/** Every reference belongs to this book, and every edge is its relation's own pair. */
-async function assertReferences(db: PrismaTx, ctx: WorkspaceRequestContext, bookId: string, state: Pick<MapState, 'nodes' | 'edges'>): Promise<void> {
+/**
+ * Every reference belongs to this book and is of a kind this map draws, and
+ * every edge is its relation's own pair.
+ */
+async function assertReferences(db: PrismaTx, ctx: WorkspaceRequestContext, bookId: string, kind: StoryMapKind, state: Pick<MapState, 'nodes' | 'edges'>): Promise<void> {
     const elementIds = state.nodes.map((n) => n.elementId);
-    const found = new Set((await MapBibleReads.elements(db, ctx.workspaceId, bookId, elementIds)).map((e) => e.id));
+    const elements = await MapBibleReads.elements(db, ctx.workspaceId, bookId, elementIds);
+    const found = new Set(elements.map((e) => e.id));
     const unknownElements = elementIds.filter((id) => !found.has(id));
     if (unknownElements.length > 0) {
         throw new ValidationError('The map names an element this book does not hold.', { reason: 'UNKNOWN_ELEMENT', elementIds: unknownElements });
+    }
+    const wrongKind = elements.filter((e) => !mapTakesKind(kind, e.kind));
+    if (wrongKind.length > 0) {
+        throw new ValidationError('The map names an element of a kind it does not draw.', {
+            reason: 'KIND_NOT_ON_MAP',
+            elementIds: wrongKind.map((e) => e.id),
+            allowedKinds: [...MAP_ELEMENT_KINDS[kind]],
+        });
     }
     const relations = new Map(
         (await MapBibleReads.relationsById(db, ctx.workspaceId, bookId, state.edges.map((e) => e.relationId))).map((r) => [r.id, r] as const),
@@ -376,8 +521,11 @@ export async function saveStoryMap(ctx: WorkspaceRequestContext, bookId: string,
             await StoryMapRepository.lock(db, bookId, kind);
             const map = await StoryMapRepository.find(db, ctx.workspaceId, bookId, kind);
             assertExpectedVersion(map, parsed.expectedVersion);
-            await assertReferences(db, ctx, bookId, state);
-            const { saved } = await applyState(db, ctx, bookId, kind, map, state, freeformJson, { restoredFromVersion: null });
+            await assertReferences(db, ctx, bookId, kind, state);
+            // A derived map stores the positions the bible gives (the header).
+            const facts = await elementFacts(db, ctx, bookId, state.nodes.map((n) => n.elementId));
+            const drawn = { ...state, nodes: (await drawnNodes(db, ctx, bookId, kind, state.nodes, facts)).nodes };
+            const { saved } = await applyState(db, ctx, bookId, kind, map, drawn, freeformJson, { restoredFromVersion: null });
             return { map: await buildView(db, ctx, bookId, kind), saved };
         });
     } catch (err) {
@@ -472,10 +620,10 @@ export async function restoreMapSnapshot(
             const stored = parseMapState(row.snapshot);
             if (!stored) throw new ConflictError('That snapshot cannot be read.', { reason: 'SNAPSHOT_UNREADABLE' });
 
-            const liveElements = new Set(
-                (await MapBibleReads.elements(db, ctx.workspaceId, bookId, stored.nodes.map((n) => n.elementId))).map((e) => e.id),
-            );
-            const nodes = stored.nodes.filter((n) => liveElements.has(n.elementId));
+            // Live elements of a kind this map draws, at the place the bible gives them on a derived map.
+            const facts = await elementFacts(db, ctx, bookId, stored.nodes.map((n) => n.elementId));
+            const nodes = (await drawnNodes(db, ctx, bookId, kind, stored.nodes, facts)).nodes;
+            const liveElements = new Set(nodes.map((n) => n.elementId));
             const liveRelations = new Map(
                 (await MapBibleReads.relationsById(db, ctx.workspaceId, bookId, stored.edges.map((e) => e.relationId))).map((r) => [r.id, r] as const),
             );

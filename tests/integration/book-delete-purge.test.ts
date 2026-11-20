@@ -127,6 +127,7 @@ describe('a deleted book', () => {
                 'POST elements/route.ts': { kind: 'THEME', name: 'After deletion' },
                 'PATCH elements/[elementId]/route.ts': { name: 'Renamed', baseVersion: 1 },
                 'PUT elements/[elementId]/fields/route.ts': { fields: [{ key: 'role', value: 'Ghost' }], baseVersion: 1 },
+                'POST elements/[elementId]/order/route.ts': { baseVersion: 1, after: null, before: null },
                 'POST elements/[elementId]/versions/[versionNumber]/restore/route.ts': { baseVersion: 1 },
                 'POST import/concept-note/route.ts': { text: 'A note.' },
                 'POST relations/route.ts': { fromElementId: seeded.characterId, toElementId: seeded.factionId, type: 'related_to' },

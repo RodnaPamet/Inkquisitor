@@ -21,6 +21,11 @@ export const WORDED_REASONS = [
     'EMPTY',
     'TOO_LONG',
     'KIND_MISMATCH',
+    // The story order (Phase 3.2)
+    'ORDER_STALE',
+    'ORDER_RANK_EXHAUSTED',
+    'ORDER_NOT_ALLOWED',
+    'ORDER_SELF',
 ] as const;
 
 export function useApiErrorMessage(): (reason: string | null) => string {

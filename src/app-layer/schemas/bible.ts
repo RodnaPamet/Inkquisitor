@@ -156,6 +156,24 @@ export const RelationCreateInput = z
     .strict();
 export type RelationCreateInput = z.infer<typeof RelationCreateInput>;
 
+// ─── Story order (Phase 3.2, decision D22) ──────────────────────────
+
+/**
+ * Move a plot beat or a timeline event in its story order: between two of the
+ * same kind's PLACED elements the author saw either side of the drop (`after`
+ * and `before`, element ids; `null` for an open end), and, for a beat, into an
+ * act. A move is a save of the element, so it names `baseVersion`.
+ */
+export const ElementOrderInput = z
+    .object({
+        baseVersion: BaseVersionInput,
+        after: id.nullable(),
+        before: id.nullable(),
+        act: identifier.optional(),
+    })
+    .strict();
+export type ElementOrderInput = z.infer<typeof ElementOrderInput>;
+
 // ─── Versions ───────────────────────────────────────────────────────
 
 export const VersionNumberParam = z.coerce.number().int().min(1).max(2_147_483_647);

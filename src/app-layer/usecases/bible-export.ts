@@ -79,6 +79,7 @@ export async function readBibleBundle(db: PrismaTx, ctx: WorkspaceRequestContext
         slug: r.slug,
         status: r.status as BibleElementStatus,
         customLabel: r.customLabel,
+        orderRank: r.orderRank,
         summary: r.summary,
         fields: fieldsById.get(r.id)!,
         relations: relationsById.get(r.id) ?? [],

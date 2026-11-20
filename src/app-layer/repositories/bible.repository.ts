@@ -23,6 +23,7 @@ export const ELEMENT_SELECT = {
     status: true,
     summary: true,
     customLabel: true,
+    orderRank: true,
     createdAt: true,
     updatedAt: true,
 } as const satisfies Prisma.BibleElementSelect;
@@ -36,6 +37,7 @@ export const ELEMENT_LIST_SELECT = {
     slug: true,
     status: true,
     customLabel: true,
+    orderRank: true,
     updatedAt: true,
 } as const satisfies Prisma.BibleElementSelect;
 
@@ -59,6 +61,7 @@ const VERSION_META_SELECT = {
     changeSummary: true,
     source: true,
     restoredFromVersion: true,
+    movedInOrder: true,
     authorId: true,
     createdAt: true,
 } as const satisfies Prisma.BibleEntryVersionSelect;
@@ -69,6 +72,8 @@ export interface ElementWrite {
     status?: BibleElementStatus;
     summary?: string | null;
     customLabel?: string | null;
+    /** A story-order rank (Phase 3.2): written by the bundle import; a move goes through `setOrderRank`. */
+    orderRank?: string | null;
 }
 
 export const BibleElementRepository = {
@@ -94,6 +99,37 @@ export const BibleElementRepository = {
      */
     async lockNames(db: Db, bookId: string) {
         await db.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${'bible-element-names:' + bookId}))`;
+    },
+
+    /**
+     * Serialise every write of one book's story order of one kind (Phase 3.2,
+     * decision D22): a move computes its rank from the order's other ranks, so
+     * two moves of one order queue here and each reads the rank the other
+     * wrote. LOCK ORDER: take it BEFORE any element's `lock` (a move locks the
+     * one element it moves after it; a bundle import takes every order lock it
+     * may write first). No path takes it after an element lock.
+     */
+    async lockOrder(db: Db, bookId: string, kind: BibleElementKind) {
+        await db.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${'bible-order:' + bookId + ':' + kind}))`;
+    },
+
+    /**
+     * Every PLACED element of one book's story order (a rank set), unordered:
+     * ranks are compared in code (`compareRanks`), never by a collation.
+     * Served by the unique (bookId, kind, orderRank). `take` bounds it.
+     */
+    rankedInOrder(db: Db, workspaceId: string, bookId: string, kind: BibleElementKind, take: number) {
+        return db.bibleElement.findMany({
+            where: { workspaceId, bookId, kind, orderRank: { not: null } },
+            select: { id: true, orderRank: true },
+            take,
+        });
+    },
+
+    /** Set (or clear) one element's place in its story order. */
+    async setOrderRank(db: Db, workspaceId: string, bookId: string, elementId: string, orderRank: string | null) {
+        const res = await db.bibleElement.updateMany({ where: { id: elementId, workspaceId, bookId }, data: { orderRank, updatedAt: new Date() } });
+        return res.count;
     },
 
     /**
@@ -133,7 +169,7 @@ export const BibleElementRepository = {
      */
     firstPerKind(db: Db, workspaceId: string, bookId: string, perKind: number): Promise<ElementListRow[]> {
         return db.$queryRaw<ElementListRow[]>`
-            SELECT "id", "bookId", "kind", "name", "slug", "status", "customLabel", "updatedAt"
+            SELECT "id", "bookId", "kind", "name", "slug", "status", "customLabel", "orderRank", "updatedAt"
             FROM (
                 SELECT e.*, row_number() OVER (PARTITION BY e."kind" ORDER BY e."name", e."id") AS rn
                 FROM "BibleElement" e
@@ -211,7 +247,15 @@ export const BibleElementRepository = {
         db: Db,
         workspaceId: string,
         bookId: string,
-        data: { kind: BibleElementKind; name: string; slug: string; status?: BibleElementStatus; summary?: string | null; customLabel?: string | null },
+        data: {
+            kind: BibleElementKind;
+            name: string;
+            slug: string;
+            status?: BibleElementStatus;
+            summary?: string | null;
+            customLabel?: string | null;
+            orderRank?: string | null;
+        },
     ) {
         return db.bibleElement.create({ data: { ...data, workspaceId, bookId }, select: ELEMENT_SELECT });
     },
@@ -419,6 +463,8 @@ export const BibleVersionRepository = {
             /** The findings (and proposal) a RESEARCH version is drawn from (Phase 2.6); empty for every other source (CHECK). */
             sourceFindingIds?: string[];
             sourceResearchProposalId?: string | null;
+            /** The save moved the element in its story order (Phase 3.2). */
+            movedInOrder?: boolean;
         },
     ) {
         return db.bibleEntryVersion.create({ data: { ...data, workspaceId }, select: VERSION_META_SELECT });

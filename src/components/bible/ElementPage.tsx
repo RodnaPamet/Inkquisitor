@@ -49,6 +49,9 @@ import { FieldEditor } from './FieldEditor';
 import { HistoryPanel } from './HistoryPanel';
 import { RelationsPanel } from './RelationsPanel';
 import { useElementAutosave, type AutosaveState } from './use-element-autosave';
+import { StoryMapPreview } from '@/components/canvas/StoryMapPreview';
+import type { StoryMapView } from '@/lib/canvas/api-client';
+import type { StoryMapKindValue } from '@/lib/canvas/map-kinds';
 
 export interface ElementPageProps {
     workspaceSlug: string;
@@ -60,6 +63,8 @@ export interface ElementPageProps {
     initialVersions: VersionMetaView[];
     /** The page size the versions were read with (a full page means older ones may exist). */
     versionPageSize: number;
+    /** The story maps that draw this element's kind (Phase 3.2), shown read-only in the rail. */
+    mapPreviews?: Array<{ kind: StoryMapKindValue; map: StoryMapView }>;
     canEdit: boolean;
 }
 
@@ -76,7 +81,7 @@ const detailsOf = (e: ElementView): Details => ({ name: e.name, status: e.status
 const valuesOf = (e: ElementView) => new Map<string, FieldValue | null>(e.fields.map((f) => [f.key, f.value as FieldValue | null]));
 
 export function ElementPage(props: ElementPageProps) {
-    const { workspaceSlug, book, fieldDefs, kindLabels, relationOptions, canEdit, versionPageSize } = props;
+    const { workspaceSlug, book, fieldDefs, kindLabels, relationOptions, canEdit, versionPageSize, mapPreviews = [] } = props;
     const t = useTranslations('bible.element');
     const tDetails = useTranslations('bible.details');
     const tStatus = useTranslations('bible.status');
@@ -319,7 +324,7 @@ export function ElementPage(props: ElementPageProps) {
             activeTab={tab}
             onTabChange={openTab}
             rail={
-                <div className="xl:w-80">
+                <div className="space-y-section xl:w-80">
                     <RelationsPanel
                         workspaceSlug={workspaceSlug}
                         bookId={book.id}
@@ -331,6 +336,11 @@ export function ElementPage(props: ElementPageProps) {
                             await reloadElement();
                         }}
                     />
+                    {mapPreviews.map((p) => (
+                        <Card key={p.kind} className="p-5">
+                            <StoryMapPreview workspaceSlug={workspaceSlug} bookId={book.id} mapKind={p.kind} map={p.map} currentElementId={element.id} kindLabels={kindLabels} />
+                        </Card>
+                    ))}
                 </div>
             }
         >

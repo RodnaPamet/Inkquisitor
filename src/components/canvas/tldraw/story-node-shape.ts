@@ -14,7 +14,7 @@
  * position has. A resize IS saved here (the MapNode row has `w` / `h`),
  * which inflect's process node could not do and so locked.
  *
- * SHOWN: `name`, `kindLabel`, `badgeLabel`, `badgeTone` are the element's
+ * SHOWN: `name`, `kindLabel`, `badgeLabel`, `badgeTone`, `detail` are the element's
  * name, its kind's label and its completeness badge, resolved by the HOST
  * (which has a translator; a shape util has none) from the bible and
  * re-derived on every load. They never reach a row: renaming an element is a
@@ -40,6 +40,8 @@ export type StoryNodeShapeProps = {
     kindLabel: string;
     badgeLabel: string;
     badgeTone: NodeBadgeTone;
+    /** A second line (Phase 3.2): a timeline event's "when it happens", or "not placed yet". Shown, never saved. */
+    detail: string;
 };
 
 export type StoryNodeShape = TLBaseShape<typeof STORY_NODE_SHAPE_TYPE, StoryNodeShapeProps>;
@@ -58,6 +60,7 @@ export const storyNodeShapeProps: RecordProps<StoryNodeShape> = {
     kindLabel: T.string,
     badgeLabel: T.string,
     badgeTone: T.literalEnum('none', 'partial', 'complete'),
+    detail: T.string,
 };
 
 export { NODE_DEFAULT_H, NODE_DEFAULT_W };

@@ -53,10 +53,13 @@ export interface StoryMapWorkspaceProps {
     initialMap: StoryMapView;
     kindLabels: Readonly<Record<string, string>>;
     fieldCounts: Readonly<Record<string, number>>;
+    /** Each kind the map draws: its relation options (the type picker) and template fields (the element sheet). */
+    relationOptions: StoryMapEditorProps['relationOptions'];
+    fieldDefs: StoryMapEditorProps['fieldDefs'];
     canEdit: boolean;
 }
 
-export function StoryMapWorkspace({ workspaceSlug, book, kind, kindSlug, initialMap, kindLabels, fieldCounts, canEdit }: StoryMapWorkspaceProps) {
+export function StoryMapWorkspace({ workspaceSlug, book, kind, kindSlug, initialMap, kindLabels, fieldCounts, relationOptions, fieldDefs, canEdit }: StoryMapWorkspaceProps) {
     const t = useTranslations('canvas');
     const mapLabel = t(`kinds.${kind}`);
     return (
@@ -66,7 +69,7 @@ export function StoryMapWorkspace({ workspaceSlug, book, kind, kindSlug, initial
                     back={{ href: APP_ROUTES.book(workspaceSlug, book.id), label: t('page.back') }}
                     title={mapLabel}
                     eyebrow={book.title}
-                    description={t('page.description')}
+                    description={t(`page.about.${kind}`)}
                 />
             </WorkspaceShell.Header>
             <CanvasErrorBoundary>
@@ -74,11 +77,14 @@ export function StoryMapWorkspace({ workspaceSlug, book, kind, kindSlug, initial
                     workspaceSlug={workspaceSlug}
                     bookId={book.id}
                     bookTitle={book.title}
+                    mapKind={kind}
                     kindSlug={kindSlug}
                     mapLabel={mapLabel}
                     initialMap={initialMap}
                     kindLabels={kindLabels}
                     fieldCounts={fieldCounts}
+                    relationOptions={relationOptions}
+                    fieldDefs={fieldDefs}
                     canEdit={canEdit}
                 />
             </CanvasErrorBoundary>

@@ -15,6 +15,7 @@ export function sampleBundle(): BibleBundle {
                 slug: 'salt-guild',
                 status: 'IN_PROGRESS',
                 customLabel: null,
+                orderRank: null,
                 summary: null,
                 fields: new Map<string, string | number | string[]>([
                     ['purpose', 'Keep the ferries taxed'],
@@ -28,6 +29,7 @@ export function sampleBundle(): BibleBundle {
                 slug: 'mara-vell',
                 status: 'DRAFT',
                 customLabel: null,
+                orderRank: null,
                 summary: 'A ferrywoman.\n\nShe owes the guild & fears the "water".',
                 fields: new Map<string, string | number | string[]>([
                     ['role', 'Lead'],
@@ -47,6 +49,7 @@ export function sampleBundle(): BibleBundle {
                 slug: 'tam-vell',
                 status: 'SETTLED',
                 customLabel: null,
+                orderRank: null,
                 summary: null,
                 fields: new Map(),
                 relations: [],
@@ -57,6 +60,7 @@ export function sampleBundle(): BibleBundle {
                 slug: 'tide-tables',
                 status: 'DRAFT',
                 customLabel: 'Almanac',
+                orderRank: null,
                 summary: null,
                 fields: new Map<string, string | number | string[]>([
                     ['purpose', 'When the roads flood'],

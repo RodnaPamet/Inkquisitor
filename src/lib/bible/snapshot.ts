@@ -11,6 +11,11 @@
  *
  * Fields are in template order (then key), so two saves of the same state
  * serialise identically.
+ *
+ * `orderRank` (Phase 3.2, decision D22) is an ordered kind's place in its
+ * story order, written only when the element has one: a snapshot of an
+ * element that was never placed serialises exactly as it did before 3.2. A
+ * reorder is a save of the element, so its version records where it went.
  */
 import { z } from 'zod';
 import { BIBLE_ELEMENT_STATUSES, BIBLE_KINDS } from './kinds';
@@ -31,6 +36,7 @@ export const snapshotSchema = z
                 status: z.enum(BIBLE_ELEMENT_STATUSES),
                 summary: z.string().nullable(),
                 customLabel: z.string().nullable(),
+                orderRank: z.string().optional(),
             })
             .strict(),
         fields: z.array(z.object({ key: z.string(), order: z.number().int(), value: fieldValue }).strict()),
@@ -40,7 +46,7 @@ export const snapshotSchema = z
 export type BibleSnapshot = z.infer<typeof snapshotSchema>;
 
 export interface SnapshotInput {
-    element: BibleSnapshot['element'];
+    element: Omit<BibleSnapshot['element'], 'orderRank'> & { orderRank?: string | null };
     fields: ReadonlyArray<{ key: string; order: number; value: FieldValue }>;
 }
 
@@ -48,8 +54,12 @@ export function buildSnapshot(input: SnapshotInput): BibleSnapshot {
     const fields = [...input.fields]
         .sort((a, b) => a.order - b.order || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0))
         .map((f) => ({ key: f.key, order: f.order, value: f.value }));
-    const { kind, name, slug, status, summary, customLabel } = input.element;
-    return { format: SNAPSHOT_FORMAT, element: { kind, name, slug, status, summary, customLabel }, fields };
+    const { kind, name, slug, status, summary, customLabel, orderRank } = input.element;
+    return {
+        format: SNAPSHOT_FORMAT,
+        element: { kind, name, slug, status, summary, customLabel, ...(orderRank ? { orderRank } : {}) },
+        fields,
+    };
 }
 
 export function serialiseSnapshot(snapshot: BibleSnapshot): string {

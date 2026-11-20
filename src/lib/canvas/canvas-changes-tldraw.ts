@@ -17,6 +17,13 @@
  * sets are imported from the serializer, and a test derives them from what
  * the projection actually reads.
  *
+ * DERIVED MAPS (Phase 3.2). On the plot board and the timeline a node's
+ * position, size and lane are the bible's (`src/lib/canvas/lanes.ts`): the
+ * save stores what the bible gives, whatever the canvas holds. So with
+ * `{ derivedPositions: true }` a node that only moved or was resized is NOT
+ * an edit — a drag there is an order move, sent to the bible, never a map
+ * save — and only a node added, removed or re-pointed at another element is.
+ *
  * NOTE ON DRAGS. A drag emits an `updated` diff per frame, each substantive,
  * so the host calls `markDirty()` many times; `use-canvas-autosave` restarts
  * its timer on each, so a drag produces one save, timed from the last frame.
@@ -154,15 +161,27 @@ function changedProps(
     );
 }
 
+export interface ClassifyOptions {
+    /** The map derives node positions from the bible (the plot board, the timeline): a node's geometry is not the map's. */
+    derivedPositions?: boolean;
+}
+
 function classifyUpdate(
     from: TldrawRecordLike,
     to: TldrawRecordLike,
+    options: ClassifyOptions = {},
 ): ClassifiedChange {
     const subject = subjectOf(to);
-    const moved = movedGeometry(from, to);
+    const derivedNode = subject === 'node' && options.derivedPositions === true;
+    const moved = derivedNode ? false : movedGeometry(from, to);
     // A freeform record is stored WHOLE, so any field of it is an edit — a
     // note's rotation, its frame, its lock — not only its props.
-    const edited = subject === 'freeform' ? JSON.stringify(from) !== JSON.stringify(to) : changedProps(from, to, subject);
+    const edited =
+        subject === 'freeform'
+            ? JSON.stringify(from) !== JSON.stringify(to)
+            : derivedNode
+              ? JSON.stringify(propsOf(from).elementId ?? null) !== JSON.stringify(propsOf(to).elementId ?? null)
+              : changedProps(from, to, subject);
 
     if (!moved && !edited) {
         // A record rewritten with no difference the product can see — a
@@ -191,7 +210,7 @@ function classifyUpdate(
  * Classify one tldraw store diff: one entry per changed record, so
  * `batchIsSubstantive` answers the host's question over the whole diff.
  */
-export function classifyTldrawDiff(diff: TldrawDiffLike): ClassifiedChange[] {
+export function classifyTldrawDiff(diff: TldrawDiffLike, options: ClassifyOptions = {}): ClassifiedChange[] {
     const out: ClassifiedChange[] = [];
 
     for (const r of Object.values(diff.added)) {
@@ -213,7 +232,7 @@ export function classifyTldrawDiff(diff: TldrawDiffLike): ClassifiedChange[] {
     }
 
     for (const [from, to] of Object.values(diff.updated)) {
-        out.push(classifyUpdate(from, to));
+        out.push(classifyUpdate(from, to, options));
     }
 
     return out;
@@ -223,14 +242,20 @@ export function classifyTldrawDiff(diff: TldrawDiffLike): ClassifiedChange[] {
  * The entry point the host calls: `RecordsDiff` keys its maps by BRANDED ids,
  * so the maps are rebuilt with plain string keys (no cast).
  */
-export function classifyTldrawStoreDiff(diff: {
-    added: Readonly<Record<string, TldrawRecordLike>>;
-    updated: Readonly<Record<string, readonly [TldrawRecordLike, TldrawRecordLike]>>;
-    removed: Readonly<Record<string, TldrawRecordLike>>;
-}): ClassifiedChange[] {
-    return classifyTldrawDiff({
-        added: Object.fromEntries(Object.entries(diff.added)),
-        updated: Object.fromEntries(Object.entries(diff.updated)),
-        removed: Object.fromEntries(Object.entries(diff.removed)),
-    });
+export function classifyTldrawStoreDiff(
+    diff: {
+        added: Readonly<Record<string, TldrawRecordLike>>;
+        updated: Readonly<Record<string, readonly [TldrawRecordLike, TldrawRecordLike]>>;
+        removed: Readonly<Record<string, TldrawRecordLike>>;
+    },
+    options: ClassifyOptions = {},
+): ClassifiedChange[] {
+    return classifyTldrawDiff(
+        {
+            added: Object.fromEntries(Object.entries(diff.added)),
+            updated: Object.fromEntries(Object.entries(diff.updated)),
+            removed: Object.fromEntries(Object.entries(diff.removed)),
+        },
+        options,
+    );
 }

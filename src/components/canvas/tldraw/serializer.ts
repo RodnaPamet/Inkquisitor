@@ -51,6 +51,8 @@ export interface NodeDisplay {
     kindLabel: string;
     badgeLabel: string;
     badgeTone: NodeBadgeTone;
+    /** A second line: a timeline event's time, or "not placed yet" (Phase 3.2); '' for none. */
+    detail?: string;
 }
 
 /** What the canvas shows beside the rows; resolved by the host from the bible. */
@@ -158,6 +160,7 @@ export function rowsToTldraw(rows: GraphRows, display: MapDisplay = EMPTY_DISPLA
                     kindLabel: shown.kindLabel,
                     badgeLabel: shown.badgeLabel,
                     badgeTone: shown.badgeTone,
+                    detail: shown.detail ?? '',
                 },
             };
         }),

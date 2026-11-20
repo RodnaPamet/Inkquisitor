@@ -27,6 +27,7 @@
  *   slug: mara-vell
  *   status: DRAFT
  *   customLabel: …         (a CUSTOM element only)
+ *   order: …               (a placed plot beat or timeline event: its story-order rank, Phase 3.2)
  *   summary: |-            (when it has one)
  *     …
  *   fields:                (filled fields only, in template order, by key)
@@ -116,6 +117,8 @@ export interface BundleElement {
     slug: string;
     status: BibleElementStatus;
     customLabel: string | null;
+    /** A plot beat's or timeline event's place in its story order (Phase 3.2), or null. */
+    orderRank: string | null;
     summary: string | null;
     /** Filled fields by key. */
     fields: ReadonlyMap<string, FieldValue>;
@@ -144,6 +147,20 @@ const compare = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
 /** Elements in the bundle's order: kind order, then slug. */
 export function sortElements<T extends { kind: BibleKind; slug: string }>(elements: readonly T[]): T[] {
     return [...elements].sort((a, b) => kindRank(a.kind) - kindRank(b.kind) || compare(a.slug, b.slug));
+}
+
+/**
+ * A kind's elements in the order a reader meets them (the PDF): an ordered
+ * kind's placed elements by their story order, then the unplaced by slug;
+ * every other kind by slug.
+ */
+export function readingOrder<T extends { slug: string; orderRank: string | null }>(elements: readonly T[]): T[] {
+    return [...elements].sort((a, b) => {
+        if (a.orderRank !== null && b.orderRank !== null) return compare(a.orderRank, b.orderRank);
+        if (a.orderRank !== null) return -1;
+        if (b.orderRank !== null) return 1;
+        return compare(a.slug, b.slug);
+    });
 }
 
 function sortRelations(relations: readonly BundleRelation[]): BundleRelation[] {
@@ -202,6 +219,7 @@ export function elementFrontmatter(e: BundleElement): Record<string, unknown> {
         slug: e.slug,
         status: e.status,
         ...(e.customLabel !== null ? { customLabel: e.customLabel } : {}),
+        ...(e.orderRank !== null ? { order: e.orderRank } : {}),
         ...(e.summary !== null ? { summary: e.summary } : {}),
         ...(Object.keys(fields).length > 0 ? { fields } : {}),
         ...(e.relations.length > 0

@@ -42,6 +42,8 @@ it('a failed editor chunk shows the boundary, and Try again loads the chunk afre
             initialMap={EMPTY_MAP as never}
             kindLabels={{}}
             fieldCounts={{}}
+            relationOptions={{}}
+            fieldDefs={{}}
             canEdit
         />,
     );

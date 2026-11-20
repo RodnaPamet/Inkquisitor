@@ -24,7 +24,7 @@ export async function generateMetadata(): Promise<Metadata> {
 export default async function BibleElementPage({ params }: { params: Promise<{ workspaceSlug: string; bookId: string; elementId: string }> }) {
     const { workspaceSlug, bookId, elementId } = await params;
     const { ctx } = await getWorkspacePageCtx(workspaceSlug);
-    const { book, element, versions } = await orNotFound(loadElementPage(ctx, bookId, elementId));
+    const { book, element, versions, maps } = await orNotFound(loadElementPage(ctx, bookId, elementId));
     const kindLabels = Object.fromEntries(kindSummaries().map((k) => [k.kind, k.label])) as Record<BibleKind, string>;
     return (
         <ElementPage
@@ -36,6 +36,7 @@ export default async function BibleElementPage({ params }: { params: Promise<{ w
             relationOptions={relationOptionsFor(element.kind)}
             initialVersions={versions}
             versionPageSize={VERSION_PAGE_SIZE}
+            mapPreviews={maps}
             canEdit={ctx.permissions.bible.edit}
         />
     );

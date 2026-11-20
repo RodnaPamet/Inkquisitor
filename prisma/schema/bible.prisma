@@ -89,6 +89,12 @@ model BibleElement {
   summary     String?
   /// The author's own label for a CUSTOM element; NULL for every other kind (a CHECK holds both).
   customLabel String?
+  /// The element's place in its kind's story order (Phase 3.2, decision D22):
+  /// a fractional rank (`src/lib/bible/story-order.ts`), so a reorder writes
+  /// the ONE element moved. Only an ordered kind (PLOT_BEAT, TIMELINE_EVENT)
+  /// carries one (a CHECK holds it, and the rank's shape); NULL is "not placed
+  /// yet". Unique per book and kind (NULLs are distinct).
+  orderRank   String?
   createdAt   DateTime           @default(now())
   updatedAt   DateTime           @updatedAt
 
@@ -111,6 +117,9 @@ model BibleElement {
   @@unique([workspaceId, id])
   /// The board and the kind lists: a book's elements of one kind by name (Phase 1.H).
   @@index([workspaceId, bookId, kind, name])
+  /// Phase 3.2: one element per place in a kind's story order; also the
+  /// order's own read (a book's ranked elements of one kind).
+  @@unique([bookId, kind, orderRank])
 }
 
 /// One field of an element, keyed by its kind's template.
@@ -198,6 +207,11 @@ model BibleEntryVersion {
   /// The research proposal a RESEARCH version accepted (NULL for a finding
   /// kept as a research note, and for every other source; CHECK).
   sourceResearchProposalId String?
+  /// The save moved the element in its story order (Phase 3.2, decision D22:
+  /// a reorder on the plot board or the timeline). Set at insert; the history
+  /// words the version from it, as it does a restore from `restoredFromVersion`,
+  /// so the change summary keeps holding only the author's words.
+  movedInOrder        Boolean            @default(false)
   /// Who saved it; NULL once that person is deleted.
   authorId            String?
   createdAt           DateTime           @default(now())

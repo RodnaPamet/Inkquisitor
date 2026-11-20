@@ -37,6 +37,8 @@ export interface VersionMetaView {
     changeSummary: string | null;
     source: string;
     restoredFromVersion: number | null;
+    /** The save moved the element in its story order (Phase 3.2). */
+    movedInOrder: boolean;
     authorId: string | null;
     createdAt: string;
 }
@@ -53,6 +55,7 @@ function metaView(v: VersionRow): VersionMetaView {
         changeSummary: v.changeSummary,
         source: v.source,
         restoredFromVersion: v.restoredFromVersion,
+        movedInOrder: v.movedInOrder,
         authorId: v.authorId,
         createdAt: v.createdAt.toISOString(),
     };

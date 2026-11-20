@@ -445,6 +445,7 @@
             "versionLabel": "Version {number}",
             "current": "Current",
             "restoredFrom": "Restored from version {number}",
+            "movedInOrder": "Moved in the story order",
             "restore": "Restore",
             "restoreAria": "Restore version {number} as a new version",
             "loadOlder": "Load older versions"
@@ -461,7 +462,11 @@
             "TOO_LONG": "A value is too long.",
             "KIND_MISMATCH": "That version belongs to an entry of another kind.",
             "VERSION_CONFLICT": "Someone else saved this entry since you opened it. Reload it first.",
-            "CURSOR_INVALID": "That list could not be continued. Reload the page."
+            "CURSOR_INVALID": "That list could not be continued. Reload the page.",
+            "ORDER_STALE": "The order changed since this was shown. Reload, then move it again.",
+            "ORDER_RANK_EXHAUSTED": "There is no more room at that place in the order.",
+            "ORDER_NOT_ALLOWED": "Only plot beats and timeline events have a place in the story order.",
+            "ORDER_SELF": "An element cannot be placed beside itself."
         },
         "transfer": {
             "exportBundle": "Export Markdown",
@@ -550,6 +555,10 @@
                 "RELATION_TYPE_NOT_ALLOWED": "A relation's type does not fit these two kinds of entry.",
                 "SELF_RELATION": "An entry cannot be related to itself.",
                 "DUPLICATE_RELATION": "This relation is stated more than once in the bundle; keep one.",
+                "ORDER_NOT_ALLOWED": "Only plot beats and timeline events have a place in the story order.",
+                "ORDER_INVALID": "The entry's place in the story order is not one this format writes.",
+                "ORDER_DUPLICATE": "Two entries in the bundle claim the same place in the story order.",
+                "ORDER_TAKEN": "Another entry of this book already holds this place in the story order.",
                 "EMPTY": "A required value is empty.",
                 "TOO_LONG": "A value is too long.",
                 "CUSTOM_LABEL_REQUIRED": "A custom entry needs its own label.",
@@ -1128,10 +1137,20 @@
         },
         "page": {
             "back": "Back to the book",
-            "description": "Rows are the bible: a node is one of the book's elements, an edge one of its relations. Notes and drawings stay on the map.",
             "readOnly": "You can view this map; only an editor can change it.",
-            "empty": "This map is empty. Add an element to start.",
-            "relationsTruncated": "This book has more relations than the canvas loads: an arrow between two elements may not find theirs."
+            "relationsTruncated": "This book has more relations than the canvas loads: an arrow between two elements may not find theirs.",
+            "about": {
+                "RELATIONSHIP": "The book's characters and factions, and how they are related. Draw an arrow between two to relate them; deleting an edge removes the relation from the bible.",
+                "PLOT": "The book's plot beats in their acts, in story order. Drag a card to move it in the bible's order or into another act; arrows are causes and effects.",
+                "TIMELINE": "The book's timeline events in story order, with a lane for each character taking part. Drag an event along the line to change the bible's order."
+            },
+            "emptyOf": {
+                "RELATIONSHIP": "This map is empty. Add a character or faction to start.",
+                "PLOT": "This board is empty. Add a plot beat to start.",
+                "TIMELINE": "This timeline is empty. Add a timeline event to start."
+            },
+            "excluded": "{count, plural, one {# element of a kind this map does not draw was left off it.} other {# elements of kinds this map does not draw were left off it.}}",
+            "participantsTruncated": "This timeline has more people taking part than it can show: some character lanes are missing."
         },
         "loading": "Loading the canvas…",
         "boundary": {
@@ -1148,7 +1167,10 @@
             "arrangeLR": "Arrange left to right",
             "arrangeTB": "Arrange top to bottom",
             "history": "History",
-            "save": "Save"
+            "save": "Save",
+            "open": "Open an element",
+            "openSearch": "Search this map…",
+            "openNone": "No element on this map matches."
         },
         "autosave": {
             "idle": "All changes saved",
@@ -1169,11 +1191,14 @@
             "saveMine": "Save mine over it"
         },
         "edges": {
-            "NO_RELATION": "These two elements are not related in the bible yet. Relate them on an element’s page, then draw the arrow again.",
+            "NO_RELATION": "These two elements are not related in the bible yet.",
             "DUPLICATE_EDGE": "That relation is already drawn on this map.",
             "SELF_LOOP": "An element cannot be joined to itself.",
             "UNKNOWN_NODE": "Both ends of an edge must be elements on this map.",
-            "RELATION_MISMATCH": "That edge does not match its relation in the bible."
+            "RELATION_MISMATCH": "That edge does not match its relation in the bible.",
+            "removed": "Removed “{a} {label} {b}” from the bible",
+            "undo": "Undo",
+            "removeFailed": "The relation could not be removed. It is back on the map."
         },
         "errors": {
             "FREEFORM_REFUSED": "The notes and drawings on this map could not be saved.",
@@ -1184,7 +1209,8 @@
             "EDGE_ENDPOINT_NOT_ON_MAP": "An edge joins an element that is not on the map.",
             "RELATION_MISMATCH": "An edge does not match its relation in the bible.",
             "SELF_LOOP": "An edge cannot join an element to itself.",
-            "generic": "The map could not be saved."
+            "generic": "The map could not be saved.",
+            "KIND_NOT_ON_MAP": "This map does not draw that kind of element. Reload the map."
         },
         "history": {
             "title": "History",
@@ -1241,6 +1267,58 @@
             "exporting": "Exporting…",
             "empty": "There is nothing on the map to export.",
             "failed": "The map could not be exported."
+        },
+        "lanes": {
+            "noAct": "No act yet",
+            "unplaced": "Not placed yet",
+            "axis": "Story order"
+        },
+        "order": {
+            "ORDER_STALE": "The order changed while you were moving that card. The board now shows it as it stands.",
+            "VERSION_CONFLICT": "That element was saved elsewhere since this map was opened. The map now shows it as it stands; move it again.",
+            "ORDER_RANK_EXHAUSTED": "There is no more room at that place in the order. Move a neighbour first, then try again.",
+            "FIELD_VALUES_REFUSED": "That act is not one this kind of entry has.",
+            "generic": "The card could not be moved. The map shows the order as it stands.",
+            "oneAtATime": "Move one card at a time: the order changes one element at a time."
+        },
+        "picker": {
+            "title": "How are these related?",
+            "description": "Pick how {a} relates to {b}. The relation is saved in the bible and drawn here.",
+            "typeLabel": "Relation",
+            "none": "The bible has no relation left to make between these two. Close this and relate them on an element’s page.",
+            "sentence": "{a} {label} {b}",
+            "cancel": "Cancel",
+            "submit": "Relate them"
+        },
+        "sheet": {
+            "loadingTitle": "Element",
+            "loading": "Loading the element…",
+            "loadError": "The element could not be loaded.",
+            "gone": "This element is no longer in the bible.",
+            "name": "Name",
+            "nameRequired": "An element needs a name.",
+            "completeness": "Completeness",
+            "save": {
+                "idle": "All changes saved",
+                "pending": "Unsaved changes",
+                "saving": "Saving…",
+                "saved": "Saved",
+                "conflict": "Saved elsewhere since you opened it"
+            },
+            "conflict": "Someone else saved this element (now version {version}) since it was opened here. Save yours over it, or close this and open it again to see theirs.",
+            "keepMine": "Save mine over it",
+            "orderLabel": "Place in the story order",
+            "earlier": "Earlier",
+            "later": "Later",
+            "moveBlocked": "Save your changes first: they could not be saved.",
+            "openPage": "Open the full page"
+        },
+        "preview": {
+            "title": "On the {map}",
+            "open": "Open the {map}",
+            "notOnMap": "Not on the {map} yet.",
+            "empty": "The {map} is empty.",
+            "label": "The {map}, with {name} marked"
         }
     }
 }
