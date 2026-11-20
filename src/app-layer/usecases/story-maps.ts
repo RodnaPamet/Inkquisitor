@@ -46,7 +46,7 @@ import {
 import { MapRestoreInput, MapSaveInput } from '@/app-layer/schemas/canvas';
 import { VersionNumberParam } from '@/app-layer/schemas/bible';
 import { getFieldDef, getRelationType, getTemplate } from '@/lib/bible/templates';
-import { parseStoredFreeform, sanitiseFreeformForStorage } from '@/lib/canvas/freeform';
+import { assertFreeformIdsFree, parseStoredFreeform, sanitiseFreeformForStorage } from '@/lib/canvas/freeform';
 import { MAX_MAP_EDGES, MAX_MAP_NODES, SNAPSHOT_LIST_MAX } from '@/lib/canvas/limits';
 import { STORY_MAP_KINDS, mapKindFromSlug, type StoryMapKindValue } from '@/lib/canvas/map-kinds';
 import { parseMapState, serialiseMapState, type MapEdgeRow, type MapNodeRow, type MapState } from '@/lib/canvas/map-state';
@@ -288,6 +288,8 @@ async function applyState(
     freeformJson: string | null,
     meta: { restoredFromVersion: number | null },
 ): Promise<{ saved: boolean; version: number }> {
+    // A freeform record named like a node or edge would be drawn over it (save and restore alike).
+    assertFreeformIdsFree(state.freeform, state.nodes, state.edges);
     const next = serialiseMapState(state);
     if (map) {
         if (serialiseMapState(await readState(db, ctx, bookId, map)) === next) return { saved: false, version: map.version };

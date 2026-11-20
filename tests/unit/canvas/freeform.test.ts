@@ -2,7 +2,10 @@
  * The freeform layer on its way into storage (Phase 3.1): bounded, shaped,
  * free of prototype keys and sanitised, and an empty layer is NULL.
  */
-import { parseStoredFreeform, sanitiseFreeformForStorage, sanitiseFreeformRecords } from '@/lib/canvas/freeform';
+import { bindingIdForRelation } from '@/components/canvas/tldraw/story-edge-binding';
+import { shapeIdForRelation } from '@/components/canvas/tldraw/story-edge-shape';
+import { shapeIdForElement } from '@/components/canvas/tldraw/story-node-shape';
+import { assertFreeformIdsFree, parseStoredFreeform, rowRecordIds, sanitiseFreeformForStorage, sanitiseFreeformRecords } from '@/lib/canvas/freeform';
 import { FREEFORM_MAX_RECORDS } from '@/lib/canvas/limits';
 import { ValidationError } from '@/lib/errors/types';
 
@@ -70,4 +73,32 @@ it('refuses past the bounds: records, depth and bytes', () => {
     for (let i = 0; i < 40; i++) deep = { d: deep };
     expect(problemOf([{ ...note('shape:a', 'x'), props: deep }])).toBe('TOO_DEEP');
     expect(problemOf([note('shape:a', 'x'.repeat(600 * 1024))])).toBe('TOO_LARGE');
+});
+
+describe('a record carrying a node’s or an edge’s id', () => {
+    const nodes = [{ elementId: 'el-a' }, { elementId: 'el-b' }];
+    const edges = [{ relationId: 'rel-ab' }];
+    const problem = (freeform: Record<string, unknown>[]) => {
+        try {
+            assertFreeformIdsFree(freeform, nodes, edges);
+            return undefined;
+        } catch (err) {
+            expect(err).toBeInstanceOf(ValidationError);
+            const details = (err as ValidationError).details as { reason: string; problem: string; index: number };
+            expect(details.reason).toBe('FREEFORM_REFUSED');
+            return `${details.problem}@${details.index}`;
+        }
+    };
+
+    it('is refused RESERVED_ID: tldraw would draw it over the node, the line or the binding', () => {
+        expect(problem([note('shape:x', 'a'), note('shape:el-a', 'b')])).toBe('RESERVED_ID@1');
+        expect(problem([note('shape:edge-rel-ab', 'b')])).toBe('RESERVED_ID@0');
+        expect(problem([{ id: 'binding:rel-ab', typeName: 'binding', type: 'arrow' }])).toBe('RESERVED_ID@0');
+        // Another element's or relation's id is not this save's.
+        expect(problem([note('shape:el-c', 'b'), { id: 'binding:rel-cd', typeName: 'binding', type: 'arrow' }])).toBeUndefined();
+    });
+
+    it('the reserved ids are spelled exactly as the canvas derives them', () => {
+        expect(rowRecordIds(nodes, edges)).toEqual(new Set([shapeIdForElement('el-a'), shapeIdForElement('el-b'), String(shapeIdForRelation('rel-ab')), bindingIdForRelation('rel-ab')]));
+    });
 });

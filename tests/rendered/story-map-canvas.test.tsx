@@ -109,6 +109,23 @@ describe('seeding', () => {
         expect(canvas.freeform.map((r) => r.id)).toEqual(['shape:note1']);
     });
 
+    it('a freeform record named like a node, a line or a binding never replaces it', async () => {
+        const arrowEnd = { terminal: 'end', isPrecise: false, isExact: false, normalizedAnchor: { x: 0.5, y: 0.5 } };
+        const editor = await mount({
+            freeform: [
+                NOTE,
+                { ...NOTE, id: shapeIdForElement('el-a') },
+                { ...NOTE, id: 'shape:edge-rel-ab' },
+                { id: 'binding:rel-ab', typeName: 'binding', type: 'arrow', fromId: 'shape:note1', toId: shapeIdForElement('el-b'), meta: {}, props: arrowEnd },
+            ],
+        });
+        expect(editor.getShape(shapeIdForElement('el-a') as TLShapeId)?.type).toBe(STORY_NODE_SHAPE_TYPE);
+        expect(editor.getShape('shape:edge-rel-ab' as TLShapeId)?.type).toBe(STORY_EDGE_SHAPE_TYPE);
+        const canvas = serializeEditorCanvas(editor);
+        expect(canvas.rows).toEqual(ROWS);
+        expect(canvas.freeform.map((r) => r.id)).toEqual(['shape:note1']);
+    });
+
     it('asks tldraw’s CDN for nothing: its assets are ours', async () => {
         tldrawFetches.length = 0;
         await mount();
@@ -148,6 +165,32 @@ describe('edits', () => {
             editor.duplicateShapes([shapeIdForElement('el-c') as TLShapeId]);
         });
         expect(serializeEditorCanvas(editor).rows.nodes.filter((n) => n.elementId === 'el-c')).toHaveLength(1);
+    });
+
+    it('deleting an edge’s line deletes the edge: an edit, saved without it, and undone in one step', async () => {
+        const editor = await mount();
+        const line = ofType(editor, 'shape', STORY_EDGE_SHAPE_TYPE)[0];
+        await act(async () => {
+            editor.markHistoryStoppingPoint('delete edge');
+            editor.deleteShapes([line.id as TLShapeId]);
+        });
+        expect(dirty).toBeGreaterThan(0);
+        expect(ofType(editor, 'binding', STORY_EDGE_BINDING_TYPE)).toHaveLength(0);
+        expect(serializeEditorCanvas(editor).rows.edges).toEqual([]);
+        await act(async () => {
+            editor.undo();
+        });
+        expect(serializeEditorCanvas(editor).rows).toEqual(ROWS);
+        expect(ofType(editor, 'shape', STORY_EDGE_SHAPE_TYPE)).toHaveLength(1);
+    });
+
+    it('deleting a node still takes its edges and their lines with it', async () => {
+        const editor = await mount();
+        await act(async () => {
+            editor.deleteShapes([shapeIdForElement('el-b') as TLShapeId]);
+        });
+        expect(ofType(editor, 'shape', STORY_EDGE_SHAPE_TYPE)).toHaveLength(0);
+        expect(serializeEditorCanvas(editor).rows).toEqual({ nodes: ROWS.nodes.filter((n) => n.elementId !== 'el-b'), edges: [] });
     });
 
     it('arrange moves the nodes in one step, which undo takes back', async () => {
