@@ -143,7 +143,7 @@ describe('a call through the wired generator', () => {
             outcome: 'OK',
             purpose: 'interview.questions',
             promptId: QUESTION_PROMPT.id,
-            promptVersion: QUESTION_PROMPT_VERSION,
+            promptVersion: expect.stringMatching(new RegExp(`^${QUESTION_PROMPT_VERSION.replace(/\./g, '\\.')}\\+packs\\.[0-9a-f]{12}$`)),
             tier: 'balanced',
             bookId: 'book-1',
             requestedById: 'user-1',

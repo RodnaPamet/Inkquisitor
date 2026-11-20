@@ -1,0 +1,294 @@
+{
+  "format": "inkquisitor-pack-evaluation/1",
+  "pack": {
+    "name": "persona-socratic",
+    "version": 1,
+    "contentHash": "sha256:70b4b46adf546364aacad2129357bfe3e9573c1cb864a244163db093565009d8"
+  },
+  "set": {
+    "hash": "sha256:0f937437f49891bac4478d7580fb83df68f8ce7c5e0f3b4c7bf476a49c6ef18d"
+  },
+  "promptVersion": "question-generation.2.3.0",
+  "generator": {
+    "kind": "structural",
+    "id": "structural-generator.1"
+  },
+  "ranAt": "2026-11-19T23:18:42.450Z",
+  "answers": [
+    {
+      "caseId": "socratic-01",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-socratic-01",
+              "targetsFieldKeys": [
+                "wound"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the wound.",
+              "kind": "OPEN",
+              "text": "What wound matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "socratic-02",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-socratic-02",
+              "targetsFieldKeys": [
+                "stance"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the stance.",
+              "kind": "OPEN",
+              "text": "What stance matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "socratic-03",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-socratic-03",
+              "targetsFieldKeys": [
+                "resolution"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the resolution.",
+              "kind": "OPEN",
+              "text": "What resolution matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "socratic-04",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-socratic-04",
+              "targetsFieldKeys": [
+                "need"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the need.",
+              "kind": "OPEN",
+              "text": "What need matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "socratic-05",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-socratic-05",
+              "targetsFieldKeys": [
+                "who_knows"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the who knows.",
+              "kind": "OPEN",
+              "text": "What who knows matters most here, in your own words?"
+            },
+            {
+              "elementId": "eval-socratic-05",
+              "targetsFieldKeys": [
+                "story_consequence"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the story consequence.",
+              "kind": "OPEN",
+              "text": "What story consequence matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "socratic-06",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-socratic-06",
+              "targetsFieldKeys": [
+                "complications"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the complications.",
+              "kind": "OPEN",
+              "text": "What complications matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "socratic-07",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-socratic-07",
+              "targetsFieldKeys": [
+                "narrative_distance"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the narrative distance.",
+              "kind": "OPEN",
+              "text": "What narrative distance matters most here, in your own words?"
+            },
+            {
+              "elementId": "eval-socratic-07",
+              "targetsFieldKeys": [
+                "knowledge_limits"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the knowledge limits.",
+              "kind": "OPEN",
+              "text": "What knowledge limits matters most here, in your own words?"
+            },
+            {
+              "elementId": "eval-socratic-07",
+              "targetsFieldKeys": [
+                "switching_pattern"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the switching pattern.",
+              "kind": "OPEN",
+              "text": "What switching pattern matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "socratic-08",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-socratic-08",
+              "targetsFieldKeys": [
+                "power_base"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the power base.",
+              "kind": "OPEN",
+              "text": "What power base matters most here, in your own words?"
+            },
+            {
+              "elementId": "eval-socratic-08",
+              "targetsFieldKeys": [
+                "internal_tension"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the internal tension.",
+              "kind": "OPEN",
+              "text": "What internal tension matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "socratic-09",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-socratic-09",
+              "targetsFieldKeys": [
+                "tense"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the tense.",
+              "kind": "CHOICE",
+              "text": "Which way does the tense lean?",
+              "options": [
+                "tense leans inward",
+                "tense leans outward",
+                "tense holds still"
+              ]
+            },
+            {
+              "elementId": "eval-socratic-09",
+              "targetsFieldKeys": [
+                "diction"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the diction.",
+              "kind": "CHOICE",
+              "text": "Which way does the diction lean?",
+              "options": [
+                "diction leans inward",
+                "diction leans outward",
+                "diction holds still"
+              ]
+            },
+            {
+              "elementId": "eval-socratic-09",
+              "targetsFieldKeys": [
+                "spelling_variant"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the spelling variant.",
+              "kind": "CHOICE",
+              "text": "Which way does the spelling variant lean?",
+              "options": [
+                "spelling variant leans inward",
+                "spelling variant leans outward",
+                "spelling variant holds still"
+              ]
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "socratic-10",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-socratic-10",
+              "targetsFieldKeys": [
+                "pressure_on_characters"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the pressure on characters.",
+              "kind": "OPEN",
+              "text": "What pressure on characters matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    }
+  ]
+}

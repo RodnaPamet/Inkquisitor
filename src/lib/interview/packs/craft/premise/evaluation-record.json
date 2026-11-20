@@ -1,0 +1,262 @@
+{
+  "format": "inkquisitor-pack-evaluation/1",
+  "pack": {
+    "name": "craft-premise",
+    "version": 1,
+    "contentHash": "sha256:e0f98df9eb3ed00cff796630732be2269a66f71c4b5051928d4d89526f146d02"
+  },
+  "set": {
+    "hash": "sha256:eb228583af5e485ab0054558ac04d783820e608f0a2c7e6c208b5f6edb72920a"
+  },
+  "promptVersion": "question-generation.2.3.0",
+  "generator": {
+    "kind": "structural",
+    "id": "structural-generator.1"
+  },
+  "ranAt": "2026-11-19T23:18:39.774Z",
+  "answers": [
+    {
+      "caseId": "premise-01",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-premise-01",
+              "targetsFieldKeys": [
+                "central_character"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the central character.",
+              "kind": "CHOICE",
+              "text": "Which way does the central character lean?",
+              "options": [
+                "central character leans inward",
+                "central character leans outward",
+                "central character holds still"
+              ]
+            },
+            {
+              "elementId": "eval-premise-01",
+              "targetsFieldKeys": [
+                "starting_situation"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the starting situation.",
+              "kind": "CHOICE",
+              "text": "Which way does the starting situation lean?",
+              "options": [
+                "starting situation leans inward",
+                "starting situation leans outward",
+                "starting situation holds still"
+              ]
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "premise-02",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-premise-02",
+              "targetsFieldKeys": [
+                "central_character"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the central character.",
+              "kind": "OPEN",
+              "text": "What central character matters most here, in your own words?"
+            },
+            {
+              "elementId": "eval-premise-02",
+              "targetsFieldKeys": [
+                "starting_situation"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the starting situation.",
+              "kind": "OPEN",
+              "text": "What starting situation matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "premise-03",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-premise-03",
+              "targetsFieldKeys": [
+                "stakes"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the stakes.",
+              "kind": "OPEN",
+              "text": "What stakes matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "premise-04",
+      "outputs": []
+    },
+    {
+      "caseId": "premise-05",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-premise-05",
+              "targetsFieldKeys": [
+                "central_conflict"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the central conflict.",
+              "kind": "OPEN",
+              "text": "What central conflict matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "premise-06",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-premise-06",
+              "targetsFieldKeys": [
+                "story_question"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the story question.",
+              "kind": "CHOICE",
+              "text": "Which way does the story question lean?",
+              "options": [
+                "story question leans inward",
+                "story question leans outward",
+                "story question holds still"
+              ]
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "premise-07",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-premise-07",
+              "targetsFieldKeys": [
+                "story_question"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the story question.",
+              "kind": "OPEN",
+              "text": "What story question matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "premise-08",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-premise-08",
+              "targetsFieldKeys": [
+                "central_conflict"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the central conflict.",
+              "kind": "OPEN",
+              "text": "What central conflict matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "premise-09",
+      "outputs": []
+    },
+    {
+      "caseId": "premise-10",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-premise-10",
+              "targetsFieldKeys": [
+                "central_conflict"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the central conflict.",
+              "kind": "OPEN",
+              "text": "What central conflict matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "premise-11",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-premise-11",
+              "targetsFieldKeys": [
+                "central_character"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the central character.",
+              "kind": "OPEN",
+              "text": "What central character matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "premise-12",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-premise-12",
+              "targetsFieldKeys": [
+                "story_question"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the story question.",
+              "kind": "OPEN",
+              "text": "What story question matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    }
+  ]
+}

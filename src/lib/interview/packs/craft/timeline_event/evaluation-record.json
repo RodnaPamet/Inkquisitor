@@ -1,0 +1,302 @@
+{
+  "format": "inkquisitor-pack-evaluation/1",
+  "pack": {
+    "name": "craft-timeline_event",
+    "version": 1,
+    "contentHash": "sha256:4d612c8de1be82ae8d046e19c4b654e29bc3bfd94c53ef79d19b36dd33ce2fca"
+  },
+  "set": {
+    "hash": "sha256:f9d241dd003d44e95e6c5cc908ba52587517d69bc80683fba67ac512ebb8229a"
+  },
+  "promptVersion": "question-generation.2.3.0",
+  "generator": {
+    "kind": "structural",
+    "id": "structural-generator.1"
+  },
+  "ranAt": "2026-11-19T23:18:41.357Z",
+  "answers": [
+    {
+      "caseId": "timeline_event-01",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-timeline_event-01",
+              "targetsFieldKeys": [
+                "what_happens"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the what happens.",
+              "kind": "CHOICE",
+              "text": "Which way does the what happens lean?",
+              "options": [
+                "what happens leans inward",
+                "what happens leans outward",
+                "what happens holds still"
+              ]
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "timeline_event-02",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-timeline_event-02",
+              "targetsFieldKeys": [
+                "what_happens"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the what happens.",
+              "kind": "OPEN",
+              "text": "What what happens matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "timeline_event-03",
+      "outputs": []
+    },
+    {
+      "caseId": "timeline_event-04",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-timeline_event-04",
+              "targetsFieldKeys": [
+                "story_time"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the story time.",
+              "kind": "OPEN",
+              "text": "What story time matters most here, in your own words?"
+            },
+            {
+              "elementId": "eval-timeline_event-04",
+              "targetsFieldKeys": [
+                "participants"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the participants.",
+              "kind": "OPEN",
+              "text": "What participants matters most here, in your own words?"
+            },
+            {
+              "elementId": "eval-timeline_event-04",
+              "targetsFieldKeys": [
+                "consequences"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the consequences.",
+              "kind": "OPEN",
+              "text": "What consequences matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "timeline_event-05",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-timeline_event-05",
+              "targetsFieldKeys": [
+                "participants"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the participants.",
+              "kind": "CHOICE",
+              "text": "Which way does the participants lean?",
+              "options": [
+                "participants leans inward",
+                "participants leans outward",
+                "participants holds still"
+              ]
+            },
+            {
+              "elementId": "eval-timeline_event-05",
+              "targetsFieldKeys": [
+                "consequences"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the consequences.",
+              "kind": "CHOICE",
+              "text": "Which way does the consequences lean?",
+              "options": [
+                "consequences leans inward",
+                "consequences leans outward",
+                "consequences holds still"
+              ]
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "timeline_event-06",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-timeline_event-06",
+              "targetsFieldKeys": [
+                "participants"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the participants.",
+              "kind": "OPEN",
+              "text": "What participants matters most here, in your own words?"
+            },
+            {
+              "elementId": "eval-timeline_event-06",
+              "targetsFieldKeys": [
+                "consequences"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the consequences.",
+              "kind": "OPEN",
+              "text": "What consequences matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "timeline_event-07",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-timeline_event-07",
+              "targetsFieldKeys": [
+                "story_time"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the story time.",
+              "kind": "OPEN",
+              "text": "What story time matters most here, in your own words?"
+            },
+            {
+              "elementId": "eval-timeline_event-07",
+              "targetsFieldKeys": [
+                "participants"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the participants.",
+              "kind": "OPEN",
+              "text": "What participants matters most here, in your own words?"
+            },
+            {
+              "elementId": "eval-timeline_event-07",
+              "targetsFieldKeys": [
+                "consequences"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the consequences.",
+              "kind": "OPEN",
+              "text": "What consequences matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "timeline_event-08",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-timeline_event-08",
+              "targetsFieldKeys": [
+                "consequences"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the consequences.",
+              "kind": "OPEN",
+              "text": "What consequences matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "timeline_event-09",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-timeline_event-09",
+              "targetsFieldKeys": [
+                "story_time"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the story time.",
+              "kind": "OPEN",
+              "text": "What story time matters most here, in your own words?"
+            },
+            {
+              "elementId": "eval-timeline_event-09",
+              "targetsFieldKeys": [
+                "consequences"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the consequences.",
+              "kind": "OPEN",
+              "text": "What consequences matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "timeline_event-10",
+      "outputs": []
+    },
+    {
+      "caseId": "timeline_event-11",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-timeline_event-11",
+              "targetsFieldKeys": [
+                "story_time"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the story time.",
+              "kind": "OPEN",
+              "text": "What story time matters most here, in your own words?"
+            },
+            {
+              "elementId": "eval-timeline_event-11",
+              "targetsFieldKeys": [
+                "participants"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the participants.",
+              "kind": "OPEN",
+              "text": "What participants matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    }
+  ]
+}

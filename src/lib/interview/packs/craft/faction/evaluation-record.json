@@ -1,0 +1,302 @@
+{
+  "format": "inkquisitor-pack-evaluation/1",
+  "pack": {
+    "name": "craft-faction",
+    "version": 1,
+    "contentHash": "sha256:343543d5837817c11e9c4df394d076613a694ee6d2db02aec0b2dc8d45ded54c"
+  },
+  "set": {
+    "hash": "sha256:eb370c2da16a5cedf46db37fcba9085cc42c00dae44aac0ff50fb3d3bf08b869"
+  },
+  "promptVersion": "question-generation.2.3.0",
+  "generator": {
+    "kind": "structural",
+    "id": "structural-generator.1"
+  },
+  "ranAt": "2026-11-19T23:18:41.489Z",
+  "answers": [
+    {
+      "caseId": "faction-01",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-faction-01",
+              "targetsFieldKeys": [
+                "purpose"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the purpose.",
+              "kind": "CHOICE",
+              "text": "Which way does the purpose lean?",
+              "options": [
+                "purpose leans inward",
+                "purpose leans outward",
+                "purpose holds still"
+              ]
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "faction-02",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-faction-02",
+              "targetsFieldKeys": [
+                "purpose"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the purpose.",
+              "kind": "OPEN",
+              "text": "What purpose matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "faction-03",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-faction-03",
+              "targetsFieldKeys": [
+                "membership"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the membership.",
+              "kind": "CHOICE",
+              "text": "Which way does the membership lean?",
+              "options": [
+                "membership leans inward",
+                "membership leans outward",
+                "membership holds still"
+              ]
+            },
+            {
+              "elementId": "eval-faction-03",
+              "targetsFieldKeys": [
+                "power_base"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the power base.",
+              "kind": "CHOICE",
+              "text": "Which way does the power base lean?",
+              "options": [
+                "power base leans inward",
+                "power base leans outward",
+                "power base holds still"
+              ]
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "faction-04",
+      "outputs": []
+    },
+    {
+      "caseId": "faction-05",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-faction-05",
+              "targetsFieldKeys": [
+                "membership"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the membership.",
+              "kind": "OPEN",
+              "text": "What membership matters most here, in your own words?"
+            },
+            {
+              "elementId": "eval-faction-05",
+              "targetsFieldKeys": [
+                "role_in_conflict"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the role in conflict.",
+              "kind": "OPEN",
+              "text": "What role in conflict matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "faction-06",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-faction-06",
+              "targetsFieldKeys": [
+                "internal_tension"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the internal tension.",
+              "kind": "OPEN",
+              "text": "What internal tension matters most here, in your own words?"
+            },
+            {
+              "elementId": "eval-faction-06",
+              "targetsFieldKeys": [
+                "role_in_conflict"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the role in conflict.",
+              "kind": "OPEN",
+              "text": "What role in conflict matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "faction-07",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-faction-07",
+              "targetsFieldKeys": [
+                "power_base"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the power base.",
+              "kind": "OPEN",
+              "text": "What power base matters most here, in your own words?"
+            },
+            {
+              "elementId": "eval-faction-07",
+              "targetsFieldKeys": [
+                "internal_tension"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the internal tension.",
+              "kind": "OPEN",
+              "text": "What internal tension matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "faction-08",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-faction-08",
+              "targetsFieldKeys": [
+                "membership"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the membership.",
+              "kind": "OPEN",
+              "text": "What membership matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "faction-09",
+      "outputs": []
+    },
+    {
+      "caseId": "faction-10",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-faction-10",
+              "targetsFieldKeys": [
+                "membership"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the membership.",
+              "kind": "OPEN",
+              "text": "What membership matters most here, in your own words?"
+            },
+            {
+              "elementId": "eval-faction-10",
+              "targetsFieldKeys": [
+                "power_base"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the power base.",
+              "kind": "OPEN",
+              "text": "What power base matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "faction-11",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-faction-11",
+              "targetsFieldKeys": [
+                "internal_tension"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the internal tension.",
+              "kind": "OPEN",
+              "text": "What internal tension matters most here, in your own words?"
+            },
+            {
+              "elementId": "eval-faction-11",
+              "targetsFieldKeys": [
+                "role_in_conflict"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the role in conflict.",
+              "kind": "OPEN",
+              "text": "What role in conflict matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "faction-12",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-faction-12",
+              "targetsFieldKeys": [
+                "role_in_conflict"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the role in conflict.",
+              "kind": "OPEN",
+              "text": "What role in conflict matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    }
+  ]
+}

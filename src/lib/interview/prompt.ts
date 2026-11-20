@@ -27,6 +27,7 @@
  * output schema is a new version, recorded on every round and every
  * `AiCallLog` row (rule 9).
  */
+import { createHash } from 'node:crypto';
 import type { FieldDef } from '@/lib/bible/template-schema';
 import type { BibleKind } from '@/lib/bible/kinds';
 import { definePrompt, type AuthorDataBlock, type PromptTemplate } from '@/lib/ai/prompt';
@@ -36,8 +37,25 @@ import type { GenerationRequest } from './generator';
 import type { CraftPack, PersonaPack } from './packs';
 import type { AnswerStatus, QuestionKind } from './vocabulary';
 
-/** The prompt's version: recorded on every round and every call (rule 9). 2.1's version shape (no slash). */
-export const QUESTION_PROMPT_VERSION = 'question-generation.2.2.1';
+/**
+ * The prompt's version: recorded on every round, every call and every pack
+ * evaluation record (rule 9). 2.1's version shape (no slash). Bumped in 2.3
+ * for the several-persona prompts; a record made under another version does
+ * not mount its pack (`PROMPT_VERSION_MISMATCH`).
+ */
+export const QUESTION_PROMPT_VERSION = 'question-generation.2.3.0';
+
+/**
+ * One call's version (2.3): `QUESTION_PROMPT_VERSION` plus a digest of the
+ * packs in its system prompt (`+packs.<12 hex>`, over each pack's name,
+ * version and content hash), so each `AiCallLog` row names the exact pack
+ * text the call was taught (rule 9), within 2.1's 64-character version shape.
+ * The round's metrics list the packs behind each digest.
+ */
+export function callPromptVersion(packs: ReadonlyArray<{ name: string; version: number; contentHash: string }>): string {
+    const lines = packs.map((p) => `${p.name}@${p.version}:${p.contentHash}`).sort();
+    return `${QUESTION_PROMPT_VERSION}+packs.${createHash('sha256').update(lines.join('\n'), 'utf8').digest('hex').slice(0, 12)}`;
+}
 
 /** The prompt's id and purpose as 2.1 records them (`AiCallLog.promptId`, `.purpose`). */
 export const QUESTION_PROMPT_ID = 'interview.questions';
@@ -158,10 +176,11 @@ export const QUESTION_PROMPT: Readonly<PromptTemplate> = definePrompt({
     costBudgetMicroUsd: QUESTION_CALL_COST_BUDGET_MICRO_USD,
 });
 
-/** One call's template: `QUESTION_PROMPT` with the round's product guidance and the detail's output budget. */
-export function questionTemplateFor(guidance: string, detail: number): Readonly<PromptTemplate> {
+/** One call's template: `QUESTION_PROMPT` with the round's product guidance, the detail's output budget and the call's version. */
+export function questionTemplateFor(guidance: string, detail: number, version: string = QUESTION_PROMPT_VERSION): Readonly<PromptTemplate> {
     return definePrompt({
         ...QUESTION_PROMPT,
+        version,
         system: guidance ? `${QUESTION_PROMPT.system}\n\n${guidance}` : QUESTION_PROMPT.system,
         maxOutputTokens: maxOutputTokensFor(detail),
     });
@@ -217,8 +236,9 @@ export function questionDataBlocks(input: PromptInput): AuthorDataBlock[] {
 
 /** The complete request one persona's call sends (design 5.1). Pure. */
 export function buildGenerationRequest(input: PromptInput): GenerationRequest {
+    const packs = [...input.craftPacks, ...(input.persona ? [input.persona] : [])];
     return {
-        template: questionTemplateFor(roundGuidance(input), input.dials.detail),
+        template: questionTemplateFor(roundGuidance(input), input.dials.detail, callPromptVersion(packs)),
         data: questionDataBlocks(input),
         schema: GeneratedQuestionsSchema,
         bookId: input.bookId,

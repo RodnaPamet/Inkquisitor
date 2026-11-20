@@ -29,6 +29,7 @@ import { seedVectors } from '../helpers/vectors';
 import { seedInterview } from '../helpers/interview';
 import { seedAiCall, seedReservation } from '../helpers/ai-calls';
 import { createAccount, workspaceCtx } from '../helpers/workspaces';
+import { setBookInterviewDefaults, setWorkspaceInterviewDefaults } from '@/app-layer/usecases/interview-defaults';
 
 afterAll(() => prisma.$disconnect());
 
@@ -129,6 +130,11 @@ beforeAll(async () => {
     await seedAiCall(workspaceCtx(b), bBook.bookId, 'rls-b');
     await seedReservation(workspaceCtx(a), `rls-a-${randomBytes(4).toString('hex')}`);
     await seedReservation(workspaceCtx(b), `rls-b-${randomBytes(4).toString('hex')}`);
+    // The interview defaults (2.3): a workspace layer and a book layer each.
+    for (const [acct, book] of [[a, aBook], [b, bBook]] as const) {
+        await setWorkspaceInterviewDefaults(workspaceCtx(acct), { depth: 2 });
+        await setBookInterviewDefaults(workspaceCtx(acct), book.bookId, { detail: 4 });
+    }
 });
 
 it('there is something to cover: zero tables is never complete coverage', () => {
@@ -148,6 +154,8 @@ it('there is something to cover: zero tables is never complete coverage', () => 
             'InterviewRound',
             'Question',
             'Answer',
+            'WorkspaceInterviewDefaults',
+            'BookInterviewDefaults',
             'AiCallLog',
             'AiSpendMonth',
             'AiSpendReservation',

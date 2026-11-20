@@ -18,6 +18,9 @@
  *                                    is sent: `zdr` or `standard-beta`
  *                                    (decision D5, amended 2026-11-19; below)
  *   ANTHROPIC_ZDR_CONFIRMED=1        the 2.1 spelling of `AI_RETENTION_MODE=zdr`
+ *   ANTHROPIC_WORKSPACE_ID           optional (2.3): the workspace an
+ *                                    organisation-level key's requests name;
+ *                                    a malformed one is refused at start
  *   AI_MODEL_STUB=1                  the in-process stubbed model (Phase 2.4,
  *                                    `./model-stub.ts`): canned questions, for
  *                                    a local test server only; production
@@ -52,6 +55,7 @@
  * (the API caches a compiled schema outside zero retention).
  */
 
+import { isAnthropicWorkspaceId } from './anthropic-workspace';
 import { stubModelEnabled, stubModelProblems } from './model-stub';
 
 /**
@@ -72,6 +76,7 @@ export type AiEnvRecord = {
         | 'AI_RETENTION_MODE'
         | 'ANTHROPIC_ZDR_CONFIRMED'
         | 'ANTHROPIC_CUSTOM_HEADERS'
+        | 'ANTHROPIC_WORKSPACE_ID'
         | 'AI_MODEL_STUB'
         | 'APP_URL'
         | 'NEXTAUTH_URL'
@@ -180,6 +185,12 @@ export function aiConfigProblems(e: AiEnvRecord): string[] {
     if (present(e.AI_MONTHLY_CEILING_USD_DEFAULT) && parseCeilingUsd(e.AI_MONTHLY_CEILING_USD_DEFAULT) === null) {
         problems.push(
             `AI_MONTHLY_CEILING_USD_DEFAULT must be a dollar figure from 0 to ${MAX_MONTHLY_CEILING_USD} (e.g. 50 or 12.50).`,
+        );
+    }
+    if (present(e.ANTHROPIC_WORKSPACE_ID) && !isAnthropicWorkspaceId(e.ANTHROPIC_WORKSPACE_ID)) {
+        problems.push(
+            'ANTHROPIC_WORKSPACE_ID must be an Anthropic workspace id (letters, digits, _ and -, as in wrkspc_…): it is sent as the ' +
+                'anthropic-workspace-id header, and a malformed one never is. Unset it for a workspace-scoped key.',
         );
     }
     if (present(e.AI_DISABLED) && !['0', '1'].includes(e.AI_DISABLED.trim())) {

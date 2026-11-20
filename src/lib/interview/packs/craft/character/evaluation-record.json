@@ -1,0 +1,288 @@
+{
+  "format": "inkquisitor-pack-evaluation/1",
+  "pack": {
+    "name": "craft-character",
+    "version": 1,
+    "contentHash": "sha256:331a0c416bd7a83298e571a169abd4e1a6ad444448a703f320f715fd3856badb"
+  },
+  "set": {
+    "hash": "sha256:424cef6fda4fbed0046dfcf70f2cad052f99d71771f3641481658351c05f0ca0"
+  },
+  "promptVersion": "question-generation.2.3.0",
+  "generator": {
+    "kind": "structural",
+    "id": "structural-generator.1"
+  },
+  "ranAt": "2026-11-19T23:18:40.088Z",
+  "answers": [
+    {
+      "caseId": "character-01",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-character-01",
+              "targetsFieldKeys": [
+                "role"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the role.",
+              "kind": "CHOICE",
+              "text": "Which way does the role lean?",
+              "options": [
+                "role leans inward",
+                "role leans outward",
+                "role holds still"
+              ]
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "character-02",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-character-02",
+              "targetsFieldKeys": [
+                "role"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the role.",
+              "kind": "OPEN",
+              "text": "What role matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "character-03",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-character-03",
+              "targetsFieldKeys": [
+                "want"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the want.",
+              "kind": "OPEN",
+              "text": "What want matters most here, in your own words?"
+            },
+            {
+              "elementId": "eval-character-03",
+              "targetsFieldKeys": [
+                "wound"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the wound.",
+              "kind": "OPEN",
+              "text": "What wound matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "character-04",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-character-04",
+              "targetsFieldKeys": [
+                "false_belief"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the false belief.",
+              "kind": "OPEN",
+              "text": "What false belief matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "character-05",
+      "outputs": []
+    },
+    {
+      "caseId": "character-06",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-character-06",
+              "targetsFieldKeys": [
+                "need"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the need.",
+              "kind": "OPEN",
+              "text": "What need matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "character-07",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-character-07",
+              "targetsFieldKeys": [
+                "want"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the want.",
+              "kind": "CHOICE",
+              "text": "Which way does the want lean?",
+              "options": [
+                "want leans inward",
+                "want leans outward",
+                "want holds still"
+              ]
+            },
+            {
+              "elementId": "eval-character-07",
+              "targetsFieldKeys": [
+                "wound"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the wound.",
+              "kind": "CHOICE",
+              "text": "Which way does the wound lean?",
+              "options": [
+                "wound leans inward",
+                "wound leans outward",
+                "wound holds still"
+              ]
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "character-08",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-character-08",
+              "targetsFieldKeys": [
+                "want"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the want.",
+              "kind": "OPEN",
+              "text": "What want matters most here, in your own words?"
+            },
+            {
+              "elementId": "eval-character-08",
+              "targetsFieldKeys": [
+                "wound"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the wound.",
+              "kind": "OPEN",
+              "text": "What wound matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "character-09",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-character-09",
+              "targetsFieldKeys": [
+                "want"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the want.",
+              "kind": "OPEN",
+              "text": "What want matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "character-10",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-character-10",
+              "targetsFieldKeys": [
+                "wound"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the wound.",
+              "kind": "OPEN",
+              "text": "What wound matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "character-11",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-character-11",
+              "targetsFieldKeys": [
+                "want"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the want.",
+              "kind": "OPEN",
+              "text": "What want matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "character-12",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-character-12",
+              "targetsFieldKeys": [
+                "arc"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the arc.",
+              "kind": "OPEN",
+              "text": "What arc matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    }
+  ]
+}

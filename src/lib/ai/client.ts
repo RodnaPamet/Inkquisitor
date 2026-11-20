@@ -3,8 +3,10 @@
  *
  * Lifted from inflect-compliance's `src/lib/agentic/tool-runner/client.ts`
  * (see docs/carve-manifest.md). Inflect chose the client from a tenant's
- * residency terms and added a workspace header; Inkquisitor has one route to
- * one provider, so both branches are gone. What stays is what keeps a call
+ * residency terms; Inkquisitor has one route to one provider, so that branch
+ * is gone. The workspace header came back in 2.3 (`ANTHROPIC_WORKSPACE_ID`,
+ * `./anthropic-workspace.ts`): an organisation-level key, such as the one the
+ * `Evals` workflow runs on, is refused HTTP 400 without it. What stays is what keeps a call
  * honest: a NEW client per call (nothing cached, so no two calls share an
  * instance), the environment pinned out, and a middleware that lets nothing
  * but a Messages call leave.
@@ -95,6 +97,7 @@ import { z } from 'zod';
 
 import { env } from '@/env';
 import { logger } from '@/lib/observability/logger';
+import { anthropicWorkspaceHeaders } from './anthropic-workspace';
 import { aiUnavailableReason, stubModelActive } from './config';
 import { stubMessagesFetch } from './model-stub';
 import { AiPromptError, AiRequestRefusedError, type AiUnavailableReason } from './errors';
@@ -345,8 +348,10 @@ export function clientForRun(opts: ClientOptions = {}): ClientChoice {
         apiKey,
         authToken: null,
         baseURL: ANTHROPIC_API_BASE_URL,
-        // A fresh object per client: no two clients share a headers map.
-        defaultHeaders: {},
+        // A fresh object per client: no two clients share a headers map. The
+        // only header added is the workspace an organisation-level key's
+        // request belongs to, when one is configured (`./anthropic-workspace.ts`).
+        defaultHeaders: anthropicWorkspaceHeaders(env.ANTHROPIC_WORKSPACE_ID),
         webhookKey: null,
         maxRetries: CLIENT_MAX_RETRIES,
         ...(opts.timeoutMs ? { timeout: opts.timeoutMs } : {}),

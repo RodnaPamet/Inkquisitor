@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { isNextProductionBuild } from '@/lib/build-phase';
 import { DEV_FALLBACK_DATA_ENCRYPTION_KEY, MIN_DATA_ENCRYPTION_KEY_LENGTH } from '@/lib/security/encryption-constants';
 import { DEV_FALLBACK_AUTH_SECRET, MIN_AUTH_SECRET_LENGTH } from '@/lib/auth/auth-constants';
+import { ANTHROPIC_WORKSPACE_ID_PATTERN } from '@/lib/ai/anthropic-workspace';
 
 /**
  * A secret production cannot run without. Optional elsewhere (development and
@@ -209,6 +210,10 @@ export const env = createEnv({
         // The 2.1 spelling of `AI_RETENTION_MODE=zdr`, still honoured: `1`
         // states the key's organization has a zero-data-retention arrangement.
         ANTHROPIC_ZDR_CONFIRMED: z.enum(['0', '1']).optional(),
+        // The Anthropic workspace an ORGANISATION-level key's requests belong
+        // to (Phase 2.3, lifted from inflect): sent as `anthropic-workspace-id`
+        // by `clientForRun` when set; a workspace-scoped key needs none.
+        ANTHROPIC_WORKSPACE_ID: z.string().trim().regex(ANTHROPIC_WORKSPACE_ID_PATTERN, 'ANTHROPIC_WORKSPACE_ID is an Anthropic workspace id (letters, digits, _ and -)').optional(),
         // Read by the SDK itself and merged into every request; declared so
         // the model layer can refuse to build a client while it is set.
         ANTHROPIC_CUSTOM_HEADERS: z.string().optional(),
@@ -291,6 +296,7 @@ export const env = createEnv({
         ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
         AI_RETENTION_MODE: process.env.AI_RETENTION_MODE,
         ANTHROPIC_ZDR_CONFIRMED: process.env.ANTHROPIC_ZDR_CONFIRMED,
+        ANTHROPIC_WORKSPACE_ID: process.env.ANTHROPIC_WORKSPACE_ID,
         ANTHROPIC_CUSTOM_HEADERS: process.env.ANTHROPIC_CUSTOM_HEADERS,
         AI_DISABLED: process.env.AI_DISABLED,
         AI_MODEL_STUB: process.env.AI_MODEL_STUB,

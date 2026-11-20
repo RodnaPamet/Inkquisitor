@@ -90,6 +90,8 @@ enum InterviewStopReason {
   PROVIDER_FAILURE
   NO_ACCEPTABLE_QUESTION
   GUARD_REFUSED
+  /// A pack the session pinned changed since it started (Phase 2.3).
+  PACK_CHANGED
 }
 
 /// A round's life: GENERATING while its questions are being made (a claim:

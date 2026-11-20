@@ -44,7 +44,9 @@ import type { PromptAnswer } from '@/lib/interview/prompt';
 import type { RoundElement } from '@/lib/interview/round';
 import { sessionProgress, type SessionProgress } from '@/lib/interview/stop';
 import { decodeOptions, decodeRecommendation, decodeScaleLabels } from '@/lib/interview/storage';
-import type { AnswerStatus, StopReason } from '@/lib/interview/vocabulary';
+import { isPersonaKey, type AnswerStatus, type StopReason } from '@/lib/interview/vocabulary';
+import { PERSONA_DISPLAY_NAMES } from '@/lib/interview/packs';
+import { parsePackPins } from '@/lib/interview/pack-mount';
 
 /** At most this many elements a kind or book session questions (a larger scope is cut, and says so). */
 export const SCOPE_ELEMENTS_MAX = 60;
@@ -242,7 +244,10 @@ export interface QuestionView {
     targetsFieldKeys: string[];
     mode: 'FRONTIER' | 'CHALLENGE';
     origin: QuestionRow['origin'];
+    /** The persona that worded it (STORM's perspective tag), or null for a pack fallback / a session with none. */
     personaKey: string | null;
+    /** That persona's display name (`Gentle Mentor`, …), or null. */
+    personaName: string | null;
     kind: QuestionRow['kind'];
     text: string;
     options: string[] | null;
@@ -274,6 +279,7 @@ export function questionView(q: QuestionRow, a: AnswerRow | undefined): Question
         mode: q.mode,
         origin: q.origin,
         personaKey: q.personaKey,
+        personaName: isPersonaKey(q.personaKey) ? PERSONA_DISPLAY_NAMES[q.personaKey] : null,
         kind: q.kind,
         text: q.text,
         options: decodeOptions(q.options),
@@ -302,6 +308,8 @@ export interface SessionSummaryView {
     personaKeys: string[];
     offerRecommended: boolean;
     preferChoice: boolean;
+    /** The packs the session mounted, pinned when it started; null for a session from before pinning. */
+    packs: Array<{ name: string; version: number; contentHash: string; recordKind: string }> | null;
     status: SessionRow['status'];
     stopReason: SessionRow['stopReason'];
     stopDetail: Prisma.JsonValue;
@@ -323,6 +331,7 @@ export function sessionSummaryView(s: SessionRow, targetElementName: string | nu
         personaKeys: s.personaKeys,
         offerRecommended: s.offerRecommended,
         preferChoice: s.preferChoice,
+        packs: parsePackPins(s.packPins)?.map((p) => ({ name: p.name, version: p.version, contentHash: p.contentHash, recordKind: p.recordKind })) ?? null,
         status: s.status,
         stopReason: s.stopReason,
         stopDetail: s.stopDetail,

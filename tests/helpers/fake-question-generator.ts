@@ -1,6 +1,7 @@
 /**
- * A deterministic question generator for tests (Phase 2.2): no model, no
- * network, no 2.1 call. It reads what the engine's request allows — the
+ * A deterministic question generator for tests (Phase 2.2; since 2.3 the
+ * product's STRUCTURAL generator, `src/lib/interview/evals/structural-generator.ts`,
+ * plus the knobs below): no model, no network, no 2.1 call. It reads what the engine's request allows — the
  * `targets.N` data blocks and the detail dial's kinds in the template's system
  * text — and words one
  * well-formed question per allowed target, so a test sees exactly what the
@@ -9,7 +10,7 @@
  */
 import type { GenerationFailureKind, GenerationRequest, GenerationResult, QuestionGenerator } from '@/lib/interview/generator';
 import type { GeneratedQuestion } from '@/lib/interview/candidates';
-import type { QuestionKind } from '@/lib/interview/vocabulary';
+import { allowedTargets, kindsInPrompt, structuralQuestion } from '@/lib/interview/evals/structural-generator';
 
 export interface FakeGeneratorOptions {
     /** Rewrite (or drop, with an empty array) each question the fake would send. */
@@ -28,34 +29,8 @@ export interface FakeGenerator extends QuestionGenerator {
     readonly calls: GenerationRequest[];
 }
 
-interface AllowedTargets {
-    elementId: string;
-    allowed_targets: string[];
-    may_challenge: string | null;
-}
-
-/** A request's data blocks (the author text 2.1 will fence), by label. */
-export function dataBlocks(request: GenerationRequest): Map<string, string> {
-    return new Map(request.data.map((b) => [b.label, b.text]));
-}
-
-export function allowedTargets(request: GenerationRequest): AllowedTargets[] {
-    return [...dataBlocks(request)].filter(([label]) => label.startsWith('targets.')).map(([, body]) => JSON.parse(body) as AllowedTargets);
-}
-
-export function kindsInPrompt(request: GenerationRequest): QuestionKind[] {
-    const m = /Use only these question kinds: ([A-Z_, ]+)\./.exec(request.template.system);
-    return m ? (m[1].split(', ') as QuestionKind[]) : [];
-}
-
-/** The fake's question for one field. */
-export function fakeQuestion(elementId: string, fieldKey: string, kinds: readonly QuestionKind[]): GeneratedQuestion {
-    const words = fieldKey.split('_').join(' ');
-    const base = { elementId, targetsFieldKeys: [fieldKey], mode: 'FRONTIER' as const, rationale: `Asks for the ${words}.` };
-    if (kinds.includes('OPEN')) return { ...base, kind: 'OPEN', text: `What ${words} matters most here, in your own words?` };
-    if (kinds.includes('CHOICE')) return { ...base, kind: 'CHOICE', text: `Which way does the ${words} lean?`, options: [`${words} leans inward`, `${words} leans outward`, `${words} holds still`] };
-    return { ...base, kind: 'SCALE', text: `How strong is the ${words}?`, scaleLabels: { low: 'faint', high: 'overwhelming' } };
-}
+/** The structural generator's helpers (`src/lib/interview/evals/structural-generator.ts`), named as the tests know them. */
+export { allowedTargets, dataBlocks, kindsInPrompt, structuralQuestion as fakeQuestion } from '@/lib/interview/evals/structural-generator';
 
 export function fakeGenerator(options: FakeGeneratorOptions = {}): FakeGenerator {
     const calls: GenerationRequest[] = [];
@@ -71,7 +46,7 @@ export function fakeGenerator(options: FakeGeneratorOptions = {}): FakeGenerator
             const kinds = kindsInPrompt(request);
             const questions = allowedTargets(request).flatMap((t) =>
                 t.allowed_targets.flatMap((key) => {
-                    const q = fakeQuestion(t.elementId, key, kinds);
+                    const q = structuralQuestion(t.elementId, key, kinds);
                     const out = options.mutate ? options.mutate(q, request) : q;
                     return Array.isArray(out) ? out : [out];
                 }),

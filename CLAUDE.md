@@ -23,6 +23,7 @@ npm start                 # next start (after build)
 npm run worker            # BullMQ worker from source (tsx; loads .env then .env.local, as next dev does)
 npm run build:worker      # esbuild → dist/worker.mjs, dist/worker-healthcheck.mjs
 npm run secret-scan       # scripts/detect-secrets.sh (staged files; --all for every tracked file)
+npm run packs:evaluate    # re-run the interview packs' evaluation sets, structural records beside the packs (2.3)
 npm run docs:build        # the Starlight help site (site/), from docs/user/
 npm run lint              # eslint . (flat config, eslint.config.mjs)
 npm run typecheck         # tsc --noEmit, then packages/ui alone (no `@/` imports there)
@@ -54,7 +55,9 @@ Release from conventional commits with GITHUB_TOKEN alone; `docs-site.yml`
 builds the help site and deploys it only on main when Pages is enabled;
 `postgres-image.yml` publishes `ghcr.io/rodnapamet/inkquisitor-postgres`
 (main only, weekly and on an upstream digest move; build, smoke, Trivy, then
-push).
+push); `evals.yml` (**Evals**, dispatch only, not a check) makes real-model
+pack evaluation records on `secrets.ANTHROPIC_API_KEY` and uploads them as an
+artifact, committing nothing (`tests/unit/evals-workflow.test.ts`).
 
 ## Stack
 
@@ -208,6 +211,20 @@ prisma/migrations/…_ai_retention_mode → AiCallLog's RETENTION_MODE_UNDECLARE
 tests/helpers/fake-question-model.ts → the fake Messages API turn that answers the engine's prompt
 src/app-layer/usecases/      → interviews, interview-answers, interview-rounds, interview-state, question-embeddings
 src/app/api/w/[workspaceSlug]/books/[bookId]/interviews/** → start, list, read, next round, close, stop, answer, skip, decide later
+```
+
+Phase 2.3 (dials, personas, pack mounting) added:
+
+```
+src/lib/interview/dial-settings.ts → DialSettings, resolveDials (session > book > workspace > code), dialEffects
+src/lib/interview/pack-text-scan.ts, pack-evaluation.ts, pack-mount.ts, pack-records-config.ts → the lifted skill mount system
+src/lib/interview/packs/**/evaluation-record.json, packs/personas/situations.json → records; the persona situations
+src/lib/interview/evals/structural-generator.ts, run-evaluations.ts; scripts/evaluate-packs.ts → npm run packs:evaluate
+prisma/migrations/…_interview_dials_and_packs → packPins (write-once), personas ≤ 3, Workspace/BookInterviewDefaults, PACK_CHANGED
+src/app-layer/usecases/      → interview-defaults, interview-packs
+src/app/api/w/[workspaceSlug]/interview-packs, interview-defaults, books/[bookId]/interview-defaults
+src/lib/ai/anthropic-workspace.ts → ANTHROPIC_WORKSPACE_ID, the header an organisation-level key needs
+.github/workflows/evals.yml  → real-model evaluation records (dispatch only, artifact, no push)
 ```
 
 Phase 2.4 (the interview experience) added:
@@ -645,7 +662,41 @@ closed beta with an explicit operator flag (D5, amended 2026-11-19).
   #23 item 1). Packs (`src/lib/interview/packs/`, original content) are
   validated with Zod at load and read from disk at `process.cwd()` (the
   Dockerfile copies the directory); a production server loads them at boot
-  and exits 1 when they do not; 2.3 mounts them.
+  and exits 1 when they do not.
+- **Dials and packs (Phase 2.3; D11).** A session's dials are resolved ONCE,
+  at start, per dial: its request, then `BookInterviewDefaults`, then
+  `WorkspaceInterviewDefaults`, then `CODE_DEFAULT_DIALS` (`resolveDials`; a
+  NULL column passes the dial on; `personaKeys: []` is a setting). Defaults are
+  read under `bible.view` and replaced whole (PUT) under `bible.edit`. A DIAL
+  CHANGES PROMPTS AND BUDGETS ONLY (`dialEffects` is the list): no module on
+  the bible's write path (anything importing `writeFieldValues` /
+  `recordVersion`) may import a dial or pack module, even for types
+  (`tests/guards/dials-stay-off-the-bible-write-path.test.ts`). Up to three
+  personas (CHECK, distinct): each words its round-robin share in its own
+  call with its own pack, its questions tagged (`personaKey`, `personaName`);
+  before a round is claimed the month must take one least-cost call per
+  persona (`modelBudgetSignals(…, calls)`), never a round it cannot finish;
+  every call's prompt version is `question-generation.<v>+packs.<12 hex>` over
+  its packs' hashes, and `metrics.calls` names them. A pack MOUNTS only when
+  every file of it (PACK.md, evals.json, a persona's situations.json) passes
+  the load-time scan (`pack-text-scan.ts`) and its
+  `evaluation-record.json` passes when REPLAYED through `produceRound` and
+  graded against its `evals.json` (`pack-evaluation.ts`; tied to the pack's
+  content hash, the set's hash and `QUESTION_PROMPT_VERSION`; its `generator`
+  claim is checked, not believed: a structural record must be exactly what the
+  structural generator reproduces, and a model record holding the structural
+  generator's output is refused `STRUCTURAL_OUTPUT_AS_MODEL`); PRODUCTION
+  accepts only a real model's record, development and test a structural one
+  too, with no override (D11, `pack-records-config.ts`). A refused pack is 503
+  `PACKS_NOT_MOUNTABLE` naming each pack, nothing written, and production
+  logs `[startup] WARN` with the counts. A session pins its packs at start
+  (`packPins`, write-once by trigger) — each kind's craft pack (every kind for
+  a BOOK session) and each persona's — and every round compares them first
+  (`pinMismatch`): a changed or unpinned pack pauses it `PACK_CHANGED` (a
+  2.2 session, NULL pins, is never pinned later and stays paused). After
+  editing a pack, its `evals.json`, `situations.json` or the question prompt,
+  re-run `npm run packs:evaluate`; real-model records come from the Evals
+  workflow and land by a reviewed pull request (the 2.3 note, "Evals").
 - **The interview experience (Phase 2.4).** Starting an interview and each
   next round STREAM (`…/interviews/stream`, `…/:sessionId/rounds/stream`,
   `interviewStreamResponse`): a refusal before the work is under way is the

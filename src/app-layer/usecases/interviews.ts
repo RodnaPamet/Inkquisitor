@@ -30,11 +30,19 @@
  * with KILL_SWITCH / WORKSPACE_CEILING, unless nothing is left to ask, when it
  * completes. Nothing here fakes model output.
  *
+ * Since 2.3 a session's dials are resolved from its request and the book's and
+ * workspace's defaults (`interview-defaults.ts`), several personas may question
+ * it (STORM's perspectives: each words its share of a round, tagged with its
+ * name), and the packs it mounts are pinned when it starts and compared before
+ * every round (`src/lib/interview/pack-mount.ts`): a pack that does not mount
+ * refuses 503 `PACKS_NOT_MOUNTABLE` before anything is written, and a pinned
+ * pack whose file changed pauses the session `PACK_CHANGED`.
+ *
  * A scope with no element (a kind the book has none of) is refused 400
  * `SCOPE_EMPTY`: a session over nothing would "complete" having asked
  * nothing, and zero is never complete (rule 6).
  */
-import type { BibleElementKind } from '@prisma/client';
+import type { BibleElementKind, Prisma } from '@prisma/client';
 import type { WorkspaceRequestContext } from '@/app-layer/types';
 import { logEvent } from '@/app-layer/events/audit';
 import { assertPermission } from '@/app-layer/policies/permission.policy';
@@ -43,9 +51,14 @@ import { AnswerRepository, InterviewRoundRepository, InterviewSessionRepository,
 import { CloseRoundInput, InterviewStartInput, RoundNumberParam } from '@/app-layer/schemas/interview';
 import { runInWorkspaceContext, type PrismaTx } from '@/lib/db/rls-middleware';
 import { ConflictError, NotFoundError, ValidationError } from '@/lib/errors/types';
-import { DEFAULT_DIALS, roundBudgetFor, tokenBudgetFor } from '@/lib/interview/dials';
+import { BIBLE_KINDS, type BibleKind } from '@/lib/bible/kinds';
+import { resolveDials } from '@/lib/interview/dial-settings';
+import { roundBudgetFor, tokenBudgetFor } from '@/lib/interview/dials';
 import { getPacks } from '@/lib/interview/packs';
+import { PacksNotMountableError, packNamesFor, pinForRow, pinsFor } from '@/lib/interview/pack-mount';
 import { requireBook, requireElement } from './bible-common';
+import { defaultLayersFor } from './interview-defaults';
+import { deploymentPackMounts } from './interview-packs';
 import {
     announceClaim,
     claimRound,
@@ -54,6 +67,7 @@ import {
     generatorOf,
     stopNow,
     type InterviewDeps,
+    type PackContext,
 } from './interview-rounds';
 import { skipUnanswered } from './interview-answers';
 import {
@@ -87,24 +101,43 @@ async function viewOf(db: PrismaTx, ctx: WorkspaceRequestContext, bookId: string
     return interviewView(session, state);
 }
 
+/** The registry and its verdicts a request runs on: the one handed in (tests), else the deployment's. */
+function packContextOf(deps: InterviewDeps): PackContext {
+    const registry = deps.packs ?? getPacks();
+    return { registry, mounts: (names) => deploymentPackMounts(registry, deps.packRecordMode, names) };
+}
+
+/**
+ * Start an interview. Its dials are resolved once, here, and stored on the
+ * session: the request's own, then the book's defaults, then the workspace's,
+ * then the code default (`resolveDials`). Every pack it will mount — the
+ * craft pack of each kind in scope (every kind, for a book) and each persona's
+ * — is pinned on the session by content hash, or the start is refused 503
+ * `PACKS_NOT_MOUNTABLE` with nothing written.
+ */
 export async function startInterview(ctx: WorkspaceRequestContext, bookId: string, input: unknown, deps: InterviewDeps = {}): Promise<InterviewView> {
     await assertPermission(ctx, 'bible.edit');
     const parsed = InterviewStartInput.parse(input);
     const generator = generatorOf(ctx, deps);
     // Before anything is written: a pack that will not load fails the request
     // here, not after a round has been claimed and left generating.
-    deps = { ...deps, packs: deps.packs ?? getPacks() };
-    const depth = parsed.depth ?? DEFAULT_DIALS.depth;
-    const detail = parsed.detail ?? DEFAULT_DIALS.detail;
-    const personaKeys = parsed.persona ? [parsed.persona] : [];
+    const packContext = packContextOf(deps);
+    deps = { ...deps, packs: packContext.registry };
 
     const started = await runInWorkspaceContext(ctx, async (db) => {
         await requireBook(db, ctx, bookId);
-        if (parsed.scope === 'ELEMENT') await requireElement(db, ctx, bookId, parsed.elementId!);
+        let kinds: BibleKind[];
+        if (parsed.scope === 'ELEMENT') kinds = [(await requireElement(db, ctx, bookId, parsed.elementId!)).kind];
         else {
             const any = await BibleElementRepository.listForInterview(db, ctx.workspaceId, bookId, { kind: parsed.kind, take: 1 });
             if (any.length === 0) throw new ValidationError('There is nothing in this book to ask about yet.', { reason: 'SCOPE_EMPTY' });
+            kinds = parsed.scope === 'KIND' ? [parsed.kind!] : [...BIBLE_KINDS];
         }
+        const { settings, sources } = resolveDials({ session: parsed, ...(await defaultLayersFor(db, ctx, bookId)) });
+        const names = packNamesFor(kinds, settings.personaKeys);
+        const pinned = pinsFor(names, await packContext.mounts(names));
+        if (!pinned.ok) throw new PacksNotMountableError(pinned.refusals);
+        const { depth, detail, personaKeys } = settings;
         const session = await InterviewSessionRepository.create(db, ctx.workspaceId, {
             bookId,
             scope: parsed.scope,
@@ -113,10 +146,11 @@ export async function startInterview(ctx: WorkspaceRequestContext, bookId: strin
             depth,
             detail,
             personaKeys,
-            offerRecommended: parsed.offerRecommended ?? true,
-            preferChoice: parsed.preferChoice ?? false,
+            offerRecommended: settings.offerRecommended,
+            preferChoice: settings.preferChoice,
             roundBudget: roundBudgetFor(depth),
             tokenBudget: tokenBudgetFor(depth, personaKeys.length),
+            packPins: pinned.pins.map(pinForRow) as unknown as Prisma.InputJsonValue,
             createdById: ctx.userId,
         });
         await logEvent(
@@ -125,11 +159,23 @@ export async function startInterview(ctx: WorkspaceRequestContext, bookId: strin
                 action: 'INTERVIEW_STARTED',
                 entityType: 'InterviewSession',
                 entityId: session.id,
-                details: { bookId, scope: parsed.scope, targetElementId: session.targetElementId, targetKind: session.targetKind, depth, detail, personaKeys },
+                details: {
+                    bookId,
+                    scope: parsed.scope,
+                    targetElementId: session.targetElementId,
+                    targetKind: session.targetKind,
+                    depth,
+                    detail,
+                    personaKeys,
+                    offerRecommended: settings.offerRecommended,
+                    preferChoice: settings.preferChoice,
+                    dialSources: sources,
+                    packs: pinned.pins.map((p) => `${p.name}@${p.version}`),
+                },
             },
             { db },
         );
-        return { session, claim: await claimRound(db, ctx, session, generator) };
+        return { session, claim: await claimRound(db, ctx, session, generator, packContext) };
     });
     deps.stream?.emit({ type: 'started', sessionId: started.session.id });
     announceClaim(deps, started.claim);
@@ -195,13 +241,14 @@ export async function interviewScopeElements(
 export async function nextRound(ctx: WorkspaceRequestContext, bookId: string, sessionId: string, deps: InterviewDeps = {}): Promise<InterviewView> {
     await assertPermission(ctx, 'bible.edit');
     const generator = generatorOf(ctx, deps);
-    deps = { ...deps, packs: deps.packs ?? getPacks() };
+    const packContext = packContextOf(deps);
+    deps = { ...deps, packs: packContext.registry };
     const claimed = await runInWorkspaceContext(ctx, async (db) => {
         await requireBook(db, ctx, bookId);
         await InterviewSessionRepository.lock(db, sessionId);
         const session = await requireSession(db, ctx, bookId, sessionId);
         assertNotEnded(session);
-        return { session, claim: await claimRound(db, ctx, session, generator) };
+        return { session, claim: await claimRound(db, ctx, session, generator, packContext) };
     });
     announceClaim(deps, claimed.claim);
     if (claimed.claim.kind === 'claimed') await generateClaimedRound(ctx, claimed.session, claimed.claim, deps);

@@ -1,0 +1,287 @@
+{
+  "format": "inkquisitor-pack-evaluation/1",
+  "pack": {
+    "name": "craft-texture",
+    "version": 1,
+    "contentHash": "sha256:feb2f9632bcb344ffab2b1f380f55362f276f1a0a5f6c7b49a8411451e0fb318"
+  },
+  "set": {
+    "hash": "sha256:2fbf539bda88b1c93877f830da9a155cc7cf2cfa243dbfde7d9351a97d6a6cd8"
+  },
+  "promptVersion": "question-generation.2.3.0",
+  "generator": {
+    "kind": "structural",
+    "id": "structural-generator.1"
+  },
+  "ranAt": "2026-11-19T23:18:40.690Z",
+  "answers": [
+    {
+      "caseId": "texture-01",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-texture-01",
+              "targetsFieldKeys": [
+                "sensory_emphasis"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the sensory emphasis.",
+              "kind": "CHOICE",
+              "text": "Which way does the sensory emphasis lean?",
+              "options": [
+                "sensory emphasis leans inward",
+                "sensory emphasis leans outward",
+                "sensory emphasis holds still"
+              ]
+            },
+            {
+              "elementId": "eval-texture-01",
+              "targetsFieldKeys": [
+                "detail_density"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the detail density.",
+              "kind": "CHOICE",
+              "text": "Which way does the detail density lean?",
+              "options": [
+                "detail density leans inward",
+                "detail density leans outward",
+                "detail density holds still"
+              ]
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "texture-02",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-texture-02",
+              "targetsFieldKeys": [
+                "sensory_emphasis"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the sensory emphasis.",
+              "kind": "OPEN",
+              "text": "What sensory emphasis matters most here, in your own words?"
+            },
+            {
+              "elementId": "eval-texture-02",
+              "targetsFieldKeys": [
+                "detail_density"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the detail density.",
+              "kind": "OPEN",
+              "text": "What detail density matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "texture-03",
+      "outputs": []
+    },
+    {
+      "caseId": "texture-04",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-texture-04",
+              "targetsFieldKeys": [
+                "recurring_details"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the recurring details.",
+              "kind": "OPEN",
+              "text": "What recurring details matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "texture-05",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-texture-05",
+              "targetsFieldKeys": [
+                "detail_density"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the detail density.",
+              "kind": "CHOICE",
+              "text": "Which way does the detail density lean?",
+              "options": [
+                "detail density leans inward",
+                "detail density leans outward",
+                "detail density holds still"
+              ]
+            },
+            {
+              "elementId": "eval-texture-05",
+              "targetsFieldKeys": [
+                "motifs"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the motifs.",
+              "kind": "CHOICE",
+              "text": "Which way does the motifs lean?",
+              "options": [
+                "motifs leans inward",
+                "motifs leans outward",
+                "motifs holds still"
+              ]
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "texture-06",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-texture-06",
+              "targetsFieldKeys": [
+                "detail_density"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the detail density.",
+              "kind": "OPEN",
+              "text": "What detail density matters most here, in your own words?"
+            },
+            {
+              "elementId": "eval-texture-06",
+              "targetsFieldKeys": [
+                "motifs"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the motifs.",
+              "kind": "OPEN",
+              "text": "What motifs matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "texture-07",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-texture-07",
+              "targetsFieldKeys": [
+                "motifs"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the motifs.",
+              "kind": "OPEN",
+              "text": "What motifs matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "texture-08",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-texture-08",
+              "targetsFieldKeys": [
+                "recurring_details"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the recurring details.",
+              "kind": "OPEN",
+              "text": "What recurring details matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "texture-09",
+      "outputs": []
+    },
+    {
+      "caseId": "texture-10",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-texture-10",
+              "targetsFieldKeys": [
+                "recurring_details"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the recurring details.",
+              "kind": "OPEN",
+              "text": "What recurring details matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "texture-11",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-texture-11",
+              "targetsFieldKeys": [
+                "motifs"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the motifs.",
+              "kind": "OPEN",
+              "text": "What motifs matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "texture-12",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-texture-12",
+              "targetsFieldKeys": [
+                "detail_density"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the detail density.",
+              "kind": "OPEN",
+              "text": "What detail density matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    }
+  ]
+}

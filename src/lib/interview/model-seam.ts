@@ -179,7 +179,13 @@ export async function rephraseBudgetSignals(db: PrismaTx, ctx: Pick<WorkspaceReq
     return modelBudgetState(db, ctx, minimumRephraseCallMicroUsd());
 }
 
-/** 2.1's stop signals for a workspace: the kill switch, and whether its month can take one more question call. */
-export async function modelBudgetSignals(db: PrismaTx, ctx: Pick<WorkspaceRequestContext, 'workspaceId'>, detail: number): Promise<ModelBudgetState> {
-    return modelBudgetState(db, ctx, minimumQuestionCallMicroUsd(detail));
+/**
+ * 2.1's stop signals for a workspace: the kill switch, and whether its month
+ * can take one more ROUND — `calls` question calls at the least each can
+ * reserve (since 2.3 a round makes one call per persona). Asking about one call
+ * only would claim a round the month cannot finish: its first calls would be
+ * spent and the round abandoned at the ceiling, paying for nothing.
+ */
+export async function modelBudgetSignals(db: PrismaTx, ctx: Pick<WorkspaceRequestContext, 'workspaceId'>, detail: number, calls: number = 1): Promise<ModelBudgetState> {
+    return modelBudgetState(db, ctx, minimumQuestionCallMicroUsd(detail) * Math.max(1, Math.floor(calls)));
 }

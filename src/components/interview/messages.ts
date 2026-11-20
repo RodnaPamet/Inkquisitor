@@ -27,15 +27,8 @@ const STOP_MESSAGE_KEYS: Readonly<Record<StopReason, StopReason>> = {
     PROVIDER_FAILURE: 'PROVIDER_FAILURE',
     NO_ACCEPTABLE_QUESTION: 'NO_ACCEPTABLE_QUESTION',
     GUARD_REFUSED: 'GUARD_REFUSED',
+    PACK_CHANGED: 'PACK_CHANGED',
 };
-
-/**
- * Stop reasons the server may record before this branch's `StopReason` names
- * them: 2.3's PACK_CHANGED (a pinned pack changed). Worded already, so a 2.3
- * server's pause never reads as the generic sentence; when 2.3 merges, the
- * value joins `StopReason` and moves into the table above.
- */
-const FORTHCOMING_STOP_REASONS: readonly string[] = ['PACK_CHANGED'];
 
 /** The refusals the interview words on its own. */
 export const INTERVIEW_WORDED_REASONS = [
@@ -68,7 +61,6 @@ export function useStopMessage(): (reason: string | null) => string {
     return useCallback(
         (reason: string | null) => {
             if (reason && reason in STOP_MESSAGE_KEYS) return t(STOP_MESSAGE_KEYS[reason as StopReason]);
-            if (reason && FORTHCOMING_STOP_REASONS.includes(reason)) return t(reason);
             return t('generic');
         },
         [t],
