@@ -3,83 +3,83 @@
   "headroom": 0.1,
   "routes": {
     "/(app)/dev/kitchen-sink/page": {
-      "recorded": 636965,
+      "recorded": 637073,
       "budget": 701440
     },
     "/_global-error/page": {
-      "recorded": 304979,
+      "recorded": 304958,
       "budget": 335872
     },
     "/_not-found/page": {
-      "recorded": 304979,
+      "recorded": 304958,
       "budget": 335872
     },
     "/login/page": {
-      "recorded": 319965,
+      "recorded": 319948,
       "budget": 352256
     },
     "/no-workspace/page": {
-      "recorded": 314619,
+      "recorded": 314602,
       "budget": 346112
     },
     "/page": {
-      "recorded": 304979,
+      "recorded": 304958,
       "budget": 335872
     },
     "/signout/page": {
-      "recorded": 314771,
+      "recorded": 314754,
       "budget": 347136
     },
     "/signup/page": {
-      "recorded": 320365,
+      "recorded": 320348,
       "budget": 353280
     },
     "/w/[workspaceSlug]/books/[bookId]/elements/[elementId]/page": {
-      "recorded": 484303,
+      "recorded": 484416,
       "budget": 533504
     },
     "/w/[workspaceSlug]/books/[bookId]/interviews/[sessionId]/page": {
-      "recorded": 484329,
-      "budget": 533504
+      "recorded": 480896,
+      "budget": 529408
     },
     "/w/[workspaceSlug]/books/[bookId]/interviews/[sessionId]/review/page": {
-      "recorded": 498947,
-      "budget": 548864
+      "recorded": 495910,
+      "budget": 545792
     },
     "/w/[workspaceSlug]/books/[bookId]/interviews/new/page": {
-      "recorded": 484329,
-      "budget": 533504
+      "recorded": 480895,
+      "budget": 529408
     },
     "/w/[workspaceSlug]/books/[bookId]/interviews/page": {
-      "recorded": 467065,
-      "budget": 514048
+      "recorded": 467579,
+      "budget": 515072
     },
     "/w/[workspaceSlug]/books/[bookId]/maps/[kind]/page": {
-      "recorded": 473260,
-      "budget": 521216
+      "recorded": 473904,
+      "budget": 522240
     },
     "/w/[workspaceSlug]/books/[bookId]/page": {
-      "recorded": 458144,
+      "recorded": 458446,
       "budget": 504832
     },
     "/w/[workspaceSlug]/books/[bookId]/research/page": {
-      "recorded": 484758,
-      "budget": 533504
+      "recorded": 485075,
+      "budget": 534528
     },
     "/w/[workspaceSlug]/books/page": {
-      "recorded": 420794,
+      "recorded": 420781,
       "budget": 463872
     },
     "/w/[workspaceSlug]/deleted-books/page": {
-      "recorded": 414889,
+      "recorded": 414875,
       "budget": 456704
     },
     "/w/[workspaceSlug]/page": {
-      "recorded": 314332,
+      "recorded": 314315,
       "budget": 346112
     },
     "/w/[workspaceSlug]/settings/page": {
-      "recorded": 319633,
+      "recorded": 319616,
       "budget": 352256
     }
   }
