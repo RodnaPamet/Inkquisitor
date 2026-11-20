@@ -42,6 +42,25 @@ describe('a sentence that drops or adds its source’s negation is unsourced (it
     });
 });
 
+describe('an UPDATE that reverses the stored value as its answer asks is not refused for it (item 1)', () => {
+    // en-01 with the stored wound and its answer rewritten: the answer takes back what is stored.
+    const base = byId('en-01');
+    const c: ReconcileEvalCase = {
+        ...base,
+        bibleState: { ...base.bibleState, wound: 'Wren trusts her brother Tomas completely.' },
+        answers: base.answers.map((a) => (a.id === 'a2' ? { ...a, answer: "Not any more. Since the fire Wren doesn't trust Tomas." } : a)),
+    };
+    const input = roundInputOf(c);
+
+    it('the reversal the answer gives passes, though the stored clause shares more of its words', () => {
+        expect(codes(input, [{ ...refOp(base, 'wound'), value: 'Wren does not trust her brother Tomas.' }])).toEqual([]);
+    });
+
+    it('keeping the stored polarity against the answer is refused', () => {
+        expect(codes(input, [{ ...refOp(base, 'wound'), value: 'Wren trusts her brother Tomas.' }])).toEqual(['UNSOURCED_SENTENCE']);
+    });
+});
+
 describe('a REMOVE cites an answer about the field it empties (item 2)', () => {
     const c = byId('en-07'); // a2 answers the dialogue question; a1 the tense question
     const input = roundInputOf(c);

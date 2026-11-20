@@ -320,12 +320,16 @@ export function groundingForm(text: string): string {
 }
 
 /** Rule 6 for one piece of text: every sentence supported by the sources. */
-function groundedText(text: string, sources: readonly string[]): boolean {
+function groundedText(text: string, sources: readonly string[], prior: readonly string[] = []): boolean {
     const parts = sentences(groundingForm(text));
     const folded = sources.map(groundingForm);
-    // Lexical support, and the polarity of its source kept (issue #39 item 1:
-    // a dropped or added "not" grounds lexically).
-    return parts.length > 0 && parts.every((s) => groundSentence(s, folded).supported && polarityKept(s, folded));
+    const foldedPrior = prior.map(groundingForm);
+    const all = foldedPrior.length === 0 ? folded : [...folded, ...foldedPrior];
+    // Lexical support (from the answers and, for an UPDATE, the value it
+    // replaces), and the polarity of its source kept (issue #39 item 1: a
+    // dropped or added "not" grounds lexically), the answers taking precedence
+    // over the replaced value (`polarityKept`'s `prior`).
+    return parts.length > 0 && parts.every((s) => groundSentence(s, all).supported && polarityKept(s, folded, foldedPrior));
 }
 
 /**
@@ -355,15 +359,16 @@ function readValue(def: FieldDef, raw: ReconcileOperation['value']): Verdict<{ p
 
 /** Rule 6 for a field value. */
 function groundedValue(def: FieldDef, value: FieldValue, parts: readonly string[], cited: readonly ReconcileAnswerFact[], stored: FieldValue | null): boolean {
-    const sources = cited.map((a) => a.text ?? '').filter((t) => t !== '');
-    if (stored !== null) sources.push(valueAsText(def, stored));
+    const answers = cited.map((a) => a.text ?? '').filter((t) => t !== '');
+    // An UPDATE may draw on the value it replaces; the answers stay the evidence (`groundedText`).
+    const prior = stored !== null ? [valueAsText(def, stored)] : [];
     if (def.type === 'scale') {
         // A number is supported by a SCALE answer that gave it, or by the
         // number written as a word in a cited answer.
-        return cited.some((a) => a.scale === value) || sources.some((s) => words(normaliseText(s)).includes(String(value)));
+        return cited.some((a) => a.scale === value) || [...answers, ...prior].some((s) => words(normaliseText(s)).includes(String(value)));
     }
-    if (def.type === 'list') return parts.every((item) => item.trim() === '' || groundedText(item, sources));
-    return parts.every((p) => groundedText(p, sources));
+    if (def.type === 'list') return parts.every((item) => item.trim() === '' || groundedText(item, answers, prior));
+    return parts.every((p) => groundedText(p, answers, prior));
 }
 
 /** One field operation through rules 2–6 (rule 1 and duplicates are the caller's). */

@@ -41,3 +41,30 @@ it('reads a negation as covering only the words after it in its clause', () => {
     expect(polarityKept('The dust turned day into darkness.', ['The dust turned day into darkness and people could not see their own hands.'])).toBe(true);
     expect(polarityKept('People could see their own hands.', ['The dust turned day into darkness and people could not see their own hands.'])).toBe(false);
 });
+
+describe('ordinary prose the polarity check must not refuse', () => {
+    it('"not only", "not just", "no doubt", "no matter" negate nothing', () => {
+        expect(polarityKept('She is brave.', ['She is not only brave but also kind.'])).toBe(true);
+        expect(polarityKept('He is a smuggler.', ['He is not just a smuggler; he runs the harbour.'])).toBe(true);
+        expect(polarityKept('She loves him.', ['There is no doubt she loves him.'])).toBe(true);
+        expect(polarityKept('He keeps the lamp lit.', ['No matter the weather he keeps the lamp lit.'])).toBe(true);
+        expect(negated('She is not only brave.')).toBe(false);
+        // A plain negation after the idiom's word is still one.
+        expect(polarityKept('She is kind.', ['She is not kind.'])).toBe(false);
+    });
+
+    it('an UPDATE that flips the stored value as its answer asks is kept: the answer, not the replaced value, decides', () => {
+        const stored = ['Mara trusts her brother Tomas completely.'];
+        const answer = ["Not any more: since the fire Mara doesn't trust Tomas."];
+        expect(polarityKept('Mara does not trust her brother Tomas.', answer, stored)).toBe(true);
+        // And the other way: the stored "not" lifted by the answer.
+        expect(polarityKept('Mara trusts her brother Tomas again.', ['Now Mara trusts Tomas again.'], ['Mara does not trust her brother Tomas.'])).toBe(true);
+    });
+
+    it('a flip the answers do not support is still refused, and an answer contradicting the sentence wins over the stored value', () => {
+        // The answer says nothing about trust: the stored value decides, and the "not" is unsupported.
+        expect(polarityKept('Mara does not trust her brother Tomas.', ['Mara is tired of the harbour.'], ['Mara trusts her brother Tomas completely.'])).toBe(false);
+        // The answer says she no longer trusts him: keeping "trusts" is refused even though the stored value says it.
+        expect(polarityKept('Mara trusts Tomas and sails at dawn.', ["Mara doesn't trust Tomas any more."], ['Mara trusts Tomas.'])).toBe(false);
+    });
+});

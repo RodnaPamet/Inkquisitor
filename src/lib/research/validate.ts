@@ -114,13 +114,16 @@ export function carriesInjectedText(parts: readonly string[], sourceTexts: reado
 }
 
 /** Every sentence of `text` supported by `sources` (2.2's grounding test). */
-export function groundedText(text: string, sources: readonly string[]): boolean {
+export function groundedText(text: string, sources: readonly string[], prior: readonly string[] = []): boolean {
     // 2.5's grounding form: apostrophes made one, a possessive read as its name.
     const parts = sentences(groundingForm(text));
     const folded = sources.map(groundingForm);
-    // Lexical support, and the polarity of its source kept (issue #39 item 1:
-    // a dropped or added "not" grounds lexically).
-    return parts.length > 0 && parts.every((s) => groundSentence(s, folded).supported && polarityKept(s, folded));
+    const foldedPrior = prior.map(groundingForm);
+    const all = foldedPrior.length === 0 ? folded : [...folded, ...foldedPrior];
+    // Lexical support (from the findings and, for an UPDATE, the value it
+    // replaces), and the polarity of its source kept (issue #39 item 1), the
+    // findings taking precedence over the replaced value (`polarityKept`'s `prior`).
+    return parts.length > 0 && parts.every((s) => groundSentence(s, all).supported && polarityKept(s, folded, foldedPrior));
 }
 
 /** Hold a findings answer to the rules; `limit` is the depth's number of findings. */
@@ -351,12 +354,14 @@ function validateFieldProposal(
     const sources = cited.flatMap(findingTexts);
     const allowedUrls = [...sources, ...cited.flatMap((f) => f.citations.map((c) => c.url ?? ''))];
     if (carriesInjectedText([...read.value.parts, rationale], allowedUrls)) return refuse('COPIES_INJECTED_TEXT');
-    const groundSources = [...sources, element.name];
-    if (item.op === 'UPDATE' && stored !== null) groundSources.push(valueAsText(def, stored));
+    const evidence = [...sources, element.name];
+    // An UPDATE may draw on the value it replaces; the findings stay the evidence (`groundedText`).
+    const prior = item.op === 'UPDATE' && stored !== null ? [valueAsText(def, stored)] : [];
+    const groundSources = [...evidence, ...prior];
     if (writesProse(read.value.parts, groundSources)) return refuse('WRITES_PROSE');
     if (def.type === 'text' || def.type === 'richtext' || def.type === 'list') {
         const texts = def.type === 'list' ? read.value.parts.filter((p) => p.trim() !== '') : [valueAsText(def, normalised.value)];
-        if (!texts.every((t) => groundedText(t, groundSources))) return refuse('UNSOURCED_SENTENCE');
+        if (!texts.every((t) => groundedText(t, evidence, prior))) return refuse('UNSOURCED_SENTENCE');
     }
     return {
         ok: true,
