@@ -90,6 +90,7 @@ import { bulkEligible, opFits } from '@/lib/enrichment/review-rules';
 import { effectiveRunState, PROPOSAL_FLAGS, type ProposalFlag, type ProposalStatus, type ReconcileOutcome, type StoredOp } from '@/lib/enrichment/vocabulary';
 import {
     DERIVED_SLUG_ATTEMPTS,
+    isForeignKeyViolation,
     isUniqueViolation,
     normaliseFieldEntries,
     optionalBlock,
@@ -783,6 +784,9 @@ export async function acceptProposal(ctx: WorkspaceRequestContext, bookId: strin
             return await runInWorkspaceContext(ctx, (db) => acceptNewRelation(db, ctx, bookId, sessionId, proposalId, parsed));
         } catch (err) {
             if (isUniqueViolation(err)) throw relationExists();
+            // An end deleted by a transaction that committed while the relation was being written (its check read it
+            // still there): the same answer as an end found gone.
+            if (isForeignKeyViolation(err)) throw new ConflictError('An element this relation joins has been deleted.', { reason: 'END_GONE' });
             throw err;
         }
     }

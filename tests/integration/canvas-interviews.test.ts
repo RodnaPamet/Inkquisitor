@@ -312,6 +312,30 @@ describe('BETWEEN: "What happens between these?"', () => {
         expect(made.placed).toBe(true);
     });
 
+    it('a link whose new end is deleted while the link is being accepted is 409 END_GONE, never a 500', async () => {
+        const { ctx, bookId, first, second } = await twoBeats();
+        const view = await startInterview(ctx, bookId, { scope: 'BETWEEN', afterElementId: first.id, beforeElementId: second.id, depth: 2, detail: 3 }, deps);
+        await answerAndClose(ctx, bookId, view);
+        const pending = await listPendingStructure(ctx, bookId);
+        const beat = pending.proposals.find((p) => p.kind === 'NEW_ELEMENT')!;
+        const link = pending.proposals.find((p) => p.kind === 'NEW_RELATION')!;
+        const made = await acceptProposal(ctx, bookId, view.session.id, beat.id, {});
+        // The beat's deletion is under way, not yet committed, when the link's acceptance reads its end and writes the relation.
+        let accepting: Promise<unknown> | null = null;
+        await prisma.$transaction(
+            async (tx) => {
+                await tx.bibleElement.delete({ where: { id: made.elementId! } });
+                accepting = acceptProposal(ctx, bookId, view.session.id, link.id, {});
+                accepting.catch(() => undefined);
+                await untilWaitingOnTransaction();
+            },
+            { timeout: 20_000 },
+        );
+        const refused = await refusal(accepting!);
+        expect(refused).toMatchObject({ status: 409, details: { reason: 'END_GONE' } });
+        expect(await prisma.bibleRelation.count({ where: { bookId } })).toBe(0);
+    });
+
     it('refuses a slot that is not one, and another book’s beat', async () => {
         const { ctx, bookId, first, second } = await twoBeats();
         const third = await createElement(ctx, bookId, { kind: 'PLOT_BEAT', name: 'A beat between', fields: [{ key: 'act', value: 'opening' }] });
