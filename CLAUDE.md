@@ -74,8 +74,8 @@ prompt-injection corpus against the real model with the same properties
 Node 24, Next.js 16 (App Router), React 19, TypeScript strict, Tailwind 4,
 Prisma 7 with a multi-file schema folder, Zod 4, `@t3-oss/env-nextjs`, Jest 30,
 Playwright, ESLint 9 flat config. Versions are kept in step with
-inflect-compliance; read the exact ones off `package.json`. tldraw, when it
-arrives in Phase 3, stays pinned to 3.x with the watermark on (decision D1).
+inflect-compliance; read the exact ones off `package.json`. tldraw (Phase 3.1)
+stays pinned to 3.x with the watermark on (decision D1).
 
 ## Layer structure
 
@@ -298,6 +298,22 @@ src/lib/evals/judge.ts            → the evaluation-time judge (model in Evals,
 src/lib/interview/evals/rephrase* → the rephrase prompt's set, evaluation and record (no production gate: D17)
 src/lib/interview/repetition.ts, dedupe-thresholds.ts; src/lib/process-shared-cache.ts; src/lib/bible/field-coercion.ts
 tests/guards/evaluation-records-current.test.ts → every prompt and pack hash recomputed against its committed record
+```
+
+Phase 3.1 (the canvas platform, D1 and D18) added:
+
+```
+prisma/schema/canvas.prisma  → StoryMap (one per book and kind), MapNode (a BibleElement drawn), MapEdge (a BibleRelation drawn), MapSnapshot (append-only)
+src/components/canvas/tldraw/ → story node / edge shape utils, edge binding util, serializer (THE round trip), edge-validation,
+                               arrow-to-edge, editor-canvas, auto-layout-host (dagre), restore-freeform, add-element-node
+src/components/canvas/       → StoryMapCanvas (tldraw host), StoryMapEditor (the dynamic chunk), StoryMapWorkspace (no tldraw),
+                               CanvasErrorBoundary, CanvasHistorySidebar, CanvasDiffOverlay, CanvasExportMenu, MapConflictNotice, AddElementPicker
+src/lib/canvas/              → map-kinds, limits, shape-types, freeform (sanitiser), map-state (canonical), canvas-diff, canvas-changes(-tldraw),
+                               use-canvas-autosave, use-map-autosave, map-save, canvas-export, display, tldraw-assets, api-client
+src/app-layer/usecases/story-maps.ts, repositories/story-map.repository.ts, schemas/canvas.ts
+src/app/api/w/[workspaceSlug]/books/[bookId]/maps/[kind]/** → map GET/PUT, snapshots, snapshot, restore
+src/app/api/canvas-assets/[...asset] → tldraw's fonts, icons and translation from @tldraw/assets (public)
+src/app/w/[workspaceSlug]/books/[bookId]/maps/[kind] → the map page
 ```
 
 ## Rules every change obeys
@@ -942,6 +958,43 @@ closed beta with an explicit operator flag (D5, amended 2026-11-19).
   revision (`DEDUPE_COSINE_THRESHOLDS`, `dedupe-thresholds.ts`; uncalibrated
   until the production model is chosen). CI reads Docker Hub through
   `mirror.gcr.io`.
+- **The story canvas (Phase 3.1; D1, D18).** ROWS ARE THE SOURCE OF TRUTH;
+  tldraw is a view. A book has at most one map of each kind (unique
+  `(bookId, kind)`), created on its FIRST SAVE: an unsaved map reads as empty at
+  version 0 and a read never writes. A node draws one BibleElement and an edge
+  one BibleRelation, each at most once per map, so their ids are the canvas's
+  keys; the book is in every foreign key, and `saveStoryMap` refuses an
+  element or relation of another book (`UNKNOWN_ELEMENT` / `UNKNOWN_RELATION`),
+  an edge that is not its relation's own pair (`RELATION_MISMATCH`) or not
+  between two nodes. `tldrawToRows(rowsToTldraw(rows))` is the identity
+  (`serializer.ts`); what a node SHOWS (name, kind, completeness) is the
+  bible's, passed beside the rows (`MapDisplay`) and never saved, and
+  `canvas-changes-tldraw.ts` compares persisted props only. THE VERSION LOCK:
+  every save and restore names `expectedVersion`; under the advisory lock on
+  (book, kind) a different version is 409 `VERSION_CONFLICT` with
+  `currentVersion`, writing nothing; a save equal to the stored state writes
+  nothing; every other save writes one `MapSnapshot` (append-only by trigger,
+  P0001 `MAP_SNAPSHOT_APPEND_ONLY`). The client stops on a 409 and offers
+  Reload or an explicit save-over, never a retry. Deleting an element or
+  relation cascades to its nodes and edges and bumps the map's version
+  (trigger), so an open tab is refused; a restore is a NEW save and drops (and
+  counts) what the bible no longer holds. The freeform layer (sticky notes) is
+  author text: encrypted, bounded, prototype keys and the canvas's own record
+  types refused, strings sanitised (`sanitiseFreeformForStorage`). An arrow
+  between two nodes becomes an edge only along a relation the book holds.
+  tldraw loads ONLY through `next/dynamic` with `ssr: false` behind
+  `CanvasErrorBoundary` (`StoryMapEditor`); `scripts/check-build.js` fails a
+  build that puts it in any route's first load. Its fonts, icons and
+  translation come from `/api/canvas-assets/<version>/…` (`@tldraw/assets`,
+  an allowlist), never its CDN, which the CSP refuses; the tldraw user is
+  created once (a user rebuilt per render reloads its translation forever).
+  tldraw stays on major 3 with the watermark on and no licence key
+  (`tests/guards/tldraw-major-version.test.ts`,
+  `tldraw-licence-and-watermark.test.ts`); auto-layout is dagre only (D18).
+  tldraw's TipTap dependencies are overridden to the root's 3.x line
+  (GHSA-cp6q-959q-f8rh has no TipTap 2 fix; the 3.1 note). `bible.view` reads
+  a map, `bible.edit` saves and restores. jsdom tests mount tldraw through
+  `tests/helpers/tldraw-jsdom.ts` (its `fetch` is a local stub).
 - **Sanitising author text.** Every author-text write sanitises at the
   usecase layer before it is stored: plain text through `plainLine` /
   `plainBlock` (`src/lib/bible/text.ts`, over `sanitizePlainText`), rich text

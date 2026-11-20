@@ -37,6 +37,7 @@ import { context, trace } from '@opentelemetry/api';
 import { AsyncLocalStorageContextManager } from '@opentelemetry/context-async-hooks';
 import { InMemorySpanExporter, SimpleSpanProcessor, TracerProvider } from '@opentelemetry/sdk-trace';
 import { prisma } from '@/lib/db';
+import { saveStoryMap } from '@/app-layer/usecases/story-maps';
 import { pinoInstance } from '@/lib/observability/logger';
 import { redactLogObject } from '@/lib/observability/redaction';
 import { _resetSentryForTests, initSentry } from '@/lib/observability/sentry';
@@ -132,6 +133,18 @@ it('a marker planted in every author-text path reaches no log line, span, Sentry
     await addRelation(ctx, bookId, { fromElementId: ilse.id, toElementId: light.id, type: 'related_to', note: marked('She lives there.') });
     await importConceptNote(ctx, bookId, { text: marked('A note about tides and lamps.') }, { scan: CLEAN_SCAN });
 
+    // The story canvas (Phase 3.1): a sticky note on the plot board, saved through the request wrapper, and a refused layer.
+    await wrapped(() =>
+        saveStoryMap(ctx, bookId, 'plot', {
+            expectedVersion: 0,
+            nodes: [{ elementId: ilse.id, x: 0, y: 0, w: 220, h: 88, lane: null }],
+            edges: [],
+            freeform: [{ id: 'shape:note1', typeName: 'shape', type: 'note', x: 0, y: 0, props: { text: marked('Ilse sees the ship') } }],
+        }),
+    );
+    const refusedLayer = await wrapped(() => saveStoryMap(ctx, bookId, 'plot', { expectedVersion: 1, nodes: [], edges: [], freeform: [{ id: 'shape:x', typeName: 'shape', type: 'story-node', props: { text: marked('refused') } }] }));
+    expect(refusedLayer.status).toBe(400);
+
     // An unexpected error carrying author text, through the wrapper: logged, traced and reported, its message withheld.
     const failed = await withApiErrorHandling(async () => {
         throw new Error(marked('Ilse failed'));
@@ -216,6 +229,7 @@ it('a marker planted in every author-text path reaches no log line, span, Sentry
     expect(read.AiCallLog).toContain('interview.reconcile');
     expect(read.AiCallLog).toContain('interview.rephrase');
     expect(read['audit details']).toContain('BIBLE_ELEMENT_CREATED');
+    expect(read['audit details']).toContain('STORY_MAP_SAVED');
     expect(read.Sentry).toContain('Error');
     for (const [sink, text] of Object.entries(read)) {
         expect([sink, text.toLowerCase().includes(MARKER.toLowerCase())]).toEqual([sink, false]);

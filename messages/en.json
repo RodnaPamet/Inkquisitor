@@ -1119,5 +1119,127 @@
             "STREAM_CAPACITY": "Too many live views are open in this workspace. Close one, then reload this page.",
             "MODEL_RATE_LIMITED": "Too many AI requests in this workspace just now. Wait a minute, then run the brief again."
         }
+    },
+    "canvas": {
+        "kinds": {
+            "RELATIONSHIP": "Relationship map",
+            "PLOT": "Plot board",
+            "TIMELINE": "Timeline"
+        },
+        "page": {
+            "back": "Back to the book",
+            "description": "Rows are the bible: a node is one of the book's elements, an edge one of its relations. Notes and drawings stay on the map.",
+            "readOnly": "You can view this map; only an editor can change it.",
+            "empty": "This map is empty. Add an element to start.",
+            "relationsTruncated": "This book has more relations than the canvas loads: an arrow between two elements may not find theirs."
+        },
+        "loading": "Loading the canvas…",
+        "boundary": {
+            "title": "The canvas could not be shown",
+            "body": "Nothing was lost: the map is saved as rows. Try again, or reload the page.",
+            "retry": "Try again"
+        },
+        "toolbar": {
+            "addElement": "Add an element",
+            "addSearch": "Search the book’s elements…",
+            "noCandidates": "No element matches.",
+            "searchFailed": "The search failed. Try again.",
+            "onMap": "on the map",
+            "arrangeLR": "Arrange left to right",
+            "arrangeTB": "Arrange top to bottom",
+            "history": "History",
+            "save": "Save"
+        },
+        "autosave": {
+            "idle": "All changes saved",
+            "pending": "Unsaved changes",
+            "saving": "Saving…",
+            "saved": "Saved",
+            "error": "Not saved"
+        },
+        "badge": {
+            "notAssessed": "Not assessed",
+            "percent": "{percent}%"
+        },
+        "conflict": {
+            "title": "This map was changed somewhere else",
+            "body": "Another tab or person saved this map after you opened it. Reload to see the map as it now stands (your unsaved changes here will be lost), or save yours over it.",
+            "gone": "An element or relation on this map was deleted from the bible. Reload to see the map as the bible now stands.",
+            "reload": "Reload",
+            "saveMine": "Save mine over it"
+        },
+        "edges": {
+            "NO_RELATION": "These two elements are not related in the bible yet. Relate them on an element’s page, then draw the arrow again.",
+            "DUPLICATE_EDGE": "That relation is already drawn on this map.",
+            "SELF_LOOP": "An element cannot be joined to itself.",
+            "UNKNOWN_NODE": "Both ends of an edge must be elements on this map.",
+            "RELATION_MISMATCH": "That edge does not match its relation in the bible."
+        },
+        "errors": {
+            "FREEFORM_REFUSED": "The notes and drawings on this map could not be saved.",
+            "UNKNOWN_ELEMENT": "The map names an element the book no longer holds. Reload the map.",
+            "UNKNOWN_RELATION": "The map names a relation the book no longer holds. Reload the map.",
+            "DUPLICATE_NODE": "An element appears on the map twice.",
+            "DUPLICATE_EDGE": "A relation appears on the map twice.",
+            "EDGE_ENDPOINT_NOT_ON_MAP": "An edge joins an element that is not on the map.",
+            "RELATION_MISMATCH": "An edge does not match its relation in the bible.",
+            "SELF_LOOP": "An edge cannot join an element to itself.",
+            "generic": "The map could not be saved."
+        },
+        "history": {
+            "title": "History",
+            "loading": "Loading the history…",
+            "loadError": "The history could not be loaded.",
+            "empty": "No saves yet.",
+            "truncated": "Older saves are not listed.",
+            "version": "Version {version}",
+            "current": "Current",
+            "counts": "{nodes, plural, one {# node} other {# nodes}} · {edges, plural, one {# edge} other {# edges}}",
+            "restoredFrom": "Restored from version {version}",
+            "diff": "Compare",
+            "restore": "Restore",
+            "restoring": "Restoring…",
+            "restored": "Restored version {version}.",
+            "restoredDropped": "Restored version {version}; {nodes, plural, one {# node} other {# nodes}} and {edges, plural, one {# edge} other {# edges}} were left out because their element or relation is gone.",
+            "restoreFailed": "That version could not be restored.",
+            "confirmTitle": "Restore version {version}?",
+            "confirmBody": "The map becomes what it was at that save, as a new save of its own. Nothing in the history is lost.",
+            "cancel": "Cancel"
+        },
+        "diff": {
+            "title": "Version {version} against the map now",
+            "description": "What changed between that save and the map as it stands.",
+            "loading": "Loading the version…",
+            "loadError": "That version could not be loaded.",
+            "noChanges": "No changes.",
+            "nodesAdded": "{count, plural, one {# node added} other {# nodes added}}",
+            "nodesRemoved": "{count, plural, one {# node removed} other {# nodes removed}}",
+            "nodesMoved": "{count, plural, one {# node moved} other {# nodes moved}}",
+            "nodesModified": "{count, plural, one {# node resized} other {# nodes resized}}",
+            "edgesAdded": "{count, plural, one {# edge added} other {# edges added}}",
+            "edgesRemoved": "{count, plural, one {# edge removed} other {# edges removed}}",
+            "edgesModified": "{count, plural, one {# edge changed} other {# edges changed}}",
+            "freeformChanged": "Notes and drawings changed",
+            "nodes": "Nodes",
+            "edges": "Edges",
+            "classes": {
+                "added": "Added",
+                "removed": "Removed",
+                "moved": "Moved",
+                "modified": "Changed"
+            },
+            "unknown": "An element no longer on the map",
+            "unknownEdge": "A relation no longer on the map",
+            "close": "Close"
+        },
+        "export": {
+            "trigger": "Export",
+            "menu": "Export options",
+            "png": "Export as PNG",
+            "svg": "Export as SVG",
+            "exporting": "Exporting…",
+            "empty": "There is nothing on the map to export.",
+            "failed": "The map could not be exported."
+        }
     }
 }

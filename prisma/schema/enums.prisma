@@ -251,3 +251,11 @@ enum ResearchProposalOperation {
   UPDATE
   NEW_ELEMENT
 }
+
+/// The three story maps a book has, one of each (Phase 3.1, decision D18):
+/// the relationship map, the plot board and the timeline.
+enum StoryMapKind {
+  RELATIONSHIP
+  PLOT
+  TIMELINE
+}

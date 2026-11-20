@@ -30,6 +30,7 @@ import { scripted } from '../helpers/enrichment';
 import { createAccount, workspaceCtx } from '../helpers/workspaces';
 import { attachResearchSource, createResearchBrief, dispatchResearchRun } from '@/app-layer/usecases/research-briefs';
 import { executeResearchRun } from '@/app-layer/usecases/research-run';
+import { saveStoryMap } from '@/app-layer/usecases/story-maps';
 import type { Researcher } from '@/lib/research/researcher';
 import { CLEAN_SCAN, MOUNTED_GATE } from '../helpers/research';
 import { setFakeApiKey } from '../helpers/fake-anthropic';
@@ -154,6 +155,16 @@ beforeAll(async () => {
     expect(await prisma.researchFinding.count({ where: { runId, noFitReason: { not: null } } })).toBe(1);
     expect(await prisma.researchEgress.count({ where: { runId } })).toBe(2);
     Object.assign(ids, { ResearchBrief: brief.id, Run: runId });
+
+    // A story map with a sticky note (Phase 3.1): the map's freeform layer and its save's snapshot.
+    await saveStoryMap(ctx, book.id, 'plot', {
+        expectedVersion: 0,
+        nodes: [{ elementId: falconer.id, x: 0, y: 0, w: 220, h: 88, lane: null }],
+        edges: [],
+        freeform: [{ id: 'shape:mark-note', typeName: 'shape', type: 'note', x: 0, y: 0, props: { text: `The hood ${MARK} goes on at dusk.` } }],
+    });
+    const map = await prisma.storyMap.findFirstOrThrow({ where: { bookId: book.id, kind: 'PLOT' }, select: { id: true } });
+    Object.assign(ids, { StoryMap: map.id });
 });
 
 /** The raw stored values of `field` on every row of `model` this suite wrote, read as the owner. */
@@ -162,8 +173,9 @@ async function rawValues(model: string, field: string): Promise<string[]> {
     const bySession = model === 'Question' || model === 'Answer' || model === 'EnrichmentProposal';
     const byRun = model === 'ResearchFinding' || model === 'ResearchCitation' || model === 'ResearchProposal' || model === 'ResearchEgress';
     const byBrief = model === 'ResearchSource';
-    const where = byElement ? `"elementId" = $1` : bySession ? `"sessionId" = $1` : byRun ? `"runId" = $1` : byBrief ? `"briefId" = $1` : `"id" = $1`;
-    const id = byElement ? ids.BibleElement : bySession ? ids.Session : byRun ? ids.Run : byBrief ? ids.ResearchBrief : ids[model];
+    const byMap = model === 'MapSnapshot';
+    const where = byElement ? `"elementId" = $1` : bySession ? `"sessionId" = $1` : byRun ? `"runId" = $1` : byBrief ? `"briefId" = $1` : byMap ? `"mapId" = $1` : `"id" = $1`;
+    const id = byElement ? ids.BibleElement : bySession ? ids.Session : byRun ? ids.Run : byBrief ? ids.ResearchBrief : byMap ? ids.StoryMap : ids[model];
     const rows = await prisma.$queryRawUnsafe<Array<{ v: string | null }>>(`SELECT "${field}" AS v FROM "${model}" WHERE ${where}`, id);
     return rows.map((r) => r.v).filter((v): v is string => v !== null);
 }
@@ -206,6 +218,8 @@ it('the manifest covers the bible, interview and research author text the briefs
             'ResearchProposal.newSummary',
             'ResearchProposal.rationale',
             'ResearchEgress.text',
+            'StoryMap.freeformJson',
+            'MapSnapshot.snapshot',
         ].sort(),
     );
 });

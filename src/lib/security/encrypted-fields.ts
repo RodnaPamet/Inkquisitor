@@ -59,6 +59,9 @@ export const ENCRYPTED_FIELDS: EncryptedFieldManifest = Object.freeze({
     ResearchProposal: Object.freeze(['proposedValue', 'newName', 'newSummary', 'rationale']),
     // Decision D15: every query and fetch URL a research run sent.
     ResearchEgress: Object.freeze(['text']),
+    // Phase 3.1: a story map's freeform layer (sticky notes and loose text are author text) and each save's snapshot of the map.
+    StoryMap: Object.freeze(['freeformJson']),
+    MapSnapshot: Object.freeze(['snapshot']),
 });
 
 /** The lookups the extension runs per operation, compiled once per manifest. */

@@ -62,6 +62,8 @@ model Book {
   aiCalls           AiCallLog[]
   /// Phase 2.6: the book's research briefs (and through them its runs).
   researchBriefs    ResearchBrief[]
+  /// Phase 3.1: the book's story maps, at most one of each kind.
+  storyMaps         StoryMap[]
 
   @@unique([workspaceId, id])
   /// The books list: a workspace's live books, most recently updated first.
@@ -100,6 +102,9 @@ model BibleElement {
   enrichmentProposals EnrichmentProposal[]
   /// Phase 2.6: research proposals for this element's fields.
   researchProposals   ResearchProposal[]
+  /// Phase 3.1: where this element is drawn on the book's story maps; the
+  /// nodes go with the element.
+  mapNodes            MapNode[]
 
   @@unique([bookId, slug])
   @@unique([bookId, id])
@@ -151,8 +156,14 @@ model BibleRelation {
   book Book         @relation(fields: [workspaceId, bookId], references: [workspaceId, id], onDelete: Cascade)
   from BibleElement @relation("BibleRelationFrom", fields: [bookId, fromElementId], references: [bookId, id], onDelete: Cascade)
   to   BibleElement @relation("BibleRelationTo", fields: [bookId, toElementId], references: [bookId, id], onDelete: Cascade)
+  /// Phase 3.1: where this relation is drawn on the book's story maps; the
+  /// edges go with the relation.
+  mapEdges MapEdge[]
 
   @@unique([fromElementId, toElementId, type])
+  /// Phase 3.1: the key a map edge references, so the database refuses an
+  /// edge drawing another book's relation.
+  @@unique([bookId, id])
   @@index([workspaceId, bookId])
   @@index([bookId, toElementId])
 }

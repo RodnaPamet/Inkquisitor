@@ -87,6 +87,16 @@ const COVERAGE: Readonly<Record<string, Classification>> = {
     'ResearchProposal.newSummary': { repository: 'ResearchProposalRepository', writeMethods: ['create'], sanitiser: 'sanitiseResearchProposalForStorage' },
     'ResearchProposal.rationale': { repository: 'ResearchProposalRepository', writeMethods: ['create'], sanitiser: 'sanitiseResearchProposalForStorage' },
     'ResearchEgress.text': { repository: 'ResearchEgressRepository', writeMethods: ['createMany'], sanitiser: 'sanitiseEgressForStorage' },
+    // Phase 3.1: a story map's freeform layer (sticky notes and loose text) is author text; a snapshot is the saved state.
+    'StoryMap.freeformJson': { repository: 'StoryMapRepository', writeMethods: ['create', 'commit'], sanitiser: 'sanitiseFreeformForStorage' },
+    'MapSnapshot.snapshot': {
+        repository: 'MapSnapshotRepository',
+        writeMethods: ['create'],
+        sanitiser: 'serialiseMapState',
+        derived:
+            'A snapshot is the canonical form of the state the same save stores: node and edge rows (ids and numbers, no text) and the ' +
+            'freeform layer exactly as sanitiseFreeformForStorage returned it; a restore re-sanitises the layer before it is stored again.',
+    },
 };
 
 /** Each repository object and the one file allowed to write its model through Prisma. */
@@ -105,6 +115,8 @@ const REPOSITORIES: Readonly<Record<string, { file: string; model: string }>> = 
     ResearchCitationRepository: { file: 'src/app-layer/repositories/research.repository.ts', model: 'ResearchCitation' },
     ResearchProposalRepository: { file: 'src/app-layer/repositories/research.repository.ts', model: 'ResearchProposal' },
     ResearchEgressRepository: { file: 'src/app-layer/repositories/research.repository.ts', model: 'ResearchEgress' },
+    StoryMapRepository: { file: 'src/app-layer/repositories/story-map.repository.ts', model: 'StoryMap' },
+    MapSnapshotRepository: { file: 'src/app-layer/repositories/story-map.repository.ts', model: 'MapSnapshot' },
 };
 
 /** Wrappers, where each is defined and what it must call; the chain must end at a primitive. */
@@ -122,6 +134,10 @@ const WRAPPERS: Readonly<Record<string, { file: string; calls: readonly string[]
     sanitiseFindingForStorage: { file: 'src/lib/research/storage.ts', calls: ['plainBlock', 'plainLine'] },
     sanitiseResearchProposalForStorage: { file: 'src/lib/research/storage.ts', calls: ['normaliseFieldValue', 'plainBlock'] },
     sanitiseEgressForStorage: { file: 'src/lib/research/storage.ts', calls: ['plainLine'] },
+    sanitiseFreeformForStorage: { file: 'src/lib/canvas/freeform.ts', calls: ['sanitiseFreeformRecords'] },
+    sanitiseFreeformRecords: { file: 'src/lib/canvas/freeform.ts', calls: ['cleanValue'] },
+    cleanValue: { file: 'src/lib/canvas/freeform.ts', calls: ['cleanString'] },
+    cleanString: { file: 'src/lib/canvas/freeform.ts', calls: ['sanitizePlainText'] },
 };
 
 const WRITE_OPS = ['create', 'createMany', 'createManyAndReturn', 'update', 'updateMany', 'updateManyAndReturn', 'upsert'];
