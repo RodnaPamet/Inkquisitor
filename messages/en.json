@@ -965,6 +965,7 @@
         "bulkHelp": "Only additions to fields that are still empty, and not marked as a possible instruction, can be accepted together; review every other change on its own.",
         "accepted": "Accepted. The bible has a new version.",
         "acceptedNew": "Accepted. {name} is now in the bible.",
+        "acceptedUnplaced": "Accepted. {name} is now in the bible, not placed in the story order yet.",
         "bulkAccepted": "{count, plural, one {# change accepted.} other {# changes accepted.}}",
         "rejected": "Rejected. Nothing was changed.",
         "nameLabel": "Name",
@@ -983,6 +984,20 @@
         "acceptRelationAria": "Accept the relation {from} {label} {to}",
         "rejectRelationAria": "Reject the relation {from} {label} {to}",
         "slotPlacement": "When accepted, it is placed between “{a}” and “{b}” in story order.",
+        "slotNeighbourGone": "a beat since deleted",
+        "slotChanged": {
+            "NEIGHBOUR_GONE": "The place this beat was proposed for has changed: “{a}” or “{b}” has been deleted.",
+            "NEIGHBOUR_UNPLACED": "The place this beat was proposed for has changed: “{a}” or “{b}” is no longer placed in the story order.",
+            "NEIGHBOUR_MOVED": "The place this beat was proposed for has changed: “{a}” or “{b}” has moved.",
+            "GAP_FILLED": "The place this beat was proposed for has changed: another beat now stands between “{a}” and “{b}”."
+        },
+        "slotChangedAsk": "Choose where it goes, or accept it without a place in the story order.",
+        "slotChooseLabel": "Where this beat goes in its act",
+        "slotChooseStart": "At the start of the act",
+        "slotChooseAfter": "After “{name}”",
+        "slotChoicesTruncated": "Only the act’s first {count} beats are offered here; choose the last of them and move the beat on the plot board for a later place.",
+        "slotAcceptPlaced": "Accept here",
+        "slotAcceptUnplaced": "Accept without a place",
         "firstFields": "Its first fields",
         "errors": {
             "RELATION_EXISTS": "The bible already holds that relation.",
@@ -1001,6 +1016,11 @@
             "RECONCILE_DONE": "This round has already been reconciled.",
             "RECONCILE_RUNNING": "This round is being reconciled now.",
             "AI_UNAVAILABLE": "AI is not available on this server right now.",
+            "SLOT_CHANGED": "The place this beat was proposed for has changed. Choose where it goes, or accept it without a place.",
+            "PLACEMENT_NOT_ALLOWED": "Only a beat proposed for a place in the story order is placed when accepted.",
+            "ORDER_STALE": "The story order changed since this was shown. Reload and choose again.",
+            "ORDER_RANK_EXHAUSTED": "There is no more room at that place in the story order.",
+            "ORDER_SCOPE_TOO_LARGE": "This story order is too long to place in.",
             "generic": "That did not work. Try again."
         }
     },

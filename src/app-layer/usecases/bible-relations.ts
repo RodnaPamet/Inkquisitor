@@ -291,11 +291,16 @@ export async function removeRelation(ctx: WorkspaceRequestContext, bookId: strin
     await assertPermission(ctx, 'bible.edit');
     return runInWorkspaceContext(ctx, async (db) => {
         await requireBook(db, ctx, bookId);
+        // The book's map locks BEFORE the delete, and a snapshot of each map
+        // whose edge went with the relation (decision D20); then the
+        // relation's own lock (Phase 3.H, issue #53 item 4), last in the book's
+        // lock order (map → names → order → element → relation), so a delete
+        // queues behind a save of the relation's fields rather than racing it,
+        // and is read under it.
+        const maps = await lockMapsForBibleDeletion(db, ctx, bookId);
+        await BibleRelationRepository.lock(db, relationId);
         const relation = await BibleRelationRepository.find(db, ctx.workspaceId, bookId, relationId);
         if (!relation) throw new NotFoundError('Relation not found.');
-        // The book's map locks BEFORE the delete, and a snapshot of each map
-        // whose edge went with the relation (decision D20).
-        const maps = await lockMapsForBibleDeletion(db, ctx, bookId);
         await BibleRelationRepository.remove(db, ctx.workspaceId, bookId, relationId);
         await recordMapsAfterBibleDeletion(db, ctx, bookId, maps);
         await logEvent(

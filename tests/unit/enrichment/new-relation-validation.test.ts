@@ -126,6 +126,13 @@ describe('a slot’s new element and its links (en-44)', () => {
         expect(codes(twice, input)).toContain('SLOT_TAKEN');
     });
 
+    it('a slot that already has its beat from an earlier round takes no second one (Phase 3.H, #53 item 1)', () => {
+        const taken: ReconcileRoundInput = { ...input, slot: { ...input.slot!, taken: true } };
+        const r = validateOutput(reference(c), taken);
+        expect(r.refusals.map((x) => x.code)).toContain('SLOT_TAKEN');
+        expect(r.proposals.some((p) => p.kind === 'NEW_ELEMENT')).toBe(false);
+    });
+
     it('a field of the element not yet created, with no element proposed to carry it', () => {
         const out = reference(c);
         out.newElements = [];

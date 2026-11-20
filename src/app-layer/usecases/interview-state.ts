@@ -44,6 +44,7 @@ import { getFieldDef, getRelationType, getTemplate, relationFieldDefs } from '@/
 import { plainBlock } from '@/lib/bible/text';
 import type { AskedQuestion } from '@/lib/interview/dedupe';
 import { computeFrontier, emptyFrontierReason, refsCheck, type AlreadyAnsweredCheck, type AnswerFact, type BlockedField, type FieldRef, type FrontierResult } from '@/lib/interview/frontier';
+import { slotTakenBy } from './story-slot';
 import { PENDING_SUBJECT_ID, relationSubjectName, subjectIdOf, type RelationSubject } from '@/lib/interview/subjects';
 import type { RoundPlan } from '@/lib/interview/plan';
 import type { PromptAnswer } from '@/lib/interview/prompt';
@@ -209,10 +210,13 @@ async function relationSubjects(db: PrismaTx, ctx: WorkspaceRequestContext, sess
  * A BETWEEN session's element not yet created (Phase 3.3), as a subject, and
  * its two neighbours as the prompt's related elements. The slot's act is
  * answered by the slot itself (`checks`): the element joins the lane it was
- * asked about. When a neighbour has gone, there is no slot to ask about.
+ * asked about. When a neighbour has gone, there is no slot to ask about; once
+ * the slot has its beat (proposed and pending, or accepted: `slotTakenBy`,
+ * Phase 3.H), there is no gap left to ask about either.
  */
 async function pendingSubject(db: PrismaTx, ctx: WorkspaceRequestContext, session: SessionRow) {
     if (session.scope !== 'BETWEEN' || !session.slotKind || !session.slotAfterElementId || !session.slotBeforeElementId) return null;
+    if (await slotTakenBy(db, ctx, session)) return null;
     const ends = await BibleElementRepository.listByIds(db, ctx.workspaceId, session.bookId, [session.slotAfterElementId, session.slotBeforeElementId]);
     const after = ends.find((e) => e.id === session.slotAfterElementId);
     const before = ends.find((e) => e.id === session.slotBeforeElementId);

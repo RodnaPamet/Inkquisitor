@@ -15,10 +15,14 @@ function parsed(q: string): ParsedQuery {
 it('unquoted words are terms by stem, a capitalised one also by its exact case', () => {
     const q = parsed('Running Hope');
     expect(q.terms).toEqual([
-        { surface: 'running', stem: 'run', exact: 'Running' },
-        { surface: 'hope', stem: 'hope', exact: 'Hope' },
+        { surface: 'running', stem: 'run', regularStem: null, exact: 'Running' },
+        { surface: 'hope', stem: 'hope', regularStem: null, exact: 'Hope' },
     ]);
-    expect(parsed('hope').terms).toEqual([{ surface: 'hope', stem: 'hope', exact: null }]);
+    expect(parsed('hope').terms).toEqual([{ surface: 'hope', stem: 'hope', regularStem: null, exact: null }]);
+});
+
+it('a word the irregular table changes keeps its regular stem too (Phase 3.H, #48 item 3)', () => {
+    expect(parsed('broken').terms).toEqual([{ surface: 'broken', stem: 'break', regularStem: 'broken', exact: null }]);
 });
 
 it('a quoted run of words is a phrase of surface forms; a quoted single word is matched as written', () => {

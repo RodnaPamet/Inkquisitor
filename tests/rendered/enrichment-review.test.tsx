@@ -312,10 +312,36 @@ describe('relation proposals (Phase 3.3, D24)', () => {
             newKind: 'PLOT_BEAT',
             name: 'The signs come down',
             fields: [{ field: getFieldDef('PLOT_BEAT', 'what_happens')!, value: 'The mayor’s men pull the signs down.' }],
-            slot: { afterElementId: 'b1', afterName: 'The bridge gives way', beforeElementId: 'b2', beforeName: 'The town turns', act: 'opening' },
+            slot: { afterElementId: 'b1', afterName: 'The bridge gives way', beforeElementId: 'b2', beforeName: 'The town turns', act: 'opening', changed: null, choices: [], choicesTruncated: false },
         };
         renderReview(review({ fields: [], newElements: [beat] }));
         expect(screen.getByTestId('slot-placement')).toHaveTextContent('placed between “The bridge gives way” and “The town turns”');
         expect(screen.getByText('The mayor’s men pull the signs down.')).toBeInTheDocument();
+    });
+
+    it('a beat whose slot changed: the review says how, and the author chooses where it goes (D25)', async () => {
+        const { requests } = mockFetch({ [`POST ${API}/proposals/p-new/accept`]: { json: { decision: { placed: true } } }, [`GET ${API}/proposals`]: { json: { review: review() } } });
+        const beat: NewElementProposalView = {
+            ...newElement,
+            newKind: 'PLOT_BEAT',
+            name: 'The signs come down',
+            slot: {
+                afterElementId: 'b1',
+                afterName: 'The bridge gives way',
+                beforeElementId: 'b2',
+                beforeName: 'The town turns',
+                act: 'opening',
+                changed: 'NEIGHBOUR_MOVED',
+                choices: [{ elementId: 'b2', name: 'The town turns' }],
+                choicesTruncated: false,
+            },
+        };
+        renderReview(review({ fields: [], newElements: [beat] }));
+        expect(screen.getByTestId('slot-changed')).toHaveTextContent('has moved');
+        expect(screen.queryByTestId('slot-placement')).toBeNull();
+        expect(screen.queryByRole('button', { name: 'Accept' })).toBeNull();
+        fireEvent.click(screen.getByRole('radio', { name: 'At the start of the act' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Accept here' }));
+        await waitFor(() => expect(requests.find((r) => r.method === 'POST')?.body).toEqual({ placement: { after: null, before: 'b2' } }));
     });
 });

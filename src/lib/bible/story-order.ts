@@ -19,7 +19,10 @@
  *     repeats both). Inserting again and again into ONE gap grows a key by
  *     about one character every five times (each midpoint halves the gap);
  *     appending at either end grows it by one character every 34 times. A key
- *     that would pass the bound is refused (`RankExhaustedError`), never cut.
+ *     that would pass the bound is refused (`RankExhaustedError`), never cut;
+ *     the usecase then REBALANCES the order (`rebalancedRanks`, Phase 3.H):
+ *     every placed element gets a short, evenly spaced rank in the same order,
+ *     and the move is computed again.
  *
  * Ordering in SQL is never trusted for ranks: a database collation need not
  * be code-unit order, so the usecases read a scope's ranks and order them
@@ -159,4 +162,36 @@ export function placeRank(others: readonly string[], placement: RankPlacement): 
         if (err instanceof RankExhaustedError) return { ok: false, reason: 'ORDER_RANK_EXHAUSTED' };
         throw err;
     }
+}
+
+/**
+ * Short, evenly spaced ranks for `count` elements, in ascending order (Phase
+ * 3.H, issue #50 item 7): what a REBALANCE gives an order whose gap is spent.
+ * Every rank has the same length L, the fewest digits with room for at least
+ * 36 free keys between any two neighbours (36^L ≥ 37 × (count + 1)), so after a
+ * rebalance a gap takes about five more inserts per digit before it is spent
+ * again, as a fresh order does. Trailing zeros are dropped (a rank never ends
+ * in '0'), which keeps the code-unit order of the strings the order of the
+ * fractions. Deterministic: the same count gives the same ranks.
+ */
+export function rebalancedRanks(count: number): string[] {
+    if (!Number.isInteger(count) || count < 0) throw new RangeError('count is not a count');
+    if (count === 0) return [];
+    let length = 1;
+    let space = BigInt(BASE);
+    const need = BigInt(BASE + 1) * BigInt(count + 1);
+    while (space < need) {
+        space *= BigInt(BASE);
+        length++;
+    }
+    if (length > ORDER_RANK_MAX) throw new RankExhaustedError();
+    const step = space / BigInt(count + 1);
+    const out: string[] = [];
+    for (let i = 1; i <= count; i++) {
+        const digits = (step * BigInt(i)).toString(BASE).padStart(length, '0');
+        let end = digits.length;
+        while (digits[end - 1] === '0') end--;
+        out.push(digits.slice(0, end));
+    }
+    return out;
 }

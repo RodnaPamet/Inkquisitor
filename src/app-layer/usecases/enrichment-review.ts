@@ -49,7 +49,11 @@
  * then placed between the slot's neighbours by the order move
  * (`placeNewElementInOrderTx`), under the names lock and then the order's lock,
  * both before any element lock (the book's lock order, as the bundle import
- * takes them).
+ * takes them). Phase 3.H (D25, "refuse and ask"): only while the slot still
+ * stands (`slotChangeOf`); a changed slot is 409 SLOT_CHANGED, writing
+ * nothing, until the author names a `placement` — two neighbours, or
+ * `{ unplaced: true }`. An accepted relation names its two ends
+ * (`relationEnds`).
  * Neither new kind is offered for bulk acceptance or edited on acceptance: a
  * link is accepted as proposed or rejected, and its fields edited afterwards.
  *
@@ -106,6 +110,7 @@ import { createElementInTx } from './bible-elements';
 import { ACT_FIELD_KEY, placeNewElementInOrderTx } from './bible-order';
 import { createRelationInTx, relationExists, relationGoneAsNotFound } from './bible-relations';
 import { bookHoldsElementName } from './enrichment-names';
+import { slotChangeOf, slotLaneChoices, type SlotChange } from './story-slot';
 import { assertRelationBaseVersion, normaliseRelationFieldEntries, readRelationFieldValues, recordRelationVersion, relationForSave, requireRelationWithEnds, writeRelationFieldValues } from './relation-common';
 
 /** A session's proposals a review reads at most (it reads one more to say it was cut). */
@@ -168,7 +173,26 @@ export interface NewElementProposalView {
     /** Phase 3.3: its first field values with their template fields, in template order. */
     fields: Array<{ field: FieldDef; value: FieldValue }>;
     /** Phase 3.3: it fills a BETWEEN slot, placed between these two when accepted. */
-    slot: { afterElementId: string; afterName: string; beforeElementId: string; beforeName: string; act: string | null } | null;
+    slot: SlotView | null;
+}
+
+/**
+ * A slot as the review shows it (Phase 3.3; 3.H). `changed` names how it
+ * changed since the session started (a neighbour deleted, unplaced or moved,
+ * or a beat now between them): accepting the beat as proposed is then refused
+ * 409 SLOT_CHANGED, and the author chooses where it goes among `choices` (the
+ * placed beats of the slot's act, in story order) or accepts it unplaced
+ * (decision D25). A neighbour's name is null once it is deleted.
+ */
+export interface SlotView {
+    afterElementId: string;
+    afterName: string | null;
+    beforeElementId: string;
+    beforeName: string | null;
+    act: string | null;
+    changed: SlotChange | null;
+    choices: Array<{ elementId: string; name: string }>;
+    choicesTruncated: boolean;
 }
 
 /** Phase 3.3 (D24): a change to one field of a relation. */
@@ -311,8 +335,22 @@ async function proposalViews(
         const common = { id: p.id, roundNumber, status: p.status, flags: flagsOf(p), citedAnswerIds: citationIds(p), decidedAt: p.decidedAt ? p.decidedAt.toISOString() : null };
         if (p.kind === 'NEW_ELEMENT') {
             const session = sessions.get(p.sessionId);
-            const after = session?.slotAfterElementId ? elements.get(session.slotAfterElementId) : undefined;
-            const before = session?.slotBeforeElementId ? elements.get(session.slotBeforeElementId) : undefined;
+            let slot: SlotView | null = null;
+            if (p.fillsSlot && session?.slotAfterElementId && session.slotBeforeElementId) {
+                // Only a beat still to decide is checked against its slot (D25): a decided one was placed, or not, then.
+                const changed = p.status === 'PENDING' ? await slotChangeOf(db, ctx, bookId, session) : null;
+                const lane = changed ? await slotLaneChoices(db, ctx, bookId, session.slotAct) : { choices: [], truncated: false };
+                slot = {
+                    afterElementId: session.slotAfterElementId,
+                    afterName: elements.get(session.slotAfterElementId)?.name ?? null,
+                    beforeElementId: session.slotBeforeElementId,
+                    beforeName: elements.get(session.slotBeforeElementId)?.name ?? null,
+                    act: session.slotAct,
+                    changed,
+                    choices: lane.choices,
+                    choicesTruncated: lane.truncated,
+                };
+            }
             out.newElements.push({
                 ...common,
                 kind: 'NEW_ELEMENT',
@@ -321,8 +359,7 @@ async function proposalViews(
                 summary: p.newSummary,
                 createdElementId: p.createdElementId,
                 fields: labelledFields(decodeNewElementFields(p.proposedValue), (key) => getFieldDef(p.newKind!, key)),
-                // A neighbour deleted since is no slot to show: acceptance places the beat where it can (placeNewElementInOrderTx).
-                slot: p.fillsSlot && after && before ? { afterElementId: after.id, afterName: after.name, beforeElementId: before.id, beforeName: before.name, act: session?.slotAct ?? null } : null,
+                slot,
             });
             continue;
         }
@@ -528,8 +565,10 @@ export interface DecisionResult {
     versionNumber: number | null;
     /** Phase 3.3: the relation an acceptance changed or created. */
     relationId?: string | null;
-    /** Phase 3.3: a slot's new element was placed between its neighbours (false: no neighbour remained). */
+    /** Phase 3.3: a slot's new element was placed (false: accepted unplaced, as the author chose; D25). */
     placed?: boolean;
+    /** Phase 3.H: a created relation's two ends, so a view whose copy of an end is stale can still draw the edge. */
+    relationEnds?: { fromElementId: string; toElementId: string };
 }
 
 async function requirePending(db: PrismaTx, ctx: WorkspaceRequestContext, bookId: string, sessionId: string, proposalId: string): Promise<ProposalRow> {
@@ -614,6 +653,9 @@ async function acceptField(db: PrismaTx, ctx: WorkspaceRequestContext, bookId: s
 async function acceptNewElement(db: PrismaTx, ctx: WorkspaceRequestContext, bookId: string, sessionId: string, proposalId: string, input: AcceptProposalInput): Promise<DecisionResult> {
     const peek = await EnrichmentProposalRepository.find(db, ctx.workspaceId, sessionId, ProposalIdParam.parse(proposalId));
     if (!peek || peek.bookId !== bookId) throw new NotFoundError('Proposal not found.');
+    if (input.placement !== undefined && !peek.fillsSlot) {
+        throw new ValidationError('Only a beat proposed for a place in the story order is placed on acceptance.', { reason: 'PLACEMENT_NOT_ALLOWED' });
+    }
     // A slot's element (Phase 3.3) is placed in its kind's order. The book's lock order is names, then order, then
     // element (the bundle import takes names then every order it writes): so the names lock FIRST, then the order's,
     // and only then the name check and the create (which take the names lock again, re-entrantly). Taking the order's
@@ -626,6 +668,13 @@ async function acceptNewElement(db: PrismaTx, ctx: WorkspaceRequestContext, book
     const p = await requirePending(db, ctx, bookId, sessionId, proposalId);
     if (p.kind !== 'NEW_ELEMENT') throw new ValidationError('This proposal changes a field.', { reason: 'EDIT_NOT_ALLOWED' });
     if (input.value !== undefined) throw new ValidationError('A new element takes a name and a summary, not a value.', { reason: 'EDIT_NOT_ALLOWED' });
+    // Phase 3.H (D25, "refuse and ask"): a beat goes where the author chose. As proposed, only while its slot stands
+    // (under the order's lock, so the check and the placement read one order); once the slot changed, the author names
+    // the neighbours or accepts it unplaced. Checked before anything is written.
+    if (p.fillsSlot && session && input.placement === undefined) {
+        const changed = await slotChangeOf(db, ctx, bookId, session);
+        if (changed) throw new ConflictError('The place this beat was proposed for has changed.', { reason: 'SLOT_CHANGED', change: changed });
+    }
     const name = input.name !== undefined ? requiredLine(input.name, ELEMENT_NAME_MAX, 'Name') : requiredLine(p.newName ?? '', ELEMENT_NAME_MAX, 'Name');
     const summary = input.summary !== undefined ? (optionalBlock(input.summary, ELEMENT_SUMMARY_MAX, 'Summary') ?? null) : (optionalBlock(p.newSummary, ELEMENT_SUMMARY_MAX, 'Summary') ?? null);
     if (await bookHoldsElementName(db, ctx, bookId, name)) throw new ConflictError('The book already has an element of that name.', { reason: 'ELEMENT_EXISTS' });
@@ -640,8 +689,16 @@ async function acceptNewElement(db: PrismaTx, ctx: WorkspaceRequestContext, book
         { kind: p.newKind!, name, summary, customLabel: null, fields },
         { source: 'INTERVIEW', changeSummary: optionalBlock(input.changeSummary, CHANGE_SUMMARY_MAX, 'Change summary') ?? null, sourceAnswerIds: answerIds },
     );
-    // Between the slot's neighbours, through the 3.2 order move (one version, marked moved in order).
-    const placement = p.fillsSlot && session ? await placeNewElementInOrderTx(db, ctx, bookId, element, { after: session.slotAfterElementId, before: session.slotBeforeElementId }, { source: 'INTERVIEW', sourceAnswerIds: citationIds(p) }) : null;
+    // Between the slot's neighbours, or where the author chose, through the order move (one version, marked moved in order).
+    let placement: { orderRank: string; versionNumber: number } | null = null;
+    if (p.fillsSlot && session && !(input.placement && 'unplaced' in input.placement)) {
+        const target =
+            input.placement && 'after' in input.placement
+                ? { after: input.placement.after, before: input.placement.before, act: session.slotAct }
+                : { after: session.slotAfterElementId, before: session.slotBeforeElementId, act: session.slotAct };
+        placement = await placeNewElementInOrderTx(db, ctx, bookId, element, target, { source: 'INTERVIEW', sourceAnswerIds: answerIds });
+    }
+    const placed = placement !== null;
     const edited = name !== p.newName || summary !== p.newSummary;
     const status: ProposalStatus = edited ? 'EDITED_ACCEPTED' : 'ACCEPTED';
     await decideOrConflict(db, ctx, p.id, { status, decidedById: ctx.userId, createdElementId: element.id });
@@ -660,12 +717,12 @@ async function acceptNewElement(db: PrismaTx, ctx: WorkspaceRequestContext, book
                 edited,
                 versionNumber: placement?.versionNumber ?? version.versionNumber,
                 citedAnswerCount: answerIds.length,
-                ...(p.fillsSlot ? { fillsSlot: true, placed: placement?.placed ?? false } : {}),
+                ...(p.fillsSlot ? { fillsSlot: true, placed, placement: input.placement === undefined ? 'SLOT' : 'unplaced' in input.placement ? 'UNPLACED' : 'CHOSEN' } : {}),
             },
         },
         { db },
     );
-    return { proposalId: p.id, status, elementId: element.id, versionNumber: placement?.versionNumber ?? version.versionNumber, ...(p.fillsSlot ? { placed: placement?.placed ?? false } : {}) };
+    return { proposalId: p.id, status, elementId: element.id, versionNumber: placement?.versionNumber ?? version.versionNumber, ...(p.fillsSlot ? { placed } : {}) };
 }
 
 /**
@@ -765,7 +822,7 @@ async function acceptNewRelation(db: PrismaTx, ctx: WorkspaceRequestContext, boo
         },
         { db },
     );
-    return { proposalId: p.id, status: 'ACCEPTED', elementId: null, relationId: created.relation.id, versionNumber: created.versionNumber };
+    return { proposalId: p.id, status: 'ACCEPTED', elementId: null, relationId: created.relation.id, versionNumber: created.versionNumber, relationEnds: { fromElementId: from, toElementId: to } };
 }
 
 /** Accept one proposal, as proposed or edited (`bible.edit`; the rules in the header). */
@@ -777,6 +834,10 @@ export async function acceptProposal(ctx: WorkspaceRequestContext, bookId: strin
         return (await EnrichmentProposalRepository.find(db, ctx.workspaceId, sessionId, ProposalIdParam.parse(proposalId)))?.kind ?? null;
     });
     if (kind === null) throw new NotFoundError('Proposal not found.');
+    // Only a slot's beat is placed on acceptance (Phase 3.H; a new element that fills no slot is refused in its own path).
+    if (parsed.placement !== undefined && kind !== 'NEW_ELEMENT') {
+        throw new ValidationError('Only a beat proposed for a place in the story order is placed on acceptance.', { reason: 'PLACEMENT_NOT_ALLOWED' });
+    }
     if (kind === 'FIELD') return runInWorkspaceContext(ctx, (db) => acceptField(db, ctx, bookId, sessionId, proposalId, parsed));
     if (kind === 'RELATION_FIELD') return relationGoneAsNotFound(() => runInWorkspaceContext(ctx, (db) => acceptRelationField(db, ctx, bookId, sessionId, proposalId, parsed)));
     if (kind === 'NEW_RELATION') {

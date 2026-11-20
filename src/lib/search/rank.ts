@@ -13,7 +13,8 @@
  * first characters of its stem (all but the last two: Porter2 never changes
  * more than the last two characters of a stem it keeps — the golden test
  * checks it over Snowball's whole vocabulary) and every irregular form of a
- * lemma with that stem; for a phrase its first word; for a quoted word the
+ * lemma with that stem (and the same for a word's REGULAR stem, when the
+ * irregular table gave it another: Phase 3.H); for a phrase its first word; for a quoted word the
  * word. Every word's surface form is a substring of its text's folded form,
  * so a skipped source cannot hold a match: skipping changes the work, never
  * the results (`tests/unit/search/rank.test.ts` holds both).
@@ -23,7 +24,9 @@
  * its exact case when the query word is capitalised (1.3), its surface form
  * (1.0), its stem alone (0.6) — so an exact match always beats a stem match,
  * and a capitalised query word prefers the name over the lower-case word
- * without excluding it. A quoted phrase matches surface forms in sequence; a
+ * without excluding it. A quoted phrase matches surface forms in sequence,
+ * within one line of its source (a block: never across a paragraph or a
+ * list item, Phase 3.H); a
  * quoted single word matches its surface form. A document matches when it
  * holds every phrase and quoted word, and at least one unquoted word if the
  * query has no phrase.
@@ -135,7 +138,10 @@ function matchSource(source: SearchSource, length: number, tokens: readonly Toke
     const spans: Span[] = [];
     for (let i = 0; i < tokens.length; i++) {
         const token = tokens[i];
-        const byStem = index.termsByStem.get(token.stem);
+        // By its stem and, for a word the irregular table changed, its regular stem too (Phase 3.H, #48 item 3).
+        const byRegular = token.regularStem !== null ? index.termsByStem.get(token.regularStem) : undefined;
+        const byPrimary = index.termsByStem.get(token.stem);
+        const byStem = byRegular ? [...new Set([...(byPrimary ?? []), ...byRegular])] : byPrimary;
         if (byStem) {
             for (const t of byStem) {
                 const term = query.terms[t];
@@ -156,7 +162,9 @@ function matchSource(source: SearchSource, length: number, tokens: readonly Toke
                 if (i + words.length > tokens.length) continue;
                 let all = true;
                 for (let k = 1; k < words.length; k++) {
-                    if (tokens[i + k].surface !== words[k]) {
+                    // A phrase never runs across a block (Phase 3.H, #48 item 2): plain text breaks the line between
+                    // blocks, so "end start" does not match `<p>end</p><p>Start</p>` or two list items.
+                    if (tokens[i + k].surface !== words[k] || source.text.slice(tokens[i + k - 1].end, tokens[i + k].start).includes('\n')) {
                         all = false;
                         break;
                     }
@@ -181,7 +189,9 @@ interface QueryIndex {
 
 function indexQuery(query: ParsedQuery): QueryIndex {
     const termsByStem = new Map<string, number[]>();
-    query.terms.forEach((t, i) => termsByStem.set(t.stem, [...(termsByStem.get(t.stem) ?? []), i]));
+    query.terms.forEach((t, i) => {
+        for (const stem of new Set([t.stem, ...(t.regularStem !== null ? [t.regularStem] : [])])) termsByStem.set(stem, [...(termsByStem.get(stem) ?? []), i]);
+    });
     const phrasesByFirstSurface = new Map<string, number[]>();
     query.phrases.forEach((p, i) => phrasesByFirstSurface.set(p.surfaces[0], [...(phrasesByFirstSurface.get(p.surfaces[0]) ?? []), i]));
     const exactWordBySurface = new Map(query.exactWords.map((w, i) => [w, query.phrases.length + i] as const));
@@ -279,7 +289,9 @@ export function rankDocuments(docs: readonly SearchDocument[], query: ParsedQuer
     scored.sort((a, b) => b.score - a.score || compare(a.d.doc.name, b.d.doc.name) || compare(a.d.doc.elementId ?? '', b.d.doc.elementId ?? '') || a.d.order - b.d.order);
 
     const hits = scored.slice(0, options.limit).map(({ d, contribution }): SearchHitView => {
-        const best = [...d.sources].sort((a, b) => (contribution.get(b) ?? 0) - (contribution.get(a) ?? 0) || d.sources.indexOf(a) - d.sources.indexOf(b));
+        // Each source's place read once, not searched for inside the comparator (#48 item 5).
+        const place = new Map(d.sources.map((src, i) => [src, i] as const));
+        const best = [...d.sources].sort((a, b) => (contribution.get(b) ?? 0) - (contribution.get(a) ?? 0) || place.get(a)! - place.get(b)!);
         return {
             kind: d.doc.kind,
             elementId: d.doc.elementId,
@@ -307,8 +319,10 @@ export function candidateNeedles(query: ParsedQuery, analyzer: Pick<Analyzer, 'l
     const out = new Set<string>();
     for (const t of query.terms) {
         if (analyzer.language === 'en') {
-            out.add(stemNeedle(t.stem));
-            for (const form of IRREGULAR_SURFACES_BY_STEM.get(t.stem) ?? []) out.add(form);
+            for (const stem of t.regularStem !== null ? [t.stem, t.regularStem] : [t.stem]) {
+                out.add(stemNeedle(stem));
+                for (const form of IRREGULAR_SURFACES_BY_STEM.get(stem) ?? []) out.add(form);
+            }
         } else {
             out.add(t.surface);
         }

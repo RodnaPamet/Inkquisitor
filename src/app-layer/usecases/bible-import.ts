@@ -127,7 +127,6 @@ import {
 } from './bible-common';
 import { bookWrite } from './books';
 import { normaliseRelationFieldEntries, recordRelationVersion, relationForSave, writeRelationFieldValues } from './relation-common';
-import { ORDER_SCOPE_MAX } from './bible-order';
 
 // ─── Shared ─────────────────────────────────────────────────────────
 
@@ -490,6 +489,9 @@ async function existingBySlug(db: PrismaTx, ctx: WorkspaceRequestContext, bookId
     return out;
 }
 
+/** Ranks asked about in one query (the ORDER_TAKEN check). */
+const RANK_LOOKUP_BATCH = 1_000;
+
 /**
  * Check the bundle's ranks against the book's (Phase 3.2), adding
  * `ORDER_TAKEN` for a rank another element keeps; answer the ids of the
@@ -509,8 +511,12 @@ async function placesFromBundle(
         const given = elements.filter((e) => e.kind === kind && e.orderRank !== undefined);
         if (given.length === 0) continue;
         const moving = new Set(given.flatMap((e) => (existing.get(e.slug) ? [existing.get(e.slug)!.id] : [])));
-        const ranked = await BibleElementRepository.rankedInOrder(db, ctx.workspaceId, bookId, kind, ORDER_SCOPE_MAX + 1);
-        const kept = new Set(ranked.filter((r) => !moving.has(r.id)).map((r) => r.orderRank as string));
+        // Only the places the bundle names are asked about (Phase 3.H, #50 item 3): a read of the whole order was
+        // capped at ORDER_SCOPE_MAX + 1 rows and, past it, could miss a taken place (a unique violation, a 500).
+        const ranks = [...new Set(given.map((e) => e.orderRank!))];
+        const holders: Array<{ id: string; orderRank: string | null }> = [];
+        for (let i = 0; i < ranks.length; i += RANK_LOOKUP_BATCH) holders.push(...(await BibleElementRepository.holdersOfRanks(db, ctx.workspaceId, bookId, kind, ranks.slice(i, i + RANK_LOOKUP_BATCH))));
+        const kept = new Set(holders.filter((r) => !moving.has(r.id)).map((r) => r.orderRank as string));
         for (const e of given) if (kept.has(e.orderRank!)) problems.add({ path: e.path, reason: 'ORDER_TAKEN', key: 'order' });
         for (const e of given) {
             const row = existing.get(e.slug);

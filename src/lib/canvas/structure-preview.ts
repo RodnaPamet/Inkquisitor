@@ -57,7 +57,9 @@ const centre = (b: PreviewBox) => ({ x: b.x + b.w / 2, y: b.y + b.h / 2 });
  * The preview for the cards now on the canvas (`boxes`, by element id).
  *
  *   a new element filling a slot   beside its two neighbours, between them
- *                                  (when both are on the map)
+ *                                  (when both are on the map and the slot has
+ *                                  not changed: a changed slot's beat goes
+ *                                  where the author chooses, D25)
  *   any other new element          in a column to the right of everything
  *   a new relation                 a line between its ends' boxes — a card,
  *                                  or the ghost of a proposed end — and
@@ -79,8 +81,9 @@ export function structurePreview(pending: readonly PendingStructureView[], boxes
             undrawn += 1;
             continue;
         }
-        const after = p.slot ? boxes.get(p.slot.afterElementId) : undefined;
-        const before = p.slot ? boxes.get(p.slot.beforeElementId) : undefined;
+        const slot = p.slot && !p.slot.changed ? p.slot : null;
+        const after = slot ? boxes.get(slot.afterElementId) : undefined;
+        const before = slot ? boxes.get(slot.beforeElementId) : undefined;
         let box: PreviewBox;
         if (after && before) {
             const a = centre(after);

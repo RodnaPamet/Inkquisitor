@@ -43,6 +43,17 @@
  * opinion about an order the bible keeps. Moving a card is an order move
  * (`bible-order.ts`), not a map save.
  *
+ * LOCK ORDER (Phase 3.H, issue #50 item 2). A save and a restore take the
+ * map's lock, then the story-order lock of every ordered kind the map draws
+ * (`lockMapOrders`), before they write a node. A node's foreign key takes a
+ * KEY SHARE lock on its element's row, and a rank change (a move, a bundle
+ * import's re-rank) takes that row FOR UPDATE: the rank is in a unique index.
+ * Holding the order's lock first makes a save queue behind an import that
+ * re-ranks beats instead of locking their rows in the opposite order (which
+ * Postgres aborts as a deadlock, 40P01, and the author saw as a 500). The
+ * book's lock order is map → names → order → element → relation
+ * (CLAUDE.md, "Lock order").
+ *
  * Permissions: `bible.view` reads, `bible.edit` saves and restores — the
  * canvas and the bible are one dataset.
  */
@@ -50,7 +61,7 @@ import type { BibleElementKind, StoryMapKind } from '@prisma/client';
 import type { WorkspaceRequestContext } from '@/app-layer/types';
 import { logEvent } from '@/app-layer/events/audit';
 import { assertPermission } from '@/app-layer/policies/permission.policy';
-import { BibleFieldRepository } from '@/app-layer/repositories/bible.repository';
+import { BibleElementRepository, BibleFieldRepository } from '@/app-layer/repositories/bible.repository';
 import {
     MapBibleReads,
     MapEdgeRepository,
@@ -61,6 +72,7 @@ import {
 import { MapRestoreInput, MapSaveInput } from '@/app-layer/schemas/canvas';
 import { VersionNumberParam } from '@/app-layer/schemas/bible';
 import { decodeFieldValue } from '@/lib/bible/field-values';
+import { isOrderedKind } from '@/lib/bible/kinds';
 import { getFieldDef, getRelationType, getTemplate } from '@/lib/bible/templates';
 import { assertFreeformIdsFree, parseStoredFreeform, sanitiseFreeformForStorage } from '@/lib/canvas/freeform';
 import { MAX_MAP_EDGES, MAX_MAP_NODES, SNAPSHOT_PAGE_SIZE } from '@/lib/canvas/limits';
@@ -505,6 +517,11 @@ function mapReferenceGone(err: unknown): never {
     throw err;
 }
 
+/** The story-order locks of the ordered kinds a map draws, after its own lock (the header's LOCK ORDER). */
+async function lockMapOrders(db: PrismaTx, bookId: string, kind: StoryMapKindValue): Promise<void> {
+    for (const k of MAP_ELEMENT_KINDS[kind]) if (isOrderedKind(k)) await BibleElementRepository.lockOrder(db, bookId, k as BibleElementKind);
+}
+
 export async function saveStoryMap(ctx: WorkspaceRequestContext, bookId: string, kindSlug: string, input: unknown): Promise<StoryMapSaveResult> {
     await assertPermission(ctx, 'bible.edit');
     const kind = kindOf(kindSlug);
@@ -516,6 +533,7 @@ export async function saveStoryMap(ctx: WorkspaceRequestContext, bookId: string,
         return await runInWorkspaceContext(ctx, async (db) => {
             await requireBook(db, ctx, bookId);
             await StoryMapRepository.lock(db, bookId, kind);
+            await lockMapOrders(db, bookId, kind);
             const map = await StoryMapRepository.find(db, ctx.workspaceId, bookId, kind);
             assertExpectedVersion(map, parsed.expectedVersion);
             await assertReferences(db, ctx, bookId, kind, state);
@@ -625,6 +643,7 @@ export async function restoreMapSnapshot(
         return await runInWorkspaceContext(ctx, async (db) => {
             await requireBook(db, ctx, bookId);
             await StoryMapRepository.lock(db, bookId, kind);
+            await lockMapOrders(db, bookId, kind);
             const map = await requireMap(db, ctx, bookId, kind);
             assertExpectedVersion(map, expectedVersion);
             const row = await MapSnapshotRepository.find(db, ctx.workspaceId, map.id, version);

@@ -28,9 +28,22 @@ export const BULK_ACCEPT_MAX = 50;
  *   value            an edit of an ADD or UPDATE (edit then accept)
  *   name, summary    an edit of a proposed new element
  *   changeSummary    the author's note on the version
+ *   placement        Phase 3.H (D25): where a beat proposed for a slot goes
+ *                    once its slot has CHANGED (409 SLOT_CHANGED without it):
+ *                    `{ unplaced: true }` (accepted, not placed yet), or the
+ *                    two neighbours the author chose, as an order move names
+ *                    them (`after` / `before`; both null: the end of the
+ *                    slot's act). Refused for any other proposal.
  */
+export const SlotPlacementInput = z.union([
+    z.object({ unplaced: z.literal(true) }).strict(),
+    z.object({ after: id.nullable(), before: id.nullable() }).strict(),
+]);
+export type SlotPlacementInput = z.infer<typeof SlotPlacementInput>;
+
 export const AcceptProposalInput = z
     .object({
+        placement: SlotPlacementInput.optional(),
         baseVersion: RelationBaseVersionInput.optional(),
         reviewedCurrent: z.boolean().optional(),
         value: FieldValueInput.optional(),

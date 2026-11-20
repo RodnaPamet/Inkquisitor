@@ -45,8 +45,9 @@ async function answerAll(page: Page, words: string) {
     await expect(cards.first()).toBeVisible({ timeout: 20_000 });
     for (const card of await cards.all()) await answerCard(card, page, words);
     await main.locator('#round-finish').click();
-    // The round closed and was reconciled (the next round may stream in after it).
-    await expect(main.getByText(/bible changes? (was|were) proposed from this round|Round 2/).first()).toBeVisible({ timeout: 30_000 });
+    // The round closed and was reconciled (the next round may stream in after it, or, once a gap's beat is proposed,
+    // the session completes: a gap holds one beat, Phase 3.H).
+    await expect(main.getByText(/bible changes? (was|were) proposed from this round|Round 2|Everything this interview can reach/).first()).toBeVisible({ timeout: 30_000 });
 }
 
 async function answerCard(card: Locator, page: Page, words: string) {

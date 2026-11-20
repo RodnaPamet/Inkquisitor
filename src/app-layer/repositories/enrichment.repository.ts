@@ -162,6 +162,20 @@ export const EnrichmentProposalRepository = {
     },
 
     /** The names of the book's PENDING new-element proposals (decrypted: compared in code). */
+    /**
+     * The session's proposals of a beat for its BETWEEN slot that still hold it
+     * (Phase 3.H, issue #53 item 1): one PENDING, or accepted with the element
+     * it created. At most a few a session; `take` bounds it.
+     */
+    slotHolders(db: Db, workspaceId: string, sessionId: string, take: number) {
+        return db.enrichmentProposal.findMany({
+            where: { workspaceId, sessionId, kind: 'NEW_ELEMENT', fillsSlot: true, status: { in: ['PENDING', 'ACCEPTED', 'EDITED_ACCEPTED'] } },
+            orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+            take,
+            select: { id: true, status: true, createdElementId: true },
+        });
+    },
+
     pendingNewElementNames(db: Db, workspaceId: string, bookId: string, take: number) {
         return db.enrichmentProposal.findMany({
             where: { workspaceId, bookId, status: 'PENDING', kind: 'NEW_ELEMENT' },

@@ -11,16 +11,26 @@
  * Reject for an editor. A relation that joins a new entry waits for that
  * entry: Accept is offered only once both ends exist (the server holds the
  * same rule, 409 END_NOT_CREATED).
+ *
+ * `SlotPlacement` says where a beat proposed for a slot goes, and when its slot
+ * has CHANGED since (a neighbour deleted, unplaced or moved, or a beat now
+ * between them: decision D25, "refuse and ask") says so and offers the two
+ * choices instead of Accept: place it after a beat of its act the author
+ * picks, or accept it without a place. A beat never lands where the author
+ * did not choose.
  */
+import { useId, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { Check, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { Label } from '@/components/ui/label';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { FieldEditor } from '@/components/bible/FieldEditor';
 import type { FieldValue } from '@/lib/bible/field-values';
 import type { FieldDef } from '@/lib/bible/template-schema';
-import type { CitedAnswerView, NewRelationProposalView } from '@/lib/enrichment/api-client';
+import type { CitedAnswerView, NewRelationProposalView, SlotPlacement as SlotPlacementChoice, SlotView } from '@/lib/enrichment/api-client';
 
 const noop = () => {};
 
@@ -165,5 +175,87 @@ export function NewRelationCard({
                 </div>
             ) : null}
         </Card>
+    );
+}
+
+/** The positions a changed slot's beat may take: the start of its act, or after each placed beat of it. */
+export function slotPositions(slot: Pick<SlotView, 'choices'>): Array<{ key: string; after: string | null; before: string | null; afterName: string | null }> {
+    const out: Array<{ key: string; after: string | null; before: string | null; afterName: string | null }> = [
+        { key: 'start', after: null, before: slot.choices[0]?.elementId ?? null, afterName: null },
+    ];
+    slot.choices.forEach((c, i) => out.push({ key: c.elementId, after: c.elementId, before: slot.choices[i + 1]?.elementId ?? null, afterName: c.name }));
+    return out;
+}
+
+/**
+ * Where a beat proposed for a slot goes (Phase 3.3; 3.H). Unchanged: a
+ * sentence, and the card's own Accept places it there. Changed: why, and (for
+ * an editor, while it is pending) the author's two choices, each accepting it.
+ */
+export function SlotPlacement({
+    proposalId,
+    slot,
+    pending,
+    canEdit,
+    busy,
+    onPlace,
+}: {
+    proposalId: string;
+    slot: SlotView;
+    pending: boolean;
+    canEdit: boolean;
+    busy: boolean;
+    onPlace: (placement: SlotPlacementChoice) => Promise<boolean>;
+}) {
+    const t = useTranslations('enrichment');
+    const groupId = useId();
+    const positions = slotPositions(slot);
+    const [choice, setChoice] = useState<string>(positions[positions.length - 1].key);
+    const gone = t('slotNeighbourGone');
+    const names = { a: slot.afterName ?? gone, b: slot.beforeName ?? gone };
+    if (!pending) return null;
+    if (!slot.changed) {
+        return (
+            <p className="text-sm text-content-muted" data-testid="slot-placement">
+                {t('slotPlacement', names)}
+            </p>
+        );
+    }
+    const chosen = positions.find((p) => p.key === choice) ?? positions[positions.length - 1];
+    return (
+        <div className="space-y-default rounded-md border border-border-emphasis bg-bg-subtle p-3" data-testid="slot-changed" data-change={slot.changed}>
+            <p className="text-sm text-content-default" role="status">
+                {t(`slotChanged.${slot.changed}`, names)} {t('slotChangedAsk')}
+            </p>
+            {canEdit ? (
+                <>
+                    <RadioGroup value={chosen.key} onValueChange={setChoice} aria-label={t('slotChooseLabel')} className="space-y-tight" data-testid="slot-choices">
+                        {positions.map((p) => (
+                            <div key={p.key} className="flex items-center gap-tight">
+                                <RadioGroupItem value={p.key} id={`${groupId}-${p.key}`} />
+                                <Label htmlFor={`${groupId}-${p.key}`} className="font-normal">
+                                    {p.afterName === null ? t('slotChooseStart') : t('slotChooseAfter', { name: p.afterName })}
+                                </Label>
+                            </div>
+                        ))}
+                    </RadioGroup>
+                    {slot.choicesTruncated ? <p className="text-sm text-content-muted">{t('slotChoicesTruncated', { count: slot.choices.length })}</p> : null}
+                    <div className="flex flex-wrap items-center gap-tight">
+                        <Button
+                            variant="primary"
+                            icon={<Check className="size-4" aria-hidden="true" />}
+                            loading={busy}
+                            onClick={() => void onPlace({ after: chosen.after, before: chosen.before })}
+                            id={`accept-placed-${proposalId}`}
+                        >
+                            {t('slotAcceptPlaced')}
+                        </Button>
+                        <Button variant="secondary" disabled={busy} onClick={() => void onPlace({ unplaced: true })} id={`accept-unplaced-${proposalId}`}>
+                            {t('slotAcceptUnplaced')}
+                        </Button>
+                    </div>
+                </>
+            ) : null}
+        </div>
     );
 }

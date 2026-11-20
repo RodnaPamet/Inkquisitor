@@ -22,6 +22,9 @@
  *   surface  the folded word: a "quoted phrase" matches surface forms in sequence
  *   stem     the folded word through the irregular table (`irregular.ts`) and
  *            Porter2 (`porter2.ts`): an unquoted query word matches by stem
+ *            (and a word the table changes keeps its REGULAR stem too,
+ *            `regularStem`, Phase 3.H: "broken" stems as break and as
+ *            broken, so it still finds "brokenly")
  *   exact    the word with its case kept (diacritics and apostrophes folded,
  *            possessive stripped), only for a word that begins with a capital
  *            AND does not start a sentence — in a name-like source (a name, a
@@ -44,7 +47,7 @@ import { porter2Stem, PORTER2_VERSION } from './porter2';
 export type SearchLanguage = 'en' | 'other';
 
 /** Moves whenever any term a text yields moves: the normaliser's own version, the stemmer's and the irregular table's. */
-export const SEARCH_ANALYZER_VERSION = `analyse-2+${PORTER2_VERSION}+${IRREGULAR_FORMS_VERSION}`;
+export const SEARCH_ANALYZER_VERSION = `analyse-3+${PORTER2_VERSION}+${IRREGULAR_FORMS_VERSION}`;
 
 /** A word longer than this (a pasted URL, a run of letters) is matched by its surface form only. */
 export const STEMMED_WORD_MAX_CHARS = 48;
@@ -168,6 +171,13 @@ export interface Token {
     end: number;
     surface: string;
     stem: string;
+    /**
+     * Porter2's own stem of the surface when the irregular table gave `stem`
+     * from a lemma ("broken": stem break, regular stem broken), else null. A
+     * word is matched by either (Phase 3.H, issue #48 item 3): the table must
+     * not hide the words a regular stem shares ("brokenly").
+     */
+    regularStem: string | null;
     /** The case-kept form, for a capitalised word not at a sentence start (or any capitalised word of a name-like source); else null. */
     exact: string | null;
 }
@@ -182,6 +192,8 @@ export interface Analyzer {
     readonly language: SearchLanguage;
     /** The stem of a folded surface form (cached for the analyzer's life). */
     stemOf(surface: string): string;
+    /** Porter2's stem of a surface the irregular table maps to a lemma, or null (cached). */
+    regularStemOf(surface: string): string | null;
     /** The tokens of a plain text. */
     tokenise(text: string, mode?: CaseMode): Token[];
     /** How many stems were computed rather than read from the cache: the counted work the performance test bounds. */
@@ -208,9 +220,21 @@ export function createAnalyzer(language: SearchLanguage = 'en'): Analyzer {
         }
         return stem;
     };
+    const regularStems = new Map<string, string | null>();
+    const regularStemOf = (surface: string): string | null => {
+        if (language !== 'en' || surface.length > STEMMED_WORD_MAX_CHARS || lemmaOf(surface) === surface) return null;
+        let stem = regularStems.get(surface);
+        if (stem === undefined) {
+            stem = porter2Stem(surface);
+            regularStems.set(surface, stem);
+            stemsComputed++;
+        }
+        return stem;
+    };
     return {
         language,
         stemOf,
+        regularStemOf,
         get stemsComputed() {
             return stemsComputed;
         },
@@ -243,7 +267,7 @@ export function createAnalyzer(language: SearchLanguage = 'en'): Analyzer {
                         caseKept.set(seg.segment, exact);
                     }
                 }
-                out.push({ start: seg.index, end: seg.index + seg.segment.length, surface, stem: stemOf(surface), exact });
+                out.push({ start: seg.index, end: seg.index + seg.segment.length, surface, stem: stemOf(surface), regularStem: regularStemOf(surface), exact });
                 sentenceStart = false;
             }
             return out;
