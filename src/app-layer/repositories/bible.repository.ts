@@ -263,6 +263,26 @@ export const BibleFieldRepository = {
     },
 
     /**
+     * How many stored bytes the fields word search would read hold, per
+     * element (Phase 3.4): the sum of each value's `octet_length` (the
+     * ciphertext's size, which bounds the plain text it decrypts to), every key
+     * but `skipKeys`. Nothing is decrypted, and PostgreSQL answers the length
+     * of a TOASTed value from its header without reading it. Elements with no
+     * such field are absent. One row per element asked for, at most.
+     */
+    async storedBytesForSearch(db: Db, workspaceId: string, elementIds: readonly string[], skipKeys: readonly string[]): Promise<Map<string, number>> {
+        if (elementIds.length === 0) return new Map();
+        const rows = await db.$queryRaw<Array<{ elementId: string; bytes: number }>>`
+            SELECT "elementId", sum(octet_length("value"))::float8 AS "bytes"
+            FROM "BibleField"
+            WHERE "workspaceId" = ${workspaceId}
+              AND "elementId" = ANY(${[...elementIds]}::text[])
+              AND NOT ("key" = ANY(${[...skipKeys]}::text[]))
+            GROUP BY "elementId"`;
+        return new Map(rows.map((r) => [r.elementId, Number(r.bytes)]));
+    },
+
+    /**
      * The stored fields of some elements that word search reads (Phase 3.4):
      * every key but `skipKeys` (keys that hold no text in any template, so
      * their values need not be decrypted). Bounded by the elements asked for

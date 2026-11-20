@@ -26,6 +26,15 @@ export const SEARCH_FIELDS_PER_ELEMENT = 50;
 /** Elements whose fields are read (and decrypted) per query, so a large book is never held whole. */
 export const SEARCH_FIELD_READ_CHUNK = 250;
 /**
+ * Stored (encrypted) bytes of fields read per query, at most: a chunk ends
+ * before the element that would take it past this, so one query never holds
+ * more than this many bytes of ciphertext, and the plain text they decrypt to,
+ * at once (one element alone may pass it). Without it a chunk of 250 elements
+ * of six 100,000-character rich-text fields each was some 150 million
+ * characters held by one request before the text budget was asked.
+ */
+export const SEARCH_FIELD_READ_BYTES = 8 * 1024 * 1024;
+/**
  * Plain-text characters one search analyses at most. A book of the load test's
  * size holds a few megabytes; the stored bounds would allow far more, so past
  * this the elements not yet read are left out and the coverage says so.

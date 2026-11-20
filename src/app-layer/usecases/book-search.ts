@@ -23,7 +23,9 @@
  *
  * BOUNDS (`src/lib/search/vocabulary.ts`). At most `SEARCH_ELEMENTS_MAX`
  * elements, by name, and `SEARCH_RELATIONS_MAX` relations are read; fields
- * are read and decrypted `SEARCH_FIELD_READ_CHUNK` elements at a time, and
+ * are read and decrypted `SEARCH_FIELD_READ_CHUNK` elements and at most
+ * `SEARCH_FIELD_READ_BYTES` stored bytes at a time (sized from the values'
+ * lengths before any is read), and
  * reading stops once `SEARCH_TEXT_MAX_CHARS` of plain text are in hand.
  * Whichever cut the read is named in `coverage`, and `truncated` says when
  * more results matched than `SEARCH_RESULTS_MAX`.
@@ -48,6 +50,7 @@ import { parseQuery } from '@/lib/search/query';
 import { rankDocuments, type SearchDocument, type SearchSource, type SearchWork } from '@/lib/search/rank';
 import {
     SEARCH_ELEMENTS_MAX,
+    SEARCH_FIELD_READ_BYTES,
     SEARCH_FIELD_READ_CHUNK,
     SEARCH_FIELDS_PER_ELEMENT,
     SEARCH_RELATIONS_MAX,
@@ -98,6 +101,8 @@ export interface SearchReadLimits {
     elements: number;
     relations: number;
     fieldChunk: number;
+    /** Stored field bytes read per query (a chunk ends before the element that would pass it). */
+    fieldChunkBytes: number;
     textChars: number;
 }
 
@@ -105,6 +110,7 @@ export const SEARCH_READ_LIMITS: SearchReadLimits = {
     elements: SEARCH_ELEMENTS_MAX,
     relations: SEARCH_RELATIONS_MAX,
     fieldChunk: SEARCH_FIELD_READ_CHUNK,
+    fieldChunkBytes: SEARCH_FIELD_READ_BYTES,
     textChars: SEARCH_TEXT_MAX_CHARS,
 };
 
@@ -152,10 +158,22 @@ export async function readSearchDocuments(
     }
 
     const html = new HtmlTextReader();
+    // Each chunk is at most `fieldChunk` elements AND `fieldChunkBytes` stored bytes (one element alone may
+    // pass it), asked of the database before a value is read: a chunk is decrypted whole before the text
+    // budget can stop the read, so the bytes bound is what bounds the memory one search holds.
+    const storedBytes = await BibleFieldRepository.storedBytesForSearch(db, ctx.workspaceId, elements.map((e) => e.id), NON_TEXT_FIELD_KEYS);
     let searched = 0;
-    for (let i = 0; i < elements.length && budget > 0; i += limits.fieldChunk) {
-        const chunk = elements.slice(i, i + limits.fieldChunk);
-        const fields = await BibleFieldRepository.listForSearch(db, ctx.workspaceId, chunk.map((e) => e.id), SEARCH_FIELDS_PER_ELEMENT, NON_TEXT_FIELD_KEYS);
+    for (let i = 0; i < elements.length && budget > 0; ) {
+        const start = i;
+        let bytes = 0;
+        while (i < elements.length && i - start < limits.fieldChunk) {
+            const b = storedBytes.get(elements[i].id) ?? 0;
+            if (i > start && bytes + b > limits.fieldChunkBytes) break;
+            bytes += b;
+            i++;
+        }
+        const chunk = elements.slice(start, i);
+        const fields = bytes === 0 ? [] : await BibleFieldRepository.listForSearch(db, ctx.workspaceId, chunk.map((e) => e.id), SEARCH_FIELDS_PER_ELEMENT, NON_TEXT_FIELD_KEYS);
         const fieldsOf = new Map<string, Array<(typeof fields)[number]>>();
         for (const f of fields) {
             const list = fieldsOf.get(f.elementId);
