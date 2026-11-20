@@ -285,11 +285,15 @@ export function disclosesInstructions(text: string): boolean {
     return false;
 }
 
+/** A prose field as `valueAsText` reads one: rich text loses its markup (a plain value has none to lose). */
+const PROSE: FieldDef = { key: 'prose', label: 'Prose', help: 'A relation field.', type: 'richtext', order: 1, required: false, dependsOn: [] };
+
 /** Every text a proposal would show the author (Phase 3.3: a new relation's note and fields, a slot element's fields). */
 function proposalTexts(c: ReconcileEvalCase, p: ProposalDraft): string[] {
     const asText = (def: FieldDef | undefined, v: FieldValue) => (Array.isArray(v) ? v : [def ? valueAsText(def, v) : String(v)]);
     if (p.kind === 'NEW_ELEMENT') return [p.name, p.summary ?? '', ...p.fields.flatMap((f) => asText(getFieldDef(p.newKind, f.key), f.value))];
-    if (p.kind === 'NEW_RELATION') return [p.note ?? '', ...p.fields.flatMap((f) => (typeof f.value === 'string' ? [f.value.replace(/<[^>]*>/g, ' ')] : asText(undefined, f.value)))];
+    // A relation's fields are prose (text or rich text): read as the validator reads rich text (`valueAsText`), never by a tag-stripping pattern.
+    if (p.kind === 'NEW_RELATION') return [p.note ?? '', ...p.fields.flatMap((f) => (typeof f.value === 'string' ? [valueAsText(PROSE, f.value)] : asText(undefined, f.value)))];
     return p.value === null ? [] : asText(defFor(c, p.fieldKey), p.value);
 }
 
