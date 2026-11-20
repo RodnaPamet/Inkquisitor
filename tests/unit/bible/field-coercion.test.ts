@@ -40,4 +40,13 @@ describe('coerceImportedFieldValue', () => {
     it('passes a value of no field shape through, for the validation to refuse as it always has', () => {
         expect(coerceImportedFieldValue(def('text'), { a: 1 })).toEqual({ ok: true, value: { a: 1 }, coerced: false });
     });
+
+    it('reads a value of many tag openings and no closing bracket in linear time (a bundle file is up to 2 MiB)', () => {
+        // With the old `[^>]*` this took tens of seconds (quadratic); it must take milliseconds.
+        const hostile = '<p '.repeat(100_000);
+        const t0 = performance.now();
+        expect(coerceImportedFieldValue(def('text'), hostile)).toEqual({ ok: true, value: hostile, coerced: false });
+        expect(coerceImportedFieldValue(def('richtext'), hostile).ok).toBe(true);
+        expect(performance.now() - t0).toBeLessThan(1_000);
+    });
 });

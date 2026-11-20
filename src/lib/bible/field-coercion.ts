@@ -35,7 +35,14 @@ import type { FieldDef } from './template-schema';
 
 export type CoercionResult = { ok: true; value: unknown; coerced: boolean } | { ok: false; reason: 'FIELD_TYPE_CHANGED' };
 
-const HTML_TAG = /<\/?(p|br|ul|ol|li|strong|em|b|i|u|a|h[1-6]|blockquote|code|pre|span|div)\b[^>]*>/i;
+/**
+ * A tag of the rich-text allowlist. `[^<>]*`, never `[^>]*`: the run stops at
+ * the next `<`, so each attempt reads only up to the next tag opening and the
+ * whole test is linear in the value. With `[^>]*` a value of many `<p` and no
+ * `>` (a bundle's 2 MiB file) made every attempt read to the end: quadratic,
+ * minutes of CPU on the import's request.
+ */
+const HTML_TAG = /<\/?(p|br|ul|ol|li|strong|em|b|i|u|a|h[1-6]|blockquote|code|pre|span|div)\b[^<>]*>/i;
 const SCALE_TEXT = /^[1-5]$/;
 
 const paragraph = (s: string) => `<p>${escapeHtml(s)}</p>`;
