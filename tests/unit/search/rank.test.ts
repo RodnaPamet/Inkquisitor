@@ -73,6 +73,32 @@ describe('matching', () => {
         expect(rank(docs, 'red door').hits.map((h) => h.name).sort()).toEqual(['A', 'B', 'C']);
     });
 
+    it('a phrase never runs across a block: a paragraph or list break between its words is no match (Phase 3.H, #48 item 2)', () => {
+        const docs = [
+            // Rich text read as plain text: each block is a line (`HtmlTextReader`), and so is each list item.
+            el('Across', [{ kind: 'field', text: 'The tide came in at the end\nStart of the second watch' }]),
+            el('Items', [{ kind: 'field', text: 'a lamp at the end\nstart again' }]),
+            el('Within', [{ kind: 'field', text: 'From the end start the count again' }]),
+            ...background,
+        ];
+        expect(rank(docs, '"end start"').hits.map((h) => h.name)).toEqual(['Within']);
+        // Unquoted, the words still match wherever they stand.
+        expect(rank(docs, 'end start').hits.map((h) => h.name).sort()).toEqual(['Across', 'Items', 'Within']);
+    });
+
+    it('a word the irregular table changes still finds the words its regular stem shares (Phase 3.H, #48 item 3)', () => {
+        const docs = [
+            el('Brokenly', [{ kind: 'summary', text: 'She spoke brokenly of the wreck.' }]),
+            el('Broke', [{ kind: 'summary', text: 'The mast broke in the gale.' }]),
+            el('Broken', [{ kind: 'summary', text: 'A broken oar.' }]),
+            ...background,
+        ];
+        // "broken" is the lemma break's (broke, broken) AND Porter2's own stem broken (brokenly).
+        expect(rank(docs, 'broken').hits.map((h) => h.name).sort()).toEqual(['Broke', 'Broken', 'Brokenly']);
+        // And the other way: "brokenly" finds "broken", not "broke" (a different regular stem).
+        expect(rank(docs, 'brokenly').hits.map((h) => h.name).sort()).toEqual(['Broken', 'Brokenly']);
+    });
+
     it('a phrase counts as its own signal: holding the words in sequence ranks above holding them apart', () => {
         const docs = [el('Apart', [{ kind: 'summary', text: 'red paint on the old door' }]), el('Together', [{ kind: 'summary', text: 'paint on the old red door' }]), ...background];
         const analyzer = createAnalyzer('en');
@@ -179,10 +205,11 @@ describe('skipping sources that cannot match', () => {
         el('Café Hope', [{ kind: 'summary', text: 'Zoë’s café, where they had gone running before.' }]),
         el('Wenna', [{ kind: 'field', text: 'Happiness is a lantern; generously given, generally lost.' }]),
         el('Søren', [{ kind: 'relationNote', text: 'The authors’ ΟΔΟΣ, a ﬁne line.' }]),
+        el('Wreck', [{ kind: 'field', text: 'He spoke brokenly; the oar was broken, the mast broke.\nWent home' }]),
         ...background,
     ];
 
-    it.each(['go', 'went', 'run', 'running', 'mouse', 'child', 'cafe', 'Hope', 'happy', 'generous', 'general', 'author', 'οδος', 'fine', 'soren', '"had gone"', '"the cove"', 'zoe', 'keeper', 'nothing'])(
+    it.each(['go', 'went', 'run', 'running', 'mouse', 'child', 'cafe', 'Hope', 'happy', 'generous', 'general', 'author', 'οδος', 'fine', 'soren', '"had gone"', '"the cove"', 'zoe', 'keeper', 'nothing', 'broken', 'brokenly', 'broke', 'went', '"broke went"'])(
         '%s: the same results whether unmatchable sources are skipped or not',
         (text) => {
             const a = createAnalyzer('en');
@@ -217,7 +244,8 @@ describe('skipping sources that cannot match', () => {
     });
 
     it('needles: a stem’s prefix and its irregular forms, a phrase’s first word, a quoted word', () => {
-        expect(candidateNeedles(q('went'), { language: 'en' }).sort()).toEqual(['g', 'goes', 'gone', 'went'].sort());
+        // "went" stems as go (the table) and as went (Porter2's own, Phase 3.H): both stems' needles.
+        expect(candidateNeedles(q('went'), { language: 'en' }).sort()).toEqual(['g', 'goes', 'gone', 'went', 'we'].sort());
         expect(candidateNeedles(q('lighthouses "red door" "Ran"'), { language: 'en' }).sort()).toEqual(['lightho', 'ran', 'red'].sort());
         expect(candidateNeedles(q('running', createAnalyzer('other')), { language: 'other' })).toEqual(['running']);
     });

@@ -62,7 +62,8 @@
  * (its fields are its type's; stored as a RELATION_FIELD proposal) or a
  * BETWEEN session's element not yet created (`PENDING_SUBJECT_ID`). The slot's
  * element is proposed as a new element with `fillsSlot` (of the slot's kind,
- * at most one); every operation on the slot's fields that passes the rules
+ * at most one, and none once the session's slot already has its beat from an
+ * earlier round: `slot.taken`, Phase 3.H); every operation on the slot's fields that passes the rules
  * above becomes one of that new element's first field values (it cites what
  * they cite), and with no such new element it is refused
  * `PENDING_WITHOUT_ELEMENT`. A NEW RELATION passes when, in this order:
@@ -171,7 +172,7 @@ export interface ValidationContext {
     /** Phase 3.3: the relations the book holds between them. */
     existingRelations?: readonly ExistingRelation[];
     /** Phase 3.3: a BETWEEN session's slot, its kind. */
-    slot?: { kind: BibleKind } | null;
+    slot?: { kind: BibleKind; taken?: boolean } | null;
 }
 
 export interface FieldProposalDraft {
@@ -684,7 +685,7 @@ export function validateReconcile(parsed: ParsedReconcile, ctx: ValidationContex
         if (verdict.ok && verdict.value.fillsSlot) {
             if (!ctx.slot) verdict = refuse('SLOT_NOT_OFFERED');
             else if (verdict.value.newKind !== ctx.slot.kind) verdict = refuse('SLOT_KIND_MISMATCH');
-            else if (slotDraft) verdict = refuse('SLOT_TAKEN');
+            else if (slotDraft || ctx.slot.taken) verdict = refuse('SLOT_TAKEN');
         }
         if (!verdict.ok) {
             result.refusals.push({ code: verdict.code, target: { kind: item.kind } });

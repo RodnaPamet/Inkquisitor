@@ -67,7 +67,7 @@ export interface ReconcileRoundInput {
     relationEnds?: readonly RelationEnd[];
     existingRelations?: readonly ExistingRelation[];
     /** Phase 3.3: a BETWEEN session's slot. */
-    slot?: { kind: BibleKind } | null;
+    slot?: { kind: BibleKind; taken?: boolean } | null;
 }
 
 /** An answer as text: the choice, the number and the words, joined; null unless ANSWERED. */
@@ -137,7 +137,7 @@ export function reconcileRequestFor(input: ReconcileRoundInput): ReconcileReques
         answers: input.answers.map(promptAnswerOf),
         bookElements: input.bookElements,
         relationEnds: input.relationEnds ?? [],
-        relationTypes: relationTypesBetween([...(input.relationEnds ?? []).map((e) => e.kind), ...(input.slot ? [input.slot.kind] : [])]),
+        relationTypes: relationTypesBetween([...(input.relationEnds ?? []).map((e) => e.kind), ...(input.slot && !input.slot.taken ? [input.slot.kind] : [])]),
         slot: input.slot ?? null,
     });
 }

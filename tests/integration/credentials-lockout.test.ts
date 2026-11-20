@@ -6,10 +6,28 @@
  * timing property is "every failure costs one bcrypt compare", which a count
  * proves without a stopwatch. The delay is served by an injected recorder, so
  * the suite asserts the delay REQUESTED, not wall-clock time.
+ *
+ * ITS HASHES ARE MADE AT bcrypt's LOWEST COST (Phase 3.H, issue #48 item 4).
+ * The suite was timing-flaky under the full integration run: a test makes up
+ * to 13 compares one after another, each at the production cost (12) about a
+ * quarter of a second on an idle 4-core container, so 3.4 s of Jest's 5 s
+ * budget before any load; with other work on the machine (the rest of the
+ * integration run, or six busy processes beside this file alone) the compares
+ * stretched past 5 s and the test timed out, its attempts still running into
+ * the next test's lockout reset, which failed that one too. What this suite
+ * proves is a COUNT of compares and the delays requested, neither of which
+ * depends on the work factor; the production cost is pinned by
+ * `tests/unit/auth/passwords.test.ts`. Every hash here — the account's and
+ * the dummy one — is made at the same lowest cost, so a dummy compare still
+ * costs what a real one does.
  */
 jest.mock('bcrypt', () => {
     const actual = jest.requireActual('bcrypt');
-    return { ...actual, compare: jest.fn((...args: unknown[]) => actual.compare(...args)) };
+    return {
+        ...actual,
+        compare: jest.fn((...args: unknown[]) => actual.compare(...args)),
+        hash: jest.fn((data: string) => actual.hash(data, 4)),
+    };
 });
 
 import bcrypt from 'bcrypt';

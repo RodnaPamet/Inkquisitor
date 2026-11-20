@@ -37,7 +37,7 @@ describe('structurePreview', () => {
     ]);
 
     it('a slot’s new beat stands beside its two neighbours, between them', () => {
-        const slot = { afterElementId: 'b1', afterName: 'One', beforeElementId: 'b2', beforeName: 'Two', act: 'opening' };
+        const slot = { afterElementId: 'b1', afterName: 'One', beforeElementId: 'b2', beforeName: 'Two', act: 'opening', changed: null, choices: [], choicesTruncated: false };
         const { nodes, undrawn } = structurePreview([newElement('p1', 'PLOT_BEAT', slot)], boxes, PLOT);
         expect(undrawn).toBe(0);
         expect(nodes).toEqual([expect.objectContaining({ proposalId: 'p1', x: 216 + GHOST_SIDE_OFFSET })]);
@@ -46,9 +46,15 @@ describe('structurePreview', () => {
         expect(centre).toBeLessThan(168 + 44);
     });
 
+    it('a slot that has CHANGED is not drawn between its old neighbours (D25: the author chooses where it goes)', () => {
+        const slot = { afterElementId: 'b1', afterName: 'One', beforeElementId: 'b2', beforeName: 'Two', act: 'opening', changed: 'GAP_FILLED' as const, choices: [], choicesTruncated: false };
+        const { nodes } = structurePreview([newElement('p1', 'PLOT_BEAT', slot)], boxes, PLOT);
+        expect(nodes).toEqual([expect.objectContaining({ proposalId: 'p1', x: 216 + 2 * GHOST_SIDE_OFFSET })]);
+    });
+
     it('a new element with no slot, or whose neighbours are not on the map, goes in a column to the right', () => {
         const { nodes } = structurePreview(
-            [newElement('p1', 'PLOT_BEAT'), newElement('p2', 'PLOT_BEAT', { afterElementId: 'gone', afterName: 'x', beforeElementId: 'b2', beforeName: 'y', act: null })],
+            [newElement('p1', 'PLOT_BEAT'), newElement('p2', 'PLOT_BEAT', { afterElementId: 'gone', afterName: 'x', beforeElementId: 'b2', beforeName: 'y', act: null, changed: null, choices: [], choicesTruncated: false })],
             boxes,
             PLOT,
         );

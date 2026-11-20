@@ -66,6 +66,7 @@ import { AiUnavailableError, type AiUnavailableReason } from '@/lib/ai/errors';
 import { decodeFieldValue, type FieldValue } from '@/lib/bible/field-values';
 import type { BibleKind } from '@/lib/bible/kinds';
 import { getRelationType, getTemplate, relationFieldDefs } from '@/lib/bible/templates';
+import { slotTakenBy } from './story-slot';
 import { PENDING_SUBJECT_ID, relationSubjectName, subjectIdOf, type RelationSubject } from '@/lib/interview/subjects';
 import { defaultReconciler } from '@/lib/enrichment/model-seam';
 import { BOOK_ELEMENTS_IN_PROMPT_MAX, RECONCILE_PROMPT_VERSION } from '@/lib/enrichment/prompt';
@@ -248,12 +249,14 @@ export async function loadRoundInput(db: PrismaTx, ctx: WorkspaceRequestContext,
         });
     }
 
-    // The BETWEEN slot's element not yet created, when the round asked about it and both neighbours remain.
+    // The BETWEEN slot's element not yet created, when the round asked about it and both neighbours remain. A slot
+    // that already has its beat (a pending or accepted proposal, Phase 3.H) takes no second one: SLOT_TAKEN.
     const relationEnds = await relationEndsOf(db, ctx, session);
     let slot: ReconcileRoundInput['slot'] = null;
     if (session.scope === 'BETWEEN' && session.slotKind && relationEnds.length === 2) {
-        slot = { kind: session.slotKind as BibleKind };
-        if (questions.some((q) => q.aboutPending)) {
+        const taken = await slotTakenBy(db, ctx, session);
+        slot = { kind: session.slotKind as BibleKind, ...(taken ? { taken: true } : {}) };
+        if (!taken && questions.some((q) => q.aboutPending)) {
             const targeted = targetedOf(PENDING_SUBJECT_ID);
             const after = relationEnds.find((e) => e.elementId === session.slotAfterElementId)!;
             const before = relationEnds.find((e) => e.elementId === session.slotBeforeElementId)!;

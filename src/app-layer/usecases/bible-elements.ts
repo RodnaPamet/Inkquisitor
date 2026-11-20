@@ -470,12 +470,15 @@ export async function updateElementFields(ctx: WorkspaceRequestContext, bookId: 
 export async function deleteElement(ctx: WorkspaceRequestContext, bookId: string, elementId: string): Promise<{ id: string }> {
     await assertPermission(ctx, 'bible.edit');
     return runInWorkspaceContext(ctx, async (db) => {
-        await BibleElementRepository.lock(db, elementId);
-        const element = await requireElement(db, ctx, bookId, elementId);
         // The book's map locks BEFORE the delete: its cascade takes the
         // element's nodes and edges off the maps, and each map it moves gets
-        // its snapshot (decision D20).
+        // its snapshot (decision D20). And before the element's own lock: the
+        // book's lock order is map → names → order → element → relation
+        // (Phase 3.H), and a map save holds a map lock while it waits for an
+        // order lock that a move holds while it waits for this element's.
         const maps = await lockMapsForBibleDeletion(db, ctx, bookId);
+        await BibleElementRepository.lock(db, elementId);
+        const element = await requireElement(db, ctx, bookId, elementId);
         if ((await BibleElementRepository.remove(db, ctx.workspaceId, bookId, elementId)) === 0) throw new NotFoundError('Element not found.');
         await recordMapsAfterBibleDeletion(db, ctx, bookId, maps);
         await logEvent(ctx, { action: 'BIBLE_ELEMENT_DELETED', entityType: 'BibleElement', entityId: elementId, details: { bookId, kind: element.kind } }, { db });

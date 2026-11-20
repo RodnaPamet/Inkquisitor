@@ -156,7 +156,7 @@ export interface ReconcileRequestInput {
     /** Phase 3.3: the elements a new relation may join (none: no relation_ends block). */
     relationEnds?: readonly RelationEnd[];
     relationTypes?: ReadonlyArray<{ fromKind: BibleKind; toKind: BibleKind; types: ReadonlyArray<{ type: string; label: string }> }>;
-    slot?: { kind: BibleKind } | null;
+    slot?: { kind: BibleKind; taken?: boolean } | null;
 }
 
 /** What one reconcile call sends: 2.1's template, the data blocks and the schema. */
@@ -212,6 +212,7 @@ export function buildReconcileRequest(input: ReconcileRequestInput): ReconcileRe
         data.push({ label: 'relation-ends', text: JSON.stringify(input.relationEnds.map((e) => ({ elementId: e.elementId, kind: e.kind, name: e.name }))) });
         data.push({ label: 'relation-types', text: JSON.stringify(input.relationTypes ?? []) });
     }
-    if (input.slot) data.push({ label: 'slot', text: JSON.stringify({ kind: input.slot.kind }) });
+    // A slot that already has its beat is not offered: the model is not asked for a second (validate refuses one, SLOT_TAKEN).
+    if (input.slot && !input.slot.taken) data.push({ label: 'slot', text: JSON.stringify({ kind: input.slot.kind }) });
     return { template: RECONCILE_PROMPT, data, schema: ReconcileOutputSchema, bookId: input.bookId };
 }

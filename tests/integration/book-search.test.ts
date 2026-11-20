@@ -68,8 +68,10 @@ it('stores the book sealed, and finds an element by a stemmed variant of a word 
 
 it('reads rich text as plain text: block boundaries never fuse words, and no HTML comes back', async () => {
     const { ctx, book } = await seed();
-    const r = await searchBook(ctx, book.id, { q: '"end start"' });
-    // "end</p><p>Start" is two words in sequence, across the paragraph break.
+    // "end</p><p>Start" is two words, a paragraph break between them: found as words, never as a phrase across
+    // the break (Phase 3.H, #48 item 2).
+    expect(names(await searchBook(ctx, book.id, { q: '"end start"' }))).toEqual([]);
+    const r = await searchBook(ctx, book.id, { q: '"the end" start' });
     expect(names(r)).toEqual(['Ilse Marrow']);
     const snippet = r.hits[0].matches[0].snippet;
     expect(snippet.text).toContain('drowned at the end\nStart of every winter');

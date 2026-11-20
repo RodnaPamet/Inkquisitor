@@ -126,6 +126,43 @@ export const BibleElementRepository = {
         });
     },
 
+    /**
+     * Give a story order's placed elements new ranks, in ONE pass (Phase 3.H,
+     * a rebalance): every rank of the (book, kind) order is cleared first, so
+     * a new rank never meets an old one in the unique index halfway through,
+     * then each element named gets its rank. The CALLER holds the order's lock
+     * and passes every placed element of the order (`ids` and `ranks` in step).
+     * `updatedAt` is left alone: the author changed nothing.
+     */
+    async rebalanceOrder(db: Db, workspaceId: string, bookId: string, kind: BibleElementKind, ids: readonly string[], ranks: readonly string[]) {
+        if (ids.length !== ranks.length) throw new RangeError('rebalanceOrder: ids and ranks differ in length');
+        await db.$executeRaw`UPDATE "BibleElement" SET "orderRank" = NULL WHERE "workspaceId" = ${workspaceId} AND "bookId" = ${bookId} AND "kind"::text = ${kind} AND "orderRank" IS NOT NULL`;
+        let written = 0;
+        for (let i = 0; i < ids.length; i += 1_000) {
+            written += await db.$executeRaw`
+                UPDATE "BibleElement" AS e SET "orderRank" = v."rank"
+                FROM unnest(${[...ids.slice(i, i + 1_000)]}::text[], ${[...ranks.slice(i, i + 1_000)]}::text[]) AS v("id", "rank")
+                WHERE e."id" = v."id" AND e."workspaceId" = ${workspaceId} AND e."bookId" = ${bookId}`;
+        }
+        return written;
+    },
+
+    /**
+     * The elements of one order holding any of `ranks` (Phase 3.H, issue #50
+     * item 3): the bundle import's ORDER_TAKEN check asks for the ranks it
+     * would write, never reads the whole order, so no order is too long for it
+     * to see a taken place. Served by the unique (bookId, kind, orderRank); at
+     * most one row a rank.
+     */
+    holdersOfRanks(db: Db, workspaceId: string, bookId: string, kind: BibleElementKind, ranks: readonly string[]) {
+        if (ranks.length === 0) return Promise.resolve([]);
+        return db.bibleElement.findMany({
+            where: { workspaceId, bookId, kind, orderRank: { in: [...ranks] } },
+            select: { id: true, orderRank: true },
+            take: ranks.length,
+        });
+    },
+
     /** Set (or clear) one element's place in its story order. */
     async setOrderRank(db: Db, workspaceId: string, bookId: string, elementId: string, orderRank: string | null) {
         const res = await db.bibleElement.updateMany({ where: { id: elementId, workspaceId, bookId }, data: { orderRank, updatedAt: new Date() } });
@@ -194,7 +231,32 @@ export const BibleElementRepository = {
             where: { workspaceId, bookId },
             orderBy: [{ name: 'asc' }, { id: 'asc' }],
             take,
-            select: { id: true, kind: true, name: true, summary: true, customLabel: true },
+            // No summary (encrypted): word search reads it by stored bytes, with the fields (Phase 3.H, #48 item 1).
+            select: { id: true, kind: true, name: true, customLabel: true },
+        });
+    },
+
+    /**
+     * Each element's stored summary bytes (Phase 3.H): `octet_length` of the
+     * ciphertext, which bounds the text it decrypts to; nothing decrypted. An
+     * element with no summary is absent.
+     */
+    async summaryBytesForSearch(db: Db, workspaceId: string, elementIds: readonly string[]): Promise<Map<string, number>> {
+        if (elementIds.length === 0) return new Map();
+        const rows = await db.$queryRaw<Array<{ id: string; bytes: number }>>`
+            SELECT "id", octet_length("summary")::float8 AS "bytes"
+            FROM "BibleElement"
+            WHERE "workspaceId" = ${workspaceId} AND "id" = ANY(${[...elementIds]}::text[]) AND "summary" IS NOT NULL`;
+        return new Map(rows.map((r) => [r.id, Number(r.bytes)]));
+    },
+
+    /** Some elements' summaries, decrypted (word search reads them a byte-bounded chunk at a time). */
+    summariesForSearch(db: Db, workspaceId: string, bookId: string, elementIds: readonly string[]) {
+        if (elementIds.length === 0) return Promise.resolve([]);
+        return db.bibleElement.findMany({
+            where: { workspaceId, bookId, id: { in: [...elementIds] } },
+            select: { id: true, summary: true },
+            take: elementIds.length,
         });
     },
 
@@ -338,6 +400,16 @@ export const BibleFieldRepository = {
             where: { workspaceId, elementId: { in: [...elementIds] }, ...(skipKeys.length > 0 ? { key: { notIn: [...skipKeys] } } : {}) },
             select: { elementId: true, key: true, value: true },
             take: elementIds.length * perElement,
+        });
+    },
+
+    /** One key's stored value for some elements (a beat's act, Phase 3.H): at most one row each. */
+    valuesOfKey(db: Db, workspaceId: string, elementIds: readonly string[], key: string) {
+        if (elementIds.length === 0) return Promise.resolve([]);
+        return db.bibleField.findMany({
+            where: { workspaceId, elementId: { in: [...elementIds] }, key },
+            select: { elementId: true, value: true },
+            take: elementIds.length,
         });
     },
 
@@ -489,12 +561,28 @@ export const BibleRelationRepository = {
      * first, for word search (Phase 3.4). Only whether a note is set is asked
      * of the database, never what it says. `take` bounds it.
      */
-    listNotesForBook(db: Db, workspaceId: string, bookId: string, take: number) {
+    /**
+     * The book's relations that hold a note, with the note's stored bytes and
+     * not the note (Phase 3.H, #48 item 1: word search decrypts notes a
+     * byte-bounded chunk at a time). In creation order; `take` bounds it.
+     */
+    async noteBytesForBook(db: Db, workspaceId: string, bookId: string, take: number): Promise<Array<{ id: string; fromElementId: string; toElementId: string; bytes: number }>> {
+        const rows = await db.$queryRaw<Array<{ id: string; fromElementId: string; toElementId: string; bytes: number }>>`
+            SELECT "id", "fromElementId", "toElementId", octet_length("note")::float8 AS "bytes"
+            FROM "BibleRelation"
+            WHERE "workspaceId" = ${workspaceId} AND "bookId" = ${bookId} AND "note" IS NOT NULL
+            ORDER BY "createdAt" ASC, "id" ASC
+            LIMIT ${take}`;
+        return rows.map((r) => ({ ...r, bytes: Number(r.bytes) }));
+    },
+
+    /** Some relations' notes, decrypted. */
+    notesByIds(db: Db, workspaceId: string, bookId: string, ids: readonly string[]) {
+        if (ids.length === 0) return Promise.resolve([]);
         return db.bibleRelation.findMany({
-            where: { workspaceId, bookId, note: { not: null } },
-            orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
-            take,
-            select: { id: true, fromElementId: true, toElementId: true, note: true },
+            where: { workspaceId, bookId, id: { in: [...ids] } },
+            select: { id: true, note: true },
+            take: ids.length,
         });
     },
 
@@ -576,12 +664,36 @@ export const BibleRelationFieldRepository = {
     },
 
     /** The book's relation fields, decrypted, oldest relation first, for word search (Phase 3.3 over 3.4). `take` bounds it. */
-    listForBookSearch(db: Db, workspaceId: string, bookId: string, take: number) {
+    /**
+     * The book's relation fields word search reads, with each value's stored
+     * bytes and not the value (Phase 3.H, #48 item 1), and what search needs
+     * of the relation: its ends, its type and its declaring end's kind. In
+     * (relation, template order); `take` bounds it.
+     */
+    async bytesForBookSearch(
+        db: Db,
+        workspaceId: string,
+        bookId: string,
+        take: number,
+    ): Promise<Array<{ relationId: string; key: string; bytes: number; fromElementId: string; toElementId: string; type: string; fromKind: string }>> {
+        const rows = await db.$queryRaw<Array<{ relationId: string; key: string; bytes: number; fromElementId: string; toElementId: string; type: string; fromKind: string }>>`
+            SELECT f."relationId", f."key", octet_length(f."value")::float8 AS "bytes", r."fromElementId", r."toElementId", r."type", e."kind"::text AS "fromKind"
+            FROM "BibleRelationField" f
+            JOIN "BibleRelation" r ON r."id" = f."relationId" AND r."workspaceId" = f."workspaceId"
+            JOIN "BibleElement" e ON e."id" = r."fromElementId" AND e."workspaceId" = r."workspaceId"
+            WHERE f."workspaceId" = ${workspaceId} AND r."bookId" = ${bookId}
+            ORDER BY f."relationId" ASC, f."order" ASC
+            LIMIT ${take}`;
+        return rows.map((r) => ({ ...r, bytes: Number(r.bytes) }));
+    },
+
+    /** Some relations' field values, decrypted (bounded by the relations asked for times `perRelation`). */
+    valuesForSearch(db: Db, workspaceId: string, relationIds: readonly string[], perRelation: number) {
+        if (relationIds.length === 0) return Promise.resolve([]);
         return db.bibleRelationField.findMany({
-            where: { workspaceId, relation: { bookId } },
-            orderBy: [{ relationId: 'asc' }, { order: 'asc' }],
-            take,
-            select: { relationId: true, key: true, value: true, relation: { select: { fromElementId: true, toElementId: true, type: true, from: { select: { kind: true } } } } },
+            where: { workspaceId, relationId: { in: [...relationIds] } },
+            select: { relationId: true, key: true, value: true },
+            take: relationIds.length * perRelation,
         });
     },
 
