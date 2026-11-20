@@ -24,6 +24,13 @@
  *   --coverage               also run the question-coverage set (2.2's ten
  *                            concepts) and write `coverage-report.json`
  *   --no-packs               run no pack set (with --coverage: the coverage set alone)
+ *   --reconcile              also run the reconcile step's sets (Phase 2.5:
+ *                            enrichment and adversarial) and write its record:
+ *                            beside the sets (src/lib/enrichment/evals/) for a
+ *                            structural run, DIR/reconcile/ under --out. The
+ *                            structural reconciler is the reference reconciler
+ *                            (`src/lib/enrichment/evals/evaluation.ts`); the
+ *                            model one is the product's wired reconciler.
  *   --out DIR                where records go: DIR/<pack dir>/evaluation-record.json
  *
  * Every figure in a record is recomputed by the mount gate when it is read;
@@ -36,6 +43,8 @@ import { GenerationStop, type QuestionGenerator } from '../generator';
 import { PACK_RECORD_FILE, type PackRegistry } from '../packs';
 import { checkPackRecord, evaluatePack, type RecordKind } from '../pack-evaluation';
 import { loadCoverageEval, runCoverageEvaluation, type CoverageReport } from './coverage';
+import type { Reconciler } from '@/lib/enrichment/reconciler';
+import { checkReconcileRecord, evaluateReconcile, type ReconcileRecordKind } from '@/lib/enrichment/evals/evaluation';
 
 /** The most a model run may be given to spend, in US dollars: a run asking for more is refused. */
 export const EVAL_RUN_BUDGET_MAX_USD = 25;
@@ -45,12 +54,14 @@ export interface EvalArgs {
     /** Pack names, or 'all'. Empty: no pack set. */
     packs: 'all' | string[];
     coverage: boolean;
+    /** Also run the reconcile evaluation (Phase 2.5). */
+    reconcile: boolean;
     out: string | null;
 }
 
 /** Parse the command line. Throws a plain message on anything it does not understand. */
 export function parseEvalArgs(argv: readonly string[]): EvalArgs {
-    const args: EvalArgs = { generator: 'structural', packs: 'all', coverage: false, out: null };
+    const args: EvalArgs = { generator: 'structural', packs: 'all', coverage: false, reconcile: false, out: null };
     for (let i = 0; i < argv.length; i++) {
         const a = argv[i];
         const value = (): string => {
@@ -59,6 +70,7 @@ export function parseEvalArgs(argv: readonly string[]): EvalArgs {
             return v;
         };
         if (a === '--coverage') args.coverage = true;
+        else if (a === '--reconcile') args.reconcile = true;
         else if (a === '--no-packs') args.packs = [];
         else if (a.startsWith('--generator')) {
             const v = value();
@@ -181,6 +193,65 @@ export async function runPackEvaluations(input: {
     return results;
 }
 
+/** A reconciler that adds what each call cost to `spent` (micro-dollars). */
+export function meteredReconciler(reconciler: Reconciler, spent: { microUsd: number; calls: number }): Reconciler {
+    return {
+        unavailableReason: () => reconciler.unavailableReason(),
+        async reconcile(request, signal) {
+            spent.calls++;
+            const r = await reconciler.reconcile(request, signal);
+            spent.microUsd += typeof r.costMicroUsd === 'number' && r.costMicroUsd > 0 ? r.costMicroUsd : 0;
+            return r;
+        },
+    };
+}
+
+/** A model run's reconcile calls held to the month the run started in (`withinRunMonth`'s twin): a later month's call is refused unsent. */
+export function reconcilerWithinRunMonth(reconciler: Reconciler, startedAt: Date, now: () => Date = () => new Date()): Reconciler {
+    const month = spendPeriod(startedAt);
+    return {
+        unavailableReason: () => reconciler.unavailableReason(),
+        async reconcile(request, signal) {
+            if (spendPeriod(now()) !== month) return { output: null, tokensUsed: 0, failure: { outcome: 'WORKSPACE_CEILING', errorCode: 'RUN_CROSSED_MONTH' } };
+            return reconciler.reconcile(request, signal);
+        },
+    };
+}
+
+/** Where a structural reconcile record is written (beside the sets), relative to the repository. */
+export const RECONCILE_RECORD_RELATIVE = path.join('src', 'lib', 'enrichment', 'evals', 'evaluation-record.json');
+
+export interface ReconcileRunResult {
+    passed: boolean;
+    cases: number;
+    failedCases: string[];
+    ungraded: number;
+    file: string;
+    /** Why the gate's own check refuses the written record, when it does. */
+    refusal: string | null;
+}
+
+/** The reconcile step's sets (2.5) through `reconciler`, its record written to `file` and checked as the gate checks it. */
+export async function runReconcileEvaluation(
+    reconciler: Reconciler,
+    who: { kind: ReconcileRecordKind; id: string },
+    file: string,
+    now: () => Date = () => new Date(),
+): Promise<ReconcileRunResult> {
+    const { record, grades } = await evaluateReconcile(reconciler, who, now());
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, JSON.stringify(record, null, 2) + '\n');
+    const check = await checkReconcileRecord(record);
+    return {
+        passed: check.ok,
+        cases: grades.length,
+        failedCases: grades.filter((g) => !g.passed).map((g) => g.caseId),
+        ungraded: grades.reduce((n, g) => n + g.ungraded.length, 0),
+        file,
+        refusal: check.ok ? null : `${check.reason}: ${check.detail}`,
+    };
+}
+
 /** The question-coverage set (2.2) through `generator`, written to `<out>/coverage-report.json`. */
 export async function runCoverage(registry: PackRegistry, generator: QuestionGenerator, out: string): Promise<CoverageReport> {
     const report = await runCoverageEvaluation(loadCoverageEval(), generator, { packs: registry });
@@ -190,7 +261,12 @@ export async function runCoverage(registry: PackRegistry, generator: QuestionGen
 }
 
 /** The run's summary as Markdown lines (the log and the step summary): names, counts and codes, never text. */
-export function summaryLines(results: readonly PackRunResult[], coverage: CoverageReport | null, spent: { microUsd: number; calls: number } | null): string[] {
+export function summaryLines(
+    results: readonly PackRunResult[],
+    coverage: CoverageReport | null,
+    spent: { microUsd: number; calls: number } | null,
+    reconcile: ReconcileRunResult | null = null,
+): string[] {
     const lines = ['| pack | passed | cases | failed cases | ungraded behaviours |', '|---|---|---|---|---|'];
     for (const r of results) lines.push(`| ${r.name} | ${r.passed ? 'yes' : 'NO'} | ${r.cases} | ${r.error ?? (r.failedCases.join(', ') || '—')} | ${r.ungraded} |`);
     if (results.length === 0) lines.push('| (no pack set run) | | | | |');
@@ -200,6 +276,14 @@ export function summaryLines(results: readonly PackRunResult[], coverage: Covera
             coverage.status === 'NOT_ASSESSED'
                 ? 'Coverage: not assessed (no sessions).'
                 : `Coverage: ${coverage.passed}/${coverage.sessions.length} sessions pass; ${(coverage.coverage * 100).toFixed(1)}% of must-cover keys reached by the generator.`,
+        );
+    }
+    if (reconcile) {
+        lines.push('');
+        lines.push(
+            `Reconcile: ${reconcile.passed ? 'passed' : 'NOT passed'}; ${reconcile.cases - reconcile.failedCases.length}/${reconcile.cases} cases pass` +
+                (reconcile.failedCases.length > 0 ? ` (failed: ${reconcile.failedCases.join(', ')})` : '') +
+                `; ${reconcile.ungraded} ungraded behaviours.`,
         );
     }
     if (spent) lines.push('', `Model calls: ${spent.calls}; spent: $${(spent.microUsd / 1_000_000).toFixed(4)}.`);

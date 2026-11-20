@@ -27,9 +27,11 @@ export interface InterviewsListProps {
     sessions: SessionSummaryView[];
     truncated: boolean;
     kindLabels: Record<BibleKind, string>;
+    /** Proposed bible changes still waiting for review, per session (Phase 2.5). */
+    pendingBySession?: Readonly<Record<string, number>>;
 }
 
-export function InterviewsList({ workspaceSlug, book, sessions, truncated, kindLabels }: InterviewsListProps) {
+export function InterviewsList({ workspaceSlug, book, sessions, truncated, kindLabels, pendingBySession = {} }: InterviewsListProps) {
     const t = useTranslations('interview.list');
     const tScope = useTranslations('interview.scope');
     const tStatus = useTranslations('interview.status');
@@ -70,9 +72,28 @@ export function InterviewsList({ workspaceSlug, book, sessions, truncated, kindL
                     header: t('colReason'),
                     cell: ({ row }) => (row.original.stopReason ? <span className="text-sm text-content-default">{stopMessage(row.original.stopReason, row.original.stopDetail)}</span> : '—'),
                 },
+                {
+                    id: 'proposals',
+                    header: t('colProposals'),
+                    cell: ({ row }) => {
+                        const count = pendingBySession[row.original.id] ?? 0;
+                        return count > 0 ? (
+                            <Link
+                                href={APP_ROUTES.interviewReview(workspaceSlug, book.id, row.original.id)}
+                                className="text-sm font-medium text-content-emphasis hover:underline"
+                                onClick={(e) => e.stopPropagation()}
+                                data-testid="review-link"
+                            >
+                                {t('toReview', { count })}
+                            </Link>
+                        ) : (
+                            '—'
+                        );
+                    },
+                },
                 { id: 'started', header: t('colStarted'), cell: ({ row }) => formatDate(row.original.createdAt) },
             ]),
-        [t, tScope, tStatus, stopMessage, kindLabels, workspaceSlug, book.id],
+        [t, tScope, tStatus, stopMessage, kindLabels, workspaceSlug, book.id, pendingBySession],
     );
 
     return (

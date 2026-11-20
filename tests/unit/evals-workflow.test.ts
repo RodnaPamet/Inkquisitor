@@ -42,10 +42,19 @@ describe('.github/workflows/evals.yml', () => {
         expect(Object.keys(wf.jobs)).toEqual(['evals']);
     });
 
-    it('runs only when a person dispatches it, with packs, coverage and budget inputs', () => {
+    it('runs only when a person dispatches it, with packs, coverage, reconcile and budget inputs', () => {
         expect(Object.keys(wf.on)).toEqual(['workflow_dispatch']);
-        expect(Object.keys(wf.on.workflow_dispatch.inputs ?? {})).toEqual(['packs', 'coverage', 'budget_usd']);
+        expect(Object.keys(wf.on.workflow_dispatch.inputs ?? {})).toEqual(['packs', 'coverage', 'reconcile', 'budget_usd']);
         expect(wf.on.workflow_dispatch.inputs!.coverage.type).toBe('boolean');
+        expect(wf.on.workflow_dispatch.inputs!.reconcile.type).toBe('boolean');
+    });
+
+    it('runs the reconcile sets (Phase 2.5) on the same model path, its record uploaded with the packs’ (evals-out/**)', () => {
+        const run = job.steps.find((s) => s.run?.includes('packs:evaluate'))!;
+        expect(run.env).toMatchObject({ RECONCILE: '${{ inputs.reconcile }}' });
+        expect(run.run).toMatch(/if \[ "\$RECONCILE" = "true" \]; then extra="\$extra --reconcile"; fi/);
+        const upload = job.steps.find((s) => s.uses?.startsWith('actions/upload-artifact@'))!;
+        expect(String(upload.with!.path)).toContain('evals-out/**/evaluation-record.json');
     });
 
     it('holds contents: read and nothing else, at every level', () => {

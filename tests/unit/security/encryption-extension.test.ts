@@ -169,7 +169,7 @@ describe('reads', () => {
 });
 
 describe('wiring', () => {
-    it('the shipped manifest lists the bible\'s author text (Phase 1.1) and the interview\'s (Phase 2.2)', () => {
+    it('the shipped manifest lists the bible\'s author text (Phase 1.1), the interview\'s (Phase 2.2) and enrichment\'s (Phase 2.5)', () => {
         expect(ENCRYPTED_FIELDS).toEqual({
             Book: ['logline'],
             BibleElement: ['summary'],
@@ -178,6 +178,7 @@ describe('wiring', () => {
             BibleEntryVersion: ['snapshot', 'changeSummary'],
             Question: ['text', 'options', 'scaleLabels', 'recommendedAnswer', 'rationale', 'challengeQuote'],
             Answer: ['text', 'choice'],
+            EnrichmentProposal: ['proposedValue', 'newName', 'newSummary'],
         });
         expect(compileManifest(ENCRYPTED_FIELDS).isEmpty).toBe(false);
     });

@@ -202,8 +202,13 @@ export function InterviewSession(props: InterviewSessionProps) {
             const flushed = await flushAnswers();
             if (!flushed) return;
             // "Skip the rest" only for what is still unanswered once every save has landed.
-            const { interview } = await interviewApi.closeRound(ids, round.number, flushed.open > 0);
+            const { interview, reconcile } = await interviewApi.closeRound(ids, round.number, flushed.open > 0);
             setView(interview);
+            // Phase 2.5: the closed round's answers were reconciled into proposed changes.
+            if (reconcile?.status === 'DONE') {
+                const p = reconcile.proposed;
+                setNotice(t('reconciled', { count: p.ADD + p.UPDATE + p.REMOVE + p.NEW_ELEMENT }));
+            }
             // Straight on to the next round, unless the session ended.
             if (interview.session.status === 'ACTIVE') await runStream(INTERVIEW_API.nextRoundStream(ids.slug, ids.bookId, ids.sessionId), {}, ids.sessionId);
         } catch (err) {
@@ -296,7 +301,12 @@ export function InterviewSession(props: InterviewSessionProps) {
             }
             rail={
                 <div className="xl:w-80">
-                    <RoundFieldsPanel questions={streaming || s.drafts.length > 0 ? null : questions} planned={s.targets} naming={naming} />
+                    <RoundFieldsPanel
+                        questions={streaming || s.drafts.length > 0 ? null : questions}
+                        planned={s.targets}
+                        naming={naming}
+                        reviewHref={sessionId ? APP_ROUTES.interviewReview(workspaceSlug, book.id, sessionId) : null}
+                    />
                 </div>
             }
         >

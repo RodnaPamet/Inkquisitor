@@ -49,6 +49,8 @@ export const ENCRYPTED_FIELDS: EncryptedFieldManifest = Object.freeze({
     BibleEntryVersion: Object.freeze(['snapshot', 'changeSummary']),
     Question: Object.freeze(['text', 'options', 'scaleLabels', 'recommendedAnswer', 'rationale', 'challengeQuote']),
     Answer: Object.freeze(['text', 'choice']),
+    // Phase 2.5: a proposed value (drawn from the author's answers) and a proposed element's name and summary.
+    EnrichmentProposal: Object.freeze(['proposedValue', 'newName', 'newSummary']),
 });
 
 /** The lookups the extension runs per operation, compiled once per manifest. */

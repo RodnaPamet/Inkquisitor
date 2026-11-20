@@ -14,6 +14,7 @@
  */
 import { bibleFetch } from '@/lib/bible/api-client';
 import type { InterviewView, QuestionView, SessionSummaryView } from '@/app-layer/usecases/interview-state';
+import type { ReconcileRunView } from '@/app-layer/usecases/enrichment-reconcile';
 
 export type { InterviewView, QuestionView, SessionSummaryView };
 
@@ -47,7 +48,10 @@ export const interviewApi = {
     rephrase: (ids: InterviewIds, questionId: string) =>
         bibleFetch<{ question: QuestionView }>(`${INTERVIEW_API.question(ids.slug, ids.bookId, ids.sessionId, questionId)}/rephrase`, { method: 'POST' }),
     closeRound: (ids: InterviewIds, roundNumber: number, skipUnanswered: boolean) =>
-        bibleFetch<{ interview: InterviewView }>(INTERVIEW_API.closeRound(ids.slug, ids.bookId, ids.sessionId, roundNumber), { method: 'POST', body: skipUnanswered ? { skipUnanswered: true } : {} }),
+        bibleFetch<{ interview: InterviewView; reconcile?: ReconcileRunView | null }>(INTERVIEW_API.closeRound(ids.slug, ids.bookId, ids.sessionId, roundNumber), {
+            method: 'POST',
+            body: skipUnanswered ? { skipUnanswered: true } : {},
+        }),
     stop: (ids: InterviewIds) => bibleFetch<{ interview: InterviewView }>(INTERVIEW_API.stop(ids.slug, ids.bookId, ids.sessionId), { method: 'POST' }),
     get: (ids: InterviewIds) => bibleFetch<{ interview: InterviewView }>(INTERVIEW_API.interview(ids.slug, ids.bookId, ids.sessionId)),
 };

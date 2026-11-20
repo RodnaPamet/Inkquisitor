@@ -23,7 +23,9 @@ export async function signUp(page: Page, creds: Credentials = newCredentials()):
     await page.locator('#signup-password').fill(creds.password);
     await page.locator('#signup-workspace').fill(creds.workspaceName);
     await page.locator('#signup-submit').click();
-    await expect(page).toHaveURL(/\/w\/[a-z0-9-]+\/books$/);
+    // Sign-up hashes the password, makes the workspace's data key and signs in: slower than
+    // the 5 s default when two workers and two servers share the machine.
+    await expect(page).toHaveURL(/\/w\/[a-z0-9-]+\/books$/, { timeout: 20_000 });
     return new URL(page.url()).pathname.split('/')[2];
 }
 

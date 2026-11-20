@@ -27,6 +27,7 @@ import { isolationColumn, rlsProblems, type TableRlsFacts } from '../helpers/rls
 import { seedBible } from '../helpers/bible';
 import { seedVectors } from '../helpers/vectors';
 import { seedInterview } from '../helpers/interview';
+import { seedReconciledRound } from '../helpers/enrichment';
 import { seedAiCall, seedReservation } from '../helpers/ai-calls';
 import { createAccount, workspaceCtx } from '../helpers/workspaces';
 import { setBookInterviewDefaults, setWorkspaceInterviewDefaults } from '@/app-layer/usecases/interview-defaults';
@@ -125,6 +126,11 @@ beforeAll(async () => {
     // An interview with a round, its questions and an answer (Phase 2.2).
     await seedInterview(workspaceCtx(a), aBook.bookId, aBook.characterId, 'rls-a');
     await seedInterview(workspaceCtx(b), bBook.bookId, bBook.characterId, 'rls-b');
+    // A round reconciled into proposals (Phase 2.5): a run, proposals and their citations.
+    for (const [acct, book] of [[a, aBook], [b, bBook]] as const) {
+        const seeded = await seedReconciledRound(workspaceCtx(acct), book.bookId, book.characterId);
+        if (!seeded.closed.reconcile?.proposed.ADD) throw new Error('the RLS fixture proposed nothing');
+    }
     // The model layer's ledger (2.1): a settled call and a live reservation.
     await seedAiCall(workspaceCtx(a), aBook.bookId, 'rls-a');
     await seedAiCall(workspaceCtx(b), bBook.bookId, 'rls-b');
@@ -156,6 +162,9 @@ it('there is something to cover: zero tables is never complete coverage', () => 
             'Answer',
             'WorkspaceInterviewDefaults',
             'BookInterviewDefaults',
+            'ReconcileRun',
+            'EnrichmentProposal',
+            'EnrichmentCitation',
             'AiCallLog',
             'AiSpendMonth',
             'AiSpendReservation',

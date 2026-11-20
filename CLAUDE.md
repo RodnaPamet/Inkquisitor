@@ -24,6 +24,7 @@ npm run worker            # BullMQ worker from source (tsx; loads .env then .env
 npm run build:worker      # esbuild → dist/worker.mjs, dist/worker-healthcheck.mjs
 npm run secret-scan       # scripts/detect-secrets.sh (staged files; --all for every tracked file)
 npm run packs:evaluate    # re-run the interview packs' evaluation sets, structural records beside the packs (2.3)
+npm run packs:evaluate -- --no-packs --reconcile   # the reconcile step's sets (2.5): its structural record beside them
 npm run docs:build        # the Starlight help site (site/), from docs/user/
 npm run lint              # eslint . (flat config, eslint.config.mjs)
 npm run typecheck         # tsc --noEmit, then packages/ui alone (no `@/` imports there)
@@ -56,8 +57,9 @@ builds the help site and deploys it only on main when Pages is enabled;
 `postgres-image.yml` publishes `ghcr.io/rodnapamet/inkquisitor-postgres`
 (main only, weekly and on an upstream digest move; build, smoke, Trivy, then
 push); `evals.yml` (**Evals**, dispatch only, not a check) makes real-model
-pack evaluation records on `secrets.ANTHROPIC_API_KEY` and uploads them as an
-artifact, committing nothing (`tests/unit/evals-workflow.test.ts`).
+pack evaluation records (and, with its `reconcile` input, the reconcile step's)
+on `secrets.ANTHROPIC_API_KEY` and uploads them as an artifact, committing
+nothing (`tests/unit/evals-workflow.test.ts`).
 
 ## Stack
 
@@ -239,6 +241,19 @@ src/app-layer/usecases/      → interview-rephrase, interview-pages
 src/app/api/w/[workspaceSlug]/books/[bookId]/interviews/{stream,[sessionId]/rounds/stream,…/rephrase}
 src/app/w/[workspaceSlug]/books/[bookId]/interviews/{page,new,[sessionId]}
 tests/e2e/stub-server.ts     → the second E2E server (E2E_PORT + 2) with the stubbed model
+```
+
+Phase 2.5 (enrichment) added:
+
+```
+prisma/schema/enrichment.prisma → ReconcileRun, EnrichmentProposal (text encrypted, fixed but for its one decision), EnrichmentCitation
+src/lib/enrichment/          → the pure core: vocabulary, schema (output), validate (THE rules), prompt (RECONCILE_PROMPT), reconcile
+                               (runReconcileStep), reconciler (interface), model-seam.ts (THE wiring to 2.1), storage, review-rules,
+                               record-gate (D11 for reconcile), api-client; evals/ (enrichment.json, adversarial.json, eval-set,
+                               evaluation: replay grader, reference reconciler, records; evaluation-record.json)
+src/app-layer/usecases/      → enrichment-reconcile (the run; close/stop wrappers), enrichment-review (reads, accept, reject, bulk)
+src/app/api/w/[workspaceSlug]/books/[bookId]/interviews/[sessionId]/{proposals/**,rounds/[roundNumber]/reconcile}
+src/app/w/[workspaceSlug]/books/[bookId]/interviews/[sessionId]/review → the review page (src/components/enrichment/SessionReview)
 ```
 
 ## Rules every change obeys
@@ -735,6 +750,42 @@ closed beta with an explicit operator flag (D5, amended 2026-11-19).
   loopback, and anywhere beside `ANTHROPIC_API_KEY` (D13; a WARN at every
   start). In that mode only, structural pack records mount too. The interview E2E runs
   against the second E2E server (`test.use({ baseURL: STUB_BASE_URL })`).
+- **Enrichment (Phase 2.5; rules 1 and 2).** When a round CLOSES (the close
+  and stop routes call `closeRoundAndReconcile` / `stopInterviewAndReconcile`)
+  its reconcile run makes ONE model call (`RECONCILE_PROMPT`, balanced tier,
+  version and cost budget on the template) under 2.2's claim pattern: claim
+  the `ReconcileRun` under the session lock, call outside every transaction,
+  persist under the lock again. Every 2.1 outcome is a named run outcome
+  (`RECONCILE_OUTCOMES`, the table in `src/lib/enrichment/model-seam.ts`); a
+  failed or refused run proposes nothing and is re-runnable (POST
+  `…/rounds/:n/reconcile`), and never undoes the close. Code validates every
+  proposal (`validate.ts`, the order in its header): in the round's scope, the
+  op fits the stored value (ADD empty, UPDATE / REMOVE filled), cites only
+  this run's ANSWERED answers, a value `normaliseFieldValue` accepts, no copied
+  instruction (markup, an unvouched URL, the guard's flag, a sentence that
+  addresses the product: `addressesTheProduct`), and every sentence grounded
+  in the cited answers (`groundSentence`, 70 %; for UPDATE also the stored
+  value). Refused, never softened; NO_CHANGE and refusals are counts on the
+  run, never rows. The database holds the rest: a citation's foreign key is
+  `(workspaceId, sessionId, answerId)`, a trigger refuses a non-ANSWERED
+  answer, a deferred trigger a proposal with no citation, and
+  `enrichment_proposal_fixed` every change but the one decision. ONLY
+  `enrichment-review.ts` writes the bible from a proposal: through the
+  versioned save under the element's lock, `baseVersion` required (409
+  VERSION_CONFLICT), an element moved since the proposal needs
+  `reviewedCurrent` (409 PROPOSAL_OUTDATED), the op must still fit (409
+  PROPOSAL_STALE), and the version is source INTERVIEW with
+  `sourceAnswerIds` (CHECK `BibleEntryVersion_interview_names_answers`; a new
+  element through `createElementInTx`); bulk accept is ADD into fields still
+  empty, all or nothing. That module is on the write path: no dial, pack or
+  model import. D11 applies to reconcile (`record-gate.ts`, the packs' own
+  `deploymentPackRecordMode()`, so D13's stub server accepts structural
+  records too): production reconciles only on a real model's
+  `evaluation-record.json`; otherwise the run is REFUSED
+  `RECONCILE_NOT_EVALUATED` and the answers wait. After editing the sets, the
+  prompt or the output schema, re-run `npm run packs:evaluate -- --no-packs
+  --reconcile`. The review page words refusals from `enrichment.errors`; a
+  reader reads, an editor decides.
 - **Sanitising author text.** Every author-text write sanitises at the
   usecase layer before it is stored: plain text through `plainLine` /
   `plainBlock` (`src/lib/bible/text.ts`, over `sanitizePlainText`), rich text

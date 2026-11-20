@@ -21,9 +21,12 @@ import { getVersion } from '@/app-layer/usecases/bible-versions';
 import { createBook, getBook } from '@/app-layer/usecases/books';
 import { answerQuestion } from '@/app-layer/usecases/interview-answers';
 import { getInterview, startInterview } from '@/app-layer/usecases/interviews';
+import { closeRoundAndReconcile } from '@/app-layer/usecases/enrichment-reconcile';
+import { getSessionReview } from '@/app-layer/usecases/enrichment-review';
 import type { GeneratedQuestion } from '@/lib/interview/candidates';
 import { allowedTargets, fakeGenerator, fakeQuestion, kindsInPrompt } from '../helpers/fake-question-generator';
 import { stubQuestionEmbedder } from '../helpers/interview';
+import { scripted } from '../helpers/enrichment';
 import { createAccount, workspaceCtx } from '../helpers/workspaces';
 
 afterAll(() => prisma.$disconnect());
@@ -81,12 +84,25 @@ beforeAll(async () => {
     const pick = interview.round!.questions.find((q) => q.kind === 'CHOICE' && q.targetsFieldKeys[0] === 'want')!;
     await answerQuestion(ctx, book.id, interview.session.id, pick.id, { choice: `opt ${MARK} one`, text: `reason ${MARK}` });
     Object.assign(ids, { Session: interview.session.id });
+
+    // Enrichment (Phase 2.5): the round closed and reconciled into a field
+    // proposal and a new-element proposal whose value, name and summary carry
+    // the mark (each drawn from the marked answer, so each passes validation).
+    const reconciler = scripted((f) => {
+        const a = f.answers.find((x) => x.status === 'ANSWERED')!;
+        return {
+            operations: [{ elementId: f.elements[0].elementId, fieldKey: 'want', op: 'ADD', value: `reason ${MARK}`, cites: [a.answerId] }],
+            newElements: [{ kind: 'CHARACTER', name: `Opt ${MARK}`, summary: `reason ${MARK}`, cites: [a.answerId] }],
+        };
+    });
+    const closed = await closeRoundAndReconcile(ctx, book.id, interview.session.id, String(interview.round!.number), { skipUnanswered: true }, { reconciler });
+    expect(closed.reconcile?.proposed).toMatchObject({ ADD: 1, NEW_ELEMENT: 1 });
 });
 
 /** The raw stored values of `field` on every row of `model` this suite wrote, read as the owner. */
 async function rawValues(model: string, field: string): Promise<string[]> {
     const byElement = model === 'BibleField' || model === 'BibleEntryVersion';
-    const bySession = model === 'Question' || model === 'Answer';
+    const bySession = model === 'Question' || model === 'Answer' || model === 'EnrichmentProposal';
     const where = byElement ? `"elementId" = $1` : bySession ? `"sessionId" = $1` : `"id" = $1`;
     const id = byElement ? ids.BibleElement : bySession ? ids.Session : ids[model];
     const rows = await prisma.$queryRawUnsafe<Array<{ v: string | null }>>(`SELECT "${field}" AS v FROM "${model}" WHERE ${where}`, id);
@@ -112,6 +128,9 @@ it('the manifest covers the bible and interview author text the briefs name', ()
             'Question.challengeQuote',
             'Answer.text',
             'Answer.choice',
+            'EnrichmentProposal.proposedValue',
+            'EnrichmentProposal.newName',
+            'EnrichmentProposal.newSummary',
         ].sort(),
     );
 });
@@ -132,6 +151,12 @@ it('the interview reads back as plaintext in its own workspace', async () => {
     expect(questions.find((q) => q.kind === 'SCALE')?.scaleLabels).toEqual({ low: `low ${MARK}`, high: 'high' });
     expect(questions.find((q) => q.mode === 'CHALLENGE')?.challengeQuote).toBe(`${MARK} paramedic in a`);
     expect(questions.find((q) => q.kind === 'CHOICE')?.answer).toMatchObject({ choice: `opt ${MARK} one`, text: `reason ${MARK}` });
+});
+
+it('the proposals read back as plaintext in their own workspace (Phase 2.5)', async () => {
+    const review = await getSessionReview(ctx, ids.Book, ids.Session);
+    expect(review.fields[0].proposedValue).toBe(`reason ${MARK}`);
+    expect(review.newElements[0]).toMatchObject({ name: `Opt ${MARK}`, summary: `reason ${MARK}` });
 });
 
 it('reads back as plaintext in its own workspace', async () => {

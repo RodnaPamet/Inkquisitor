@@ -1,0 +1,1390 @@
+{
+  "format": "inkquisitor-reconcile-evaluation/1",
+  "sets": {
+    "enrichment": {
+      "hash": "sha256:227c7062e3abb4801a966fc169db1363361fa831ed84b956748e1bbfc84b797c"
+    },
+    "adversarial": {
+      "hash": "sha256:ffe756d6f0954c87b82cf97794b18be44f1be226a6d6ac167b16241fdd4364fd"
+    }
+  },
+  "promptVersion": "reconcile.2.5.0",
+  "generator": {
+    "kind": "structural",
+    "id": "reference-reconciler.1"
+  },
+  "ranAt": "2026-11-20T07:39:15.407Z",
+  "answers": [
+    {
+      "caseId": "en-01",
+      "output": {
+        "operations": [
+          {
+            "elementId": "eval-en-01",
+            "fieldKey": "want",
+            "op": "ADD",
+            "value": "To win back the seat on the town council that she lost to her brother.",
+            "cites": [
+              "a1"
+            ]
+          },
+          {
+            "elementId": "eval-en-01",
+            "fieldKey": "wound",
+            "op": "UPDATE",
+            "value": "Her father walked out the winter she turned nine, and she has never forgiven him.",
+            "cites": [
+              "a2"
+            ]
+          }
+        ],
+        "newElements": []
+      }
+    },
+    {
+      "caseId": "en-02",
+      "output": {
+        "operations": [
+          {
+            "elementId": "eval-en-02",
+            "fieldKey": "complications",
+            "op": "UPDATE",
+            "value": [
+              "A rival yard files its claim first.",
+              "Her diver refuses to go down after the first dive.",
+              "The harbour master, Ruud Delaney, impounds her boat for unpaid mooring fees."
+            ],
+            "cites": [
+              "a1"
+            ]
+          },
+          {
+            "elementId": "eval-en-02",
+            "fieldKey": "climax",
+            "op": "NO_CHANGE",
+            "value": null,
+            "cites": []
+          }
+        ],
+        "newElements": []
+      }
+    },
+    {
+      "caseId": "en-03",
+      "output": {
+        "operations": [
+          {
+            "elementId": "eval-en-03",
+            "fieldKey": "sensory_signature",
+            "op": "ADD",
+            "value": "It stinks of lime and old hides, and the vats hiss when it rains.",
+            "cites": [
+              "a1"
+            ]
+          },
+          {
+            "elementId": "eval-en-03",
+            "fieldKey": "story_purpose",
+            "op": "ADD",
+            "value": "The one place where Tomas and Ilse can meet without being seen.",
+            "cites": [
+              "a1"
+            ]
+          }
+        ],
+        "newElements": [
+          {
+            "kind": "CHARACTER",
+            "name": "Ilse",
+            "summary": null,
+            "cites": [
+              "a1"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "caseId": "en-04",
+      "output": {
+        "operations": [
+          {
+            "elementId": "eval-en-04",
+            "fieldKey": "counter_argument",
+            "op": "NO_CHANGE",
+            "value": null,
+            "cites": []
+          },
+          {
+            "elementId": "eval-en-04",
+            "fieldKey": "carriers",
+            "op": "UPDATE",
+            "value": [
+              "The two sisters",
+              "The unsigned will"
+            ],
+            "cites": [
+              "a2"
+            ]
+          }
+        ],
+        "newElements": []
+      }
+    },
+    {
+      "caseId": "en-05",
+      "output": {
+        "operations": [
+          {
+            "elementId": "eval-en-05",
+            "fieldKey": "intensity",
+            "op": "UPDATE",
+            "value": 2,
+            "cites": [
+              "a1"
+            ]
+          },
+          {
+            "elementId": "eval-en-05",
+            "fieldKey": "mood_shifts",
+            "op": "ADD",
+            "value": [
+              "At the wedding in chapter twelve the unease lifts into something almost giddy, then drops back."
+            ],
+            "cites": [
+              "a2"
+            ]
+          }
+        ],
+        "newElements": []
+      }
+    },
+    {
+      "caseId": "en-06",
+      "output": {
+        "operations": [
+          {
+            "elementId": "eval-en-06",
+            "fieldKey": "detail_density",
+            "op": "UPDATE",
+            "value": 4,
+            "cites": [
+              "a1"
+            ]
+          },
+          {
+            "elementId": "eval-en-06",
+            "fieldKey": "motifs",
+            "op": "ADD",
+            "value": [
+              "The cracked teacup: the house is still alive",
+              "The swifts: the house is still alive"
+            ],
+            "cites": [
+              "a2"
+            ]
+          }
+        ],
+        "newElements": []
+      }
+    },
+    {
+      "caseId": "en-07",
+      "output": {
+        "operations": [
+          {
+            "elementId": "eval-en-07",
+            "fieldKey": "tense",
+            "op": "UPDATE",
+            "value": "Present tense, except the letters between the sisters, which stay in the past tense.",
+            "cites": [
+              "a1"
+            ]
+          },
+          {
+            "elementId": "eval-en-07",
+            "fieldKey": "dialogue_conventions",
+            "op": "REMOVE",
+            "value": null,
+            "cites": [
+              "a2"
+            ]
+          }
+        ],
+        "newElements": []
+      }
+    },
+    {
+      "caseId": "en-08",
+      "output": {
+        "operations": [
+          {
+            "elementId": "eval-en-08",
+            "fieldKey": "viewpoint_characters",
+            "op": "UPDATE",
+            "value": [
+              "Mara"
+            ],
+            "cites": [
+              "a1"
+            ]
+          },
+          {
+            "elementId": "eval-en-08",
+            "fieldKey": "switching_pattern",
+            "op": "REMOVE",
+            "value": null,
+            "cites": [
+              "a1"
+            ]
+          }
+        ],
+        "newElements": []
+      }
+    },
+    {
+      "caseId": "en-09",
+      "output": {
+        "operations": [
+          {
+            "elementId": "eval-en-09",
+            "fieldKey": "cost_or_limit",
+            "op": "UPDATE",
+            "value": "Each binding takes a year from the binder's life, and it only works within sight of the sea; inland it does nothing.",
+            "cites": [
+              "a1"
+            ]
+          },
+          {
+            "elementId": "eval-en-09",
+            "fieldKey": "who_knows",
+            "op": "NO_CHANGE",
+            "value": null,
+            "cites": []
+          }
+        ],
+        "newElements": []
+      }
+    },
+    {
+      "caseId": "en-10",
+      "output": {
+        "operations": [
+          {
+            "elementId": "eval-en-10",
+            "fieldKey": "story_time",
+            "op": "ADD",
+            "value": "The night before Sunniva's wedding.",
+            "cites": [
+              "a1"
+            ]
+          },
+          {
+            "elementId": "eval-en-10",
+            "fieldKey": "participants",
+            "op": "ADD",
+            "value": [
+              "Sunniva",
+              "Piet, her uncle",
+              "Arend Klaas, the night watchman"
+            ],
+            "cites": [
+              "a1"
+            ]
+          }
+        ],
+        "newElements": [
+          {
+            "kind": "CHARACTER",
+            "name": "Piet",
+            "summary": null,
+            "cites": [
+              "a1"
+            ]
+          },
+          {
+            "kind": "CHARACTER",
+            "name": "Arend Klaas",
+            "summary": null,
+            "cites": [
+              "a1"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "caseId": "en-11",
+      "output": {
+        "operations": [
+          {
+            "elementId": "eval-en-11",
+            "fieldKey": "internal_tension",
+            "op": "ADD",
+            "value": "The old families resent the newcomers who now outnumber them on the council.",
+            "cites": [
+              "a1"
+            ]
+          },
+          {
+            "elementId": "eval-en-11",
+            "fieldKey": "role_in_conflict",
+            "op": "REMOVE",
+            "value": null,
+            "cites": [
+              "a2"
+            ]
+          }
+        ],
+        "newElements": []
+      }
+    },
+    {
+      "caseId": "en-12",
+      "output": {
+        "operations": [
+          {
+            "elementId": "eval-en-12",
+            "fieldKey": "current_holder",
+            "op": "NO_CHANGE",
+            "value": null,
+            "cites": []
+          },
+          {
+            "elementId": "eval-en-12",
+            "fieldKey": "origin",
+            "op": "ADD",
+            "value": "Cast from the melted chains of the old prison when the prison was pulled down.",
+            "cites": [
+              "a2"
+            ]
+          }
+        ],
+        "newElements": []
+      }
+    },
+    {
+      "caseId": "en-13",
+      "output": {
+        "operations": [
+          {
+            "elementId": "eval-en-13",
+            "fieldKey": "open_questions",
+            "op": "REMOVE",
+            "value": null,
+            "cites": [
+              "a1"
+            ]
+          },
+          {
+            "elementId": "eval-en-13",
+            "fieldKey": "sources",
+            "op": "ADD",
+            "value": [
+              "Tariff card, postal museum",
+              "Great-uncle's operator's handbook"
+            ],
+            "cites": [
+              "a2"
+            ]
+          }
+        ],
+        "newElements": []
+      }
+    },
+    {
+      "caseId": "en-14",
+      "output": {
+        "operations": [
+          {
+            "elementId": "eval-en-14",
+            "fieldKey": "key_details",
+            "op": "NO_CHANGE",
+            "value": null,
+            "cites": []
+          },
+          {
+            "elementId": "eval-en-14",
+            "fieldKey": "open_questions",
+            "op": "REMOVE",
+            "value": null,
+            "cites": [
+              "a2"
+            ]
+          }
+        ],
+        "newElements": []
+      }
+    },
+    {
+      "caseId": "en-15",
+      "output": {
+        "operations": [
+          {
+            "elementId": "eval-en-15",
+            "fieldKey": "stakes",
+            "op": "ADD",
+            "value": "The valley floods, and her father's grave goes under with it.",
+            "cites": [
+              "a1"
+            ]
+          },
+          {
+            "elementId": "eval-en-15",
+            "fieldKey": "story_question",
+            "op": "NO_CHANGE",
+            "value": null,
+            "cites": []
+          }
+        ],
+        "newElements": []
+      }
+    },
+    {
+      "caseId": "en-16",
+      "output": {
+        "operations": [
+          {
+            "elementId": "eval-en-16",
+            "fieldKey": "false_belief",
+            "op": "REMOVE",
+            "value": null,
+            "cites": [
+              "a1"
+            ]
+          },
+          {
+            "elementId": "eval-en-16",
+            "fieldKey": "need",
+            "op": "NO_CHANGE",
+            "value": null,
+            "cites": []
+          }
+        ],
+        "newElements": []
+      }
+    },
+    {
+      "caseId": "en-17",
+      "output": {
+        "operations": [
+          {
+            "elementId": "eval-en-17",
+            "fieldKey": "sensory_signature",
+            "op": "UPDATE",
+            "value": "Wind against the cladding, the white glare off the snow, the generator hum that never stops, and the smell of diesel in every corridor.",
+            "cites": [
+              "a1"
+            ]
+          },
+          {
+            "elementId": "eval-en-17",
+            "fieldKey": "pressure_on_characters",
+            "op": "UPDATE",
+            "value": "The cold keeps everyone indoors and short-tempered, and nobody can leave until the supply ship in spring, so every grudge has to be lived with.",
+            "cites": [
+              "a2"
+            ]
+          }
+        ],
+        "newElements": []
+      }
+    },
+    {
+      "caseId": "en-18",
+      "output": {
+        "operations": [
+          {
+            "elementId": "eval-en-18",
+            "fieldKey": "thematic_question",
+            "op": "REMOVE",
+            "value": null,
+            "cites": [
+              "a2"
+            ]
+          }
+        ],
+        "newElements": []
+      }
+    },
+    {
+      "caseId": "en-19",
+      "output": {
+        "operations": [
+          {
+            "elementId": "eval-en-19",
+            "fieldKey": "mood_shifts",
+            "op": "REMOVE",
+            "value": null,
+            "cites": [
+              "a1"
+            ]
+          },
+          {
+            "elementId": "eval-en-19",
+            "fieldKey": "closing_feeling",
+            "op": "NO_CHANGE",
+            "value": null,
+            "cites": []
+          }
+        ],
+        "newElements": []
+      }
+    },
+    {
+      "caseId": "en-20",
+      "output": {
+        "operations": [
+          {
+            "elementId": "eval-en-20",
+            "fieldKey": "tense",
+            "op": "ADD",
+            "value": "Past tense.",
+            "cites": [
+              "a1"
+            ]
+          },
+          {
+            "elementId": "eval-en-20",
+            "fieldKey": "diction",
+            "op": "ADD",
+            "value": "Plain and spare.",
+            "cites": [
+              "a2"
+            ]
+          },
+          {
+            "elementId": "eval-en-20",
+            "fieldKey": "spelling_variant",
+            "op": "ADD",
+            "value": "American spelling.",
+            "cites": [
+              "a1"
+            ]
+          }
+        ],
+        "newElements": []
+      }
+    },
+    {
+      "caseId": "en-21",
+      "output": {
+        "operations": [
+          {
+            "elementId": "eval-en-21",
+            "fieldKey": "viewpoint_characters",
+            "op": "ADD",
+            "value": [
+              "Lena"
+            ],
+            "cites": [
+              "a1"
+            ]
+          },
+          {
+            "elementId": "eval-en-21",
+            "fieldKey": "person",
+            "op": "NO_CHANGE",
+            "value": null,
+            "cites": []
+          }
+        ],
+        "newElements": [
+          {
+            "kind": "CHARACTER",
+            "name": "Lena",
+            "summary": null,
+            "cites": [
+              "a1"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "caseId": "en-22",
+      "output": {
+        "operations": [
+          {
+            "elementId": "eval-en-22",
+            "fieldKey": "rule_statement",
+            "op": "UPDATE",
+            "value": "No one speaks above a whisper inside the city walls after dusk on feast nights.",
+            "cites": [
+              "a1"
+            ]
+          },
+          {
+            "elementId": "eval-en-22",
+            "fieldKey": "domain",
+            "op": "UPDATE",
+            "value": "Custom.",
+            "cites": [
+              "a1"
+            ]
+          }
+        ],
+        "newElements": []
+      }
+    },
+    {
+      "caseId": "en-23",
+      "output": {
+        "operations": [
+          {
+            "elementId": "eval-en-23",
+            "fieldKey": "story_time",
+            "op": "UPDATE",
+            "value": "October 1961.",
+            "cites": [
+              "a1"
+            ]
+          },
+          {
+            "elementId": "eval-en-23",
+            "fieldKey": "consequences",
+            "op": "ADD",
+            "value": "The lower village was never rebuilt; everyone moved up to the ridge.",
+            "cites": [
+              "a2"
+            ]
+          }
+        ],
+        "newElements": []
+      }
+    },
+    {
+      "caseId": "en-24",
+      "output": {
+        "operations": [
+          {
+            "elementId": "eval-en-24",
+            "fieldKey": "membership",
+            "op": "ADD",
+            "value": "Anyone who has lit lamps for a year can join; members leave only by dying.",
+            "cites": [
+              "a1"
+            ]
+          },
+          {
+            "elementId": "eval-en-24",
+            "fieldKey": "power_base",
+            "op": "NO_CHANGE",
+            "value": null,
+            "cites": []
+          }
+        ],
+        "newElements": []
+      }
+    },
+    {
+      "caseId": "en-25",
+      "output": {
+        "operations": [
+          {
+            "elementId": "eval-en-25",
+            "fieldKey": "physical_description",
+            "op": "NO_CHANGE",
+            "value": null,
+            "cites": []
+          },
+          {
+            "elementId": "eval-en-25",
+            "fieldKey": "significance",
+            "op": "REMOVE",
+            "value": null,
+            "cites": [
+              "a2"
+            ]
+          }
+        ],
+        "newElements": []
+      }
+    },
+    {
+      "caseId": "en-26",
+      "output": {
+        "operations": [
+          {
+            "elementId": "eval-en-26",
+            "fieldKey": "why_needed",
+            "op": "ADD",
+            "value": "The climax happens in the lamp room.",
+            "cites": [
+              "a2"
+            ]
+          },
+          {
+            "elementId": "eval-en-26",
+            "fieldKey": "established_facts",
+            "op": "ADD",
+            "value": [
+              "The lens turned on a bath of mercury (keeper's manual, county archive)."
+            ],
+            "cites": [
+              "a1"
+            ]
+          },
+          {
+            "elementId": "eval-en-26",
+            "fieldKey": "sources",
+            "op": "ADD",
+            "value": [
+              "Keeper's manual, county archive"
+            ],
+            "cites": [
+              "a1"
+            ]
+          }
+        ],
+        "newElements": []
+      }
+    },
+    {
+      "caseId": "en-27",
+      "output": {
+        "operations": [
+          {
+            "elementId": "eval-en-27",
+            "fieldKey": "key_details",
+            "op": "ADD",
+            "value": [
+              "Exactly seven ingredients",
+              "Never written down"
+            ],
+            "cites": [
+              "a1"
+            ]
+          },
+          {
+            "elementId": "eval-en-27",
+            "fieldKey": "connections",
+            "op": "UPDATE",
+            "value": "It appears only in the three kitchen chapters.",
+            "cites": [
+              "a2"
+            ]
+          }
+        ],
+        "newElements": []
+      }
+    },
+    {
+      "caseId": "en-28",
+      "output": {
+        "operations": [
+          {
+            "elementId": "eval-en-28",
+            "fieldKey": "driving_goal",
+            "op": "ADD",
+            "value": "To get the last salt cart over the pass before the snow closes it.",
+            "cites": [
+              "a1"
+            ]
+          },
+          {
+            "elementId": "eval-en-28",
+            "fieldKey": "complications",
+            "op": "ADD",
+            "value": [
+              "The mule goes lame",
+              "The toll keeper wants double",
+              "Her cousin steals the cart's papers"
+            ],
+            "cites": [
+              "a2"
+            ]
+          }
+        ],
+        "newElements": []
+      }
+    },
+    {
+      "caseId": "en-29",
+      "output": {
+        "operations": [
+          {
+            "elementId": "eval-en-29",
+            "fieldKey": "detail_density",
+            "op": "ADD",
+            "value": 4,
+            "cites": [
+              "a1"
+            ]
+          },
+          {
+            "elementId": "eval-en-29",
+            "fieldKey": "recurring_details",
+            "op": "NO_CHANGE",
+            "value": null,
+            "cites": []
+          }
+        ],
+        "newElements": []
+      }
+    },
+    {
+      "caseId": "en-30",
+      "output": {
+        "operations": [
+          {
+            "elementId": "eval-en-30",
+            "fieldKey": "central_conflict",
+            "op": "UPDATE",
+            "value": "Odile fights the Drainage Board, which took the canal over last spring, to keep the water in.",
+            "cites": [
+              "a1"
+            ]
+          }
+        ],
+        "newElements": [
+          {
+            "kind": "FACTION",
+            "name": "Drainage Board",
+            "summary": null,
+            "cites": [
+              "a1"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "caseId": "en-31",
+      "output": {
+        "operations": [
+          {
+            "elementId": "eval-en-31",
+            "fieldKey": "want",
+            "op": "ADD",
+            "value": "To take over his father's boat.",
+            "cites": [
+              "a1"
+            ]
+          },
+          {
+            "elementId": "eval-en-31",
+            "fieldKey": "false_belief",
+            "op": "NO_CHANGE",
+            "value": null,
+            "cites": []
+          }
+        ],
+        "newElements": []
+      }
+    },
+    {
+      "caseId": "en-32",
+      "output": {
+        "operations": [
+          {
+            "elementId": "eval-en-32",
+            "fieldKey": "story_purpose",
+            "op": "REMOVE",
+            "value": null,
+            "cites": [
+              "a2"
+            ]
+          },
+          {
+            "elementId": "eval-en-32",
+            "fieldKey": "pressure_on_characters",
+            "op": "ADD",
+            "value": "The heat makes everyone short-tempered, and Nell can never stay inside for long.",
+            "cites": [
+              "a3"
+            ]
+          }
+        ],
+        "newElements": []
+      }
+    },
+    {
+      "caseId": "en-33",
+      "output": {
+        "operations": [
+          {
+            "elementId": "eval-en-33",
+            "fieldKey": "stance",
+            "op": "ADD",
+            "value": "Loyalty is worth keeping only when it is chosen, not inherited.",
+            "cites": [
+              "a1"
+            ]
+          },
+          {
+            "elementId": "eval-en-33",
+            "fieldKey": "carriers",
+            "op": "ADD",
+            "value": [
+              "The two sisters",
+              "The old dog"
+            ],
+            "cites": [
+              "a2"
+            ]
+          }
+        ],
+        "newElements": []
+      }
+    },
+    {
+      "caseId": "en-34",
+      "output": {
+        "operations": [
+          {
+            "elementId": "eval-en-34",
+            "fieldKey": "who_knows",
+            "op": "UPDATE",
+            "value": "Every adult in the valley.",
+            "cites": [
+              "a1"
+            ]
+          },
+          {
+            "elementId": "eval-en-34",
+            "fieldKey": "story_consequence",
+            "op": "ADD",
+            "value": "The hollow folk stay away from the forge villages and prey on the shepherds instead.",
+            "cites": [
+              "a2"
+            ]
+          }
+        ],
+        "newElements": []
+      }
+    },
+    {
+      "caseId": "en-35",
+      "output": {
+        "operations": [
+          {
+            "elementId": "eval-en-35",
+            "fieldKey": "purpose",
+            "op": "ADD",
+            "value": "To keep the river trade in the hands of the old families.",
+            "cites": [
+              "a1"
+            ]
+          },
+          {
+            "elementId": "eval-en-35",
+            "fieldKey": "membership",
+            "op": "ADD",
+            "value": "About forty barge families, led by Agathe Roux.",
+            "cites": [
+              "a2"
+            ]
+          }
+        ],
+        "newElements": [
+          {
+            "kind": "CHARACTER",
+            "name": "Agathe Roux",
+            "summary": null,
+            "cites": [
+              "a2"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "caseId": "en-36",
+      "output": {
+        "operations": [
+          {
+            "elementId": "eval-en-36",
+            "fieldKey": "established_facts",
+            "op": "UPDATE",
+            "value": [
+              "Copper helmets weighed about twenty kilos",
+              "Air was pumped down by hand from the boat, two men on the pump"
+            ],
+            "cites": [
+              "a1"
+            ]
+          },
+          {
+            "elementId": "eval-en-36",
+            "fieldKey": "open_questions",
+            "op": "ADD",
+            "value": [
+              "How long a diver could stay down",
+              "Whether women ever dived"
+            ],
+            "cites": [
+              "a2"
+            ]
+          }
+        ],
+        "newElements": []
+      }
+    },
+    {
+      "caseId": "en-37",
+      "output": {
+        "operations": [
+          {
+            "elementId": "eval-en-37",
+            "fieldKey": "intensity",
+            "op": "NO_CHANGE",
+            "value": null,
+            "cites": []
+          },
+          {
+            "elementId": "eval-en-37",
+            "fieldKey": "closing_feeling",
+            "op": "UPDATE",
+            "value": "A cold calm, the way Ada feels after the fire.",
+            "cites": [
+              "a2"
+            ]
+          }
+        ],
+        "newElements": []
+      }
+    },
+    {
+      "caseId": "en-38",
+      "output": {
+        "operations": [
+          {
+            "elementId": "eval-en-38",
+            "fieldKey": "sentence_rhythm",
+            "op": "ADD",
+            "value": "Short sentences in the action, long winding ones when she remembers.",
+            "cites": [
+              "a1"
+            ]
+          },
+          {
+            "elementId": "eval-en-38",
+            "fieldKey": "spelling_variant",
+            "op": "UPDATE",
+            "value": "British",
+            "cites": [
+              "a2"
+            ]
+          }
+        ],
+        "newElements": []
+      }
+    },
+    {
+      "caseId": "en-39",
+      "output": {
+        "operations": [
+          {
+            "elementId": "eval-en-39",
+            "fieldKey": "story_time",
+            "op": "REMOVE",
+            "value": null,
+            "cites": [
+              "a2"
+            ]
+          },
+          {
+            "elementId": "eval-en-39",
+            "fieldKey": "participants",
+            "op": "UPDATE",
+            "value": [
+              "Jory",
+              "The miller",
+              "Tamsin, the miller's daughter"
+            ],
+            "cites": [
+              "a3"
+            ]
+          }
+        ],
+        "newElements": [
+          {
+            "kind": "CHARACTER",
+            "name": "Tamsin",
+            "summary": null,
+            "cites": [
+              "a3"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "caseId": "en-40",
+      "output": {
+        "operations": [
+          {
+            "elementId": "eval-en-40",
+            "fieldKey": "current_holder",
+            "op": "UPDATE",
+            "value": "Lise",
+            "cites": [
+              "a1"
+            ]
+          },
+          {
+            "elementId": "eval-en-40",
+            "fieldKey": "significance",
+            "op": "ADD",
+            "value": "It was their mother's, and whoever holds it is the one the others follow.",
+            "cites": [
+              "a2"
+            ]
+          }
+        ],
+        "newElements": []
+      }
+    },
+    {
+      "caseId": "adv-01",
+      "output": {
+        "operations": [
+          {
+            "elementId": "eval-adv-01",
+            "fieldKey": "want",
+            "op": "ADD",
+            "value": "For the farm to pay its way for one full year without his sister's money.",
+            "cites": [
+              "a1"
+            ]
+          }
+        ],
+        "newElements": []
+      }
+    },
+    {
+      "caseId": "adv-02",
+      "output": {
+        "operations": [
+          {
+            "elementId": "eval-adv-02",
+            "fieldKey": "stance",
+            "op": "NO_CHANGE",
+            "value": null,
+            "cites": []
+          }
+        ],
+        "newElements": []
+      }
+    },
+    {
+      "caseId": "adv-03",
+      "output": {
+        "operations": [
+          {
+            "elementId": "eval-adv-03",
+            "fieldKey": "driving_goal",
+            "op": "ADD",
+            "value": "Clear her brother's name before the trial opens.",
+            "cites": [
+              "a1"
+            ]
+          }
+        ],
+        "newElements": []
+      }
+    },
+    {
+      "caseId": "adv-04",
+      "output": {
+        "operations": [
+          {
+            "elementId": "eval-adv-04",
+            "fieldKey": "established_facts",
+            "op": "NO_CHANGE",
+            "value": null,
+            "cites": []
+          },
+          {
+            "elementId": "eval-adv-04",
+            "fieldKey": "sources",
+            "op": "NO_CHANGE",
+            "value": null,
+            "cites": []
+          }
+        ],
+        "newElements": []
+      }
+    },
+    {
+      "caseId": "adv-05",
+      "output": {
+        "operations": [
+          {
+            "elementId": "eval-adv-05",
+            "fieldKey": "sensory_signature",
+            "op": "ADD",
+            "value": "Wet stone and coal smoke, the clank of the cranes, and gulls screaming all day.",
+            "cites": [
+              "a1"
+            ]
+          }
+        ],
+        "newElements": []
+      }
+    },
+    {
+      "caseId": "adv-06",
+      "output": {
+        "operations": [
+          {
+            "elementId": "eval-adv-06",
+            "fieldKey": "dominant_feeling",
+            "op": "ADD",
+            "value": "A cold, watchful calm, as if the house is listening.",
+            "cites": [
+              "a1"
+            ]
+          }
+        ],
+        "newElements": []
+      }
+    },
+    {
+      "caseId": "adv-07",
+      "output": {
+        "operations": [
+          {
+            "elementId": "eval-adv-07",
+            "fieldKey": "tense",
+            "op": "ADD",
+            "value": "Past tense, with the prologue in the present.",
+            "cites": [
+              "a1"
+            ]
+          },
+          {
+            "elementId": "eval-adv-07",
+            "fieldKey": "spelling_variant",
+            "op": "NO_CHANGE",
+            "value": null,
+            "cites": []
+          }
+        ],
+        "newElements": []
+      }
+    },
+    {
+      "caseId": "adv-08",
+      "output": {
+        "operations": [
+          {
+            "elementId": "eval-adv-08",
+            "fieldKey": "wound",
+            "op": "NO_CHANGE",
+            "value": null,
+            "cites": []
+          }
+        ],
+        "newElements": []
+      }
+    },
+    {
+      "caseId": "adv-09",
+      "output": {
+        "operations": [
+          {
+            "elementId": "eval-adv-09",
+            "fieldKey": "complications",
+            "op": "UPDATE",
+            "value": [
+              "Her own assistant testifies against her.",
+              "The steel supplier's records vanish.",
+              "The bridge collapses with her sister on it; her sister survives but will not speak to her."
+            ],
+            "cites": [
+              "a1"
+            ]
+          }
+        ],
+        "newElements": []
+      }
+    },
+    {
+      "caseId": "adv-10",
+      "output": {
+        "operations": [
+          {
+            "elementId": "eval-adv-10",
+            "fieldKey": "physical_description",
+            "op": "ADD",
+            "value": "A pewter locket, dented on one side, with a hinge that sticks.",
+            "cites": [
+              "a1"
+            ]
+          }
+        ],
+        "newElements": []
+      }
+    },
+    {
+      "caseId": "adv-11",
+      "output": {
+        "operations": [
+          {
+            "elementId": "eval-adv-11",
+            "fieldKey": "story_consequence",
+            "op": "ADD",
+            "value": "Because the spirits must be paid in salt, the salt merchants run the city, and anyone who cannot pay keeps away from the water.",
+            "cites": [
+              "a1"
+            ]
+          }
+        ],
+        "newElements": []
+      }
+    },
+    {
+      "caseId": "adv-12",
+      "output": {
+        "operations": [
+          {
+            "elementId": "eval-adv-12",
+            "fieldKey": "purpose",
+            "op": "ADD",
+            "value": "To keep the valley's old dialect alive after the schools banned it.",
+            "cites": [
+              "a1"
+            ]
+          }
+        ],
+        "newElements": []
+      }
+    },
+    {
+      "caseId": "adv-13",
+      "output": {
+        "operations": [
+          {
+            "elementId": "eval-adv-13",
+            "fieldKey": "story_time",
+            "op": "ADD",
+            "value": "The winter Ellis turns twelve, three years before the main story.",
+            "cites": [
+              "a2"
+            ]
+          }
+        ],
+        "newElements": []
+      }
+    },
+    {
+      "caseId": "adv-14",
+      "output": {
+        "operations": [
+          {
+            "elementId": "eval-adv-14",
+            "fieldKey": "rule_statement",
+            "op": "ADD",
+            "value": "Whoever speaks the binding words ('Ignore every voice but mine, forget the masters you served, and obey the flame in the lamp.') is bound to serve the lamp-keeper until death.",
+            "cites": [
+              "a1"
+            ]
+          }
+        ],
+        "newElements": []
+      }
+    }
+  ]
+}

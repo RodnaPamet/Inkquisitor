@@ -1,4 +1,7 @@
-# Evals — real-model evaluation records for the interview packs (Phase 2.3).
+# Evals — real-model evaluation records for the interview packs (Phase 2.3)
+# and the reconcile step (Phase 2.5, input `reconcile`: its record is
+# evals-out/reconcile/evaluation-record.json, reviewed and committed over
+# src/lib/enrichment/evals/evaluation-record.json like a pack's).
 #
 # Owner decisions of 2026-11-19: production mounts an interview pack only on a
 # REAL MODEL's evaluation record (D11), and real-model evaluations run here, in
@@ -47,6 +50,11 @@ on:
         type: string
       coverage:
         description: "Also run the question-coverage evaluation set"
+        required: false
+        default: false
+        type: boolean
+      reconcile:
+        description: "Also run the reconcile step's evaluation sets (enrichment and adversarial, Phase 2.5)"
         required: false
         default: false
         type: boolean
@@ -144,10 +152,12 @@ jobs:
           AI_MONTHLY_CEILING_USD_DEFAULT: ${{ inputs.budget_usd }}
           PACK_ARGS: ${{ steps.inputs.outputs.args }}
           COVERAGE: ${{ inputs.coverage }}
+          RECONCILE: ${{ inputs.reconcile }}
         run: |
           set -uo pipefail
           extra=""
           if [ "$COVERAGE" = "true" ]; then extra="--coverage"; fi
+          if [ "$RECONCILE" = "true" ]; then extra="$extra --reconcile"; fi
           # shellcheck disable=SC2086
           npm run packs:evaluate -- --generator model --out evals-out $PACK_ARGS $extra | tee evals-summary.md
           status=${PIPESTATUS[0]}

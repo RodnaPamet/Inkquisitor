@@ -8,15 +8,18 @@
  *                           its scope covers (names, for the cards and panel)
  *   loadNewInterviewPage    the book and the elements a new interview's scope
  *                           covers (an element the book lacks is a 404)
+ *   loadReviewPage          the book and an interview's proposed bible changes (2.5)
  */
 import type { WorkspaceRequestContext } from '@/app-layer/types';
 import type { InterviewTarget } from '@/lib/interview/setup';
 import { getBook } from './books';
 import { getInterview, interviewScopeElements, listInterviews } from './interviews';
+import { getSessionReview, listPendingReviews } from './enrichment-review';
 
 export async function loadInterviewsPage(ctx: WorkspaceRequestContext, bookId: string) {
-    const [book, list] = await Promise.all([getBook(ctx, bookId), listInterviews(ctx, bookId)]);
-    return { book, ...list };
+    const [book, list, pending] = await Promise.all([getBook(ctx, bookId), listInterviews(ctx, bookId), listPendingReviews(ctx, bookId)]);
+    // Phase 2.5: how many proposed changes each interview still holds for review.
+    return { book, ...list, pendingBySession: Object.fromEntries(pending.map((p) => [p.sessionId, p.pending])) as Record<string, number> };
 }
 
 export async function loadInterviewPage(ctx: WorkspaceRequestContext, bookId: string, sessionId: string) {
@@ -34,4 +37,14 @@ export async function loadInterviewPage(ctx: WorkspaceRequestContext, bookId: st
 export async function loadNewInterviewPage(ctx: WorkspaceRequestContext, bookId: string, target: InterviewTarget) {
     const [book, scope] = await Promise.all([getBook(ctx, bookId), interviewScopeElements(ctx, bookId, target)]);
     return { book, ...scope };
+}
+
+/**
+ * An interview's review page (Phase 2.5): the book and the session's
+ * proposals, each with the current value of what it targets and the answers it
+ * cites (`getSessionReview`, `bible.view`).
+ */
+export async function loadReviewPage(ctx: WorkspaceRequestContext, bookId: string, sessionId: string) {
+    const [book, review] = await Promise.all([getBook(ctx, bookId), getSessionReview(ctx, bookId, sessionId)]);
+    return { book, review };
 }

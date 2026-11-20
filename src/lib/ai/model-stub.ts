@@ -34,7 +34,9 @@
  * `previous-wording` block (a rephrase) gets the same target asked another
  * way, in another kind where the dial allows one. A request it cannot read is
  * answered with no question at all, which the engine treats as an empty
- * answer, never as content.
+ * answer, never as content. A RECONCILE request (Phase 2.5) is answered by
+ * `stubReconcileAnswer`: an ADD of the author's own words into each empty
+ * field an answer targeted, NO_CHANGE everywhere else, nothing invented.
  */
 import type { AiEnvRecord } from './config';
 
@@ -200,6 +202,70 @@ export function stubAnswer(body: Record<string, unknown>): { questions: Array<Re
     return { questions: questions.slice(0, 12), declined: [] };
 }
 
+// ─── The reconcile step (Phase 2.5) ─────────────────────────────────
+
+interface StubScopeElement {
+    elementId?: unknown;
+    scope_field_keys?: unknown;
+    fields?: Array<{ key?: unknown; type?: unknown }>;
+    stored_values?: Record<string, unknown>;
+}
+
+interface StubAnswer {
+    answerId?: unknown;
+    elementId?: unknown;
+    targetsFieldKeys?: unknown;
+    status?: unknown;
+    answer?: unknown;
+}
+
+/**
+ * The stub's answer to a RECONCILE request (Phase 2.5: `element.N` blocks
+ * with `scope_field_keys`, and an `answers` block). Conservative and
+ * deterministic: an EMPTY scope field that an ANSWERED answer targeted gets
+ * an ADD of that answer's own words (a list one item, a scale the answer's
+ * number), citing it; every other field NO_CHANGE; no new element. It never
+ * updates or removes and invents nothing — the product's validation still
+ * judges every word. Pure.
+ */
+export function stubReconcileAnswer(body: Record<string, unknown>): { operations: Array<Record<string, unknown>>; newElements: [] } | null {
+    const blocks = fencedBlocks(body);
+    const answersText = blocks.get('answers');
+    if (answersText === undefined) return null;
+    let answers: StubAnswer[];
+    try {
+        answers = JSON.parse(answersText) as StubAnswer[];
+    } catch {
+        return { operations: [], newElements: [] };
+    }
+    const operations: Array<Record<string, unknown>> = [];
+    for (const [label, text] of blocks) {
+        if (!label.startsWith('element.')) continue;
+        let e: StubScopeElement;
+        try {
+            e = JSON.parse(text) as StubScopeElement;
+        } catch {
+            continue;
+        }
+        const keys = Array.isArray(e.scope_field_keys) ? e.scope_field_keys.filter((k): k is string => typeof k === 'string') : [];
+        for (const key of keys) {
+            const type = e.fields?.find((f) => f.key === key)?.type;
+            const stored = e.stored_values?.[key];
+            const source = answers.find(
+                (a) => a.status === 'ANSWERED' && a.elementId === e.elementId && Array.isArray(a.targetsFieldKeys) && a.targetsFieldKeys.includes(key) && (typeof a.answer === 'string' || typeof a.answer === 'number'),
+            );
+            const reply = source?.answer;
+            let value: string | string[] | number | null = null;
+            if (type === 'scale') value = typeof reply === 'number' ? reply : null;
+            else if (type === 'list') value = typeof reply === 'string' ? [reply] : null;
+            else if (type !== 'choice') value = typeof reply === 'string' ? reply : typeof reply === 'number' ? String(reply) : null;
+            if (stored === null && value !== null && source) operations.push({ elementId: e.elementId, fieldKey: key, op: 'ADD', value, cites: [source.answerId] });
+            else operations.push({ elementId: e.elementId, fieldKey: key, op: 'NO_CHANGE', value: null, cites: [] });
+        }
+    }
+    return { operations: operations.slice(0, 40), newElements: [] };
+}
+
 function sse(events: Array<Record<string, unknown>>): string {
     return events.map((e) => `event: ${String(e.type)}\ndata: ${JSON.stringify(e)}\n\n`).join('');
 }
@@ -241,7 +307,7 @@ export async function stubMessagesFetch(input: string | URL | Request, init?: Re
         body = {};
     }
     const model = typeof body.model === 'string' ? body.model : 'stub-model';
-    const text = JSON.stringify(stubAnswer(body));
+    const text = JSON.stringify(stubReconcileAnswer(body) ?? stubAnswer(body));
     return new Response(streamedMessage(model, text, { input_tokens: 1_500, output_tokens: Math.max(50, Math.ceil(text.length / 4)) }), {
         status: 200,
         headers: { 'content-type': 'text/event-stream' },
