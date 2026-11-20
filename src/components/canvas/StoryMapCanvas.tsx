@@ -76,6 +76,7 @@ import { canvasAssetUrls } from '@/lib/canvas/tldraw-assets';
 import { installArrowToEdgeConversion, installOneNodePerElement, type ArrowVerdict } from './tldraw/arrow-to-edge';
 import type { KnownRelation } from './tldraw/edge-validation';
 import { restoreFreeform } from './tldraw/restore-freeform';
+import { STORY_TEXT_OPTIONS } from './tldraw/rich-text-extensions';
 import { rowsToTldraw, type FreeformRecord, type GraphRows, type MapDisplay } from './tldraw/serializer';
 import { STORY_EDGE_SHAPE_TYPE, edgeLineGeometry, shapeIdForRelation } from './tldraw/story-edge-shape';
 import { StoryEdgeBindingUtil } from './tldraw/StoryEdgeBindingUtil';
@@ -263,6 +264,7 @@ export function StoryMapCanvas({ rows, display, freeform = [], readOnly = false,
                 bindingUtils={BINDING_UTILS}
                 onMount={handleMount}
                 options={TLDRAW_OPTIONS}
+                textOptions={STORY_TEXT_OPTIONS}
                 overrides={TLDRAW_OVERRIDES}
                 components={components}
                 assetUrls={ASSET_URLS}
