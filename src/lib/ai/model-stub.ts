@@ -63,6 +63,21 @@ export function isLoopbackUrl(raw: string | undefined): boolean {
 }
 
 /**
+ * THE LOOPBACK-ONLY STUB (decision D13, 2026-11-20): the stubbed model is
+ * switched on, no provider key sits beside it, and `APP_URL` and
+ * `NEXTAUTH_URL` are BOTH loopback addresses — a local test server, never a
+ * real deployment (whose public `APP_URL` every link is built from). It is the
+ * only production configuration the stub may run in (`stubModelProblems`
+ * refuses every other), and the only one in which the pack mount gate also
+ * accepts structural evaluation records (`packRecordModeOf`,
+ * `src/lib/interview/pack-records-config.ts`), so the stub E2E server can run
+ * interviews against the production build. Pure.
+ */
+export function loopbackStubMode(e: Pick<AiEnvRecord, 'AI_MODEL_STUB' | 'ANTHROPIC_API_KEY' | 'APP_URL' | 'NEXTAUTH_URL'>): boolean {
+    return stubModelEnabled(e) && !present(e.ANTHROPIC_API_KEY) && isLoopbackUrl(e.APP_URL) && isLoopbackUrl(e.NEXTAUTH_URL);
+}
+
+/**
  * Why this environment may not run the stub. Empty when it may (or when it is
  * off). In production the stub needs a process that is plainly a local test
  * server; anywhere, it never sits beside a provider key.

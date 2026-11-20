@@ -687,7 +687,10 @@ closed beta with an explicit operator flag (D5, amended 2026-11-19).
   structural generator reproduces, and a model record holding the structural
   generator's output is refused `STRUCTURAL_OUTPUT_AS_MODEL`); PRODUCTION
   accepts only a real model's record, development and test a structural one
-  too, with no override (D11, `pack-records-config.ts`). A refused pack is 503
+  too, with no override (D11, `pack-records-config.ts`) but one: the
+  loopback-only model stub (D13, `loopbackStubMode`), asked in
+  `packRecordModeOf` and nowhere else; the start-up check refuses a
+  structural mode beside a real host. A refused pack is 503
   `PACKS_NOT_MOUNTABLE` naming each pack, nothing written, and production
   logs `[startup] WARN` with the counts. A session pins its packs at start
   (`packPins`, write-once by trigger) — each kind's craft pack (every kind for
@@ -723,7 +726,8 @@ closed beta with an explicit operator flag (D5, amended 2026-11-19).
   spells a server variable's name. `AI_MODEL_STUB=1` (`src/lib/ai/model-stub.ts`)
   is `clientForRun`'s fetch seam taken by configuration, for a local test
   server: production refuses it unless `APP_URL` and `NEXTAUTH_URL` are both
-  loopback, and anywhere beside `ANTHROPIC_API_KEY`. The interview E2E runs
+  loopback, and anywhere beside `ANTHROPIC_API_KEY` (D13; a WARN at every
+  start). In that mode only, structural pack records mount too. The interview E2E runs
   against the second E2E server (`test.use({ baseURL: STUB_BASE_URL })`).
 - **Sanitising author text.** Every author-text write sanitises at the
   usecase layer before it is stored: plain text through `plainLine` /
