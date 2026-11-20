@@ -166,7 +166,7 @@ export async function readSearchDocuments(
     for (let i = 0; i < elements.length && budget > 0; ) {
         const start = i;
         let bytes = 0;
-        while (i < elements.length && i - start < limits.fieldChunk) {
+        while (i < elements.length && (i === start || i - start < limits.fieldChunk)) {
             const b = storedBytes.get(elements[i].id) ?? 0;
             if (i > start && bytes + b > limits.fieldChunkBytes) break;
             bytes += b;
