@@ -122,6 +122,8 @@ export function statusOfOutcome(outcome: ReconcileOutcome): Exclude<ReconcileRun
  *                              (another session's, another round's, an old revision, made up)
  *   CITES_UNANSWERED           an answer the author skipped or left for later
  *   REMOVE_CARRIES_VALUE       a REMOVE with a value
+ *   REMOVE_NOT_ADDRESSED       a REMOVE citing no answer to a question about the field it
+ *                              empties (Phase 2.H, issue #39 item 2)
  *   VALUE_MISSING              an ADD or UPDATE with no value (or one that sanitises to nothing)
  *   VALUE_INVALID              a value of the wrong type or past the field's bounds
  *   CHANGES_NOTHING            an UPDATE to the value the field already holds
@@ -147,6 +149,7 @@ export const REFUSAL_CODES = [
     'CITES_FOREIGN_ANSWER',
     'CITES_UNANSWERED',
     'REMOVE_CARRIES_VALUE',
+    'REMOVE_NOT_ADDRESSED',
     'VALUE_MISSING',
     'VALUE_INVALID',
     'CHANGES_NOTHING',

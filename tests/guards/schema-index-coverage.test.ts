@@ -105,6 +105,26 @@ export function fkViolations(models: readonly SchemaModel[]): string[] {
     return out;
 }
 
+/** Layer A: the workspace-scoped models (a `workspaceId` column) no index, unique or id leads with `workspaceId`. */
+export function workspaceLeadViolations(models: readonly SchemaModel[]): string[] {
+    return models.filter((m) => m.scalarFieldNames.includes('workspaceId') && !leadingIndexedFields(m).has('workspaceId')).map((m) => m.name);
+}
+
+/** Every index, unique and id a model declares, each as its column list. */
+function declaredIndexes(m: SchemaModel): string[][] {
+    return [...m.blockIndexes, ...m.blockUniques, ...(m.blockId ? [m.blockId] : []), ...m.fieldUniqueNames.map((f) => [f])];
+}
+
+/** Layer C: the curated list indexes the schema does not declare EXACTLY (model unknown, or no index with these columns in this order). */
+export function listIndexViolations(indexes: readonly ListQueryIndex[], byName: ReadonlyMap<string, SchemaModel>): string[] {
+    return indexes
+        .filter((i) => {
+            const m = byName.get(i.model);
+            return !m || !declaredIndexes(m).some((c) => c.length === i.fields.length && c.every((f, n) => f === i.fields[n]));
+        })
+        .map((i) => `${i.model}(${i.fields.join(', ')})`);
+}
+
 /** Models a `<accessor>.findMany(` / `.groupBy(` call names, in the given sources. */
 export function listQueriedModels(sources: readonly string[], known: ReadonlySet<string>): Set<string> {
     const found = new Set<string>();
@@ -134,8 +154,8 @@ describe('Layer A: every workspace-scoped model leads an index with workspaceId'
     it('finds the workspace-scoped models', () => {
         expect(scoped.length).toBeGreaterThanOrEqual(8);
     });
-    it.each(scoped.map((m) => [m.name, m] as const))('%s', (_name, m) => {
-        expect(leadingIndexedFields(m).has('workspaceId')).toBe(true);
+    it('each has an index led by workspaceId', () => {
+        expect(workspaceLeadViolations(MODELS)).toEqual([]);
     });
 });
 
@@ -150,11 +170,11 @@ describe('Layer B: every foreign key is indexed', () => {
 });
 
 describe('Layer C: the index of every list query exists, exactly', () => {
-    it.each(LIST_QUERY_INDEXES.map((i) => [`${i.model}(${i.fields.join(', ')}) — ${i.justification}`, i] as const))('%s', (_label, i) => {
-        const m = MODEL_BY_NAME.get(i.model);
-        expect(m).toBeDefined();
-        const all = [...m!.blockIndexes, ...m!.blockUniques, ...(m!.blockId ? [m!.blockId] : []), ...m!.fieldUniqueNames.map((f) => [f])];
-        expect(all).toContainEqual([...i.fields]);
+    it('every curated index is declared, exactly', () => {
+        expect(listIndexViolations(LIST_QUERY_INDEXES, MODEL_BY_NAME)).toEqual([]);
+    });
+    it('every curated entry says why', () => {
+        expect(LIST_QUERY_INDEXES.filter((i) => i.justification.trim().length < 10)).toEqual([]);
     });
 });
 
@@ -202,6 +222,29 @@ describe('negative controls', () => {
         expect(fkViolations([model({ relationFkFieldGroups: [['bookId', 'fromId']], blockUniques: [['fromId', 'toId']] })])).toEqual([]);
         // The workspace key alone is Layer A's, not B's.
         expect(fkViolations([model({ relationFkFieldGroups: [['workspaceId']] })])).toEqual([]);
+    });
+
+    // Issue #29 item 5: Layers A and C were checked by hand only.
+    it('Layer A flags a workspace-scoped model no index leads with workspaceId', () => {
+        const scoped = { scalarFieldNames: ['id', 'workspaceId', 'bookId'] };
+        expect(workspaceLeadViolations([model({ ...scoped, blockIndexes: [['bookId', 'workspaceId']] })])).toEqual(['X']);
+        expect(workspaceLeadViolations([model({ ...scoped, blockUniques: [['bookId', 'workspaceId']], fieldUniqueNames: ['bookId'] })])).toEqual(['X']);
+        expect(workspaceLeadViolations([model({ ...scoped, blockIndexes: [['workspaceId', 'bookId']] })])).toEqual([]);
+        expect(workspaceLeadViolations([model({ ...scoped, blockId: ['workspaceId', 'id'], fieldIdName: null })])).toEqual([]);
+        // A model with no workspace column is not Layer A's.
+        expect(workspaceLeadViolations([model({ scalarFieldNames: ['id', 'bookId'] })])).toEqual([]);
+    });
+
+    it('Layer C flags a curated index that is missing, a prefix, a superset, reordered, or on an unknown model', () => {
+        const byName = new Map([['X', model({ blockIndexes: [['workspaceId', 'bookId', 'createdAt']], blockUniques: [['bookId', 'slug']], fieldUniqueNames: ['code'] })]]);
+        const entry = (m: string, fields: string[]): ListQueryIndex => ({ model: m, fields, justification: 'a planted control' });
+        expect(listIndexViolations([entry('X', ['workspaceId', 'bookId', 'createdAt']), entry('X', ['bookId', 'slug']), entry('X', ['code'])], byName)).toEqual([]);
+        expect(
+            listIndexViolations(
+                [entry('X', ['workspaceId', 'bookId']), entry('X', ['workspaceId', 'bookId', 'createdAt', 'id']), entry('X', ['bookId', 'workspaceId', 'createdAt']), entry('X', ['status']), entry('Y', ['workspaceId'])],
+                byName,
+            ),
+        ).toEqual(['X(workspaceId, bookId)', 'X(workspaceId, bookId, createdAt, id)', 'X(bookId, workspaceId, createdAt)', 'X(status)', 'Y(workspaceId)']);
     });
 
     it('finds the models list queries name, and only real ones', () => {

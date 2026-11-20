@@ -159,7 +159,7 @@ export function runView(run: ResearchRunRow): RunView {
         outcome: state.outcome,
         depth: run.depth,
         progress: state.status !== run.status ? { ...progress, phase: 'finished' } : progress,
-        spentMicroUsd: run.spentMicroUsd,
+        spentMicroUsd: Number(run.spentMicroUsd),
         createdAt: run.createdAt.toISOString(),
         finishedAt: run.finishedAt ? run.finishedAt.toISOString() : null,
         metrics: {

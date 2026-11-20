@@ -49,4 +49,7 @@ export type BibleVersionSource = (typeof BIBLE_VERSION_SOURCES)[number];
 
 /** Field keys, relation keys and option values: lower snake case, at most 32 characters. */
 export const IDENTIFIER_PATTERN = /^[a-z][a-z0-9]*(_[a-z0-9]+)*$/;
+/** The longest element name (the API's bound; client-safe here so the relation picker can clamp its search, issue #29 item 6). */
+export const ELEMENT_NAME_MAX = 120;
+
 export const IDENTIFIER_MAX = 32;

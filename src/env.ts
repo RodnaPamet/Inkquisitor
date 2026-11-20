@@ -231,6 +231,10 @@ export const env = createEnv({
             .string()
             .regex(/^\d+(\.\d{1,6})?$/)
             .optional(),
+        // How long a model call's AiCallLog row is kept, in days (Phase 2.H,
+        // issue #30 item 4): default 400, at least 365 (the database refuses
+        // younger deletes whatever this says). src/lib/ai/call-log-retention.ts.
+        AI_CALL_LOG_RETENTION_DAYS: z.string().regex(/^\d{1,5}$/).optional(),
         // Override the model a tier runs on (defaults: claude-haiku-5-5,
         // claude-sonnet-5-5, claude-opus-5-5).
         AI_MODEL_FAST: z.string().regex(/^[a-z0-9][a-z0-9.-]{1,99}$/).optional(),
@@ -301,6 +305,7 @@ export const env = createEnv({
         AI_DISABLED: process.env.AI_DISABLED,
         AI_MODEL_STUB: process.env.AI_MODEL_STUB,
         AI_MONTHLY_CEILING_USD_DEFAULT: process.env.AI_MONTHLY_CEILING_USD_DEFAULT,
+        AI_CALL_LOG_RETENTION_DAYS: process.env.AI_CALL_LOG_RETENTION_DAYS,
         AI_MODEL_FAST: process.env.AI_MODEL_FAST,
         AI_MODEL_BALANCED: process.env.AI_MODEL_BALANCED,
         AI_MODEL_DEEP: process.env.AI_MODEL_DEEP,

@@ -456,7 +456,7 @@ export async function generateClaimedRound(
                 reviewRequired: planned.reviewRequired,
             });
             const vector = output.vectors.get(askable[planned.position - 1].position);
-            if (vector && embedder) records.push(questionRecord(created.id, session.bookId, created.text, vector, embedder.revision));
+            if (vector && embedder) records.push(questionRecord(ctx.workspaceId, created.id, session.bookId, created.text, vector, embedder.revision));
         }
         await InterviewRoundRepository.update(db, ctx.workspaceId, claim.roundId, { status: 'OPEN', openedAt: new Date(), metrics });
         await logEvent(

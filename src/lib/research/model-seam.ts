@@ -34,7 +34,7 @@
  */
 import type { WorkspaceRequestContext } from '@/app-layer/types';
 import { callStructured, runServerToolLoop } from '@/app-layer/usecases/model-calls';
-import type { StructuredCallDeps } from '@/lib/ai/call-structured';
+import type { StructuredCallDeps, StructuredCallInput, StructuredCallResult } from '@/lib/ai/call-structured';
 import {
     AiCallAbortedError,
     AiCallError,
@@ -55,7 +55,17 @@ import { FindingsOutputSchema, FitOutputSchema } from './schema';
 export type ResearchFailure = { ok: false; failure: StepFailure; errorCode: string } & StepCost;
 
 function failed(failure: StepFailure, err: AiCallError): ResearchFailure {
-    return { ok: false, failure, errorCode: err.reason, tokensUsed: err.tokensUsed, costMicroUsd: err.costMicroUsd, callIds: err.callId ? [err.callId] : [] };
+    return {
+        ok: false,
+        failure,
+        errorCode: err.reason,
+        tokensUsed: err.tokensUsed,
+        costMicroUsd: err.costMicroUsd,
+        callIds: err.callId ? [err.callId] : [],
+        // The guard's flag travels with a failure as with an answer (issue #32 item 11).
+        reviewRequired: err.reviewRequired,
+        guardRuleIds: err.guardRuleIds,
+    };
 }
 
 /** 2.1's error → the run's named failure (the table above). Rethrows what is neither 2.1's nor the SDK's. */
@@ -75,16 +85,28 @@ export function researchOutcomeOf(err: unknown): ResearchFailure {
     throw err;
 }
 
-/** The deployment's researcher, in the context's workspace, as its user. `deps` is the tests' fetch seam. */
-export function defaultResearcher(ctx: WorkspaceRequestContext, deps: Pick<StructuredCallDeps, 'fetch' | 'timeoutMs'> = {}): Researcher {
+/** One structured call with the workspace bound (the deployment's, or a test's over the fake Messages API). */
+export type ResearchCaller = (input: Omit<StructuredCallInput<typeof FindingsOutputSchema | typeof FitOutputSchema>, 'requestedById'>) => Promise<StructuredCallResult<unknown>>;
+
+/** The research run's two structured steps over a structured caller (the injection suite drives them over the fake API). */
+export function researchStepsOver(call: ResearchCaller): Pick<Researcher, 'findings' | 'fit'> {
     const structured = async (template: typeof FINDINGS_PROMPT, schema: typeof FindingsOutputSchema | typeof FitOutputSchema, request: { data: Parameters<Researcher['findings']>[0]['data']; bookId: string }, signal?: AbortSignal): Promise<StepResult<unknown>> => {
         try {
-            const r = await callStructured(ctx, { template, data: request.data, schema, bookId: request.bookId, signal }, deps);
+            const r = await call({ template, data: request.data, schema, bookId: request.bookId, signal });
             return { ok: true, output: r.value, tokensUsed: r.tokensUsed, costMicroUsd: r.costMicroUsd, callIds: [r.callId], reviewRequired: r.reviewRequired, guardRuleIds: r.guardRuleIds };
         } catch (err) {
             return researchOutcomeOf(err);
         }
     };
+    return {
+        findings: (request, signal) => structured(FINDINGS_PROMPT, FindingsOutputSchema, request, signal),
+        fit: (request, signal) => structured(FIT_PROMPT, FitOutputSchema, request, signal),
+    };
+}
+
+/** The deployment's researcher, in the context's workspace, as its user. `deps` is the tests' fetch seam. */
+export function defaultResearcher(ctx: WorkspaceRequestContext, deps: Pick<StructuredCallDeps, 'fetch' | 'timeoutMs'> = {}): Researcher {
+    const steps = researchStepsOver((input) => callStructured(ctx, input, deps));
     return Object.freeze({
         async gather(request, observer, signal) {
             try {
@@ -123,7 +145,7 @@ export function defaultResearcher(ctx: WorkspaceRequestContext, deps: Pick<Struc
                 return researchOutcomeOf(err);
             }
         },
-        findings: (request, signal) => structured(FINDINGS_PROMPT, FindingsOutputSchema, request, signal),
-        fit: (request, signal) => structured(FIT_PROMPT, FitOutputSchema, request, signal),
+        findings: steps.findings,
+        fit: steps.fit,
     } satisfies Researcher);
 }

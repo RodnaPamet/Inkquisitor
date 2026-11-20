@@ -113,3 +113,38 @@ export function modelCapabilitiesFor(modelId: string): ModelCapabilities {
     const family = modelFamilyOf(modelId);
     return family === null ? CONSERVATIVE_CAPABILITIES : MODEL_CAPABILITIES[family];
 }
+
+/**
+ * THE MODEL FAMILIES A ZERO-RETENTION ORGANIZATION MAY CALL (issue #30 item 6).
+ *
+ * The Fable family is a Covered Model: it requires 30-day retention, and an
+ * organization with a zero-data-retention arrangement is refused (400
+ * `invalid_request_error`) unless Anthropic has expressly authorized it
+ * (claude-api skill, read 2026-11-20). So under `AI_RETENTION_MODE=zdr` a tier
+ * override must name a family on this list; an unknown model id is not on it
+ * (this table cannot vouch for a model it has no row for). A `Record`, so a
+ * family added without a decision here fails `tsc`.
+ */
+export const ZDR_ELIGIBLE: Readonly<Record<ModelFamily, boolean>> = {
+    'claude-fable-5-2': false,
+    'claude-fable-5-1': false,
+    'claude-fable-5': false,
+    'claude-opus-5-5': true,
+    'claude-opus-5': true,
+    'claude-opus-4-8': true,
+    'claude-opus-4-7': true,
+    'claude-opus-4-6': true,
+    'claude-opus-4-5': true,
+    'claude-sonnet-5-5': true,
+    'claude-sonnet-5': true,
+    'claude-sonnet-4-6': true,
+    'claude-sonnet-4-5': true,
+    'claude-haiku-5-5': true,
+    'claude-haiku-4-5': true,
+};
+
+/** Whether `modelId` may be called under a zero-data-retention arrangement: a known family marked eligible. */
+export function zdrEligible(modelId: string): boolean {
+    const family = modelFamilyOf(modelId);
+    return family !== null && ZDR_ELIGIBLE[family];
+}

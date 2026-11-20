@@ -88,7 +88,7 @@ it('a round’s call is recorded in AiCallLog, and its real token usage is charg
     expect(round.metrics).toMatchObject({ aiCallIds: [calls[0].id], tokensUsed: 2_800, callsOverBudget: 0 });
     // The reservation is released at settlement; the month carries the spend.
     expect(await prisma.aiSpendReservation.count({ where: { workspaceId: owner.workspaceId } })).toBe(0);
-    expect(Number((await prisma.aiSpendMonth.findFirstOrThrow({ where: { workspaceId: owner.workspaceId } })).spentMicroUsd)).toBe(calls[0].costMicroUsd);
+    expect(Number((await prisma.aiSpendMonth.findFirstOrThrow({ where: { workspaceId: owner.workspaceId } })).spentMicroUsd)).toBe(Number(calls[0].costMicroUsd));
 });
 
 it('the kill switch pauses a session that would need the model, sending nothing; with nothing left to ask it FINISHES', async () => {
@@ -213,7 +213,7 @@ it('a call whose real worst case passes the ceiling is refused by 2.1 (CEILING, 
     expect(api.requests).toHaveLength(0);
     const calls = await prisma.aiCallLog.findMany({ where: { workspaceId: owner.workspaceId } });
     expect(calls).toHaveLength(1);
-    expect(calls[0]).toMatchObject({ outcome: 'CEILING', errorCode: 'SPEND_CEILING', costMicroUsd: 0 });
+    expect(calls[0]).toMatchObject({ outcome: 'CEILING', errorCode: 'SPEND_CEILING', costMicroUsd: BigInt(0) });
     expect(view.session.stopDetail).toMatchObject({ errorCode: 'SPEND_CEILING', aiCallId: calls[0].id });
     const rounds = await prisma.interviewRound.findMany({ where: { sessionId: view.session.id } });
     expect(rounds.map((r) => r.status)).toEqual(['FAILED']);

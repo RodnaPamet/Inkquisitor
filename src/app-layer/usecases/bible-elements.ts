@@ -326,6 +326,8 @@ export interface ElementCreateData {
  */
 export async function createElementInTx(db: PrismaTx, ctx: WorkspaceRequestContext, bookId: string, data: ElementCreateData, meta: VersionMeta) {
     await requireBook(db, ctx, bookId);
+    // A new name: after every name check of a concurrent accept, or before it.
+    await BibleElementRepository.lockNames(db, bookId);
     let slug: string;
     if (data.slug) {
         if (await BibleElementRepository.slugTaken(db, ctx.workspaceId, bookId, data.slug)) throw slugConflict();
@@ -393,6 +395,8 @@ export async function updateElement(ctx: WorkspaceRequestContext, bookId: string
     const parsed = ElementUpdateInput.parse(input);
     try {
         return await runInWorkspaceContext(ctx, async (db) => {
+            // A rename gives the book a name: the names lock first (its order).
+            if (parsed.name !== undefined) await BibleElementRepository.lockNames(db, bookId);
             await BibleElementRepository.lock(db, elementId);
             const element = await requireElement(db, ctx, bookId, elementId);
             await assertBaseVersion(db, ctx, elementId, parsed.baseVersion);

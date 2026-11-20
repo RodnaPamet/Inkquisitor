@@ -71,7 +71,7 @@ import { guardAuthorText, summariseChecks, type GuardCheck } from './guard';
 import { costMicroUsd, webSearchCostMicroUsd, worstCaseCostMicroUsd } from './pricing';
 import { inputTokenBound, newFenceNonce, resolveCall, systemPromptFor, userTurnFor, type AuthorDataBlock, type PromptTemplate } from './prompt';
 import { TIER_DEFAULTS } from './tiers';
-import { RESERVATION_GRACE_MS } from './call-structured';
+import { RESERVATION_GRACE_MS, settleRecord } from './call-structured';
 
 /** The server tool types a gather turn sends (both permitted in `./client.ts`). */
 export const WEB_SEARCH_TOOL_TYPE: PermittedServerToolType = 'web_search_20260209';
@@ -93,6 +93,20 @@ export const SERVER_LOOP_ITERATIONS_BOUND = 10;
  * settled cost is the provider's own usage report whatever it is.
  */
 export const SEARCH_RESULT_TOKENS_BOUND = 30_000;
+
+/**
+ * A FETCHED PDF (issue #41 item 1). `max_content_tokens` bounds a fetched
+ * page's TEXT, not a PDF (the web fetch tool's documentation), so a PDF can
+ * put up to a context window into the conversation, which every later
+ * sampling of the provider's server loop would re-read. The loop therefore
+ * refuses a non-text fetch: the request is aborted the moment its result
+ * block arrives, before any continuation carries it, and the turn stops
+ * `NON_TEXT_FETCH` with the text pages it had. The sampling in flight when
+ * the abort lands may already have read it once, so each request's worst case
+ * reserves ONE context window of input on top (while a fetch remains): this
+ * figure, the largest context window of the models this layer has rows for.
+ */
+export const NON_TEXT_FETCH_TOKENS_BOUND = 1_000_000;
 
 export interface WebToolsSpec {
     /** The web search tool, or null for none. `maxUses` caps searches across the whole turn (the API enforces it). */
@@ -164,7 +178,7 @@ export interface FetchedDocument {
     readonly errorCode: string | null;
 }
 
-export type ServerToolLoopStop = 'END_TURN' | 'REQUEST_CAP' | 'BUDGET' | 'TRUNCATED';
+export type ServerToolLoopStop = 'END_TURN' | 'REQUEST_CAP' | 'BUDGET' | 'TRUNCATED' | 'NON_TEXT_FETCH';
 
 export interface ServerToolLoopResult {
     readonly stop: ServerToolLoopStop;
@@ -218,7 +232,8 @@ export function serverToolTypesOf(tools: WebToolsSpec): PermittedServerToolType[
  * iteration the provider may run re-reading the request, every remaining
  * search's and fetch's content and the whole output budget (input priced at
  * the dearer of the input and cache-write rates), the output budget at the
- * output rate, and every remaining search's fee.
+ * output rate, one non-text fetch read once (`NON_TEXT_FETCH_TOKENS_BOUND`)
+ * while a fetch remains, and every remaining search's fee.
  */
 export function serverTurnWorstCase(
     model: string,
@@ -229,6 +244,8 @@ export function serverTurnWorstCase(
         inputTokenBound(request) + remaining.searches * SEARCH_RESULT_TOKENS_BOUND + remaining.fetches * remaining.maxContentTokens + request.max_tokens;
     return (
         worstCaseCostMicroUsd(model, { inputTokens: context * SERVER_LOOP_ITERATIONS_BOUND, outputTokens: request.max_tokens }) +
+        // One non-text fetch read once by the sampling in flight before the loop's abort lands.
+        (remaining.fetches > 0 ? worstCaseCostMicroUsd(model, { inputTokens: NON_TEXT_FETCH_TOKENS_BOUND, outputTokens: 0 }) : 0) +
         webSearchCostMicroUsd(remaining.searches)
     );
 }
@@ -408,7 +425,7 @@ export async function runServerToolLoop(input: ServerToolLoopInput, deps: Server
             webFetchRequests: r.usage.fetches,
             startedAt: r.startedAt,
         };
-        await deps.ledger.settle(record);
+        await settleRecord(deps.ledger, record);
         callIds.push(r.callId);
         totalTokens += r.usage.inputTokens + r.usage.outputTokens + r.usage.cacheReadTokens + r.usage.cacheWriteTokens;
         totalCost += r.cost;
@@ -439,11 +456,32 @@ export async function runServerToolLoop(input: ServerToolLoopInput, deps: Server
         if (error instanceof AiCallError) {
             error.tokensUsed = totalTokens;
             error.costMicroUsd = totalCost;
+            const guard = summariseChecks(checks);
+            error.reviewRequired = guard.reviewRequired;
+            error.guardRuleIds = guard.ruleIds;
         }
         throw error;
     };
 
     const ZERO: Usage = { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, searches: 0, fetches: 0 };
+
+    const resultOf = (stop: ServerToolLoopStop): ServerToolLoopResult => {
+        const guard = summariseChecks(checks);
+        return {
+            stop,
+            requests,
+            searches,
+            fetches,
+            finalText,
+            tokensUsed: totalTokens,
+            costMicroUsd: totalCost,
+            callIds,
+            reviewRequired: guard.reviewRequired,
+            guardRuleIds: guard.ruleIds,
+            webSearchRequests: searchRequests,
+            webFetchRequests: fetchRequests,
+        };
+    };
 
     for (;;) {
         const callId = randomUUID();
@@ -501,13 +539,24 @@ export async function runServerToolLoop(input: ServerToolLoopInput, deps: Server
         const timer = setTimeout(() => deadline.abort(), timeoutMs);
         const tripwire = new AbortController();
         const signal = AbortSignal.any([deadline.signal, tripwire.signal, ...(input.signal ? [input.signal] : [])]);
-        const trip: { refused: { tool: string; refusal: string } | null } = { refused: null };
+        const trip: { refused: { tool: string; refusal: string } | null; nonText: boolean } = { refused: null, nonText: false };
         let seenSearches = 0;
         let seenFetches = 0;
         let message: Anthropic.Message;
         const stream = choice.client.messages.stream(request, { signal });
         stream.on('contentBlock', (block) => {
-            if (block.type !== 'server_tool_use' || trip.refused) return;
+            if (trip.refused || trip.nonText) return;
+            // A fetched document that is not text (a PDF): stop before any
+            // further sampling or continuation re-reads it (issue #41 item 1).
+            if (block.type === 'web_fetch_tool_result') {
+                const result = block.content as { type?: string; content?: { source?: { type?: string } } } | undefined;
+                if (result?.type === 'web_fetch_result' && result.content?.source?.type !== 'text') {
+                    trip.nonText = true;
+                    tripwire.abort();
+                }
+                return;
+            }
+            if (block.type !== 'server_tool_use') return;
             const tool = block.name;
             let refusal: string | null;
             try {
@@ -535,6 +584,16 @@ export async function runServerToolLoop(input: ServerToolLoopInput, deps: Server
                 : { ...ZERO, searches: seenSearches, fetches: seenFetches };
             let cost = costMicroUsd(resolved.model, usage) + webSearchCostMicroUsd(usage.searches);
             let costEstimated = false;
+            if (trip.nonText) {
+                // Refused by this layer, not failed: the request is settled
+                // (TOOL_USE_REFUSED), what it read in full is kept, and the
+                // turn stops with the text pages gathered so far.
+                await settle({ callId, startedAt, t0, usage, cost, costEstimated: false, worstCase, attempts: 1, outcome: 'REFUSED_GUARD', errorCode: 'TOOL_USE_REFUSED' });
+                const salvaged = readToolResults(stream.currentMessage?.content ?? []);
+                searches.push(...salvaged.searches);
+                fetches.push(...salvaged.fetches.filter((f) => f.text !== null));
+                return resultOf('NON_TEXT_FETCH');
+            }
             const r = trip.refused;
             const ending: LoopEnd = r
                 ? new LoopEnd('REFUSED_GUARD', 'TOOL_USE_REFUSED', (id) => new AiToolUseRefusedError(r.tool, r.refusal, id))
@@ -562,26 +621,9 @@ export async function runServerToolLoop(input: ServerToolLoopInput, deps: Server
         finalText = read.text;
         assistant = [...assistant, ...passBack(message.content)];
 
-        const result = (stop: ServerToolLoopStop): ServerToolLoopResult => {
-            const guard = summariseChecks(checks);
-            return {
-                stop,
-                requests,
-                searches,
-                fetches,
-                finalText,
-                tokensUsed: totalTokens,
-                costMicroUsd: totalCost,
-                callIds,
-                reviewRequired: guard.reviewRequired,
-                guardRuleIds: guard.ruleIds,
-                webSearchRequests: searchRequests,
-                webFetchRequests: fetchRequests,
-            };
-        };
-        if (message.stop_reason === 'max_tokens' || message.stop_reason === 'model_context_window_exceeded') return result('TRUNCATED');
-        if (message.stop_reason !== 'pause_turn') return result('END_TURN');
-        if (requests >= input.maxRequests) return result('REQUEST_CAP');
-        if (totalCost >= input.budgetMicroUsd) return result('BUDGET');
+        if (message.stop_reason === 'max_tokens' || message.stop_reason === 'model_context_window_exceeded') return resultOf('TRUNCATED');
+        if (message.stop_reason !== 'pause_turn') return resultOf('END_TURN');
+        if (requests >= input.maxRequests) return resultOf('REQUEST_CAP');
+        if (totalCost >= input.budgetMicroUsd) return resultOf('BUDGET');
     }
 }

@@ -12,7 +12,10 @@
  * the walk ends at the book's last element.
  *
  * Read by the reconcile run when it stores a new-element proposal and by the
- * acceptance that creates one, both inside their own transaction.
+ * acceptance that creates one, both inside their own transaction, under the
+ * book's names lock (`BibleElementRepository.lockNames`), which every create
+ * and rename takes too: two equivalent names cannot both be created by a
+ * check that races a create.
  */
 import type { WorkspaceRequestContext } from '@/app-layer/types';
 import { BibleElementRepository } from '@/app-layer/repositories/bible.repository';
@@ -26,6 +29,10 @@ const NAMES_PAGE = 500;
 export async function bookHoldsElementName(db: PrismaTx, ctx: WorkspaceRequestContext, bookId: string, name: string, exceptElementId?: string): Promise<boolean> {
     const key = nameKey(name);
     if (key === '') return false;
+    // Under the book's names lock (held to commit): an element a concurrent
+    // create or rename commits is read here, never missed between this check
+    // and the caller's create (issues #39 item 5, #41 item 5).
+    await BibleElementRepository.lockNames(db, bookId);
     let after: { name: string; id: string } | undefined;
     for (;;) {
         const page = await BibleElementRepository.page(db, ctx.workspaceId, bookId, { after, take: NAMES_PAGE });

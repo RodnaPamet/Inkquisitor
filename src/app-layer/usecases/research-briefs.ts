@@ -187,7 +187,7 @@ export async function dispatchResearchRun(ctx: WorkspaceRequestContext, bookId: 
                     status: 'FAILED',
                     outcome: 'CLAIM_EXPIRED',
                     metrics: { ...((latest.metrics ?? {}) as Record<string, unknown>), errorCode: 'CLAIM_EXPIRED' } as Prisma.InputJsonValue,
-                    spentMicroUsd: latest.spentMicroUsd,
+                    spentMicroUsd: Number(latest.spentMicroUsd),
                     progress: { ...EMPTY_PROGRESS, ...((latest.progress ?? {}) as Record<string, unknown>), phase: 'finished' } as Prisma.InputJsonValue,
                     finishedAt: now,
                     ...(latest.startedAt ? {} : { startedAt: now }),

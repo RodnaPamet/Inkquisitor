@@ -35,6 +35,7 @@ import { useToastWithUndo } from '@/components/ui/hooks';
 import { APP_ROUTES } from '@/lib/app-routes';
 import { BIBLE_API, bibleFetch, reasonOf, type ElementView } from '@/lib/bible/api-client';
 import type { BibleKind } from '@/lib/bible/kinds';
+import { pickerQuery } from '@/lib/bible/picker-query';
 import type { RelationOption } from '@/lib/bible/ui-model';
 import { useApiErrorMessage } from './error-messages';
 
@@ -98,7 +99,7 @@ export function RelationsPanel({ workspaceSlug, bookId, element, options, kindLa
         const timer = setTimeout(() => {
             setSearching(true);
             bibleFetch<{ elements: Array<{ id: string; name: string; kind: BibleKind }> }>(
-                BIBLE_API.elements(workspaceSlug, bookId, { kinds: kindsKey.split(','), q: query.trim() || undefined, take: PICKER_PAGE + 1 }),
+                BIBLE_API.elements(workspaceSlug, bookId, { kinds: kindsKey.split(','), q: pickerQuery(query), take: PICKER_PAGE + 1 }),
             )
                 .then(({ elements }) => {
                     if (seq !== searchSeq.current) return;

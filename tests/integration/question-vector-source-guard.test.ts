@@ -72,7 +72,7 @@ it('a vector written while its question exists holds the question: a concurrent 
     const written = gate();
     const release = gate();
     const writer = runInWorkspaceContext(ctx, async (db) => {
-        await getVectorRepository().upsert(db, ctx.workspaceId, [questionRecord(q1, bookId, 'held', UNIT, REVISION)]);
+        await getVectorRepository().upsert(db, ctx.workspaceId, [questionRecord(ctx.workspaceId, q1, bookId, 'held', UNIT, REVISION)]);
         written.open();
         await release.wait;
     });
@@ -92,11 +92,11 @@ it('a vector write never waits on a question a cascade is deleting, so the two c
     const secondWrite = gate();
     // The writer files question 1's vector (KEY SHARE on question 1) and keeps its transaction open.
     const writer = runInWorkspaceContext(ctx, async (db) => {
-        await getVectorRepository().upsert(db, ctx.workspaceId, [questionRecord(q1, bookId, 'first', UNIT, REVISION)]);
+        await getVectorRepository().upsert(db, ctx.workspaceId, [questionRecord(ctx.workspaceId, q1, bookId, 'first', UNIT, REVISION)]);
         firstWritten.open();
         await secondWrite.wait;
         // Question 2 is now locked by the deleter, which waits on question 1.
-        await getVectorRepository().upsert(db, ctx.workspaceId, [questionRecord(q2, bookId, 'second', UNIT, REVISION)]);
+        await getVectorRepository().upsert(db, ctx.workspaceId, [questionRecord(ctx.workspaceId, q2, bookId, 'second', UNIT, REVISION)]);
     });
     const writerOutcome = writer.then(
         () => 'committed',

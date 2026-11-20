@@ -18,10 +18,13 @@ export function inWorkspace(ctx: WorkspaceRequestContext): InWorkspace {
     return (fn) => runInWorkspaceContext(ctx, fn);
 }
 
+/** The workspace scope a fixture record's content hash is keyed under when the test names none (Phase 2.H: hashes are per workspace). */
+export const FIXTURE_HASH_SCOPE = 'fixture-workspace';
+
 /** A record for `text`, embedded by the stub. */
 export async function recordFor(
     text: string,
-    key: { sourceModel?: string; sourceId: string; chunkIndex?: number; bookId: string | null },
+    key: { sourceModel?: string; sourceId: string; chunkIndex?: number; bookId: string | null; workspaceId?: string },
 ): Promise<VectorRecord> {
     const out = await stub.embed([text], { inputType: 'passage' });
     if (!out.ok) throw new Error(`stub embedding failed: ${out.reason}`);
@@ -31,7 +34,7 @@ export async function recordFor(
         chunkIndex: key.chunkIndex ?? 0,
         embeddingRevision: stub.revision,
         bookId: key.bookId,
-        contentHash: vectorContentHash(text),
+        contentHash: vectorContentHash(key.workspaceId ?? FIXTURE_HASH_SCOPE, text),
         embedding: out.vectors[0],
     };
 }

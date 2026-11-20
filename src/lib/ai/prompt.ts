@@ -432,7 +432,7 @@ export function buildModelRequest(
 /** At most this many validation issues are sent back in a repair. */
 export const MAX_REPAIR_ISSUES = 20;
 
-/** One validation issue as the repair turn states it. `message` is Zod's, cut short. */
+/** One validation issue as the repair turn states it: the path, the code and a FIXED sentence for the code (never Zod's message, which can quote the model's output; issue #32 item 13). */
 export interface RepairIssue {
     readonly path: string;
     readonly code: string;

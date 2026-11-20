@@ -26,7 +26,7 @@ import { vectorContentHash } from '@/lib/ai/embeddings/content-hash';
 import { prisma } from '@/lib/db';
 import { runInWorkspaceContext } from '@/lib/db/rls-middleware';
 import { seedBible, type SeededBible } from '../helpers/bible';
-import { inWorkspace, queryFor, recordFor, stub } from '../helpers/vectors';
+import { FIXTURE_HASH_SCOPE, inWorkspace, queryFor, recordFor, stub } from '../helpers/vectors';
 import { createAccount, workspaceCtx } from '../helpers/workspaces';
 
 afterAll(() => prisma.$disconnect());
@@ -134,7 +134,7 @@ describe('upsert and search through the seam', () => {
             sourceId: ids.want,
             chunkIndex: 0,
             bookId: aBible.bookId,
-            contentHash: vectorContentHash(texts.want),
+            contentHash: vectorContentHash(FIXTURE_HASH_SCOPE, texts.want),
             score: hits[0].score,
         });
     });
@@ -160,7 +160,7 @@ describe('upsert and search through the seam', () => {
                 chunkIndex: 0,
                 embeddingRevision: REV,
                 bookId: aBible.bookId,
-                contentHash: vectorContentHash(texts.want),
+                contentHash: vectorContentHash(FIXTURE_HASH_SCOPE, texts.want),
                 dimensions: stub.dimensions,
             },
         ]);

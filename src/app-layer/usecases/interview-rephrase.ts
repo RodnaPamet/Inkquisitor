@@ -211,7 +211,7 @@ export async function rephraseQuestion(
     if (embedder) {
         try {
             const [vector] = await embedder.embed([created.row.text]);
-            if (vector) await runInWorkspaceContext(ctx, (db) => upsertQuestionVectors(db, ctx, [questionRecord(created.row.id, bookId, created.row.text, vector, embedder.revision)]));
+            if (vector) await runInWorkspaceContext(ctx, (db) => upsertQuestionVectors(db, ctx, [questionRecord(ctx.workspaceId, created.row.id, bookId, created.row.text, vector, embedder.revision)]));
         } catch (err) {
             logger.warn('interview.question_vectors_not_stored', { component: 'interview', sessionId, count: 1, error: err instanceof Error ? err.name : 'unknown' });
         }

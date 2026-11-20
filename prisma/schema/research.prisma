@@ -91,7 +91,7 @@ model ResearchRun {
   /// The caps the depth set: searches, fetches, requests, spend (numbers).
   budget        Json
   /// What the run's model calls cost, micro-US-dollars.
-  spentMicroUsd Int               @default(0)
+  spentMicroUsd BigInt            @default(0)
   /// Where the run is (phase and counts), for the progress stream. Never text.
   progress      Json?
   /// Counts and codes: findings and proposals stored, refusals by code, the
@@ -190,6 +190,10 @@ model ResearchCitation {
   quotedSpan  String
   /// When the page was retrieved (URL only).
   retrievedAt DateTime?
+  /// URL: the SHA-256 (hex) of the page text the span was verified in, so the
+  /// citation can be proved against what was fetched (Phase 2.H, #41 item 3).
+  /// The page text itself is never stored. NULL for a file (its text is stored).
+  sourceSha256 String?
 
   finding ResearchFinding @relation(fields: [workspaceId, runId, findingId], references: [workspaceId, runId, id], onDelete: Cascade)
   source  ResearchSource? @relation(fields: [sourceId], references: [id], onDelete: Cascade)

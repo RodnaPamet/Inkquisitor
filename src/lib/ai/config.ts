@@ -56,6 +56,7 @@
  */
 
 import { isAnthropicWorkspaceId } from './anthropic-workspace';
+import { zdrEligible } from './model-capabilities';
 import { loopbackStubMode, stubModelEnabled, stubModelProblems } from './model-stub';
 
 /**
@@ -84,6 +85,9 @@ export type AiEnvRecord = {
         | 'AI_MODEL_STUB'
         | 'APP_URL'
         | 'NEXTAUTH_URL'
+        | 'AI_MODEL_FAST'
+        | 'AI_MODEL_BALANCED'
+        | 'AI_MODEL_DEEP'
         | 'NODE_ENV']?: string | undefined;
 };
 
@@ -196,6 +200,21 @@ export function aiConfigProblems(e: AiEnvRecord): string[] {
             'ANTHROPIC_WORKSPACE_ID must be an Anthropic workspace id (letters, digits, _ and -, as in wrkspc_…): it is sent as the ' +
                 'anthropic-workspace-id header, and a malformed one never is. Unset it for a workspace-scoped key.',
         );
+    }
+    // Under zero retention, every tier override must name a family the
+    // arrangement covers (issue #30 item 6): a Fable model, or a model this
+    // layer has no row for, fails every call at the API instead.
+    if (retentionMode(e) === 'zdr') {
+        for (const name of ['AI_MODEL_FAST', 'AI_MODEL_BALANCED', 'AI_MODEL_DEEP'] as const) {
+            const model = e[name]?.trim();
+            if (present(model) && !zdrEligible(model)) {
+                problems.push(
+                    `${name} names a model a zero-data-retention organization cannot call (AI_RETENTION_MODE=zdr): the Fable ` +
+                        'family requires 30-day retention, and a model the capability table has no row for cannot be vouched for. ' +
+                        'Name a ZDR-eligible model (src/lib/ai/model-capabilities.ts, ZDR_ELIGIBLE) or unset it.',
+                );
+            }
+        }
     }
     if (present(e.AI_DISABLED) && !['0', '1'].includes(e.AI_DISABLED.trim())) {
         problems.push('AI_DISABLED must be 0 or 1.');

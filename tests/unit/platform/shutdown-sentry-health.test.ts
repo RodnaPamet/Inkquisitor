@@ -53,8 +53,8 @@ describe('Sentry scrubbing', () => {
         expect(scrubEvent({} as ErrorEvent, { originalException: new Error('NEXT_REDIRECT') })).toBeNull();
     });
 
-    it('redacts sensitive params from relative URLs too', () => {
-        expect(redactUrl('/x?state=1&b=2')).toBe('/x?state=%5BRedacted%5D&b=2');
+    it('cuts the whole query from relative URLs too, not only credential-named params (issue #29 item 1)', () => {
+        expect(redactUrl('/x?state=1&b=2')).toBe('/x?[Filtered]');
     });
 });
 

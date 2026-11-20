@@ -64,10 +64,17 @@ export interface InterviewSessionProps {
     fieldLabels: Partial<Record<BibleKind, Record<string, string>>>;
     kindLabels: Record<BibleKind, string>;
     initial: { kind: 'existing'; interview: InterviewView } | { kind: 'start'; target: InterviewTarget; setup: InterviewSetup };
+    /**
+     * Rounds whose reconcile failed or was refused when the page was read
+     * (issue #39 item 6): their answers wait, proposing nothing, until the
+     * review page runs them again.
+     */
+    reconcileAttention?: readonly number[];
 }
 
 export function InterviewSession(props: InterviewSessionProps) {
     const { workspaceSlug, book, canEdit, elements, fieldLabels, kindLabels, initial } = props;
+    const [reconcileAttention, setReconcileAttention] = useState<readonly number[]>(props.reconcileAttention ?? []);
     const t = useTranslations('interview.session');
     const tStatus = useTranslations('interview.status');
     const tPersona = useTranslations('interview.personas');
@@ -195,6 +202,19 @@ export function InterviewSession(props: InterviewSessionProps) {
         return { open: results.filter((r) => r === 'open').length };
     }
 
+    /** Keep the list of rounds whose reconcile did not run to its end in step with the runs just made. */
+    function noteReconcileRuns(runs: ReadonlyArray<{ roundNumber: number; status: string }>) {
+        if (runs.length === 0) return;
+        setReconcileAttention((before) => {
+            const next = new Set(before);
+            for (const r of runs) {
+                if (r.status === 'FAILED' || r.status === 'REFUSED') next.add(r.roundNumber);
+                else next.delete(r.roundNumber);
+            }
+            return [...next].sort((a, b) => a - b);
+        });
+    }
+
     async function finishRound() {
         if (!ids || !round) return;
         setClosing(true);
@@ -209,6 +229,7 @@ export function InterviewSession(props: InterviewSessionProps) {
                 const p = reconcile.proposed;
                 setNotice(t('reconciled', { count: p.ADD + p.UPDATE + p.REMOVE + p.NEW_ELEMENT }));
             }
+            noteReconcileRuns(reconcile ? [reconcile] : []);
             // Straight on to the next round, unless the session ended.
             if (interview.session.status === 'ACTIVE') await runStream(INTERVIEW_API.nextRoundStream(ids.slug, ids.bookId, ids.sessionId), {}, ids.sessionId);
         } catch (err) {
@@ -224,8 +245,9 @@ export function InterviewSession(props: InterviewSessionProps) {
         try {
             if (stream.busy) stream.cancel();
             if (roundOpen && !(await flushAnswers())) return;
-            const { interview } = await interviewApi.stop(ids);
+            const { interview, reconcile } = await interviewApi.stop(ids);
             setView(interview);
+            noteReconcileRuns(reconcile ?? []);
             setStopOpen(false);
             setNotice(t('stopped'));
         } catch (err) {
@@ -333,6 +355,14 @@ export function InterviewSession(props: InterviewSessionProps) {
                     <p className="text-sm text-content-warning">{t('connectionClosed')}</p>
                 ) : null}
                 {notice ? <p className="text-sm text-content-default">{notice}</p> : null}
+                {reconcileAttention.length > 0 && sessionId ? (
+                    <p className="rounded-lg border border-border-default bg-bg-subtle p-3 text-sm text-content-default" role="status" data-testid="reconcile-attention">
+                        {t('reconcileNotRun', { count: reconcileAttention.length, rounds: reconcileAttention.join(', ') })}{' '}
+                        <Link className="text-content-emphasis underline" href={APP_ROUTES.interviewReview(workspaceSlug, book.id, sessionId)}>
+                            {t('reconcileNotRunLink')}
+                        </Link>
+                    </p>
+                ) : null}
                 {session && session.status !== 'ACTIVE' && session.stopReason && !streaming ? (
                     <p className="rounded-lg border border-border-default bg-bg-subtle p-3 text-sm text-content-default" data-testid="stop-reason" data-reason={session.stopReason}>
                         {stopMessage(session.stopReason, session.stopDetail)}

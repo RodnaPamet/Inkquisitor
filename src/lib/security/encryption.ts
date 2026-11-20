@@ -149,6 +149,23 @@ export function deriveSubkey(info: string): Buffer {
     return key;
 }
 
+/**
+ * A 32-byte key for one named purpose WITHIN ONE WORKSPACE (Phase 2.H, issue
+ * #32 item 2): HMAC-SHA256 under the purpose's `deriveSubkey`, over the
+ * workspace's id. A keyed hash made with it is equal for equal text in ONE
+ * workspace and unrelated across workspaces, so nobody reading two
+ * workspaces' rows can tell they hold the same words. It still rests on the
+ * master key: rotating that key changes every workspace subkey, so the keyed
+ * hashes stored with it must be recomputed (the rekey path in
+ * docs/implementation-notes/2026-11-20-2.H-security-privacy.md).
+ */
+export function workspaceSubkey(info: string, workspaceId: string): Buffer {
+    if (typeof workspaceId !== 'string' || workspaceId.length === 0 || workspaceId.length > 200) {
+        throw new Error('workspaceSubkey: a workspace id is required');
+    }
+    return crypto.createHmac('sha256', deriveSubkey(info)).update(`workspace\u0000${workspaceId}`, 'utf8').digest();
+}
+
 // ─── v2: a workspace data key ───────────────────────────────────────
 
 /** Encrypt under a workspace DEK (`v2:`). Never pass the master KEK here. */

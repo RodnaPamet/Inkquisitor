@@ -340,3 +340,49 @@ describe('the stream reducer (lifted from use-assistant-stream)', () => {
         expect(applyInterviewEvent(s, { type: 'done' })).toMatchObject({ phase: 'done' });
     });
 });
+
+describe('a round whose reconcile failed or was refused is named on the interview page (issue #39 item 6)', () => {
+    const run = (status: string, roundNumber = 1) => ({ roundNumber, status, outcome: status === 'DONE' ? 'PROPOSED' : 'PROVIDER_FAILURE', attempts: 1, proposed: { ADD: 0, UPDATE: 0, REMOVE: 0, NEW_ELEMENT: 0 }, flagged: 0, noChange: 0, refused: {}, reviewRequired: false, refusalReason: null });
+
+    it('when the page is read, with a link to the review page', () => {
+        mockFetch({});
+        mount({ kind: 'existing', interview: interview({ roundStatus: 'CLOSED' }) }, { reconcileAttention: [1, 3] });
+        const notice = screen.getByTestId('reconcile-attention');
+        expect(notice).toHaveTextContent('The answers of rounds 1, 3 were not turned into proposed bible changes');
+        expect(within(notice).getByRole('link', { name: 'Open the review page to run it again.' })).toHaveAttribute('href', `/w/${SLUG}/books/${BOOK.id}/interviews/sess_1/review`);
+    });
+
+    it('when finishing a round answers a FAILED run, and when stopping answers a REFUSED one', async () => {
+        const q = answered(question(), { text: 'Yes.' });
+        global.fetch = jest.fn(async (url: RequestInfo | URL) => {
+            const u = String(url);
+            if (u.endsWith('/rounds/1/close')) return { ok: true, status: 200, json: async () => ({ interview: interview({ questions: [q], roundStatus: 'CLOSED', status: 'COMPLETED', stopReason: 'FRONTIER_EMPTY' }), reconcile: run('FAILED') }) } as unknown as Response;
+            return { ok: true, status: 200, json: async () => ({ interview: interview({ questions: [q], roundStatus: 'CLOSED' }) }) } as unknown as Response;
+        }) as unknown as typeof fetch;
+        const first = mount({ kind: 'existing', interview: interview({ questions: [q] }) });
+        expect(screen.queryByTestId('reconcile-attention')).toBeNull();
+        fireEvent.click(screen.getByRole('button', { name: 'Finish round' }));
+        expect(await screen.findByTestId('reconcile-attention')).toHaveTextContent('The answers of round 1 were not turned into proposed bible changes');
+        first.unmount();
+
+        mockFetch({ [`POST ${IAPI}/sess_1/stop`]: { json: { interview: interview({ questions: [q], status: 'STOPPED', stopReason: 'AUTHOR_STOPPED', roundStatus: 'CLOSED' }), reconcile: [run('REFUSED', 2)] } } });
+        mount({ kind: 'existing', interview: interview({ questions: [q] }) });
+        fireEvent.click(screen.getByRole('button', { name: 'Stop interview' }));
+        await waitFor(() => expect(document.getElementById('interview-stop-confirm')).not.toBeNull());
+        fireEvent.click(document.getElementById('interview-stop-confirm')!);
+        expect(await screen.findByTestId('reconcile-attention')).toHaveTextContent('The answers of round 2 were not turned');
+    });
+
+    it('a run that succeeded clears its round from the notice', async () => {
+        const q = answered(question(), { text: 'Yes.' });
+        global.fetch = jest.fn(async (url: RequestInfo | URL) => {
+            const u = String(url);
+            if (u.endsWith('/rounds/1/close')) return { ok: true, status: 200, json: async () => ({ interview: interview({ questions: [q], roundStatus: 'CLOSED', status: 'COMPLETED', stopReason: 'FRONTIER_EMPTY' }), reconcile: run('DONE') }) } as unknown as Response;
+            return { ok: true, status: 200, json: async () => ({}) } as unknown as Response;
+        }) as unknown as typeof fetch;
+        mount({ kind: 'existing', interview: interview({ questions: [q] }) }, { reconcileAttention: [1] });
+        expect(screen.getByTestId('reconcile-attention')).toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: 'Finish round' }));
+        await waitFor(() => expect(screen.queryByTestId('reconcile-attention')).toBeNull());
+    });
+});

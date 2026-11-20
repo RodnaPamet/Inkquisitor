@@ -73,7 +73,7 @@ export const AiCallRepository = {
             },
             _sum: { amountMicroUsd: true },
         });
-        return { spentMicroUsd: Number(month?.spentMicroUsd ?? 0), reservedMicroUsd: held._sum.amountMicroUsd ?? 0 };
+        return { spentMicroUsd: Number(month?.spentMicroUsd ?? 0), reservedMicroUsd: Number(held._sum.amountMicroUsd ?? 0) };
     },
 
     /**
@@ -151,5 +151,19 @@ export const AiCallRepository = {
                 startedAt: record.startedAt,
             },
         });
+    },
+
+    /**
+     * Delete at most `batch` call records started before `cutoff`, oldest
+     * first, across workspaces (Phase 2.H retention). Runs OUTSIDE row-level
+     * security (`runWithoutRls`, reason `ai-call-log-retention`): the
+     * append-only trigger admits it only there, and only for a row past its
+     * floor. Returns how many went.
+     */
+    async deleteStartedBefore(db: Db, cutoff: Date, batch: number): Promise<number> {
+        return db.$executeRaw`
+            DELETE FROM "AiCallLog" WHERE "id" IN (
+                SELECT "id" FROM "AiCallLog" WHERE "startedAt" < ${cutoff} ORDER BY "startedAt" ASC LIMIT ${batch}
+            )`;
     },
 };

@@ -4,7 +4,8 @@
  * in-memory ledger. No network.
  */
 import { definePrompt } from '@/lib/ai/prompt';
-import { runServerToolLoop, serverTurnWorstCase, webToolDefinitions, type ServerToolLoopInput } from '@/lib/ai/server-tool-loop';
+import { NON_TEXT_FETCH_TOKENS_BOUND, runServerToolLoop, serverTurnWorstCase, webToolDefinitions, type ServerToolLoopInput } from '@/lib/ai/server-tool-loop';
+import { worstCaseCostMicroUsd } from '@/lib/ai/pricing';
 import { WEB_SEARCH_MICRO_USD_PER_REQUEST } from '@/lib/ai/pricing';
 import { AiSpendCeilingError, AiToolUseRefusedError, AiUnavailableError } from '@/lib/ai/errors';
 import { fakeAnthropic, setFakeApiKey, type FakeTurn } from '../../helpers/fake-anthropic';
@@ -84,4 +85,24 @@ it('the kill switch refuses before anything is sent', async () => {
     const { api, promise } = run([], {}, memoryLedger(), { AI_DISABLED: '1' });
     await expect(promise).rejects.toBeInstanceOf(AiUnavailableError);
     expect(api.requests).toHaveLength(0);
+});
+
+describe('a fetched PDF (issue #41 item 1)', () => {
+    it('stops the turn at the PDF’s result: no continuation re-reads it, the text pages before it are kept, the request is settled as a refused tool use', async () => {
+        const pdfTurn: FakeTurn = { kind: 'events', events: gatherEvents({ query: 'falconry', pages: [PAGE], pdfUrls: ['https://reports.example.org/hawks.pdf'], stop: 'pause_turn' }) };
+        const { api, ledger, promise } = run([pdfTurn, pdfTurn, pdfTurn]);
+        const r = await promise;
+        expect(r.stop).toBe('NON_TEXT_FETCH');
+        expect(api.requests).toHaveLength(1);
+        expect(r.fetches.map((f) => f.url)).toEqual([PAGE.url]);
+        expect(ledger.records).toHaveLength(1);
+        expect(ledger.records[0]).toMatchObject({ outcome: 'REFUSED_GUARD', errorCode: 'TOOL_USE_REFUSED' });
+    });
+
+    it('reserves one context window of input on top while a fetch remains, and none once fetches are spent', () => {
+        const request = { model: 'claude-sonnet-5-5', max_tokens: 2_000, messages: [] };
+        const withFetch = serverTurnWorstCase('claude-sonnet-5-5', request, { searches: 0, fetches: 1, maxContentTokens: 0 });
+        const without = serverTurnWorstCase('claude-sonnet-5-5', request, { searches: 0, fetches: 0, maxContentTokens: 0 });
+        expect(withFetch - without).toBe(worstCaseCostMicroUsd('claude-sonnet-5-5', { inputTokens: NON_TEXT_FETCH_TOKENS_BOUND, outputTokens: 0 }));
+    });
 });

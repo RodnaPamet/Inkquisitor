@@ -21,7 +21,7 @@ export async function generateMetadata(): Promise<Metadata> {
 export default async function InterviewPage({ params }: { params: Promise<{ workspaceSlug: string; bookId: string; sessionId: string }> }) {
     const { workspaceSlug, bookId, sessionId } = await params;
     const { ctx } = await getWorkspacePageCtx(workspaceSlug);
-    const { book, interview, elements } = await orNotFound(loadInterviewPage(ctx, bookId, sessionId));
+    const { book, interview, elements, reconcileAttention } = await orNotFound(loadInterviewPage(ctx, bookId, sessionId));
     return (
         <InterviewSession
             key={interview.session.id}
@@ -32,6 +32,7 @@ export default async function InterviewPage({ params }: { params: Promise<{ work
             fieldLabels={fieldLabelsFor(elements.map((e) => e.kind))}
             kindLabels={kindLabels()}
             initial={{ kind: 'existing', interview }}
+            reconcileAttention={reconcileAttention}
         />
     );
 }

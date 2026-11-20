@@ -33,6 +33,10 @@ import type { FieldDef } from '@/lib/bible/template-schema';
 import { getFieldDef } from '@/lib/bible/templates';
 import { plainBlock, plainLine } from '@/lib/bible/text';
 import { scanInjection } from '@/lib/ai/guard';
+import { addressesIn, sourceGivesAddress } from '@/lib/text/url-mentions';
+import { polarityKept } from '@/lib/text/negation';
+import { disclosesInstructions, promptRuns } from '@/lib/text/prompt-disclosure';
+import { FINDINGS_PROMPT, FIT_PROMPT, GATHER_PROMPT } from './prompt';
 import { flagsOf as enrichmentFlagsOf, groundingForm, nameKey, namedIn, paragraphsToHtml, valueAsText } from '@/lib/enrichment/validate';
 import { groundSentence, normaliseText, sentences, words } from '@/lib/interview/text';
 import {
@@ -47,14 +51,13 @@ import {
     type ParsedFindings,
     type ParsedFit,
 } from './schema';
-import { citationForm, QUOTE_MIN_CHARS, quoteFound, type ResearchSourceDoc } from './sources';
+import { citationForm, QUOTE_MIN_CHARS, quoteFound, sourceTextSha256, type ResearchSourceDoc } from './sources';
 import type { FindingRefusal, FitRefusal, ResearchConfidence, ResearchProposalFlag } from './vocabulary';
 
 export const NEW_ELEMENT_NAME_MAX = 120;
 export const NEW_ELEMENT_SUMMARY_MAX = 1_200;
 
 const MARKUP = /<\s*[A-Za-z!/?]/;
-const URL_LIKE = /\b(?:https?:\/\/|www\.)[^\s<>"']+/gi;
 const SCRIPT_SCHEME = /\b(?:javascript|data|vbscript)\s*:/i;
 /** A double-quoted passage of four words or more: speech, if no finding holds it. */
 const QUOTED_PASSAGE = /["“]([^"“”]{8,400})["”]/g;
@@ -69,6 +72,8 @@ export interface VerifiedCitation {
     readonly title: string | null;
     readonly quotedSpan: string;
     readonly retrievedAt: string | null;
+    /** URL: the SHA-256 of the page text the quote was verified in (issue #41 item 3); null for a file. */
+    readonly sourceSha256: string | null;
 }
 
 export interface FindingDraft {
@@ -91,12 +96,17 @@ function count<K extends string>(into: Partial<Record<K, number>>, code: K): voi
     into[code] = (into[code] ?? 0) + 1;
 }
 
-/** Markup, a script scheme, a URL no source gives, or text the injection scanner flags. */
+/** The research prompts' word runs: a drafted text holding six words of them discloses the instructions (Phase 2.H). */
+const RESEARCH_RUNS = promptRuns([GATHER_PROMPT, FINDINGS_PROMPT, FIT_PROMPT]);
+
+/** Markup, a script scheme, a URL no source gives, text the injection scanner flags, or the prompts' own words recited. */
 export function carriesInjectedText(parts: readonly string[], sourceTexts: readonly string[]): boolean {
+    if (disclosesInstructions(parts, RESEARCH_RUNS)) return true;
     for (const part of parts) {
         if (MARKUP.test(part) || SCRIPT_SCHEME.test(part)) return true;
-        for (const m of part.matchAll(URL_LIKE)) {
-            if (!sourceTexts.some((s) => s.includes(m[0]))) return true;
+        // A URL, or a bare domain (issue #39 item 4), no source gives verbatim.
+        for (const address of addressesIn(part)) {
+            if (!sourceGivesAddress(address, sourceTexts)) return true;
         }
         if (scanInjection(part).verdict !== 'clean') return true;
     }
@@ -108,7 +118,9 @@ export function groundedText(text: string, sources: readonly string[]): boolean 
     // 2.5's grounding form: apostrophes made one, a possessive read as its name.
     const parts = sentences(groundingForm(text));
     const folded = sources.map(groundingForm);
-    return parts.length > 0 && parts.every((s) => groundSentence(s, folded).supported);
+    // Lexical support, and the polarity of its source kept (issue #39 item 1:
+    // a dropped or added "not" grounds lexically).
+    return parts.length > 0 && parts.every((s) => groundSentence(s, folded).supported && polarityKept(s, folded));
 }
 
 /** Hold a findings answer to the rules; `limit` is the depth's number of findings. */
@@ -173,6 +185,7 @@ export function validateFindings(parsed: ParsedFindings, sources: readonly Resea
                 title: source.title,
                 quotedSpan,
                 retrievedAt: source.retrievedAt,
+                sourceSha256: source.kind === 'URL' ? sourceTextSha256(source.text) : null,
             });
         }
         if (refusal) {

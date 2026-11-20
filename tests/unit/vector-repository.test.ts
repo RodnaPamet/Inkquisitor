@@ -58,7 +58,7 @@ const B = 'ws-b';
 const REV = 'test-embed@4:d4:p00000000';
 const BOOK = 'book-1';
 
-const hash = (s: string) => vectorContentHash(s);
+const hash = (s: string) => vectorContentHash(A, s);
 
 function rec(sourceId: string, chunkIndex: number, embedding: number[], text = `${sourceId}#${chunkIndex}`, bookId: string | null = BOOK): VectorRecord {
     return { sourceModel: 'Question', sourceId, chunkIndex, embeddingRevision: REV, bookId, contentHash: hash(text), embedding };

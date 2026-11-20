@@ -63,7 +63,7 @@ describe('recording, under row-level security', () => {
             requestedById: a.userId,
         });
         // Haiku 5.5: $0.10 / $0.50 per MTok, rounded up.
-        expect(own?.costMicroUsd).toBe(50 + 25);
+        expect(own?.costMicroUsd).toBe(BigInt(50 + 25));
         const fromB = await runInWorkspaceContext(workspaceCtx(b), (db) => db.aiCallLog.findUnique({ where: { id: callId } }));
         expect(fromB).toBeNull();
         const monthFromB = await runInWorkspaceContext(workspaceCtx(b), (db) =>
@@ -186,6 +186,8 @@ describe('append-only, with the cascades', () => {
         await expect(
             workspaceAiLedger(ctx).settle({
                 ...record,
+                costMicroUsd: Number(record.costMicroUsd),
+                worstCaseMicroUsd: Number(record.worstCaseMicroUsd),
                 tier: 'fast',
                 outputMode: 'json_schema',
                 outcome: 'OK',
@@ -219,7 +221,7 @@ describe('the spend ceiling, under concurrency', () => {
         );
         expect(results.filter((r) => r.ok)).toHaveLength(1);
         const held = await prisma.aiSpendReservation.aggregate({ where: { workspaceId: fresh.workspaceId }, _sum: { amountMicroUsd: true } });
-        expect(held._sum.amountMicroUsd).toBe(600_000);
+        expect(held._sum.amountMicroUsd).toBe(BigInt(600_000));
     });
 
     it('concurrent model calls: while two are in flight, the rest are refused CEILING and never sent', async () => {
@@ -230,8 +232,9 @@ describe('the spend ceiling, under concurrency', () => {
             // One call's worst case, from a solo call in another workspace.
             const probe = await createAccount({ workspaceName: 'Ceiling Probe' });
             await seedAiCall(workspaceCtx(probe), null, 'probe');
-            const worst = (await prisma.aiCallLog.findFirst({ where: { workspaceId: probe.workspaceId }, select: { worstCaseMicroUsd: true } }))!
-                .worstCaseMicroUsd;
+            const worst = Number(
+                (await prisma.aiCallLog.findFirst({ where: { workspaceId: probe.workspaceId }, select: { worstCaseMicroUsd: true } }))!.worstCaseMicroUsd,
+            );
             // Room for two worst cases and not three.
             const ceilingUsd = ((2 * worst + worst / 2) / 1_000_000).toFixed(6);
             // The admitted calls are held in flight until every refusal is in.

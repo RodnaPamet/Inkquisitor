@@ -4,9 +4,10 @@
  * SAFETY (roadmap rule 4 — author text never reaches an error sink):
  *   - the SDK's data collection is PINNED off in `init`, not inherited: a
  *     default the SDK may widen in a later major must not decide it;
- *   - `scrubEvent` (beforeSend) drops request bodies, query strings, cookies
- *     and authorization headers, the user's IP address, and breadcrumb URLs'
- *     sensitive parameters;
+ *   - `scrubEvent` (beforeSend) drops request bodies, cookies and
+ *     authorization headers, the user's IP address, and EVERY query string
+ *     and fragment, of the request's URL and of each breadcrumb's (`redactUrl`;
+ *     issue #29 item 1: a query carries what the person typed);
  *   - an error's message is reported only when it is our own (an AppError):
  *     `captureError` hands Sentry `toReportableError(error)`, and
  *     `scrubEvent` replaces every exception value whose type is a Prisma
@@ -39,24 +40,28 @@ let initialized = false;
 /** The SDK, once `initSentry` has loaded it (only with a DSN). */
 let sdk: SentrySdk | null = null;
 
-const SENSITIVE_PARAMS = new Set([
-    'code', 'state', 'token', 'access_token', 'refresh_token', 'id_token', 'client_secret', 'secret',
-]);
-
 const IGNORED_ERROR_PATTERNS = ['NEXT_REDIRECT', 'NEXT_NOT_FOUND', 'DYNAMIC_SERVER_USAGE'];
 
-/** Redact sensitive query parameters from a URL string. */
+/** What a URL's query string (and fragment) is replaced by in an error report. */
+export const FILTERED_QUERY = '[Filtered]';
+
+/**
+ * A URL as an error report may carry it: the scheme, host and path, and NO
+ * query string or fragment (issue #29 item 1). A query is where a request
+ * carries what the person typed — the relation picker's server search sends
+ * fragments of element names as `q` — so no parameter is kept: an allowlist
+ * would be one more list to keep honest, and no report needs one. A query
+ * that was there is shown as `?[Filtered]`, so a reader knows one was cut.
+ */
 export function redactUrl(url: string): string {
-    try {
-        const parsed = new URL(url, 'http://placeholder');
-        for (const param of SENSITIVE_PARAMS) {
-            if (parsed.searchParams.has(param)) parsed.searchParams.set(param, '[Redacted]');
-        }
-        return url.startsWith('http') ? parsed.toString() : `${parsed.pathname}${parsed.search}`;
-    } catch {
-        return url;
-    }
+    const cut = url.search(/[?#]/);
+    if (cut < 0) return url;
+    const hadQuery = url[cut] === '?';
+    return `${url.slice(0, cut)}${hadQuery ? `?${FILTERED_QUERY}` : ''}`;
 }
+
+/** The breadcrumb data members that hold a URL (fetch and xhr `url`, navigation `from` and `to`). */
+const BREADCRUMB_URL_KEYS = ['url', 'from', 'to'] as const;
 
 /**
  * The beforeSend hook. Exported so a test can feed it an event carrying every
@@ -102,7 +107,12 @@ export function scrubEvent(event: ErrorEvent, hint?: EventHint): ErrorEvent | nu
 
     if (event.breadcrumbs) {
         for (const crumb of event.breadcrumbs) {
-            if (crumb.data?.url && typeof crumb.data.url === 'string') crumb.data.url = redactUrl(crumb.data.url);
+            for (const key of BREADCRUMB_URL_KEYS) {
+                const value = crumb.data?.[key];
+                if (typeof value === 'string') crumb.data![key] = redactUrl(value);
+            }
+            // A navigation or fetch breadcrumb may repeat its URL as its message.
+            if (typeof crumb.message === 'string' && /^(?:https?:\/\/|\/)\S*$/.test(crumb.message)) crumb.message = redactUrl(crumb.message);
         }
     }
     return event;

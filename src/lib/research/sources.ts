@@ -16,6 +16,7 @@
  * readable here, so a span from a search result could not be checked; only a
  * page the run FETCHED can be cited.
  */
+import { createHash } from 'node:crypto';
 import { normaliseText } from '@/lib/interview/text';
 
 /** A source's text is shown (and checked) up to this many characters. */
@@ -80,4 +81,25 @@ export function webUrlOf(raw: string): string | null {
     } catch {
         return null;
     }
+}
+
+/**
+ * SOURCE INTEGRITY (issue #41 item 3). A fetched page's text is never stored;
+ * its SHA-256 (lower-case hex, over the exact text the findings call was shown
+ * and every quote was checked against) is stored with each citation of it, so
+ * a citation can later be proved against what was fetched: whoever holds the
+ * page's text again (a re-fetch, an archive) checks that it hashes to the
+ * stored digest and that the stored span is found in it (`citationProvable`).
+ * A plain digest is right here, unlike author text (the vector store's keyed
+ * hash): the page is a public document, and a plain digest is what anyone can
+ * recompute. An attached file's text is stored itself, so its citations carry
+ * no digest.
+ */
+export function sourceTextSha256(text: string): string {
+    return createHash('sha256').update(text, 'utf8').digest('hex');
+}
+
+/** Does `text` prove this citation: the stored digest is its hash, and the stored span is found in it? */
+export function citationProvable(text: string, citation: { readonly sourceSha256: string | null; readonly quotedSpan: string }): boolean {
+    return citation.sourceSha256 !== null && sourceTextSha256(text) === citation.sourceSha256 && quoteFound(citation.quotedSpan, text);
 }

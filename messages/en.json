@@ -769,7 +769,9 @@
             "notStarted": "This interview could not start.",
             "badSetup": "This link does not describe an interview. Start one from the book.",
             "unsavedHold": "An answer could not be saved, so nothing else was done. Try saving it again first.",
-            "reconciled": "{count, plural, =0 {No bible changes were proposed from this round.} one {One bible change was proposed from this round: review it.} other {# bible changes were proposed from this round: review them.}}"
+            "reconciled": "{count, plural, =0 {No bible changes were proposed from this round.} one {One bible change was proposed from this round: review it.} other {# bible changes were proposed from this round: review them.}}",
+            "reconcileNotRun": "{count, plural, one {The answers of round {rounds} were not turned into proposed bible changes: the step failed or was refused, and they are waiting.} other {The answers of rounds {rounds} were not turned into proposed bible changes: the step failed or was refused, and they are waiting.}}",
+            "reconcileNotRunLink": "Open the review page to run it again."
         },
         "card": {
             "question": "Question {number}",

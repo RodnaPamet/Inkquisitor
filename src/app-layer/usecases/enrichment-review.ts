@@ -253,6 +253,29 @@ export async function getSessionReview(ctx: WorkspaceRequestContext, bookId: str
     });
 }
 
+/**
+ * The rounds of a session whose reconcile run did not run to its end — FAILED
+ * (or past its claim, `CLAIM_EXPIRED`) or REFUSED — by number, ascending
+ * (`bible.view`; nothing decrypted). The interview page names them so the
+ * author knows their answers are waiting (issue #39 item 6); the review page
+ * re-runs them.
+ */
+export async function reconcileRoundsNeedingAttention(ctx: WorkspaceRequestContext, bookId: string, sessionId: string): Promise<number[]> {
+    await assertPermission(ctx, 'bible.view');
+    return runInWorkspaceContext(ctx, async (db) => {
+        await requireBook(db, ctx, bookId);
+        const rounds = await InterviewRoundRepository.listForSession(db, ctx.workspaceId, sessionId, REVIEW_ROUNDS_READ);
+        const numberOf = new Map(rounds.map((r) => [r.id, r.number] as const));
+        const out = new Set<number>();
+        for (const r of await ReconcileRunRepository.listForSession(db, ctx.workspaceId, sessionId, REVIEW_ROUNDS_READ)) {
+            const state = effectiveRunState(r);
+            const n = numberOf.get(r.roundId);
+            if (n !== undefined && (state.status === 'FAILED' || state.status === 'REFUSED')) out.add(n);
+        }
+        return [...out].sort((a, b) => a - b);
+    });
+}
+
 /** The book's interviews with proposals still waiting, and how many each holds (`bible.view`; nothing decrypted). */
 export async function listPendingReviews(ctx: WorkspaceRequestContext, bookId: string): Promise<Array<{ sessionId: string; pending: number }>> {
     await assertPermission(ctx, 'bible.view');

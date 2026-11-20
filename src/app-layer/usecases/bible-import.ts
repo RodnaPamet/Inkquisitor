@@ -530,6 +530,9 @@ export async function importBibleBundle(
             ctx,
             async (db) => {
                 await BookRepository.lockForImport(db, bookId);
+                // The bundle may create and rename elements: the names lock
+                // before any element's (its order; issue #39 item 5).
+                await BibleElementRepository.lockNames(db, bookId);
                 const book = await requireBook(db, ctx, bookId);
                 const bundleSlugs = new Set(bundle.elements.map((e) => e.slug));
                 const targets = new Set(bundle.elements.flatMap((e) => e.relations.map((r) => r.to)));
@@ -714,6 +717,7 @@ export async function importConceptNote(ctx: WorkspaceRequestContext, bookId: st
         try {
             return await runInWorkspaceContext(ctx, async (db) => {
                 await requireBook(db, ctx, bookId);
+                await BibleElementRepository.lockNames(db, bookId);
                 let slug: string;
                 if (parsed.slug) {
                     if (await BibleElementRepository.slugTaken(db, ctx.workspaceId, bookId, parsed.slug)) throw slugConflict();
