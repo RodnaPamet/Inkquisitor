@@ -305,7 +305,8 @@ Phase 3.1 (the canvas platform, D1 and D18) added:
 ```
 prisma/schema/canvas.prisma  → StoryMap (one per book and kind), MapNode (a BibleElement drawn), MapEdge (a BibleRelation drawn), MapSnapshot (append-only)
 src/components/canvas/tldraw/ → story node / edge shape utils, edge binding util, serializer (THE round trip), edge-validation,
-                               arrow-to-edge, editor-canvas, auto-layout-host (dagre), restore-freeform, add-element-node
+                               arrow-to-edge, editor-canvas, auto-layout-host (dagre), restore-freeform, add-element-node,
+                               rich-text-extensions (tldraw's TipTap list under the override, D20)
 src/components/canvas/       → StoryMapCanvas (tldraw host), StoryMapEditor (the dynamic chunk), StoryMapWorkspace (no tldraw),
                                CanvasErrorBoundary, CanvasHistorySidebar, CanvasDiffOverlay, CanvasExportMenu, MapConflictNotice, AddElementPicker
 src/lib/canvas/              → map-kinds, limits, shape-types, freeform (sanitiser), map-state (canonical), canvas-diff, canvas-changes(-tldraw),
