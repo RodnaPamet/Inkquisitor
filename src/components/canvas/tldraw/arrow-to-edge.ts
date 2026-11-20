@@ -245,4 +245,26 @@ export function installOneNodePerElement(editor: Editor): () => void {
     };
 }
 
+/**
+ * Deleting an edge's line deletes the edge. The line is the only part of an
+ * edge an author can select (the binding is invisible), and tldraw deletes
+ * just the shape: the binding stayed behind, so the edge vanished from view,
+ * nothing was marked dirty, every later save still carried it, and a reload
+ * drew it back. The binding goes in the same store operation, so the change
+ * is one undoable step and the store listener sees an edge removed. A line
+ * removed because its node went (the binding util's own hook) finds the
+ * binding already on its way out and removes nothing more. Returns a disposer.
+ */
+export function installEdgeLineRemovesEdge(editor: Editor): () => void {
+    return editor.sideEffects.registerAfterDeleteHandler('shape', (shape) => {
+        if (shape.type !== STORY_EDGE_SHAPE_TYPE) return;
+        const relationId = (shape.props as { relationId?: unknown }).relationId;
+        const orphans = editor.store
+            .allRecords()
+            .filter((r) => r.typeName === 'binding' && (r as { type?: string }).type === STORY_EDGE_BINDING_TYPE && (r as unknown as StoryEdgeBinding).props.relationId === relationId)
+            .map((r) => r.id);
+        if (orphans.length > 0) editor.deleteBindings(orphans as never);
+    });
+}
+
 export { edgeEndpointIds };

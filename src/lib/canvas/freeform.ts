@@ -24,6 +24,12 @@
  *      same treatment a bible field's plain text gets, without the trimming,
  *      which would join the words either side of a bold run.
  *
+ *   5. no row's id: a record may not carry the id the canvas gives a node
+ *      (`shape:<elementId>`), an edge's line (`shape:edge-<relationId>`) or an
+ *      edge's binding (`binding:<relationId>`) of the same save
+ *      (`assertFreeformIdsFree`). tldraw's create APIs replace a record of the
+ *      same id, so such a record would be drawn over the node or edge on load.
+ *
  * Refusals throw `ValidationError` with a `reason` the UI words
  * (`FREEFORM_REFUSED`, `details.problem`). An empty layer is stored as NULL.
  */
@@ -43,7 +49,8 @@ export type FreeformProblem =
     | 'BAD_TYPE_NAME'
     | 'STRUCTURED_TYPE'
     | 'FORBIDDEN_KEY'
-    | 'DUPLICATE_ID';
+    | 'DUPLICATE_ID'
+    | 'RESERVED_ID';
 
 const RECORD_ID = /^(?:shape|binding):[A-Za-z0-9_-]{1,128}$/;
 const FORBIDDEN_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
@@ -108,6 +115,35 @@ export function sanitiseFreeformForStorage(input: unknown): string | null {
     const json = JSON.stringify(records);
     if (Buffer.byteLength(json, 'utf8') > FREEFORM_MAX_BYTES) refuse('TOO_LARGE');
     return json;
+}
+
+/**
+ * The ids the canvas derives from a map's rows: a node's shape is
+ * `shape:<elementId>`, an edge's line `shape:edge-<relationId>`, an edge's
+ * binding `binding:<relationId>` (`story-node-shape.ts`, `story-edge-shape.ts`,
+ * `story-edge-binding.ts`; `tests/unit/canvas/freeform.test.ts` holds the
+ * spellings equal). Plain strings, so the server needs no tldraw import.
+ */
+export function rowRecordIds(nodes: readonly { elementId: string }[], edges: readonly { relationId: string }[]): Set<string> {
+    const ids = new Set<string>();
+    for (const n of nodes) ids.add(`shape:${n.elementId}`);
+    for (const e of edges) {
+        ids.add(`shape:edge-${e.relationId}`);
+        ids.add(`binding:${e.relationId}`);
+    }
+    return ids;
+}
+
+/** Refuse a freeform record carrying the id of one of the same save's nodes or edges (see the header, 5). */
+export function assertFreeformIdsFree(
+    freeform: readonly Record<string, unknown>[],
+    nodes: readonly { elementId: string }[],
+    edges: readonly { relationId: string }[],
+): void {
+    const reserved = rowRecordIds(nodes, edges);
+    freeform.forEach((r, index) => {
+        if (typeof r.id === 'string' && reserved.has(r.id)) refuse('RESERVED_ID', index);
+    });
 }
 
 /** The stored layer read back; a NULL or unreadable value is an empty layer, never a throw. */

@@ -11,6 +11,7 @@
  * says the map is safe and offers to try again; the rest of the page stays.
  */
 import dynamic from 'next/dynamic';
+import { useState } from 'react';
 import { useTranslations } from 'next-intl';
 
 import { PageHeader } from '@/components/layout/PageHeader';
@@ -19,6 +20,8 @@ import { APP_ROUTES } from '@/lib/app-routes';
 import type { StoryMapView } from '@/lib/canvas/api-client';
 import type { StoryMapKindValue } from '@/lib/canvas/map-kinds';
 import { CanvasErrorBoundary } from './CanvasErrorBoundary';
+// Types only (erased): the editor's code arrives through `next/dynamic` below.
+import type { StoryMapEditorProps } from './StoryMapEditor';
 
 function CanvasLoading() {
     const t = useTranslations('canvas');
@@ -29,7 +32,18 @@ function CanvasLoading() {
     );
 }
 
-const StoryMapEditor = dynamic(() => import('./StoryMapEditor'), { ssr: false, loading: () => <CanvasLoading /> });
+/**
+ * The editor chunk, loaded afresh by each mount. `next/dynamic` wraps its
+ * loader in ONE `React.lazy`, and a lazy component that rejected rejects for
+ * good: with the dynamic component made once at module scope, the boundary's
+ * "Try again" after a failed chunk load remounted the same rejection and
+ * could never show the canvas. The boundary remounts this component on each
+ * attempt (a new key), so each attempt asks for the chunk again.
+ */
+function DynamicStoryMapEditor(props: StoryMapEditorProps) {
+    const [Editor] = useState(() => dynamic(() => import('./StoryMapEditor'), { ssr: false, loading: () => <CanvasLoading /> }));
+    return <Editor {...props} />;
+}
 
 export interface StoryMapWorkspaceProps {
     workspaceSlug: string;
@@ -56,7 +70,7 @@ export function StoryMapWorkspace({ workspaceSlug, book, kind, kindSlug, initial
                 />
             </WorkspaceShell.Header>
             <CanvasErrorBoundary>
-                <StoryMapEditor
+                <DynamicStoryMapEditor
                     workspaceSlug={workspaceSlug}
                     bookId={book.id}
                     bookTitle={book.title}

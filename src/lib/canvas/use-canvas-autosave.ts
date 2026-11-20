@@ -26,9 +26,9 @@
  *
  *   • The dirty flag is preserved across save cycles so a save
  *     that fires while in-flight doesn't lose subsequent edits.
- *     The post-save resolution checks `dirtySince` against the
- *     save's start timestamp; if newer edits arrived during the
- *     in-flight save, the loop schedules another save.
+ *     The post-save resolution checks whether the edit COUNT
+ *     moved while the save was in flight; if it did, the loop
+ *     schedules another save.
  *
  * Status surface:
  *   • idle     — no pending changes
@@ -104,7 +104,13 @@ export function useCanvasAutosave({
     const [lastSavedAt, setLastSavedAt] = useState<number | null>(null);
     const [error, setError] = useState<string | null>(null);
     const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-    const dirtySinceRef = useRef<number | null>(null);
+    // Edits are COUNTED, not timed: a save asks whether the count moved while
+    // it was in flight. A timestamp comparison (`dirtySince > startedAt`)
+    // missed an edit made in the same millisecond the save started — after the
+    // save had serialised the canvas — and that edit was never saved.
+    const editCountRef = useRef(0);
+    // The count a `markClean()` last wiped: edits up to it need no save.
+    const cleanAtRef = useRef(0);
     const inFlightRef = useRef(false);
     // The in-flight save itself, so `flush` can wait for it.
     const inFlightPromiseRef = useRef<Promise<FlushResult> | null>(null);
@@ -130,7 +136,7 @@ export function useCanvasAutosave({
         if (inFlightRef.current || !enabled) {
             return Promise.resolve({ ok: false, error: null });
         }
-        const startedAt = Date.now();
+        const editsAtStart = editCountRef.current;
         inFlightRef.current = true;
         setStatus("saving");
         setError(null);
@@ -140,8 +146,7 @@ export function useCanvasAutosave({
                 // Re-check dirty: if an edit arrived during the save,
                 // schedule another debounce cycle. Otherwise we're
                 // genuinely clean.
-                const dirtyAt = dirtySinceRef.current;
-                const stillDirty = dirtyAt !== null && dirtyAt > startedAt;
+                const stillDirty = editCountRef.current > Math.max(editsAtStart, cleanAtRef.current);
                 setLastSavedAt(Date.now());
                 if (stillDirty) {
                     setStatus("pending");
@@ -151,7 +156,6 @@ export function useCanvasAutosave({
                     }, delayMs);
                 } else {
                     setStatus("saved");
-                    dirtySinceRef.current = null;
                 }
                 return { ok: true, error: null };
             } catch (e) {
@@ -183,7 +187,7 @@ export function useCanvasAutosave({
 
     const markDirty = useCallback(() => {
         if (!enabled) return;
-        dirtySinceRef.current = Date.now();
+        editCountRef.current += 1;
         setStatus((prev) => (prev === "saving" ? prev : "pending"));
         clearTimer();
         timerRef.current = setTimeout(() => {
@@ -192,7 +196,7 @@ export function useCanvasAutosave({
     }, [enabled, delayMs, runSave, clearTimer]);
 
     const markClean = useCallback(() => {
-        dirtySinceRef.current = null;
+        cleanAtRef.current = editCountRef.current;
         clearTimer();
         setStatus("idle");
         setError(null);

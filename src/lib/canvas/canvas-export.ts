@@ -43,13 +43,16 @@ export class EmptyCanvasExportError extends Error {
 
 /** A name reduced to what a filesystem accepts; `story-map` when nothing is left. */
 export function safeFilename(stem: string, ext: string): string {
+    // Runs collapse to ONE hyphen first, so the trims below take a single
+    // character each (no `-+$`, which backtracks on a long run), and they run
+    // AFTER the cut, which can otherwise leave the name ending in a hyphen.
     const cleaned =
         stem
             .toLowerCase()
             .replace(/[^a-z0-9]+/g, '-')
-            .replace(/^-+/, '')
-            .replace(/-+$/, '')
-            .slice(0, 60) || 'story-map';
+            .slice(0, 60)
+            .replace(/^-/, '')
+            .replace(/-$/, '') || 'story-map';
     return `${cleaned}.${ext}`;
 }
 

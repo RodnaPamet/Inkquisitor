@@ -73,7 +73,7 @@ import {
 import { batchIsSubstantive } from '@/lib/canvas/canvas-changes';
 import { classifyTldrawStoreDiff } from '@/lib/canvas/canvas-changes-tldraw';
 import { canvasAssetUrls } from '@/lib/canvas/tldraw-assets';
-import { installArrowToEdgeConversion, installOneNodePerElement, type ArrowVerdict } from './tldraw/arrow-to-edge';
+import { installArrowToEdgeConversion, installEdgeLineRemovesEdge, installOneNodePerElement, type ArrowVerdict } from './tldraw/arrow-to-edge';
 import type { KnownRelation } from './tldraw/edge-validation';
 import { restoreFreeform } from './tldraw/restore-freeform';
 import { STORY_TEXT_OPTIONS } from './tldraw/rich-text-extensions';
@@ -228,6 +228,7 @@ export function StoryMapCanvas({ rows, display, freeform = [], readOnly = false,
                 disposers.current.forEach((d) => d());
                 disposers.current = [
                     installOneNodePerElement(editor),
+                    installEdgeLineRemovesEdge(editor),
                     installArrowToEdgeConversion(editor, {
                         relations: () => relationsRef.current(),
                         onRefuse: (v) => onEdgeRefusedRef.current?.(v),

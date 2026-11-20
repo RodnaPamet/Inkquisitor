@@ -7,6 +7,12 @@
  * Shapes go in parents-first (a note inside a frame needs its frame), then
  * bindings. A record tldraw refuses is skipped rather than allowed to take
  * the whole map down; one whose parent is a page moves to this editor's page.
+ *
+ * A record whose id is already in the store is skipped. The rows are seeded
+ * first, and tldraw's create APIs PUT (a second record with an id replaces the
+ * first): a freeform record named like a node (`shape:<elementId>`), an edge
+ * line or an edge binding would otherwise replace it, the node would vanish
+ * from the next save and the edges bound to it would make every save throw.
  */
 import type { Editor } from 'tldraw';
 
@@ -15,8 +21,9 @@ import type { FreeformRecord } from './serializer';
 export function restoreFreeform(editor: Editor, freeform: readonly FreeformRecord[]): number {
     if (freeform.length === 0) return 0;
     const pageId = editor.getCurrentPageId();
-    const shapes = freeform.filter((r) => r.typeName === 'shape');
-    const bindings = freeform.filter((r) => r.typeName === 'binding');
+    const fresh = freeform.filter((r) => !editor.store.has(r.id as Parameters<Editor['store']['has']>[0]));
+    const shapes = fresh.filter((r) => r.typeName === 'shape');
+    const bindings = fresh.filter((r) => r.typeName === 'binding');
     const placed = new Set<string>();
     let restored = 0;
     let pending = shapes.map((r) => {

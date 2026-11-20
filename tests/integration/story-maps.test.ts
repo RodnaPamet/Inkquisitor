@@ -397,6 +397,28 @@ describe('author text in the freeform layer', () => {
         expect(r).toMatchObject({ status: 400, reason: 'FREEFORM_REFUSED', details: { problem: 'STRUCTURED_TYPE' } });
         expect(await mapRow(book.bookId)).toBeNull();
     });
+
+    it('a record carrying a node’s or an edge’s id is refused RESERVED_ID, on a save and on a restore, writing nothing', async () => {
+        const book = await freshBook('freeform-reserved');
+        const edge = { relationId: book.rel, sourceElementId: book.a, targetElementId: book.b };
+        for (const id of [`shape:${book.a}`, `shape:edge-${book.rel}`, `binding:${book.rel}`]) {
+            const r = await refusal(saveStoryMap(ctx, book.bookId, 'plot', { expectedVersion: 0, nodes: [node(book.a), node(book.b, 400)], edges: [edge], freeform: [note(id, 'over the row')] }));
+            expect([id, r]).toMatchObject([id, { status: 400, reason: 'FREEFORM_REFUSED', details: { problem: 'RESERVED_ID' } }]);
+        }
+        expect(await mapRow(book.bookId)).toBeNull();
+        // A snapshot carrying one (written before the rule) is not restored over the live map either.
+        await saveStoryMap(ctx, book.bookId, 'plot', { expectedVersion: 0, nodes: [node(book.a)], edges: [], freeform: [] });
+        const map = (await mapRow(book.bookId))!;
+        await runInWorkspaceContext(ctx, async (db) => {
+            await db.mapSnapshot.create({
+                data: { workspaceId: ctx.workspaceId, mapId: map.id, version: 2, nodeCount: 1, edgeCount: 0, snapshot: JSON.stringify({ nodes: [node(book.a)], edges: [], freeform: [note(`shape:${book.a}`, 'x')] }) },
+            });
+            await db.storyMap.update({ where: { id: map.id }, data: { version: 2 } });
+        });
+        const r = await refusal(restoreMapSnapshot(ctx, book.bookId, 'plot', 2, { expectedVersion: 2 }));
+        expect(r).toMatchObject({ status: 400, reason: 'FREEFORM_REFUSED', details: { problem: 'RESERVED_ID' } });
+        expect((await mapRow(book.bookId))!.version).toBe(2);
+    });
 });
 
 describe('permissions', () => {
