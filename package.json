@@ -29,6 +29,7 @@
     "migrate:deploy": "prisma migrate deploy",
     "prepare": "husky",
     "secret-scan": "bash scripts/detect-secrets.sh",
+    "packs:evaluate": "tsx scripts/evaluate-packs.ts",
     "docs:build": "npm --prefix site ci --no-audit --no-fund && npm --prefix site run build"
   },
   "dependencies": {

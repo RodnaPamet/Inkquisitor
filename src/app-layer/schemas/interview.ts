@@ -1,5 +1,5 @@
 /**
- * Request shapes for the interview API (Phase 2.2). Every object is
+ * Request shapes for the interview API (Phase 2.2; dials and defaults 2.3). Every object is
  * `.strict()`, so an unknown key is a 400 rather than silently dropped. These
  * bound the RAW input; the usecases sanitise every text value and check it
  * again against the question it answers and the session's detail dial.
@@ -10,9 +10,29 @@ import { RAW_INPUT_FACTOR } from '@/lib/bible/field-values';
 import { DETAIL, DIAL_MAX, DIAL_MIN } from '@/lib/interview/dials';
 import { OPTION_MAX } from '@/lib/interview/candidates';
 import { INTERVIEW_SCOPES, PERSONA_KEYS } from '@/lib/interview/vocabulary';
+import { PERSONAS_PER_SESSION_MAX } from '@/lib/interview/dial-settings';
 
 const id = z.string().min(1).max(64);
 const dial = z.number().int().min(DIAL_MIN).max(DIAL_MAX);
+
+/** At most three known personas, none twice, in the author's order (the first leads round 1). */
+const personaList = z
+    .array(z.enum(PERSONA_KEYS))
+    .max(PERSONAS_PER_SESSION_MAX)
+    .refine((list) => new Set(list).size === list.length, { message: 'A persona is named at most once.' });
+
+/**
+ * The dials, each optional: a key left out (or null) passes the dial on to
+ * the layer below (session → book → workspace → code default). `personaKeys:
+ * []` is a setting — no persona — not an absence.
+ */
+const dialFields = {
+    depth: dial.nullish(),
+    detail: dial.nullish(),
+    personaKeys: personaList.nullish(),
+    offerRecommended: z.boolean().nullish(),
+    preferChoice: z.boolean().nullish(),
+};
 
 /** The longest written answer any detail accepts, before sanitising (raw bound). */
 export const ANSWER_TEXT_RAW_MAX = Math.max(...Object.values(DETAIL).map((d) => d.answerMax)) * RAW_INPUT_FACTOR;
@@ -22,12 +42,8 @@ export const InterviewStartInput = z
         scope: z.enum(INTERVIEW_SCOPES),
         elementId: id.optional(),
         kind: z.enum(BIBLE_KINDS).optional(),
-        depth: dial.optional(),
-        detail: dial.optional(),
-        /** One persona, or none (Phase 2.2; 2.3 mounts up to three). */
-        persona: z.enum(PERSONA_KEYS).nullish(),
-        offerRecommended: z.boolean().optional(),
-        preferChoice: z.boolean().optional(),
+        /** The session's own dials (Phase 2.3: up to three personas); unset ones come from the book's and workspace's defaults. */
+        ...dialFields,
     })
     .strict()
     .superRefine((v, ctx) => {
@@ -46,6 +62,13 @@ export const AnswerInput = z
     })
     .strict();
 export type AnswerInput = z.infer<typeof AnswerInput>;
+
+/**
+ * A layer of interview defaults (workspace or book), replaced whole: each dial
+ * a value, or left out / null to pass it on to the layer below.
+ */
+export const InterviewDefaultsInput = z.object(dialFields).strict();
+export type InterviewDefaultsInput = z.infer<typeof InterviewDefaultsInput>;
 
 export const CloseRoundInput = z.object({ skipUnanswered: z.boolean().optional() }).strict();
 export type CloseRoundInput = z.infer<typeof CloseRoundInput>;

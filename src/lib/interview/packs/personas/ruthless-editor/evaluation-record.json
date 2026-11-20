@@ -1,0 +1,244 @@
+{
+  "format": "inkquisitor-pack-evaluation/1",
+  "pack": {
+    "name": "persona-ruthless-editor",
+    "version": 1,
+    "contentHash": "sha256:a0f546e7bb21a8d9fa354578f6f96dba27d80e5cadaedc2d37e71cfd076a2016"
+  },
+  "set": {
+    "hash": "sha256:3e7e6bf7552eb5c48c78d46de197d790ad2587d83e1b16728c1b94fc0a3a0151"
+  },
+  "promptVersion": "question-generation.2.3.0",
+  "generator": {
+    "kind": "structural",
+    "id": "structural-generator.1"
+  },
+  "ranAt": "2026-11-19T23:18:42.216Z",
+  "answers": [
+    {
+      "caseId": "ruthless-editor-01",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-ruthless-editor-01",
+              "targetsFieldKeys": [
+                "wound"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the wound.",
+              "kind": "OPEN",
+              "text": "What wound matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "ruthless-editor-02",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-ruthless-editor-02",
+              "targetsFieldKeys": [
+                "stance"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the stance.",
+              "kind": "OPEN",
+              "text": "What stance matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "ruthless-editor-03",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-ruthless-editor-03",
+              "targetsFieldKeys": [
+                "resolution"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the resolution.",
+              "kind": "OPEN",
+              "text": "What resolution matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "ruthless-editor-04",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-ruthless-editor-04",
+              "targetsFieldKeys": [
+                "wound"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the wound.",
+              "kind": "OPEN",
+              "text": "What wound matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "ruthless-editor-05",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-ruthless-editor-05",
+              "targetsFieldKeys": [
+                "who_knows"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the who knows.",
+              "kind": "OPEN",
+              "text": "What who knows matters most here, in your own words?"
+            },
+            {
+              "elementId": "eval-ruthless-editor-05",
+              "targetsFieldKeys": [
+                "story_consequence"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the story consequence.",
+              "kind": "OPEN",
+              "text": "What story consequence matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "ruthless-editor-06",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-ruthless-editor-06",
+              "targetsFieldKeys": [
+                "resolution"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the resolution.",
+              "kind": "OPEN",
+              "text": "What resolution matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "ruthless-editor-07",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-ruthless-editor-07",
+              "targetsFieldKeys": [
+                "story_purpose"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the story purpose.",
+              "kind": "OPEN",
+              "text": "What story purpose matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "ruthless-editor-08",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-ruthless-editor-08",
+              "targetsFieldKeys": [
+                "power_base"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the power base.",
+              "kind": "OPEN",
+              "text": "What power base matters most here, in your own words?"
+            },
+            {
+              "elementId": "eval-ruthless-editor-08",
+              "targetsFieldKeys": [
+                "internal_tension"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the internal tension.",
+              "kind": "OPEN",
+              "text": "What internal tension matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "ruthless-editor-09",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-ruthless-editor-09",
+              "targetsFieldKeys": [
+                "significance"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the significance.",
+              "kind": "CHOICE",
+              "text": "Which way does the significance lean?",
+              "options": [
+                "significance leans inward",
+                "significance leans outward",
+                "significance holds still"
+              ]
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "ruthless-editor-10",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-ruthless-editor-10",
+              "targetsFieldKeys": [
+                "story_question"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the story question.",
+              "kind": "OPEN",
+              "text": "What story question matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    }
+  ]
+}

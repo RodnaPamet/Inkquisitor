@@ -1,0 +1,387 @@
+{
+  "format": "inkquisitor-pack-evaluation/1",
+  "pack": {
+    "name": "craft-style",
+    "version": 1,
+    "contentHash": "sha256:74e3b6f67cf34eeb7d9abbc46a56784c95bd9c5f5758bb95839482caaac7ad02"
+  },
+  "set": {
+    "hash": "sha256:7753e5379f919d3533ae15616f17e4b287ba109e358965d926664271f986cc0c"
+  },
+  "promptVersion": "question-generation.2.3.0",
+  "generator": {
+    "kind": "structural",
+    "id": "structural-generator.1"
+  },
+  "ranAt": "2026-11-19T23:18:40.850Z",
+  "answers": [
+    {
+      "caseId": "style-01",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-style-01",
+              "targetsFieldKeys": [
+                "tense"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the tense.",
+              "kind": "CHOICE",
+              "text": "Which way does the tense lean?",
+              "options": [
+                "tense leans inward",
+                "tense leans outward",
+                "tense holds still"
+              ]
+            },
+            {
+              "elementId": "eval-style-01",
+              "targetsFieldKeys": [
+                "diction"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the diction.",
+              "kind": "CHOICE",
+              "text": "Which way does the diction lean?",
+              "options": [
+                "diction leans inward",
+                "diction leans outward",
+                "diction holds still"
+              ]
+            },
+            {
+              "elementId": "eval-style-01",
+              "targetsFieldKeys": [
+                "spelling_variant"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the spelling variant.",
+              "kind": "CHOICE",
+              "text": "Which way does the spelling variant lean?",
+              "options": [
+                "spelling variant leans inward",
+                "spelling variant leans outward",
+                "spelling variant holds still"
+              ]
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "style-02",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-style-02",
+              "targetsFieldKeys": [
+                "tense"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the tense.",
+              "kind": "OPEN",
+              "text": "What tense matters most here, in your own words?"
+            },
+            {
+              "elementId": "eval-style-02",
+              "targetsFieldKeys": [
+                "diction"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the diction.",
+              "kind": "OPEN",
+              "text": "What diction matters most here, in your own words?"
+            },
+            {
+              "elementId": "eval-style-02",
+              "targetsFieldKeys": [
+                "spelling_variant"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the spelling variant.",
+              "kind": "OPEN",
+              "text": "What spelling variant matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "style-03",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-style-03",
+              "targetsFieldKeys": [
+                "sentence_rhythm"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the sentence rhythm.",
+              "kind": "OPEN",
+              "text": "What sentence rhythm matters most here, in your own words?"
+            },
+            {
+              "elementId": "eval-style-03",
+              "targetsFieldKeys": [
+                "dialogue_conventions"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the dialogue conventions.",
+              "kind": "OPEN",
+              "text": "What dialogue conventions matters most here, in your own words?"
+            },
+            {
+              "elementId": "eval-style-03",
+              "targetsFieldKeys": [
+                "spelling_variant"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the spelling variant.",
+              "kind": "OPEN",
+              "text": "What spelling variant matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "style-04",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-style-04",
+              "targetsFieldKeys": [
+                "tense"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the tense.",
+              "kind": "OPEN",
+              "text": "What tense matters most here, in your own words?"
+            },
+            {
+              "elementId": "eval-style-04",
+              "targetsFieldKeys": [
+                "dialogue_conventions"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the dialogue conventions.",
+              "kind": "OPEN",
+              "text": "What dialogue conventions matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "style-05",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-style-05",
+              "targetsFieldKeys": [
+                "tense"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the tense.",
+              "kind": "OPEN",
+              "text": "What tense matters most here, in your own words?"
+            },
+            {
+              "elementId": "eval-style-05",
+              "targetsFieldKeys": [
+                "sentence_rhythm"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the sentence rhythm.",
+              "kind": "OPEN",
+              "text": "What sentence rhythm matters most here, in your own words?"
+            },
+            {
+              "elementId": "eval-style-05",
+              "targetsFieldKeys": [
+                "dialogue_conventions"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the dialogue conventions.",
+              "kind": "OPEN",
+              "text": "What dialogue conventions matters most here, in your own words?"
+            },
+            {
+              "elementId": "eval-style-05",
+              "targetsFieldKeys": [
+                "spelling_variant"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the spelling variant.",
+              "kind": "OPEN",
+              "text": "What spelling variant matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "style-06",
+      "outputs": []
+    },
+    {
+      "caseId": "style-07",
+      "outputs": []
+    },
+    {
+      "caseId": "style-08",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-style-08",
+              "targetsFieldKeys": [
+                "tense"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the tense.",
+              "kind": "OPEN",
+              "text": "What tense matters most here, in your own words?"
+            },
+            {
+              "elementId": "eval-style-08",
+              "targetsFieldKeys": [
+                "sentence_rhythm"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the sentence rhythm.",
+              "kind": "OPEN",
+              "text": "What sentence rhythm matters most here, in your own words?"
+            },
+            {
+              "elementId": "eval-style-08",
+              "targetsFieldKeys": [
+                "spelling_variant"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the spelling variant.",
+              "kind": "OPEN",
+              "text": "What spelling variant matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "style-09",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-style-09",
+              "targetsFieldKeys": [
+                "tense"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the tense.",
+              "kind": "OPEN",
+              "text": "What tense matters most here, in your own words?"
+            },
+            {
+              "elementId": "eval-style-09",
+              "targetsFieldKeys": [
+                "dialogue_conventions"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the dialogue conventions.",
+              "kind": "OPEN",
+              "text": "What dialogue conventions matters most here, in your own words?"
+            },
+            {
+              "elementId": "eval-style-09",
+              "targetsFieldKeys": [
+                "spelling_variant"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the spelling variant.",
+              "kind": "OPEN",
+              "text": "What spelling variant matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "style-10",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-style-10",
+              "targetsFieldKeys": [
+                "spelling_variant"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the spelling variant.",
+              "kind": "CHOICE",
+              "text": "Which way does the spelling variant lean?",
+              "options": [
+                "spelling variant leans inward",
+                "spelling variant leans outward",
+                "spelling variant holds still"
+              ]
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "style-11",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-style-11",
+              "targetsFieldKeys": [
+                "dialogue_conventions"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the dialogue conventions.",
+              "kind": "OPEN",
+              "text": "What dialogue conventions matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "style-12",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-style-12",
+              "targetsFieldKeys": [
+                "spelling_variant"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the spelling variant.",
+              "kind": "OPEN",
+              "text": "What spelling variant matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    }
+  ]
+}

@@ -91,7 +91,7 @@ describe('the runner', () => {
             expect(api.requests).toHaveLength(report.calls.count);
             expect(ledger.records).toHaveLength(report.calls.count);
             expect(report.calls.aiCallIds).toEqual(ledger.records.map((r) => r.id));
-            expect(ledger.records.every((r) => r.outcome === 'OK' && r.promptId === QUESTION_PROMPT.id && r.promptVersion === QUESTION_PROMPT_VERSION && r.tier === 'balanced')).toBe(true);
+            expect(ledger.records.every((r) => r.outcome === 'OK' && r.promptId === QUESTION_PROMPT.id && r.promptVersion.startsWith(`${QUESTION_PROMPT_VERSION}+packs.`) && r.tier === 'balanced')).toBe(true);
             expect(report.calls.tokensUsed).toBe(report.calls.count * 1_500);
             expect(report.calls.costMicroUsd).toBe(ledger.records.reduce((n, r) => n + r.costMicroUsd, 0));
             // Rule 9: the cost budget per call, recorded on the template, held.

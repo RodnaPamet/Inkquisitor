@@ -27,6 +27,7 @@ import { QUESTION_PROMPT_VERSION } from '@/lib/interview/prompt';
 import { fakeAnthropic, setFakeApiKey, type FakeAnthropic } from '../helpers/fake-anthropic';
 import { questionModel } from '../helpers/fake-question-model';
 import { createAccount, workspaceCtx } from '../helpers/workspaces';
+import { escapeRegExp } from '../helpers/escape-regexp';
 
 afterAll(() => prisma.$disconnect());
 
@@ -74,7 +75,7 @@ it('a round’s call is recorded in AiCallLog, and its real token usage is charg
         requestedById: owner.userId,
         purpose: 'interview.questions',
         promptId: 'interview.questions',
-        promptVersion: QUESTION_PROMPT_VERSION,
+        promptVersion: expect.stringMatching(new RegExp(`^${escapeRegExp(QUESTION_PROMPT_VERSION)}\\+packs\\.[0-9a-f]{12}$`)),
         tier: 'BALANCED',
         outcome: 'OK',
         inputTokens: 2_000,
@@ -147,7 +148,7 @@ it('the deployment’s own generator (none injected), holding a key, calls the M
     expect(view.round!.questions.every((q) => q.origin === 'MODEL')).toBe(true);
     const calls = await prisma.aiCallLog.findMany({ where: { workspaceId: owner.workspaceId } });
     expect(calls).toHaveLength(1);
-    expect(calls[0]).toMatchObject({ bookId, requestedById: owner.userId, promptVersion: QUESTION_PROMPT_VERSION, outcome: 'OK' });
+    expect(calls[0]).toMatchObject({ bookId, requestedById: owner.userId, promptVersion: expect.stringMatching(new RegExp(`^${escapeRegExp(QUESTION_PROMPT_VERSION)}\\+packs\\.`)), outcome: 'OK' });
     const session = await prisma.interviewSession.findUniqueOrThrow({ where: { id: view.session.id } });
     expect(session.tokensUsed).toBe(2_800);
 });
@@ -176,6 +177,23 @@ it('a month that cannot take even the least question call pauses the session WOR
     process.env.AI_MONTHLY_CEILING_USD_DEFAULT = '0';
     const api = fakeAnthropic([questionModel({ usage: USAGE })]);
     const view = await startInterview(ctx, bookId, { scope: 'ELEMENT', elementId, depth: 2, detail: 3 }, { generator: wired(ctx, api), embedder });
+    expect(view.session).toMatchObject({ status: 'PAUSED', stopReason: 'WORKSPACE_CEILING' });
+    expect(api.requests).toHaveLength(0);
+    expect(await prisma.interviewRound.count({ where: { sessionId: view.session.id } })).toBe(0);
+    expect(await prisma.aiCallLog.count({ where: { workspaceId: owner.workspaceId } })).toBe(0);
+});
+
+it('a round of three personas is not claimed when the month can take only two of its calls: nothing is spent on a round that cannot finish', async () => {
+    const { owner, ctx, bookId, elementId } = await setup();
+    const floor = minimumQuestionCallMicroUsd(3);
+    process.env.AI_MONTHLY_CEILING_USD_DEFAULT = ((2 * floor + 1) / 1_000_000).toFixed(6);
+    const api = fakeAnthropic([questionModel({ usage: USAGE })]);
+    const view = await startInterview(
+        ctx,
+        bookId,
+        { scope: 'ELEMENT', elementId, depth: 2, detail: 3, personaKeys: ['socratic', 'ruthless-editor', 'gentle-mentor'] },
+        { generator: wired(ctx, api), embedder },
+    );
     expect(view.session).toMatchObject({ status: 'PAUSED', stopReason: 'WORKSPACE_CEILING' });
     expect(api.requests).toHaveLength(0);
     expect(await prisma.interviewRound.count({ where: { sessionId: view.session.id } })).toBe(0);

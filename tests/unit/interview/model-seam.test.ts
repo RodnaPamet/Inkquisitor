@@ -32,6 +32,7 @@ import type { WorkspaceRequestContext } from '@/app-layer/types';
 import { fakeAnthropic, setFakeApiKey, type FakeAnthropic, type FakeTurn } from '../../helpers/fake-anthropic';
 import { memoryLedger, type MemoryLedger } from '../../helpers/memory-ai-ledger';
 import { fencedBlocks, questionModel, systemOf } from '../../helpers/fake-question-model';
+import { escapeRegExp } from '../../helpers/escape-regexp';
 
 const packs = getPacks();
 const EL = 'el-1';
@@ -143,7 +144,7 @@ describe('a call through the wired generator', () => {
             outcome: 'OK',
             purpose: 'interview.questions',
             promptId: QUESTION_PROMPT.id,
-            promptVersion: QUESTION_PROMPT_VERSION,
+            promptVersion: expect.stringMatching(new RegExp(`^${escapeRegExp(QUESTION_PROMPT_VERSION)}\\+packs\\.[0-9a-f]{12}$`)),
             tier: 'balanced',
             bookId: 'book-1',
             requestedById: 'user-1',

@@ -1,0 +1,249 @@
+{
+  "format": "inkquisitor-pack-evaluation/1",
+  "pack": {
+    "name": "persona-genre-specialist",
+    "version": 1,
+    "contentHash": "sha256:b69385fd6bfc83d43ff775d18c5cccb77b7e75c7f2ffb17a57d3233e7d60d85e"
+  },
+  "set": {
+    "hash": "sha256:ad1809b9c1cdc042698295913562c48dbcacf18a45719e91072fb3dc269b9adb"
+  },
+  "promptVersion": "question-generation.2.3.0",
+  "generator": {
+    "kind": "structural",
+    "id": "structural-generator.1"
+  },
+  "ranAt": "2026-11-19T23:18:43.100Z",
+  "answers": [
+    {
+      "caseId": "genre-specialist-01",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-genre-specialist-01",
+              "targetsFieldKeys": [
+                "wound"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the wound.",
+              "kind": "OPEN",
+              "text": "What wound matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "genre-specialist-02",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-genre-specialist-02",
+              "targetsFieldKeys": [
+                "stance"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the stance.",
+              "kind": "OPEN",
+              "text": "What stance matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "genre-specialist-03",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-genre-specialist-03",
+              "targetsFieldKeys": [
+                "resolution"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the resolution.",
+              "kind": "OPEN",
+              "text": "What resolution matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "genre-specialist-04",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-genre-specialist-04",
+              "targetsFieldKeys": [
+                "wound"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the wound.",
+              "kind": "OPEN",
+              "text": "What wound matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "genre-specialist-05",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-genre-specialist-05",
+              "targetsFieldKeys": [
+                "who_knows"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the who knows.",
+              "kind": "OPEN",
+              "text": "What who knows matters most here, in your own words?"
+            },
+            {
+              "elementId": "eval-genre-specialist-05",
+              "targetsFieldKeys": [
+                "story_consequence"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the story consequence.",
+              "kind": "OPEN",
+              "text": "What story consequence matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "genre-specialist-06",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-genre-specialist-06",
+              "targetsFieldKeys": [
+                "climax"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the climax.",
+              "kind": "OPEN",
+              "text": "What climax matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "genre-specialist-07",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-genre-specialist-07",
+              "targetsFieldKeys": [
+                "story_time"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the story time.",
+              "kind": "OPEN",
+              "text": "What story time matters most here, in your own words?"
+            },
+            {
+              "elementId": "eval-genre-specialist-07",
+              "targetsFieldKeys": [
+                "participants"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the participants.",
+              "kind": "OPEN",
+              "text": "What participants matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "genre-specialist-08",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-genre-specialist-08",
+              "targetsFieldKeys": [
+                "stakes"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the stakes.",
+              "kind": "OPEN",
+              "text": "What stakes matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "genre-specialist-09",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-genre-specialist-09",
+              "targetsFieldKeys": [
+                "why_needed"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the why needed.",
+              "kind": "OPEN",
+              "text": "What why needed matters most here, in your own words?"
+            },
+            {
+              "elementId": "eval-genre-specialist-09",
+              "targetsFieldKeys": [
+                "established_facts"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the established facts.",
+              "kind": "OPEN",
+              "text": "What established facts matters most here, in your own words?"
+            },
+            {
+              "elementId": "eval-genre-specialist-09",
+              "targetsFieldKeys": [
+                "open_questions"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the open questions.",
+              "kind": "OPEN",
+              "text": "What open questions matters most here, in your own words?"
+            },
+            {
+              "elementId": "eval-genre-specialist-09",
+              "targetsFieldKeys": [
+                "sources"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the sources.",
+              "kind": "OPEN",
+              "text": "What sources matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    }
+  ]
+}

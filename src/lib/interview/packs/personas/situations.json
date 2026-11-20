@@ -1,0 +1,78 @@
+{
+  "S1": {
+    "kind": "CHARACTER",
+    "elementName": "Odile Marsh",
+    "bibleState": {
+      "role": "Protagonist. Pilots the night ferry across a tidal river port.",
+      "want": "To buy the ferry outright before the company sells it for scrap.",
+      "wound": null,
+      "false_belief": null,
+      "need": null,
+      "arc": null
+    },
+    "priorAnswers": [],
+    "dials": {
+      "depth": 3,
+      "detail": 3
+    }
+  },
+  "S2": {
+    "kind": "THEME",
+    "elementName": "Promises to the dead",
+    "bibleState": {
+      "subject": "What the living owe to plans the dead made for them.",
+      "thematic_question": "Is keeping a promise to someone who has died an act of love or an act of surrender?",
+      "stance": null,
+      "counter_argument": null,
+      "carriers": null
+    },
+    "priorAnswers": [
+      {
+        "id": "a1",
+        "questionKind": "OPEN",
+        "question": "Which characters feel this question most sharply?",
+        "targetsFieldKeys": [
+          "carriers"
+        ],
+        "status": "DECIDE_LATER",
+        "answer": null
+      }
+    ],
+    "dials": {
+      "depth": 4,
+      "detail": 4
+    }
+  },
+  "S3": {
+    "kind": "PLOT",
+    "elementName": "The vineyard",
+    "bibleState": {
+      "plotline_owner": "Nell Arden, the elder daughter.",
+      "opening_disturbance": "Her father dies and leaves the family vineyard to a stranger.",
+      "driving_goal": "Win the vineyard back.",
+      "complications": [
+        "The stranger refuses every offer.",
+        "Her brother takes the stranger's side.",
+        "Blight reaches the lower slopes before harvest."
+      ],
+      "climax": "On the night of the auction Nell sets fire to the vines herself.",
+      "resolution": null
+    },
+    "priorAnswers": [
+      {
+        "id": "a1",
+        "questionKind": "OPEN",
+        "question": "What does Nell gain by burning the vines she set out to win back?",
+        "targetsFieldKeys": [
+          "climax"
+        ],
+        "status": "ANSWERED",
+        "answer": "I'm not sure yet. It felt right when I outlined it."
+      }
+    ],
+    "dials": {
+      "depth": 5,
+      "detail": 2
+    }
+  }
+}

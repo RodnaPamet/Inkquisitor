@@ -70,6 +70,18 @@ MIT License
   Inkquisitor. The project is distributed under the MIT License, whose text
   is reproduced above.
 
+  stanford-oval/storm
+  https://github.com/stanford-oval/storm
+  Copyright (c) 2024 Stanford Open Virtual Assistant Lab
+
+  The perspective idea of the question engine's manner dial (Phase 2.3,
+  src/lib/interview/plan.ts, round.ts): a session may run several
+  interviewer personas, each contributing its own share of the questions,
+  tagged with its name. Re-implemented for Inkquisitor; no code or text from
+  the project is copied, and the six persona packs are written for
+  Inkquisitor. The project is distributed under the MIT License, whose text
+  is reproduced above.
+
 Apache License, Version 2.0
 
   tianon/gosu (release 1.19, commit 6456aaa0f3c854d199d0f037f068eb97515b7513)

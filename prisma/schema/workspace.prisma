@@ -26,12 +26,13 @@ model Workspace {
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
 
-  memberships      WorkspaceMembership[]
-  books            Book[]
-  vectorEmbeddings VectorEmbedding[]
-  aiCalls          AiCallLog[]
-  aiSpendMonths    AiSpendMonth[]
-  aiReservations   AiSpendReservation[]
+  memberships       WorkspaceMembership[]
+  books             Book[]
+  vectorEmbeddings  VectorEmbedding[]
+  aiCalls           AiCallLog[]
+  aiSpendMonths     AiSpendMonth[]
+  aiReservations    AiSpendReservation[]
+  interviewDefaults WorkspaceInterviewDefaults?
 }
 
 /// A person's role in a workspace. One per (workspace, user).

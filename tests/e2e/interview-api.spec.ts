@@ -2,33 +2,32 @@ import { expect, test } from '@playwright/test';
 import { signUp } from './helpers';
 
 /**
- * The interview API against the production build (Phase 2.2, wired to 2.1).
- * The E2E server holds no model key — no test reaches a provider — so it runs
- * with AI switched off (`AI_DISABLED=1`, playwright.config.ts): production
- * refuses to start with neither (production-refusal.spec.ts names the missing
- * key). A session that would need the model is created and PAUSED with the
- * named reason KILL_SWITCH, with no round and no question: nothing is sent and
- * nothing faked. A scope with nothing to ask about is refused before the model
- * is needed. (No UI: that is 2.4.)
+ * The interview API against the production build (Phase 2.2; since 2.3 under
+ * decision D11). Production mounts an interview pack only on a REAL MODEL's
+ * evaluation record, and none is committed yet (the `Evals` workflow makes
+ * them), so a production server refuses every interview, loudly: 503
+ * PACKS_NOT_MOUNTABLE naming each pack and its reason, with nothing written —
+ * never a session run on an unevaluated pack. The packs endpoint says the same
+ * per pack; the dial defaults work regardless. A scope with nothing to ask
+ * about is refused before the packs are asked. (No UI: that is 2.4.)
  */
 
-test('a production server with AI switched off pauses the interview, named, and fakes no question', async ({ page }) => {
+test('a production server without real-model pack records refuses every interview, named, and writes nothing', async ({ page }) => {
     const slug = await signUp(page);
     const api = page.request;
     const base = `/api/w/${slug}/books`;
     const bookId = (await (await api.post(base, { data: { title: 'The Tuner’s Year' } })).json()).book.id as string;
     const elementId = (await (await api.post(`${base}/${bookId}/elements`, { data: { kind: 'CHARACTER', name: 'Aurel Pask' } })).json()).element.id as string;
 
-    const started = await api.post(`${base}/${bookId}/interviews`, { data: { scope: 'ELEMENT', elementId, depth: 2, detail: 3 } });
-    expect(started.status()).toBe(201);
-    const view = (await started.json()).interview;
-    expect(view.session).toMatchObject({ status: 'PAUSED', stopReason: 'KILL_SWITCH' });
-    expect(view.round).toBeNull();
-
-    // Resuming while the switch is on pauses it again, still asking nothing.
-    const again = await api.post(`${base}/${bookId}/interviews/${view.session.id}/rounds`, { data: {} });
-    expect(again.status()).toBeLessThan(300);
-    expect((await again.json()).interview).toMatchObject({ session: { status: 'PAUSED', stopReason: 'KILL_SWITCH' }, round: null });
+    const started = await api.post(`${base}/${bookId}/interviews`, { data: { scope: 'ELEMENT', elementId, depth: 2, detail: 3, personaKeys: ['socratic'] } });
+    expect(started.status()).toBe(503);
+    expect((await started.json()).error.details).toEqual({
+        reason: 'PACKS_NOT_MOUNTABLE',
+        packs: [
+            { name: 'craft-character', reason: 'STRUCTURAL_RECORD_REFUSED' },
+            { name: 'persona-socratic', reason: 'STRUCTURAL_RECORD_REFUSED' },
+        ],
+    });
 
     const empty = await api.post(`${base}/${bookId}/interviews`, { data: { scope: 'KIND', kind: 'FACTION' } });
     expect(empty.status()).toBe(400);
@@ -36,7 +35,31 @@ test('a production server with AI switched off pauses the interview, named, and 
 
     const list = await api.get(`${base}/${bookId}/interviews`);
     expect(list.status()).toBe(200);
-    const listed = await list.json();
-    expect(listed.sessions).toHaveLength(1);
-    expect(listed.sessions[0]).toMatchObject({ id: view.session.id, status: 'PAUSED', stopReason: 'KILL_SWITCH' });
+    expect((await list.json()).sessions).toHaveLength(0);
+
+    const packs = await api.get(`/api/w/${slug}/interview-packs`);
+    expect(packs.status()).toBe(200);
+    const body = await packs.json();
+    expect(body).toMatchObject({ recordMode: 'model', mountable: 0, total: 21 });
+    expect(body.personas).toHaveLength(6);
+    expect([...body.personas, ...body.craft].every((p: { refusal: { reason: string } }) => p.refusal.reason === 'STRUCTURAL_RECORD_REFUSED')).toBe(true);
+});
+
+test('the dial defaults: a workspace layer and a book layer, resolved book over workspace', async ({ page }) => {
+    const slug = await signUp(page);
+    const api = page.request;
+    const bookId = (await (await api.post(`/api/w/${slug}/books`, { data: { title: 'Defaults' } })).json()).book.id as string;
+
+    const ws = await api.put(`/api/w/${slug}/interview-defaults`, { data: { depth: 4, personaKeys: ['gentle-mentor', 'target-reader'] } });
+    expect(ws.status()).toBe(200);
+    const book = await api.put(`/api/w/${slug}/books/${bookId}/interview-defaults`, { data: { depth: 2, preferChoice: true } });
+    expect(book.status()).toBe(200);
+    const read = await (await api.get(`/api/w/${slug}/books/${bookId}/interview-defaults`)).json();
+    expect(read.defaults).toMatchObject({
+        effective: { depth: 2, detail: 3, personaKeys: ['gentle-mentor', 'target-reader'], offerRecommended: true, preferChoice: true },
+        sources: { depth: 'book', detail: 'code', personaKeys: 'workspace', offerRecommended: 'code', preferChoice: 'book' },
+        effects: { roundBudget: 3, generationCallsPerRound: 2 },
+    });
+    const bad = await api.put(`/api/w/${slug}/interview-defaults`, { data: { personaKeys: ['socratic', 'socratic'] } });
+    expect(bad.status()).toBe(400);
 });

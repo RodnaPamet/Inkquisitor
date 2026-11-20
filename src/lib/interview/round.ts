@@ -132,6 +132,24 @@ export interface RoundMetrics {
     /** The dearest single call, in micro-dollars, and how many calls passed the template's cost budget (rule 9). */
     maxCallCostMicroUsd: number;
     callsOverBudget: number;
+    /**
+     * Every generation call, in order (rule 9, per call): the persona whose
+     * share it worded, its prompt version (which names the packs it carried),
+     * the packs behind that version, its cost budget and what it cost, and how
+     * it ended. Names and numbers, never text.
+     */
+    calls: RoundCall[];
+}
+
+export interface RoundCall {
+    personaKey: string | null;
+    promptVersion: string;
+    /** The packs in the call's system prompt, `name@version`. */
+    packs: string[];
+    costBudgetMicroUsd: number | null;
+    costMicroUsd: number;
+    callId: string | null;
+    outcome: 'OK' | GenerationFailureKind | 'THREW' | 'STOPPED';
 }
 
 /** One call's reported tokens are clamped to this, so a bad report cannot overflow the session's counter. */
@@ -205,15 +223,49 @@ function asCandidate(gap: FieldRef, e: CraftPack['examples'][number]): Candidate
     };
 }
 
-/** Frontier position of the first target, challenges last; stable otherwise (design 4.4). */
-export function orderRound<C extends Candidate>(questions: readonly C[], plan: RoundPlan): C[] {
+/**
+ * The personas that ask for a round to lead with picks and scales before open
+ * questions, within the detail dial (design 4.4; the Gentle Mentor's "from the
+ * most approachable question to the most demanding").
+ */
+export const PICKS_FIRST_PERSONAS: ReadonlySet<string> = new Set(['gentle-mentor']);
+
+/** The picks-first order of kinds (design 4.4). */
+const PICKS_FIRST_KIND_RANK: Readonly<Record<Candidate['kind'], number>> = { SCALE: 0, EITHER_OR: 1, CHOICE: 2, OPEN: 3, SCENARIO: 4 };
+
+/** Does every persona of the session ask for picks first? (None: no.) */
+export function picksFirst(personaKeys: readonly string[]): boolean {
+    return personaKeys.length > 0 && personaKeys.every((p) => PICKS_FIRST_PERSONAS.has(p));
+}
+
+/**
+ * Frontier position of the first target, challenges last; stable otherwise
+ * (design 4.4). With `picksFirst` (every persona of the session asks for it),
+ * the questions about ONE element are reordered among themselves by kind —
+ * scale, either-or, choice, open, scenario — keeping the places the element's
+ * questions held, so elements keep their frontier order. Every question of a
+ * round is on the frontier, so no order breaks a prerequisite.
+ */
+export function orderRound<C extends Candidate>(questions: readonly C[], plan: RoundPlan, options: { picksFirst?: boolean } = {}): C[] {
     const position = new Map(plan.targets.map((t, i) => [refKey(t), i] as const));
     const rank = (q: C) =>
         q.mode === 'CHALLENGE' ? Number.MAX_SAFE_INTEGER : Math.min(...q.targetsFieldKeys.map((k) => position.get(refKey({ elementId: q.elementId, fieldKey: k })) ?? Number.MAX_SAFE_INTEGER - 1));
-    return questions
+    const ordered = questions
         .map((q, i) => ({ q, i, r: rank(q) }))
         .sort((a, b) => a.r - b.r || a.i - b.i)
         .map((x) => x.q);
+    if (!options.picksFirst) return ordered;
+    const out = [...ordered];
+    const byElement = new Map<string, number[]>();
+    ordered.forEach((q, i) => {
+        if (q.mode === 'CHALLENGE') return;
+        byElement.set(q.elementId, [...(byElement.get(q.elementId) ?? []), i]);
+    });
+    for (const slots of byElement.values()) {
+        const sorted = slots.map((i) => ordered[i]).sort((a, b) => PICKS_FIRST_KIND_RANK[a.kind] - PICKS_FIRST_KIND_RANK[b.kind]);
+        slots.forEach((slot, j) => (out[slot] = sorted[j]));
+    }
+    return out;
 }
 
 export async function produceRound(input: RoundInput, deps: RoundDeps): Promise<RoundOutput> {
@@ -240,6 +292,7 @@ export async function produceRound(input: RoundInput, deps: RoundDeps): Promise<
         costMicroUsd: 0,
         maxCallCostMicroUsd: 0,
         callsOverBudget: 0,
+        calls: [],
     };
     const elements = new Map(input.elements.map((e) => [e.elementId, e] as const));
     const validationElements = new Map<string, ValidationElement>(
@@ -287,26 +340,45 @@ export async function produceRound(input: RoundInput, deps: RoundDeps): Promise<
             sessionAnswers: input.sessionAnswers,
         });
         metrics.generationCalls++;
+        const call: RoundCall = {
+            personaKey,
+            promptVersion: request.template.version,
+            packs: [...kinds.map((k) => input.packs.craft[k]), ...(personaKey && input.packs.personas[personaKey as PersonaKey] ? [input.packs.personas[personaKey as PersonaKey]] : [])].map(
+                (p) => `${p.name}@${p.version}`,
+            ),
+            costBudgetMicroUsd: request.template.costBudgetMicroUsd ?? null,
+            costMicroUsd: 0,
+            callId: null,
+            outcome: 'OK',
+        };
+        metrics.calls.push(call);
         let raw: unknown;
         try {
             const result = (await deps.generator.generateCandidates(request)) as Partial<GenerationResult> | null;
             metrics.tokensUsed += reportedTokens(result?.tokensUsed);
             recordCall(metrics, result, request.template.costBudgetMicroUsd ?? null);
+            call.callId = typeof result?.callId === 'string' ? result.callId : null;
+            call.costMicroUsd = typeof result?.costMicroUsd === 'number' && Number.isFinite(result.costMicroUsd) && result.costMicroUsd > 0 ? Math.floor(result.costMicroUsd) : 0;
             if (result?.failure) {
                 // One call failed (2.1's outcome named): its persona's fields go
                 // to the pack fallback; nothing it said is used.
                 metrics.generationFailures++;
                 bump(metrics.failures, result.failure.kind);
+                call.outcome = result.failure.kind;
                 continue;
             }
             raw = result?.output;
         } catch (err) {
             // The session must stop (kill switch, ceiling, no configuration):
             // the round is abandoned, carrying what it has spent so far.
-            if (err instanceof GenerationStop) throw err.withTokens(metrics.tokensUsed);
+            if (err instanceof GenerationStop) {
+                call.outcome = 'STOPPED';
+                throw err.withTokens(metrics.tokensUsed);
+            }
             // Any other throw: a failed call, costing only its persona's share
             // (those fields go to the pack fallback).
             metrics.generationFailures++;
+            call.outcome = 'THREW';
             continue;
         }
         const parsed = parseGeneratedQuestions(raw);
@@ -400,6 +472,7 @@ export async function produceRound(input: RoundInput, deps: RoundDeps): Promise<
     const final = orderRound(
         all.map((x) => x.c),
         input.plan,
+        { picksFirst: picksFirst(input.personaKeys) },
     );
     const vectorOf = new Map<Candidate, readonly number[]>();
     keptIndexes.forEach((i) => {

@@ -1,0 +1,167 @@
+# Evals — real-model evaluation records for the interview packs (Phase 2.3).
+#
+# Owner decisions of 2026-11-19: production mounts an interview pack only on a
+# REAL MODEL's evaluation record (D11), and real-model evaluations run here, in
+# GitHub Actions, on the repository secret ANTHROPIC_API_KEY — never in a
+# development sandbox. Carved from inflect-compliance's
+# .github/workflows/agent-evals.yml (see docs/carve-manifest.md): the skip
+# without a key, the Postgres for the call ledger, the budget, the artifact.
+#
+#   - DISPATCH ONLY. No schedule, no pull_request: a run spends money, so a
+#     person starts it (Actions → Evals → Run workflow). Not a required check,
+#     and no CI job depends on it.
+#   - THE KEY. secrets.ANTHROPIC_API_KEY. Absent, the job SKIPS with a notice
+#     and fails nothing; it NEVER falls back to the structural generator, so it
+#     can never produce a record that looks like a model's and is not.
+#   - THE PATH. `npm run packs:evaluate -- --generator model`: the product's
+#     own wired generator over 2.1's callStructured, so the guard, the fence,
+#     the AiCallLog ledger and the workspace spend ceiling all apply, in a
+#     throwaway workspace the run provisions. That needs PostgreSQL (with
+#     pgvector, built from deploy/postgres/Dockerfile as CI's Test job does);
+#     no Redis.
+#   - THE BUDGET. The `budget_usd` input (default 5, at most 25: the runner
+#     refuses more) becomes AI_MONTHLY_CEILING_USD_DEFAULT, the throwaway
+#     workspace's monthly ceiling, which 2.1 checks against each call's worst
+#     case BEFORE sending it, under a lock. The run cannot spend past it.
+#   - THE RECORDS. Written under evals-out/ in the format the mount gate checks
+#     (src/lib/interview/pack-evaluation.ts) and uploaded as the artifact
+#     `pack-evaluation-records`. The workflow pushes and commits NOTHING
+#     (`contents: read`): a person reviews the records and lands them in a pull
+#     request, beside the packs (docs/implementation-notes/2026-11-19-2.3-dials-and-packs.md, "Evals").
+#   - THE ORGANISATION KEY. The repository's key is organisation-level, which
+#     Anthropic refuses without an `anthropic-workspace-id` header: the
+#     repository variable ANTHROPIC_WORKSPACE_ID is passed through when set
+#     (src/lib/ai/anthropic-workspace.ts).
+#
+# Tested for shape by tests/unit/evals-workflow.test.ts.
+
+name: Evals
+
+on:
+  workflow_dispatch:
+    inputs:
+      packs:
+        description: "Pack sets to run: all, none, or comma-separated names (craft-character,persona-socratic)"
+        required: true
+        default: all
+        type: string
+      coverage:
+        description: "Also run the question-coverage evaluation set"
+        required: false
+        default: false
+        type: boolean
+      budget_usd:
+        description: "Hard spend budget for the run, US dollars (at most 25)"
+        required: true
+        default: '5'
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: evals
+  cancel-in-progress: false
+
+env:
+  NODE_VERSION: '24'
+
+jobs:
+  evals:
+    name: Evals (real model)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/inkquisitor_evals?schema=public
+      DIRECT_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/inkquisitor_evals?schema=public
+      NODE_ENV: test
+      SKIP_ENV_VALIDATION: '1'
+      LOG_LEVEL: warn
+    steps:
+      - name: Check for the model key
+        id: key
+        env:
+          KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          if [ -z "$KEY" ]; then
+            echo "::notice::ANTHROPIC_API_KEY is not set for this repository; the evaluation run is skipped. Nothing is recorded, and nothing falls back to the structural generator."
+            echo "present=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Check the inputs
+        if: steps.key.outputs.present == 'true'
+        id: inputs
+        env:
+          PACKS: ${{ inputs.packs }}
+          BUDGET: ${{ inputs.budget_usd }}
+        run: |
+          set -euo pipefail
+          if ! printf '%s' "$BUDGET" | grep -Eq '^[0-9]+(\.[0-9]{1,2})?$'; then echo "::error::budget_usd must be a number of US dollars"; exit 1; fi
+          if ! node -e 'const b=Number(process.argv[1]); process.exit(b > 0 && b <= 25 ? 0 : 1)' "$BUDGET"; then echo "::error::budget_usd must be more than 0 and at most 25"; exit 1; fi
+          # A name starts with a letter: an input beginning with `-` would reach the runner as an option.
+          if ! printf '%s' "$PACKS" | grep -Eq '^(all|none|[a-z][a-z_-]*(,[a-z][a-z_-]*)*)$'; then echo "::error::packs must be all, none, or comma-separated pack names"; exit 1; fi
+          if [ "$PACKS" = "none" ]; then echo "args=--no-packs" >> "$GITHUB_OUTPUT"; else echo "args=--packs $PACKS" >> "$GITHUB_OUTPUT"; fi
+
+      - uses: actions/checkout@v7
+        if: steps.key.outputs.present == 'true'
+        with:
+          persist-credentials: false
+
+      - uses: docker/setup-buildx-action@v4
+        if: steps.key.outputs.present == 'true'
+      - name: Build the inkquisitor-postgres image (no push)
+        if: steps.key.outputs.present == 'true'
+        uses: docker/build-push-action@v7
+        with:
+          context: deploy/postgres
+          file: deploy/postgres/Dockerfile
+          push: false
+          load: true
+          tags: inkquisitor-postgres:evals-${{ github.sha }}
+          cache-from: type=gha,scope=inkquisitor-postgres
+      - name: Start Postgres with pgvector
+        if: steps.key.outputs.present == 'true'
+        run: deploy/postgres/start.sh "inkquisitor-postgres:evals-${{ github.sha }}" inkquisitor_evals
+
+      - uses: actions/setup-node@v7
+        if: steps.key.outputs.present == 'true'
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - if: steps.key.outputs.present == 'true'
+        run: npm ci
+      - name: Apply migrations
+        if: steps.key.outputs.present == 'true'
+        run: npm run migrate:deploy
+
+      - name: Run the evaluation sets against the model
+        if: steps.key.outputs.present == 'true'
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          ANTHROPIC_WORKSPACE_ID: ${{ vars.ANTHROPIC_WORKSPACE_ID }}
+          AI_MONTHLY_CEILING_USD_DEFAULT: ${{ inputs.budget_usd }}
+          PACK_ARGS: ${{ steps.inputs.outputs.args }}
+          COVERAGE: ${{ inputs.coverage }}
+        run: |
+          set -uo pipefail
+          extra=""
+          if [ "$COVERAGE" = "true" ]; then extra="--coverage"; fi
+          # shellcheck disable=SC2086
+          npm run packs:evaluate -- --generator model --out evals-out $PACK_ARGS $extra | tee evals-summary.md
+          status=${PIPESTATUS[0]}
+          tee -a "$GITHUB_STEP_SUMMARY" < evals-summary.md > /dev/null || true
+          exit "$status"
+
+      - name: Upload the evaluation records
+        if: always() && steps.key.outputs.present == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: pack-evaluation-records
+          path: |
+            evals-out/**/evaluation-record.json
+            evals-out/coverage-report.json
+            evals-summary.md
+          if-no-files-found: warn
+          retention-days: 30

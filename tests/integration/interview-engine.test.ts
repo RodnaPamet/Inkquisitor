@@ -292,11 +292,11 @@ describe('scopes and dials', () => {
     it('a persona is stored on the session and its pack goes into the system prompt', async () => {
         const el = await character('Persona Subject');
         const gen = fakeGenerator();
-        const view = await startInterview(ctx, bookId, { scope: 'ELEMENT', elementId: el.id, persona: 'socratic' }, { generator: gen, embedder });
+        const view = await startInterview(ctx, bookId, { scope: 'ELEMENT', elementId: el.id, personaKeys: ['socratic'] }, { generator: gen, embedder });
         expect(view.session.personaKeys).toEqual(['socratic']);
         expect(gen.calls[0].template.system).toContain('# Socratic');
         expect(view.round!.questions.every((q) => q.personaKey === 'socratic' || q.origin === 'PACK_FALLBACK')).toBe(true);
-        expect((await refusal(startInterview(ctx, bookId, { scope: 'ELEMENT', elementId: el.id, persona: 'the-critic' }, { generator: gen, embedder }))).status).toBe(400);
+        expect((await refusal(startInterview(ctx, bookId, { scope: 'ELEMENT', elementId: el.id, personaKeys: ['the-critic'] }, { generator: gen, embedder }))).status).toBe(400);
     });
 });
 

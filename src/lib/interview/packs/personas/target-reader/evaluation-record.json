@@ -1,0 +1,249 @@
+{
+  "format": "inkquisitor-pack-evaluation/1",
+  "pack": {
+    "name": "persona-target-reader",
+    "version": 1,
+    "contentHash": "sha256:aea4a86fab6d9d37677e08e1fa2e8f9e2ce08c17f525990813c0ba6d42a2076d"
+  },
+  "set": {
+    "hash": "sha256:7af3cc6c3fa81577a431ef1d73211442082608faa62504e7633834bb7d94efb6"
+  },
+  "promptVersion": "question-generation.2.3.0",
+  "generator": {
+    "kind": "structural",
+    "id": "structural-generator.1"
+  },
+  "ranAt": "2026-11-19T23:18:42.907Z",
+  "answers": [
+    {
+      "caseId": "target-reader-01",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-target-reader-01",
+              "targetsFieldKeys": [
+                "wound"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the wound.",
+              "kind": "OPEN",
+              "text": "What wound matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "target-reader-02",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-target-reader-02",
+              "targetsFieldKeys": [
+                "stance"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the stance.",
+              "kind": "OPEN",
+              "text": "What stance matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "target-reader-03",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-target-reader-03",
+              "targetsFieldKeys": [
+                "resolution"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the resolution.",
+              "kind": "OPEN",
+              "text": "What resolution matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "target-reader-04",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-target-reader-04",
+              "targetsFieldKeys": [
+                "wound"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the wound.",
+              "kind": "OPEN",
+              "text": "What wound matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "target-reader-05",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-target-reader-05",
+              "targetsFieldKeys": [
+                "who_knows"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the who knows.",
+              "kind": "OPEN",
+              "text": "What who knows matters most here, in your own words?"
+            },
+            {
+              "elementId": "eval-target-reader-05",
+              "targetsFieldKeys": [
+                "story_consequence"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the story consequence.",
+              "kind": "OPEN",
+              "text": "What story consequence matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "target-reader-06",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-target-reader-06",
+              "targetsFieldKeys": [
+                "resolution"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the resolution.",
+              "kind": "OPEN",
+              "text": "What resolution matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "target-reader-07",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-target-reader-07",
+              "targetsFieldKeys": [
+                "intensity"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the intensity.",
+              "kind": "OPEN",
+              "text": "What intensity matters most here, in your own words?"
+            },
+            {
+              "elementId": "eval-target-reader-07",
+              "targetsFieldKeys": [
+                "closing_feeling"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the closing feeling.",
+              "kind": "OPEN",
+              "text": "What closing feeling matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "target-reader-08",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-target-reader-08",
+              "targetsFieldKeys": [
+                "narrative_distance"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the narrative distance.",
+              "kind": "OPEN",
+              "text": "What narrative distance matters most here, in your own words?"
+            },
+            {
+              "elementId": "eval-target-reader-08",
+              "targetsFieldKeys": [
+                "switching_pattern"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the switching pattern.",
+              "kind": "OPEN",
+              "text": "What switching pattern matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "target-reader-09",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-target-reader-09",
+              "targetsFieldKeys": [
+                "sensory_emphasis"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the sensory emphasis.",
+              "kind": "CHOICE",
+              "text": "Which way does the sensory emphasis lean?",
+              "options": [
+                "sensory emphasis leans inward",
+                "sensory emphasis leans outward",
+                "sensory emphasis holds still"
+              ]
+            },
+            {
+              "elementId": "eval-target-reader-09",
+              "targetsFieldKeys": [
+                "detail_density"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the detail density.",
+              "kind": "CHOICE",
+              "text": "Which way does the detail density lean?",
+              "options": [
+                "detail density leans inward",
+                "detail density leans outward",
+                "detail density holds still"
+              ]
+            }
+          ],
+          "declined": []
+        }
+      ]
+    }
+  ]
+}

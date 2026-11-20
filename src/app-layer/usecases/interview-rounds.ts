@@ -42,7 +42,6 @@ import { runInWorkspaceContext, type PrismaTx } from '@/lib/db/rls-middleware';
 import { ConflictError } from '@/lib/errors/types';
 import { AiUnavailableError, type AiUnavailableReason } from '@/lib/ai/errors';
 import { getTemplate } from '@/lib/bible/templates';
-import { TOKENS_PER_GENERATION_CALL } from '@/lib/interview/dials';
 import { BibleElementRepository } from '@/app-layer/repositories/bible.repository';
 import { isVerbatimQuote } from '@/lib/interview/candidates';
 import { dedupeTokens, exactKey, questionDedupeKey } from '@/lib/interview/dedupe';
@@ -50,6 +49,8 @@ import type { FrontierResult } from '@/lib/interview/frontier';
 import { GenerationStop, type QuestionGenerator } from '@/lib/interview/generator';
 import { defaultQuestionGenerator, modelBudgetSignals } from '@/lib/interview/model-seam';
 import { getPacks, type PackRegistry } from '@/lib/interview/packs';
+import { PacksNotMountableError, packNamesFor, parsePackPins, pinMismatch, type MountVerdict, type PackRecordMode } from '@/lib/interview/pack-mount';
+import { nextRoundGenerationCalls, nextRoundGenerationTokens } from '@/lib/interview/dial-settings';
 import { planRound, type RoundPlan } from '@/lib/interview/plan';
 import { QUESTION_PROMPT_VERSION } from '@/lib/interview/prompt';
 import { produceRound, TOKENS_PER_CALL_REPORT_MAX, type PlannedQuestion, type RoundOutput } from '@/lib/interview/round';
@@ -57,7 +58,7 @@ import { logger } from '@/lib/observability/logger';
 import type { VectorRecord } from '@/app-layer/repositories/vector.repository';
 import { decideStop } from '@/lib/interview/stop';
 import { encodeJson, sanitiseQuestionForStorage } from '@/lib/interview/storage';
-import { STATUS_AFTER_STOP, type StopReason } from '@/lib/interview/vocabulary';
+import { STATUS_AFTER_STOP, type PersonaKey, type StopReason } from '@/lib/interview/vocabulary';
 import { challengeableOf, frontierOf, frontierStop, loadInterviewState, nextRoundNumber, stopDetailFor, storedTextOf, type InterviewState } from './interview-state';
 import { defaultQuestionEmbedder, findQuestionNeighbours, questionRecord, upsertQuestionVectors, type QuestionEmbedder } from './question-embeddings';
 
@@ -67,6 +68,15 @@ export interface InterviewDeps {
     /** `null`: no embedder (deduplication stays lexical). Omitted: the deployment's. */
     embedder?: QuestionEmbedder | null;
     packs?: PackRegistry;
+    /** Which evaluation records mount a pack (tests); omitted: the deployment's (D11). */
+    packRecordMode?: PackRecordMode;
+}
+
+/** The packs a request runs on and the mount gate's verdict on each. */
+export interface PackContext {
+    registry: PackRegistry;
+    /** The verdicts on the named packs (each computed once per process). */
+    mounts(names: readonly string[]): Promise<ReadonlyMap<string, MountVerdict>>;
 }
 
 /** A GENERATING round older than this is a claim whose process died: the next request fails it and goes on. */
@@ -168,7 +178,7 @@ export function stopNow(
         frontierStop: fromFrontier,
         tokenBudget: session.tokenBudget,
         tokensUsed: session.tokensUsed,
-        nextRoundTokens: Math.max(1, session.personaKeys.length) * TOKENS_PER_GENERATION_CALL,
+        nextRoundTokens: nextRoundGenerationTokens(session.personaKeys.length),
         authorStopped: false,
         roundBudget: session.roundBudget,
         roundsRun: session.roundsRun,
@@ -177,8 +187,16 @@ export function stopNow(
     return { reason, detail: stopDetailFor(reason, frontier, reason === fromFrontier ? { scopeElements: state.elements.length } : undefined) };
 }
 
-/** Plan the session's next round and claim it, or end the session. Runs under the session's lock. */
-export async function claimRound(db: PrismaTx, ctx: WorkspaceRequestContext, session: SessionRow, generator: QuestionGenerator): Promise<ClaimOutcome> {
+/**
+ * Plan the session's next round and claim it, or end the session. Runs under
+ * the session's lock. Before claiming, the session's pinned packs are compared
+ * with the ones this request would teach it (Phase 2.3, `pinMismatch`): a
+ * pack that no longer mounts here refuses 503 `PACKS_NOT_MOUNTABLE` with
+ * nothing written (a deployment condition, which clears when it is fixed); a
+ * pack whose file changed since the session started — or one it never pinned
+ * (a session from before pinning) — pauses it `PACK_CHANGED`.
+ */
+export async function claimRound(db: PrismaTx, ctx: WorkspaceRequestContext, session: SessionRow, generator: QuestionGenerator, packs: PackContext): Promise<ClaimOutcome> {
     const state = await loadInterviewState(db, ctx, session);
     for (const r of state.rounds) {
         if (r.status === 'OPEN') throw new ConflictError('Close the open round first.', { reason: 'ROUND_OPEN', roundNumber: r.number });
@@ -187,12 +205,22 @@ export async function claimRound(db: PrismaTx, ctx: WorkspaceRequestContext, ses
             await InterviewRoundRepository.update(db, ctx.workspaceId, r.id, { status: 'FAILED' });
         }
     }
-    const stop = stopNow(session, state, await modelBudgetSignals(db, ctx, session.detail));
+    // The month must take the whole round: one call per persona (at most), each at its least.
+    const stop = stopNow(session, state, await modelBudgetSignals(db, ctx, session.detail, nextRoundGenerationCalls(session.personaKeys.length)));
     if (stop) {
         await endSession(db, ctx, session, stop.reason, stop.detail);
         return { kind: 'stopped', reason: stop.reason };
     }
     assertModelAvailable(generator);
+    const needed = packNamesFor([...new Set(state.elements.map((e) => e.kind))], session.personaKeys as PersonaKey[]);
+    const problem = pinMismatch(parsePackPins(session.packPins), needed, packs.registry, await packs.mounts(needed));
+    if (problem?.reason === 'PACK_NOT_MOUNTABLE') {
+        throw new PacksNotMountableError(problem.packs);
+    }
+    if (problem) {
+        await endSession(db, ctx, session, 'PACK_CHANGED', { problem: problem.reason, packs: problem.packs });
+        return { kind: 'stopped', reason: 'PACK_CHANGED' };
+    }
     const { frontier, plan } = planOf(state, session);
     const roundNumber = nextRoundNumber(state);
     const round = await InterviewRoundRepository.create(db, ctx.workspaceId, {

@@ -1,0 +1,342 @@
+{
+  "format": "inkquisitor-pack-evaluation/1",
+  "pack": {
+    "name": "craft-research",
+    "version": 1,
+    "contentHash": "sha256:4452720c276edd9d054a1757d73306e371aee2bd74ea80ff95ecef1ea530dc0c"
+  },
+  "set": {
+    "hash": "sha256:179fc0849991554a7fb26941a35da1a4033a4444a06e157bf820c80c6ac04f52"
+  },
+  "promptVersion": "question-generation.2.3.0",
+  "generator": {
+    "kind": "structural",
+    "id": "structural-generator.1"
+  },
+  "ranAt": "2026-11-19T23:18:41.770Z",
+  "answers": [
+    {
+      "caseId": "research-01",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-research-01",
+              "targetsFieldKeys": [
+                "topic"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the topic.",
+              "kind": "CHOICE",
+              "text": "Which way does the topic lean?",
+              "options": [
+                "topic leans inward",
+                "topic leans outward",
+                "topic holds still"
+              ]
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "research-02",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-research-02",
+              "targetsFieldKeys": [
+                "topic"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the topic.",
+              "kind": "OPEN",
+              "text": "What topic matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "research-03",
+      "outputs": []
+    },
+    {
+      "caseId": "research-04",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-research-04",
+              "targetsFieldKeys": [
+                "established_facts"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the established facts.",
+              "kind": "OPEN",
+              "text": "What established facts matters most here, in your own words?"
+            },
+            {
+              "elementId": "eval-research-04",
+              "targetsFieldKeys": [
+                "open_questions"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the open questions.",
+              "kind": "OPEN",
+              "text": "What open questions matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "research-05",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-research-05",
+              "targetsFieldKeys": [
+                "established_facts"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the established facts.",
+              "kind": "OPEN",
+              "text": "What established facts matters most here, in your own words?"
+            },
+            {
+              "elementId": "eval-research-05",
+              "targetsFieldKeys": [
+                "open_questions"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the open questions.",
+              "kind": "OPEN",
+              "text": "What open questions matters most here, in your own words?"
+            },
+            {
+              "elementId": "eval-research-05",
+              "targetsFieldKeys": [
+                "sources"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the sources.",
+              "kind": "OPEN",
+              "text": "What sources matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "research-06",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-research-06",
+              "targetsFieldKeys": [
+                "why_needed"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the why needed.",
+              "kind": "OPEN",
+              "text": "What why needed matters most here, in your own words?"
+            },
+            {
+              "elementId": "eval-research-06",
+              "targetsFieldKeys": [
+                "established_facts"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the established facts.",
+              "kind": "OPEN",
+              "text": "What established facts matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "research-07",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-research-07",
+              "targetsFieldKeys": [
+                "why_needed"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the why needed.",
+              "kind": "OPEN",
+              "text": "What why needed matters most here, in your own words?"
+            },
+            {
+              "elementId": "eval-research-07",
+              "targetsFieldKeys": [
+                "open_questions"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the open questions.",
+              "kind": "OPEN",
+              "text": "What open questions matters most here, in your own words?"
+            },
+            {
+              "elementId": "eval-research-07",
+              "targetsFieldKeys": [
+                "sources"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the sources.",
+              "kind": "OPEN",
+              "text": "What sources matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "research-08",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-research-08",
+              "targetsFieldKeys": [
+                "established_facts"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the established facts.",
+              "kind": "CHOICE",
+              "text": "Which way does the established facts lean?",
+              "options": [
+                "established facts leans inward",
+                "established facts leans outward",
+                "established facts holds still"
+              ]
+            },
+            {
+              "elementId": "eval-research-08",
+              "targetsFieldKeys": [
+                "open_questions"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the open questions.",
+              "kind": "CHOICE",
+              "text": "Which way does the open questions lean?",
+              "options": [
+                "open questions leans inward",
+                "open questions leans outward",
+                "open questions holds still"
+              ]
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "research-09",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-research-09",
+              "targetsFieldKeys": [
+                "why_needed"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the why needed.",
+              "kind": "OPEN",
+              "text": "What why needed matters most here, in your own words?"
+            },
+            {
+              "elementId": "eval-research-09",
+              "targetsFieldKeys": [
+                "sources"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the sources.",
+              "kind": "OPEN",
+              "text": "What sources matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "research-10",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-research-10",
+              "targetsFieldKeys": [
+                "open_questions"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the open questions.",
+              "kind": "OPEN",
+              "text": "What open questions matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "research-11",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-research-11",
+              "targetsFieldKeys": [
+                "established_facts"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the established facts.",
+              "kind": "OPEN",
+              "text": "What established facts matters most here, in your own words?"
+            },
+            {
+              "elementId": "eval-research-11",
+              "targetsFieldKeys": [
+                "open_questions"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the open questions.",
+              "kind": "OPEN",
+              "text": "What open questions matters most here, in your own words?"
+            },
+            {
+              "elementId": "eval-research-11",
+              "targetsFieldKeys": [
+                "sources"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the sources.",
+              "kind": "OPEN",
+              "text": "What sources matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "research-12",
+      "outputs": []
+    }
+  ]
+}

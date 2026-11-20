@@ -68,3 +68,26 @@ it('instrumentation-node.ts statically imports no module that loads @/env', () =
         expect(dep).not.toMatch(/from '@\/env'/);
     }
 });
+
+describe('the pack mount report (Phase 2.3, D11)', () => {
+    it('names how many packs cannot mount and why, in counts and codes; nothing when all mount', async () => {
+        const { mountReport } = await import('@/instrumentation-node');
+        expect(mountReport(new Map([['a', { ok: true as const }]]))).toBeNull();
+        const line = mountReport(
+            new Map<string, { ok: true } | { ok: false; reason: string }>([
+                ['craft-plot', { ok: false, reason: 'STRUCTURAL_RECORD_REFUSED' }],
+                ['craft-mood', { ok: false, reason: 'STRUCTURAL_RECORD_REFUSED' }],
+                ['persona-socratic', { ok: false, reason: 'NO_RECORD' }],
+                ['craft-pov', { ok: true }],
+            ]),
+        );
+        expect(line).toBe('3 of 4 interview packs cannot mount (STRUCTURAL_RECORD_REFUSED ×2, NO_RECORD ×1): interviews that need them answer 503 PACKS_NOT_MOUNTABLE.');
+    });
+
+    it('the shipped packs, as production judges them: every one refused, so production says so at every start', async () => {
+        const { mountReport } = await import('@/instrumentation-node');
+        const { packMounts } = await import('@/lib/interview/pack-mount');
+        const { getPacks } = await import('@/lib/interview/packs');
+        expect(mountReport(await packMounts(getPacks(), 'model'))).toMatch(/^21 of 21 interview packs cannot mount \(STRUCTURAL_RECORD_REFUSED ×21\)/);
+    });
+});

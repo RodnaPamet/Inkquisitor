@@ -11,7 +11,7 @@ import { buildModelRequest, resolveCall } from '@/lib/ai/prompt';
 import { jsonSchemaFor } from '@/lib/ai/client';
 import { getPacks } from '@/lib/interview/packs';
 import { planRound } from '@/lib/interview/plan';
-import { maxOutputTokensFor, QUESTION_PROMPT, QUESTION_PROMPT_VERSION } from '@/lib/interview/prompt';
+import { callPromptVersion, maxOutputTokensFor, QUESTION_PROMPT } from '@/lib/interview/prompt';
 import { fillGapsFromPack, orderRound, produceRound, type RoundElement, type RoundInput } from '@/lib/interview/round';
 import { allowedTargets, dataBlocks, fakeGenerator, fakeQuestion } from '../../helpers/fake-question-generator';
 
@@ -115,7 +115,8 @@ describe('the prompt (rule 4)', () => {
             id: QUESTION_PROMPT.id,
             purpose: 'interview.questions',
             tier: 'balanced',
-            version: QUESTION_PROMPT_VERSION,
+            // The call's version names the exact pack text it carried (rule 9, 2.3).
+            version: callPromptVersion([input.packs.craft.CHARACTER]),
             maxOutputTokens: maxOutputTokensFor(3),
             costBudgetMicroUsd: QUESTION_PROMPT.costBudgetMicroUsd,
         });

@@ -1,0 +1,239 @@
+{
+  "format": "inkquisitor-pack-evaluation/1",
+  "pack": {
+    "name": "persona-gentle-mentor",
+    "version": 1,
+    "contentHash": "sha256:54898d63f65050948f73edc42d174fd0e17331955c046204f227dd211b8d8613"
+  },
+  "set": {
+    "hash": "sha256:dbf270dde8ee2630116637c84e8c12f44b70bb66df08e51d7cca5d85d802b38a"
+  },
+  "promptVersion": "question-generation.2.3.0",
+  "generator": {
+    "kind": "structural",
+    "id": "structural-generator.1"
+  },
+  "ranAt": "2026-11-19T23:18:42.005Z",
+  "answers": [
+    {
+      "caseId": "gentle-mentor-01",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-gentle-mentor-01",
+              "targetsFieldKeys": [
+                "wound"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the wound.",
+              "kind": "OPEN",
+              "text": "What wound matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "gentle-mentor-02",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-gentle-mentor-02",
+              "targetsFieldKeys": [
+                "stance"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the stance.",
+              "kind": "OPEN",
+              "text": "What stance matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "gentle-mentor-03",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-gentle-mentor-03",
+              "targetsFieldKeys": [
+                "resolution"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the resolution.",
+              "kind": "OPEN",
+              "text": "What resolution matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "gentle-mentor-04",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-gentle-mentor-04",
+              "targetsFieldKeys": [
+                "need"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the need.",
+              "kind": "OPEN",
+              "text": "What need matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "gentle-mentor-05",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-gentle-mentor-05",
+              "targetsFieldKeys": [
+                "who_knows"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the who knows.",
+              "kind": "OPEN",
+              "text": "What who knows matters most here, in your own words?"
+            },
+            {
+              "elementId": "eval-gentle-mentor-05",
+              "targetsFieldKeys": [
+                "story_consequence"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the story consequence.",
+              "kind": "OPEN",
+              "text": "What story consequence matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "gentle-mentor-06",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-gentle-mentor-06",
+              "targetsFieldKeys": [
+                "complications"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the complications.",
+              "kind": "OPEN",
+              "text": "What complications matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "gentle-mentor-07",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-gentle-mentor-07",
+              "targetsFieldKeys": [
+                "story_purpose"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the story purpose.",
+              "kind": "OPEN",
+              "text": "What story purpose matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "gentle-mentor-08",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-gentle-mentor-08",
+              "targetsFieldKeys": [
+                "intensity"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the intensity.",
+              "kind": "OPEN",
+              "text": "What intensity matters most here, in your own words?"
+            },
+            {
+              "elementId": "eval-gentle-mentor-08",
+              "targetsFieldKeys": [
+                "closing_feeling"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the closing feeling.",
+              "kind": "OPEN",
+              "text": "What closing feeling matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "gentle-mentor-09",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-gentle-mentor-09",
+              "targetsFieldKeys": [
+                "physical_description"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the physical description.",
+              "kind": "CHOICE",
+              "text": "Which way does the physical description lean?",
+              "options": [
+                "physical description leans inward",
+                "physical description leans outward",
+                "physical description holds still"
+              ]
+            },
+            {
+              "elementId": "eval-gentle-mentor-09",
+              "targetsFieldKeys": [
+                "current_holder"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the current holder.",
+              "kind": "CHOICE",
+              "text": "Which way does the current holder lean?",
+              "options": [
+                "current holder leans inward",
+                "current holder leans outward",
+                "current holder holds still"
+              ]
+            }
+          ],
+          "declined": []
+        }
+      ]
+    }
+  ]
+}

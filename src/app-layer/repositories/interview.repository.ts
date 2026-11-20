@@ -29,6 +29,7 @@ export const SESSION_SELECT = {
     personaKeys: true,
     offerRecommended: true,
     preferChoice: true,
+    packPins: true,
     status: true,
     stopReason: true,
     stopDetail: true,
@@ -130,6 +131,8 @@ export const InterviewSessionRepository = {
             preferChoice: boolean;
             roundBudget: number;
             tokenBudget: number;
+            /** The packs the session mounts, pinned once (Phase 2.3; never updated: a trigger refuses it). */
+            packPins: Prisma.InputJsonValue;
             createdById: string;
         },
     ) {

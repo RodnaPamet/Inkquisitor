@@ -1,0 +1,373 @@
+{
+  "format": "inkquisitor-pack-evaluation/1",
+  "pack": {
+    "name": "craft-pov",
+    "version": 1,
+    "contentHash": "sha256:578fffb423f8b91c4c5c52e89b44e115e250fb2d86bc05715caaf37e1d68dbfa"
+  },
+  "set": {
+    "hash": "sha256:8c2f1159a1bf18f9ce7ce939301bc40727340d1402b341cb7f52aeff75798b7d"
+  },
+  "promptVersion": "question-generation.2.3.0",
+  "generator": {
+    "kind": "structural",
+    "id": "structural-generator.1"
+  },
+  "ranAt": "2026-11-19T23:18:40.981Z",
+  "answers": [
+    {
+      "caseId": "pov-01",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-pov-01",
+              "targetsFieldKeys": [
+                "viewpoint_characters"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the viewpoint characters.",
+              "kind": "CHOICE",
+              "text": "Which way does the viewpoint characters lean?",
+              "options": [
+                "viewpoint characters leans inward",
+                "viewpoint characters leans outward",
+                "viewpoint characters holds still"
+              ]
+            },
+            {
+              "elementId": "eval-pov-01",
+              "targetsFieldKeys": [
+                "person"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the person.",
+              "kind": "CHOICE",
+              "text": "Which way does the person lean?",
+              "options": [
+                "person leans inward",
+                "person leans outward",
+                "person holds still"
+              ]
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "pov-02",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-pov-02",
+              "targetsFieldKeys": [
+                "viewpoint_characters"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the viewpoint characters.",
+              "kind": "OPEN",
+              "text": "What viewpoint characters matters most here, in your own words?"
+            },
+            {
+              "elementId": "eval-pov-02",
+              "targetsFieldKeys": [
+                "person"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the person.",
+              "kind": "OPEN",
+              "text": "What person matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "pov-03",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-pov-03",
+              "targetsFieldKeys": [
+                "knowledge_limits"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the knowledge limits.",
+              "kind": "OPEN",
+              "text": "What knowledge limits matters most here, in your own words?"
+            },
+            {
+              "elementId": "eval-pov-03",
+              "targetsFieldKeys": [
+                "switching_pattern"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the switching pattern.",
+              "kind": "OPEN",
+              "text": "What switching pattern matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "pov-04",
+      "outputs": []
+    },
+    {
+      "caseId": "pov-05",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-pov-05",
+              "targetsFieldKeys": [
+                "narrative_distance"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the narrative distance.",
+              "kind": "OPEN",
+              "text": "What narrative distance matters most here, in your own words?"
+            },
+            {
+              "elementId": "eval-pov-05",
+              "targetsFieldKeys": [
+                "knowledge_limits"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the knowledge limits.",
+              "kind": "OPEN",
+              "text": "What knowledge limits matters most here, in your own words?"
+            },
+            {
+              "elementId": "eval-pov-05",
+              "targetsFieldKeys": [
+                "switching_pattern"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the switching pattern.",
+              "kind": "OPEN",
+              "text": "What switching pattern matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "pov-06",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-pov-06",
+              "targetsFieldKeys": [
+                "narrative_distance"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the narrative distance.",
+              "kind": "CHOICE",
+              "text": "Which way does the narrative distance lean?",
+              "options": [
+                "narrative distance leans inward",
+                "narrative distance leans outward",
+                "narrative distance holds still"
+              ]
+            },
+            {
+              "elementId": "eval-pov-06",
+              "targetsFieldKeys": [
+                "switching_pattern"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the switching pattern.",
+              "kind": "CHOICE",
+              "text": "Which way does the switching pattern lean?",
+              "options": [
+                "switching pattern leans inward",
+                "switching pattern leans outward",
+                "switching pattern holds still"
+              ]
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "pov-07",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-pov-07",
+              "targetsFieldKeys": [
+                "narrative_distance"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the narrative distance.",
+              "kind": "OPEN",
+              "text": "What narrative distance matters most here, in your own words?"
+            },
+            {
+              "elementId": "eval-pov-07",
+              "targetsFieldKeys": [
+                "switching_pattern"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the switching pattern.",
+              "kind": "OPEN",
+              "text": "What switching pattern matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "pov-08",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-pov-08",
+              "targetsFieldKeys": [
+                "narrative_distance"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the narrative distance.",
+              "kind": "OPEN",
+              "text": "What narrative distance matters most here, in your own words?"
+            },
+            {
+              "elementId": "eval-pov-08",
+              "targetsFieldKeys": [
+                "knowledge_limits"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the knowledge limits.",
+              "kind": "OPEN",
+              "text": "What knowledge limits matters most here, in your own words?"
+            },
+            {
+              "elementId": "eval-pov-08",
+              "targetsFieldKeys": [
+                "switching_pattern"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the switching pattern.",
+              "kind": "OPEN",
+              "text": "What switching pattern matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "pov-09",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-pov-09",
+              "targetsFieldKeys": [
+                "person"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the person.",
+              "kind": "OPEN",
+              "text": "What person matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "pov-10",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-pov-10",
+              "targetsFieldKeys": [
+                "narrative_distance"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the narrative distance.",
+              "kind": "OPEN",
+              "text": "What narrative distance matters most here, in your own words?"
+            },
+            {
+              "elementId": "eval-pov-10",
+              "targetsFieldKeys": [
+                "knowledge_limits"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the knowledge limits.",
+              "kind": "OPEN",
+              "text": "What knowledge limits matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "pov-11",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-pov-11",
+              "targetsFieldKeys": [
+                "narrative_distance"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the narrative distance.",
+              "kind": "OPEN",
+              "text": "What narrative distance matters most here, in your own words?"
+            },
+            {
+              "elementId": "eval-pov-11",
+              "targetsFieldKeys": [
+                "switching_pattern"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the switching pattern.",
+              "kind": "OPEN",
+              "text": "What switching pattern matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "pov-12",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-pov-12",
+              "targetsFieldKeys": [
+                "knowledge_limits"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the knowledge limits.",
+              "kind": "OPEN",
+              "text": "What knowledge limits matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    }
+  ]
+}
