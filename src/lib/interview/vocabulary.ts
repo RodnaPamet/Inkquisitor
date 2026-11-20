@@ -36,7 +36,7 @@ export type QuestionKind = (typeof QUESTION_KINDS)[number];
 export const QUESTION_MODES = ['FRONTIER', 'CHALLENGE'] as const;
 export type QuestionMode = (typeof QUESTION_MODES)[number];
 
-export const QUESTION_ORIGINS = ['MODEL', 'PACK_FALLBACK'] as const;
+export const QUESTION_ORIGINS = ['MODEL', 'PACK_FALLBACK', 'REPHRASE'] as const;
 export type QuestionOrigin = (typeof QUESTION_ORIGINS)[number];
 
 export const ANSWER_STATUSES = ['ANSWERED', 'SKIPPED', 'DECIDE_LATER'] as const;

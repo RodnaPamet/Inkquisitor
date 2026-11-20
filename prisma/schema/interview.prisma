@@ -167,15 +167,29 @@ model Question {
   dependsOnQuestionIds String[]
   /// Keyed hash of the normalised text (`questionDedupeKey`): exact repeats across the book, no text.
   dedupeKey            String
+  /// The question this one replaces: the author asked "Ask me this
+  /// differently" (Phase 2.4). Same session and round, same targets; one
+  /// rephrase per question (unique), which may itself be rephrased.
+  replacesQuestionId   String?
+  /// Set when a rephrase replaced this question: it is no longer asked and
+  /// cannot be answered (only one of the pair is). Never cleared.
+  supersededAt         DateTime?
+  /// The guard flagged the model call that worded it and let the call go on
+  /// ("flag and fence", 2.1): the question is asked, with a visible marker.
+  reviewRequired       Boolean        @default(false)
   createdAt            DateTime       @default(now())
 
-  session InterviewSession @relation(fields: [workspaceId, bookId, sessionId], references: [workspaceId, bookId, id], onDelete: Cascade)
-  round   InterviewRound   @relation(fields: [sessionId, roundId], references: [sessionId, id], onDelete: Cascade)
-  element BibleElement     @relation(fields: [bookId, elementId], references: [bookId, id], onDelete: Cascade)
-  answers Answer[]
+  session    InterviewSession @relation(fields: [workspaceId, bookId, sessionId], references: [workspaceId, bookId, id], onDelete: Cascade)
+  round      InterviewRound   @relation(fields: [sessionId, roundId], references: [sessionId, id], onDelete: Cascade)
+  element    BibleElement     @relation(fields: [bookId, elementId], references: [bookId, id], onDelete: Cascade)
+  replaces   Question?        @relation("QuestionRephrase", fields: [workspaceId, sessionId, replacesQuestionId], references: [workspaceId, sessionId, id], onDelete: Cascade)
+  replacedBy Question?        @relation("QuestionRephrase")
+  answers    Answer[]
 
   @@unique([roundId, position])
   @@unique([workspaceId, sessionId, id])
+  /// One rephrase per question (and the foreign key's index).
+  @@unique([workspaceId, sessionId, replacesQuestionId])
   /// An element's questions across the book's sessions (book-wide deduplication).
   @@index([bookId, elementId, createdAt])
   /// Exact repeats anywhere in the book.

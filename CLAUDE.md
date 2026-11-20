@@ -227,6 +227,20 @@ src/lib/ai/anthropic-workspace.ts → ANTHROPIC_WORKSPACE_ID, the header an orga
 .github/workflows/evals.yml  → real-model evaluation records (dispatch only, artifact, no push)
 ```
 
+Phase 2.4 (the interview experience) added:
+
+```
+src/components/interview/    → InterviewSetupSheet, InterviewLauncher, InterviewSession, QuestionCard, RoundFieldsPanel,
+                               InterviewsList, use-interview-stream (lifted), messages (stop reasons and refusals in words)
+src/lib/interview/           → stream-events (SSE contract, lifted), stream-response (transport), rephrase, setup (THE 2.3 SEAM),
+                               api-client, page-model
+src/lib/ai/model-stub.ts     → the stubbed model (AI_MODEL_STUB=1): a local test server's in-process Messages API
+src/app-layer/usecases/      → interview-rephrase, interview-pages
+src/app/api/w/[workspaceSlug]/books/[bookId]/interviews/{stream,[sessionId]/rounds/stream,…/rephrase}
+src/app/w/[workspaceSlug]/books/[bookId]/interviews/{page,new,[sessionId]}
+tests/e2e/stub-server.ts     → the second E2E server (E2E_PORT + 2) with the stubbed model
+```
+
 ## Rules every change obeys
 
 These are `docs/ROADMAP.md` section 3, restated. The roadmap is authoritative
@@ -673,7 +687,10 @@ closed beta with an explicit operator flag (D5, amended 2026-11-19).
   structural generator reproduces, and a model record holding the structural
   generator's output is refused `STRUCTURAL_OUTPUT_AS_MODEL`); PRODUCTION
   accepts only a real model's record, development and test a structural one
-  too, with no override (D11, `pack-records-config.ts`). A refused pack is 503
+  too, with no override (D11, `pack-records-config.ts`) but one: the
+  loopback-only model stub (D13, `loopbackStubMode`), asked in
+  `packRecordModeOf` and nowhere else; the start-up check refuses a
+  structural mode beside a real host. A refused pack is 503
   `PACKS_NOT_MOUNTABLE` naming each pack, nothing written, and production
   logs `[startup] WARN` with the counts. A session pins its packs at start
   (`packPins`, write-once by trigger) — each kind's craft pack (every kind for
@@ -683,6 +700,41 @@ closed beta with an explicit operator flag (D5, amended 2026-11-19).
   editing a pack, its `evals.json`, `situations.json` or the question prompt,
   re-run `npm run packs:evaluate`; real-model records come from the Evals
   workflow and land by a reviewed pull request (the 2.3 note, "Evals").
+- **The interview experience (Phase 2.4).** Starting an interview and each
+  next round STREAM (`…/interviews/stream`, `…/:sessionId/rounds/stream`,
+  `interviewStreamResponse`): a refusal before the work is under way is the
+  ordinary JSON error; after it, events (`src/lib/interview/stream-events.ts`)
+  end with `committed` or `refusal` (a code) and then `done`. The round is
+  still persisted in ONE transaction after generation: `draft` events are
+  validated candidates, shown read-only, and only the `committed` round's
+  questions are answerable. Closing the stream aborts the signal the usecase
+  hands the model call; the round is abandoned (FAILED, tokens charged, no
+  question written) and the session stays resumable. `produceRound`'s
+  observer is told, never asked (a throw is swallowed). "Ask me this
+  differently" is its own prompt (`REPHRASE_PROMPT`, fast tier); the old
+  wording travels as a data block; the rephrase replaces the question
+  (`replacesQuestionId`, the original `supersededAt`, one transaction), only
+  one of the pair is answerable (409 QUESTION_SUPERSEDED), and a round holds at
+  most `REPHRASES_PER_ROUND_MAX` (counted again under the lock before the
+  write). A rephrase is held to a round's rules: never a field the bible now
+  answers (409 ANSWERED_IN_BIBLE), only the session's pinned, mountable packs
+  (`pinMismatch`), its version naming them (`packsVersionOf`). Never change `QUESTION_PROMPT`'s text or
+  version for UI work (2.3's evaluation records pin it). The setup sheet reads
+  and sends the dials ONLY through `src/lib/interview/setup.ts`. A card saves
+  each answer as it is given (a pick at once; text on save, Ctrl/⌘+Enter, or
+  leaving the box), one request at a time, keeping the answer on failure;
+  finishing a round and stopping first `flush()` every card and wait for its
+  saves (a close or a stop never overtakes an answer), and a failed save holds
+  them;
+  digits are bound `within` the card. Stop reasons and refusals are worded from
+  their codes (`src/components/interview/messages.ts`; the stop table is keyed
+  on `StopReason`, so a new reason fails `tsc` until worded); client code never
+  spells a server variable's name. `AI_MODEL_STUB=1` (`src/lib/ai/model-stub.ts`)
+  is `clientForRun`'s fetch seam taken by configuration, for a local test
+  server: production refuses it unless `APP_URL` and `NEXTAUTH_URL` are both
+  loopback, and anywhere beside `ANTHROPIC_API_KEY` (D13; a WARN at every
+  start). In that mode only, structural pack records mount too. The interview E2E runs
+  against the second E2E server (`test.use({ baseURL: STUB_BASE_URL })`).
 - **Sanitising author text.** Every author-text write sanitises at the
   usecase layer before it is stored: plain text through `plainLine` /
   `plainBlock` (`src/lib/bible/text.ts`, over `sanitizePlainText`), rich text

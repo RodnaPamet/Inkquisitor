@@ -21,6 +21,11 @@
  *   ANTHROPIC_WORKSPACE_ID           optional (2.3): the workspace an
  *                                    organisation-level key's requests name;
  *                                    a malformed one is refused at start
+ *   AI_MODEL_STUB=1                  the in-process stubbed model (Phase 2.4,
+ *                                    `./model-stub.ts`): canned questions, for
+ *                                    a local test server only; production
+ *                                    refuses it unless APP_URL and NEXTAUTH_URL
+ *                                    are both loopback, and beside a key
  *
  * ── RETENTION IS AN ARRANGEMENT, NOT A REQUEST PARAMETER ───────────────────
  *
@@ -51,6 +56,20 @@
  */
 
 import { isAnthropicWorkspaceId } from './anthropic-workspace';
+import { loopbackStubMode, stubModelEnabled, stubModelProblems } from './model-stub';
+
+/**
+ * The stubbed model is answering (Phase 2.4): switched on, and no provider key
+ * configured beside it (a key wins; production refuses the pair at start-up,
+ * `stubModelProblems`). In production, only in D13's loopback-only mode, asked
+ * here too and not only at start-up: a process whose start-up check did not
+ * run (it is skipped for `next build`) still never answers a real host's
+ * authors with canned questions.
+ */
+export function stubModelActive(e: AiEnvRecord): boolean {
+    if (e.NODE_ENV === 'production') return loopbackStubMode(e);
+    return stubModelEnabled(e) && !present(e.ANTHROPIC_API_KEY);
+}
 
 /** The variables this file reads, from `process.env`, `env` or a test's object. */
 export type AiEnvRecord = {
@@ -62,6 +81,9 @@ export type AiEnvRecord = {
         | 'ANTHROPIC_ZDR_CONFIRMED'
         | 'ANTHROPIC_CUSTOM_HEADERS'
         | 'ANTHROPIC_WORKSPACE_ID'
+        | 'AI_MODEL_STUB'
+        | 'APP_URL'
+        | 'NEXTAUTH_URL'
         | 'NODE_ENV']?: string | undefined;
 };
 
@@ -124,6 +146,9 @@ export type AiConfigUnavailableReason = 'AI_DISABLED' | 'CREDENTIAL_NOT_CONFIGUR
 
 export function aiUnavailableReason(e: AiEnvRecord): AiConfigUnavailableReason | null {
     if (aiDisabled(e)) return 'AI_DISABLED';
+    // The stubbed model (Phase 2.4, `./model-stub.ts`) answers in-process: no
+    // key and no retention apply, as nothing is sent. A configured key wins.
+    if (stubModelActive(e)) return present(e.ANTHROPIC_CUSTOM_HEADERS) ? 'SDK_AMBIENT_HEADERS_SET' : null;
     if (!present(e.ANTHROPIC_API_KEY)) return 'CREDENTIAL_NOT_CONFIGURED';
     if (present(e.ANTHROPIC_CUSTOM_HEADERS)) return 'SDK_AMBIENT_HEADERS_SET';
     if (e.NODE_ENV === 'production' && retentionMode(e) === null) return 'RETENTION_MODE_UNDECLARED';
@@ -132,8 +157,8 @@ export function aiUnavailableReason(e: AiEnvRecord): AiConfigUnavailableReason |
 
 /** What a production process refuses to start with, for the model layer. Empty when fit. */
 export function aiConfigProblems(e: AiEnvRecord): string[] {
-    const problems: string[] = [];
-    if (!present(e.ANTHROPIC_API_KEY) && !aiDisabled(e)) {
+    const problems: string[] = [...stubModelProblems(e)];
+    if (!present(e.ANTHROPIC_API_KEY) && !aiDisabled(e) && !stubModelEnabled(e)) {
         problems.push(
             'ANTHROPIC_API_KEY is required: the question engine calls a model. Set the key (and AI_RETENTION_MODE), ' +
                 'or run with AI switched off (AI_DISABLED=1).',
@@ -184,6 +209,9 @@ export function aiConfigProblems(e: AiEnvRecord): string[] {
  * a fixed sentence naming the setting, never anything an author wrote.
  */
 export function aiConfigWarnings(e: AiEnvRecord): string[] {
+    if (stubModelActive(e)) {
+        return ['AI_MODEL_STUB=1: every model call is answered by the in-process stub with canned questions. A local test server only.'];
+    }
     if (!present(e.ANTHROPIC_API_KEY) || aiDisabled(e)) return [];
     if (retentionMode(e) !== 'standard-beta') return [];
     return [

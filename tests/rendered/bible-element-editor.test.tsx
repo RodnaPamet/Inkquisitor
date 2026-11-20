@@ -3,7 +3,8 @@
  * the 1.1 fields API after the debounce, once, with the field's key and the
  * latest value; a refused or failed save keeps the edit on screen, says so,
  * and sends it again on Retry; the element's own columns go through PATCH.
- * And the Enrich button is disabled with its reason as a tooltip.
+ * And "Enrich" (Phase 2.4) opens the interview setup for this element, for an
+ * editor only: a reader gets no button.
  */
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { axe } from 'jest-axe';
@@ -20,6 +21,7 @@ jest.mock('next/navigation', () => ({
 import { ElementPage } from '@/components/bible/ElementPage';
 import { AUTOSAVE_DEBOUNCE_MS } from '@/components/bible/use-element-autosave';
 import { API, elementView, mockFetch, pageProps } from '../helpers/bible-ui';
+import { setupRoutes } from '../helpers/interview-ui';
 
 // TipTap (the rich-text fields) calls document.elementFromPoint while mounting; jsdom has none.
 beforeAll(() => {
@@ -256,12 +258,26 @@ it('a list field sends its items, leaving blank rows out', async () => {
     expect(requests[requests.length - 1].body).toEqual({ fields: [{ key: 'defining_traits', value: ['stubborn', 'kind'] }], baseVersion: 3 });
 });
 
-it('Enrich is disabled, and says why: enrichment arrives with interviews', async () => {
-    mockFetch({});
+it('Enrich opens the interview setup for this element; starting it opens the interview with the setup in the query', async () => {
+    jest.useRealTimers();
+    mockFetch(setupRoutes('ada', 'book_1'));
     mount();
     const enrich = screen.getByRole('button', { name: 'Enrich' });
-    expect(enrich).toHaveAttribute('aria-disabled', 'true');
-    expect(enrich).toHaveAccessibleDescription('Enrichment arrives with interviews');
+    expect(enrich).not.toHaveAttribute('aria-disabled');
+    fireEvent.click(enrich);
+    const sheet = await screen.findByTestId('interview-setup');
+    expect(await within(sheet).findByTestId('depth-preview')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Start interview' }));
+    expect(push).toHaveBeenCalledTimes(1);
+    const url = new URL(push.mock.calls[0][0] as string, 'http://x');
+    expect(url.pathname).toBe('/w/ada/books/book_1/interviews/new');
+    expect(Object.fromEntries(url.searchParams)).toMatchObject({ scope: 'ELEMENT', element: 'el_1', depth: '3', detail: '3', recommend: '1', choice: '0' });
+});
+
+it('a reader gets no Enrich button', () => {
+    mockFetch({});
+    render(<ElementPage {...pageProps({ canEdit: false })} />);
+    expect(screen.queryByRole('button', { name: 'Enrich' })).toBeNull();
 });
 
 it('has no axe violations, editable or read-only', async () => {

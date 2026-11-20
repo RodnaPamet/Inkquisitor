@@ -219,6 +219,11 @@ export const env = createEnv({
         ANTHROPIC_CUSTOM_HEADERS: z.string().optional(),
         // The global kill switch: `1` refuses every model call (KILLED).
         AI_DISABLED: z.enum(['0', '1']).optional(),
+        // The in-process stubbed model (Phase 2.4, src/lib/ai/model-stub.ts):
+        // `1` answers every model call with canned questions, for a local test
+        // server. Production refuses it unless APP_URL and NEXTAUTH_URL are
+        // both loopback, and with ANTHROPIC_API_KEY set.
+        AI_MODEL_STUB: z.enum(['0', '1']).optional(),
         // Each workspace's model spend ceiling per UTC calendar month, in US
         // dollars (default 50, decision D10). The worst case of a call is checked against it
         // before the call is sent.
@@ -294,6 +299,7 @@ export const env = createEnv({
         ANTHROPIC_WORKSPACE_ID: process.env.ANTHROPIC_WORKSPACE_ID,
         ANTHROPIC_CUSTOM_HEADERS: process.env.ANTHROPIC_CUSTOM_HEADERS,
         AI_DISABLED: process.env.AI_DISABLED,
+        AI_MODEL_STUB: process.env.AI_MODEL_STUB,
         AI_MONTHLY_CEILING_USD_DEFAULT: process.env.AI_MONTHLY_CEILING_USD_DEFAULT,
         AI_MODEL_FAST: process.env.AI_MODEL_FAST,
         AI_MODEL_BALANCED: process.env.AI_MODEL_BALANCED,

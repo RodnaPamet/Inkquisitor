@@ -7,9 +7,10 @@
 import { ANSWER_REVISIONS_MAX } from '@/app-layer/usecases/interview-answers';
 import { SESSION_ANSWERS_MAX, SESSION_QUESTIONS_MAX } from '@/app-layer/usecases/interview-state';
 import { DETAIL, MAX_ROUNDS } from '@/lib/interview/dials';
+import { REPHRASES_PER_ROUND_MAX } from '@/lib/interview/rephrase';
 
-it('a session asks no more questions than its state reads: every round at its cap, plus its one challenge', () => {
-    const largestRound = Math.max(...Object.values(DETAIL).map((d) => d.roundCap)) + 1;
+it('a session holds no more questions than its state reads: every round at its cap, its one challenge, and its rephrases (Phase 2.4)', () => {
+    const largestRound = Math.max(...Object.values(DETAIL).map((d) => d.roundCap)) + 1 + REPHRASES_PER_ROUND_MAX;
     expect(MAX_ROUNDS * largestRound).toBeLessThanOrEqual(SESSION_QUESTIONS_MAX);
 });
 

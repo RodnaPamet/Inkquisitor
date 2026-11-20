@@ -26,6 +26,8 @@ import { DEV_FALLBACK_DATA_ENCRYPTION_KEY, MIN_DATA_ENCRYPTION_KEY_LENGTH } from
 import { DEV_FALLBACK_AUTH_SECRET, MIN_AUTH_SECRET_LENGTH } from './auth/auth-constants';
 import { embeddingConfigProblems } from './ai/embeddings/config';
 import { aiConfigProblems, aiConfigWarnings } from './ai/config';
+import { isLoopbackUrl } from './ai/model-stub';
+import { packRecordModeOf } from './interview/pack-records-config';
 
 export { MIN_AUTH_SECRET_LENGTH };
 
@@ -110,6 +112,17 @@ export function productionConfigProblems(e: EnvRecord): string[] {
     // src/lib/ai/config.ts is the one reading.
     problems.push(...aiConfigProblems(e));
 
+    // ── Interview packs (D11, D13): production mounts a pack only on a real
+    // model's evaluation record. The loopback-only model stub is the one
+    // exception (`packRecordModeOf`); this holds it to a loopback test server
+    // whatever that rule says, so no edit to it can open a real host.
+    if (packRecordModeOf(e) === 'structural' && !(isLoopbackUrl(e.APP_URL) && isLoopbackUrl(e.NEXTAUTH_URL))) {
+        problems.push(
+            'Interview packs would mount on structural evaluation records, which only a loopback test server with ' +
+                'AI_MODEL_STUB=1 may do (D13): APP_URL and NEXTAUTH_URL must both be loopback addresses.',
+        );
+    }
+
     if (present(e.UPSTASH_REDIS_REST_URL) !== present(e.UPSTASH_REDIS_REST_TOKEN)) {
         problems.push(
             'UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN are set together or not at all: with one of them ' +
@@ -122,13 +135,22 @@ export function productionConfigProblems(e: EnvRecord): string[] {
 
 /**
  * What this production environment runs with but must say out loud at every
- * start: today, standard model-provider retention during the closed beta
- * (`AI_RETENTION_MODE=standard-beta`, decision D5 amended 2026-11-19). Fixed
- * sentences naming settings, never author text. Empty outside production.
+ * start: standard model-provider retention during the closed beta
+ * (`AI_RETENTION_MODE=standard-beta`, decision D5 amended 2026-11-19), the
+ * stubbed model, and structural pack records on its loopback test server
+ * (D13). Fixed sentences naming settings, never author text. Empty outside
+ * production.
  */
 export function productionConfigWarnings(e: EnvRecord): string[] {
     if (e.NODE_ENV !== 'production' || isNextProductionBuild(e)) return [];
-    return aiConfigWarnings(e);
+    const warnings = aiConfigWarnings(e);
+    if (packRecordModeOf(e) === 'structural') {
+        warnings.push(
+            'Interview packs mount on STRUCTURAL evaluation records (D13: the loopback-only model stub). ' +
+                'A local test server only; a real deployment mounts a pack only on a real model\'s record (D11).',
+        );
+    }
+    return warnings;
 }
 
 /**

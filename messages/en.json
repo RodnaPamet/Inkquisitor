@@ -369,7 +369,6 @@
             "tabHistory": "History",
             "fieldsTitle": "Fields",
             "enrich": "Enrich",
-            "enrichSoon": "Enrichment arrives with interviews",
             "delete": "Delete",
             "deleted": "Deleted {name}",
             "deleting": "This entry will be deleted when the undo window closes. Editing is paused.",
@@ -598,6 +597,262 @@
                 "until": "Restorable until",
                 "action": "Restore"
             }
+        }
+    },
+    "interview": {
+        "meta": {
+            "list": "Interviews",
+            "session": "Interview",
+            "new": "New interview"
+        },
+        "launch": {
+            "enrich": "Enrich",
+            "grillBook": "Grill me",
+            "grillKind": "Grill me on {kind}",
+            "interviews": "Interviews"
+        },
+        "setup": {
+            "titleElement": "Enrich {name}",
+            "titleKind": "Grill me on {kind}",
+            "titleBook": "Grill me on the whole book",
+            "description": "Choose how the interview asks. Your answers are kept as you give them; nothing reaches the bible until you accept it.",
+            "depth": "Depth",
+            "depthHelp": "How far down the questions go.",
+            "detail": "Detail",
+            "detailHelp": "How specific a question is and how long an answer it invites.",
+            "depthPreview": {
+                "1": "Foundations only, in up to {rounds} rounds.",
+                "2": "Foundations and what rests on them, in up to {rounds} rounds.",
+                "3": "Consequences and pressures too, in up to {rounds} rounds.",
+                "4": "Consequences and pressures; it may question what you already wrote. Up to {rounds} rounds.",
+                "5": "Consistency with related entries and edge cases; it may question what you wrote. Up to {rounds} rounds."
+            },
+            "detailPreview": {
+                "1": "Up to {cap} questions a round, answered with a pick or a number.",
+                "2": "Up to {cap} questions a round; a pick, a number or a short phrase.",
+                "3": "Up to {cap} questions a round; answers of a few sentences.",
+                "4": "Up to {cap} questions a round; answers of about a paragraph.",
+                "5": "Up to {cap} questions a round; answers of several paragraphs."
+            },
+            "persona": "Interviewer",
+            "personaHelp": "Who asks, and in what manner.",
+            "personaNone": "No particular interviewer",
+            "personaNoneSummary": "Plain questions in the craft pack's own voice.",
+            "personaLimit": "Choose up to {max} interviewers.",
+            "personaOrder": "(asks {n})",
+            "personaPreview": {
+                "none": "The craft pack words every question, in one call a round.",
+                "one": "One interviewer words every question, in one call a round.",
+                "many": "{count} interviewers share each round, each in its own call ({calls} calls a round); the first leads round 1."
+            },
+            "packRefusal": {
+                "STRUCTURAL_RECORD_REFUSED": "Not available here yet: it has not been evaluated on a real model.",
+                "NO_RECORD": "Not available here: it has not been evaluated.",
+                "TEXT_REFUSED": "Not available here: its text did not pass the safety scan.",
+                "generic": "Not available here: its evaluation does not pass."
+            },
+            "sourceBook": "This book's default.",
+            "sourceWorkspace": "This workspace's default.",
+            "toggles": "Options",
+            "offerRecommended": "Offer a recommended answer",
+            "offerRecommendedOn": "Questions may suggest an answer drawn from what you wrote; take it with one click.",
+            "offerRecommendedOff": "No suggestions: every answer is yours to write.",
+            "preferChoice": "Multiple choice where possible",
+            "preferChoiceOn": "Where the detail allows, questions offer options to pick from.",
+            "preferChoiceOff": "Questions take whatever shape fits them best.",
+            "start": "Start interview",
+            "cancel": "Cancel",
+            "loading": "Loading the options…",
+            "loadFailed": "The interview options could not be loaded."
+        },
+        "personas": {
+            "gentle-mentor": {
+                "name": "Gentle Mentor",
+                "summary": "Warm, patient questions that build on what you wrote."
+            },
+            "ruthless-editor": {
+                "name": "Ruthless Editor",
+                "summary": "Blunt questions that press for stakes and consequences."
+            },
+            "socratic": {
+                "name": "Socratic",
+                "summary": "Curious questions that test the assumptions beneath your entries."
+            },
+            "devils-advocate": {
+                "name": "Devil's Advocate",
+                "summary": "Argues the opposite of each choice to see whether it holds."
+            },
+            "target-reader": {
+                "name": "Target Reader",
+                "summary": "Questions from the reader's side of the page."
+            },
+            "genre-specialist": {
+                "name": "Genre Specialist",
+                "summary": "The promises your genre makes, and where you depart on purpose."
+            }
+        },
+        "kinds": {
+            "OPEN": "Open answer",
+            "CHOICE": "Choose one",
+            "EITHER_OR": "One or the other",
+            "SCENARIO": "Scenario",
+            "SCALE": "Scale"
+        },
+        "scope": {
+            "ELEMENT": "{name}",
+            "KIND": "Every {kind}",
+            "BOOK": "The whole book",
+            "unknownElement": "A deleted entry"
+        },
+        "status": {
+            "ACTIVE": "Active",
+            "PAUSED": "Paused",
+            "COMPLETED": "Completed",
+            "STOPPED": "Stopped",
+            "GENERATING": "Generating"
+        },
+        "stop": {
+            "FRONTIER_EMPTY": "Everything this interview can reach is answered or set aside.",
+            "NOTHING_AT_DEPTH": "What is left lies deeper than this interview goes. Start another at a greater depth to reach it.",
+            "ROUND_BUDGET": "This interview has used all its rounds. Start another to go on.",
+            "TOKEN_BUDGET": "This interview has used its share of the AI budget. Your answers are kept.",
+            "WORKSPACE_CEILING": "This workspace has reached its AI limit for the month. Your answers are kept; resume when the limit resets.",
+            "KILL_SWITCH": "AI questions are switched off for now. Your answers are kept; resume later.",
+            "AUTHOR_STOPPED": "You stopped this interview. Every answer you gave is kept.",
+            "PROVIDER_FAILURE": "The AI service could not be reached. Your answers are kept; try the next round again.",
+            "NO_ACCEPTABLE_QUESTION": "No usable question came back this time. Your answers are kept; try the next round again.",
+            "GUARD_REFUSED": "The safety check held this round back. Your answers are kept; try again, or edit the entry first.",
+            "generic": "This interview has stopped. Your answers are kept.",
+            "PACK_CHANGED": "A question pack this interview was started with has changed since. Your answers are kept; start a new interview to go on.",
+            "PACK_NOT_PINNED": "This interview was started before question packs were recorded with it, so it cannot go on. Your answers are kept; start a new interview to continue."
+        },
+        "session": {
+            "breadcrumbInterviews": "Interviews",
+            "titleElement": "Enriching {name}",
+            "titleKind": "Grill me: every {kind}",
+            "titleBook": "Grill me: the whole book",
+            "round": "Round {number}",
+            "roundOf": "Round {number} of up to {budget}",
+            "progressNotAssessed": "Not assessed: no question asked yet",
+            "progress": "{answered} of {asked} answered",
+            "progressAria": "Questions answered in this interview",
+            "connecting": "Starting…",
+            "planning": "Choosing what to ask next…",
+            "thinking": "Wording the questions…",
+            "thinkingOf": "Wording the questions ({n} of {of})…",
+            "checking": "Checking the questions…",
+            "draftNote": "Being prepared. You can answer once the round is ready.",
+            "cancel": "Cancel",
+            "cancelled": "Cancelled. Nothing from that round was asked; continue whenever you like.",
+            "connectionClosed": "The connection dropped before the round arrived.",
+            "reload": "Reload",
+            "nextRound": "Next round",
+            "continue": "Continue",
+            "closeRound": "Finish round",
+            "closeRoundSkipRest": "Skip the rest and finish",
+            "unansweredLeft": "Questions without an answer: {count}.",
+            "stop": "Stop interview",
+            "stopConfirmTitle": "Stop this interview?",
+            "stopConfirmBody": "Every answer you gave is kept. You can start a new interview at any time.",
+            "stopConfirm": "Stop interview",
+            "stopKeep": "Keep going",
+            "stopped": "Interview stopped. Your answers are kept.",
+            "ended": "This interview has ended.",
+            "paused": "Paused",
+            "generatingElsewhere": "Round {number} is being prepared in another tab or window.",
+            "noRound": "No round is open.",
+            "readOnly": "You can read this interview; only an editor can answer.",
+            "scopeTruncated": "This book is large: the interview asks about its first entries only.",
+            "backToBook": "Back to the book",
+            "notStarted": "This interview could not start.",
+            "badSetup": "This link does not describe an interview. Start one from the book.",
+            "unsavedHold": "An answer could not be saved, so nothing else was done. Try saving it again first."
+        },
+        "card": {
+            "question": "Question {number}",
+            "challenge": "Tests what you wrote",
+            "reviewRequired": "Flagged for review",
+            "reviewRequiredHint": "The safety check flagged the request that worded this question. Read it with care.",
+            "rephrased": "Asked differently",
+            "packQuestion": "From the craft pack",
+            "persona": "Asked by {name}",
+            "yourAnswer": "Your answer",
+            "reason": "Why (optional)",
+            "scaleLow": "1 — {label}",
+            "scaleHigh": "5 — {label}",
+            "save": "Save answer",
+            "saving": "Saving…",
+            "saved": "Saved",
+            "saveFailed": "Not saved: {reason}",
+            "retry": "Try again",
+            "recommended": "Suggested: {answer}",
+            "acceptRecommended": "Use the suggestion",
+            "skip": "Skip",
+            "decideLater": "Decide later",
+            "rephrase": "Ask me this differently",
+            "rephrasing": "Asking differently…",
+            "answered": "Answered",
+            "skipped": "Skipped",
+            "deferred": "Decide later",
+            "unanswered": "Not answered yet",
+            "acceptedRecommendation": "Took the suggestion",
+            "keys": "Keys: 1–{count} choose, Enter saves",
+            "keysText": "Ctrl+Enter saves and moves on",
+            "draft": "Being prepared"
+        },
+        "panel": {
+            "title": "Bible fields this round",
+            "description": "Answers wait here as pending enrichment. Nothing is written to the bible until you accept it.",
+            "empty": "No fields yet.",
+            "waiting": "Waiting",
+            "pending": "Pending enrichment",
+            "skipped": "Skipped",
+            "deferred": "Decide later",
+            "challenge": "Being tested"
+        },
+        "list": {
+            "title": "Interviews",
+            "description": "Resume an interview, or see why it ended.",
+            "colScope": "Asked about",
+            "colStatus": "Status",
+            "colRounds": "Rounds",
+            "colReason": "Why it stopped",
+            "colStarted": "Started",
+            "rounds": "{run} of {budget}",
+            "empty": "No interviews yet",
+            "emptyHelp": "Enrich an entry, or use Grill me on the book, to start one.",
+            "truncated": "Showing the {count} most recent interviews.",
+            "open": "Open",
+            "resume": "Resume"
+        },
+        "errors": {
+            "AI_UNAVAILABLE": "AI questions are not available on this server right now.",
+            "SCOPE_EMPTY": "There is nothing of this kind in the book to ask about yet.",
+            "ROUND_OPEN": "A round is already open. Finish it first.",
+            "ROUND_GENERATING": "A round is already being prepared.",
+            "ROUND_NOT_OPEN": "That round has already finished.",
+            "ROUND_HAS_UNANSWERED": "Some questions still have no answer.",
+            "INTERVIEW_ENDED": "This interview has ended.",
+            "INTERVIEW_NOT_ACTIVE": "This interview is not running.",
+            "ANSWER_REQUIRED": "Write or pick an answer first.",
+            "ANSWER_TOO_LONG": "This answer is longer than the interview allows.",
+            "ANSWER_SHAPE": "That answer does not fit this question.",
+            "NOT_AN_OPTION": "That is not one of the options.",
+            "NO_RECOMMENDATION": "This question has no suggestion.",
+            "ANSWER_REVISIONS_EXHAUSTED": "This question has been answered as many times as it can be (20).",
+            "QUESTION_SUPERSEDED": "That question was asked differently; answer the new one.",
+            "QUESTION_ANSWERED": "This question already has an answer.",
+            "REPHRASE_LIMIT": "This round has been asked differently as often as it can be.",
+            "NO_REPHRASE": "No other way to ask this came back. Answer it as it is, skip it or decide later.",
+            "TOKEN_BUDGET": "This interview has used its share of the AI budget.",
+            "WORKSPACE_CEILING": "This workspace has reached its AI limit for the month.",
+            "generic": "Something went wrong. Try again.",
+            "PACKS_NOT_MOUNTABLE": "The question packs are not ready on this server yet, so an interview cannot start.",
+            "PACKS_NOT_MOUNTABLE_NAMED": "These question packs are not ready on this server, so the interview cannot go on: {packs}.",
+            "packCraft": "{kind} questions",
+            "packPersona": "the {name} interviewer",
+            "ANSWERED_IN_BIBLE": "Your bible now answers this, so it is not asked again. Skip it, or answer it as it is.",
+            "PACK_CHANGED": "A question pack this interview was started with has changed since, so it cannot be asked differently. Your answers are kept."
         }
     }
 }

@@ -42,7 +42,7 @@
  * `SCOPE_EMPTY`: a session over nothing would "complete" having asked
  * nothing, and zero is never complete (rule 6).
  */
-import type { Prisma } from '@prisma/client';
+import type { BibleElementKind, Prisma } from '@prisma/client';
 import type { WorkspaceRequestContext } from '@/app-layer/types';
 import { logEvent } from '@/app-layer/events/audit';
 import { assertPermission } from '@/app-layer/policies/permission.policy';
@@ -60,6 +60,7 @@ import { requireBook, requireElement } from './bible-common';
 import { defaultLayersFor } from './interview-defaults';
 import { deploymentPackMounts } from './interview-packs';
 import {
+    announceClaim,
     claimRound,
     endSession,
     generateClaimedRound,
@@ -78,6 +79,7 @@ import {
     SESSION_ANSWERS_MAX,
     SESSION_QUESTIONS_MAX,
     SESSION_ROUNDS_READ,
+    SCOPE_ELEMENTS_MAX,
     type InterviewView,
     type SessionSummaryView,
 } from './interview-state';
@@ -175,6 +177,8 @@ export async function startInterview(ctx: WorkspaceRequestContext, bookId: strin
         );
         return { session, claim: await claimRound(db, ctx, session, generator, packContext) };
     });
+    deps.stream?.emit({ type: 'started', sessionId: started.session.id });
+    announceClaim(deps, started.claim);
     if (started.claim.kind === 'claimed') await generateClaimedRound(ctx, started.session, started.claim, deps);
     return runInWorkspaceContext(ctx, (db) => viewOf(db, ctx, bookId, started.session.id));
 }
@@ -184,7 +188,14 @@ export async function listInterviews(ctx: WorkspaceRequestContext, bookId: strin
     return runInWorkspaceContext(ctx, async (db) => {
         await requireBook(db, ctx, bookId);
         const rows = await InterviewSessionRepository.listForBook(db, ctx.workspaceId, bookId, INTERVIEW_LIST_MAX + 1);
-        return { sessions: rows.slice(0, INTERVIEW_LIST_MAX).map(sessionSummaryView), truncated: rows.length > INTERVIEW_LIST_MAX };
+        const listed = rows.slice(0, INTERVIEW_LIST_MAX);
+        // The element sessions' element names, in one read (Phase 2.4: the list names what each interview asked about).
+        const elementIds = [...new Set(listed.map((s) => s.targetElementId).filter((id): id is string => id !== null))];
+        const names = new Map((await BibleElementRepository.listByIds(db, ctx.workspaceId, bookId, elementIds)).map((e) => [e.id, e.name] as const));
+        return {
+            sessions: listed.map((s) => sessionSummaryView(s, s.targetElementId ? (names.get(s.targetElementId) ?? null) : null)),
+            truncated: rows.length > INTERVIEW_LIST_MAX,
+        };
     });
 }
 
@@ -193,6 +204,36 @@ export async function getInterview(ctx: WorkspaceRequestContext, bookId: string,
     return runInWorkspaceContext(ctx, async (db) => {
         await requireBook(db, ctx, bookId);
         return viewOf(db, ctx, bookId, sessionId);
+    });
+}
+
+/** An element an interview may ask about, as its page names it (Phase 2.4): no stored value. */
+export interface ScopeElementView {
+    id: string;
+    name: string;
+    kind: BibleElementKind;
+}
+
+/**
+ * The elements a scope covers, for the interview page to name them (Phase
+ * 2.4; `bible.view`): one element, one kind's, or the book's, at most
+ * `SCOPE_ELEMENTS_MAX` (the engine's own bound; `truncated` beyond it). An
+ * element the book does not hold is a 404.
+ */
+export async function interviewScopeElements(
+    ctx: WorkspaceRequestContext,
+    bookId: string,
+    scope: { scope: 'ELEMENT'; elementId: string } | { scope: 'KIND'; kind: BibleElementKind } | { scope: 'BOOK' },
+): Promise<{ elements: ScopeElementView[]; truncated: boolean }> {
+    await assertPermission(ctx, 'bible.view');
+    return runInWorkspaceContext(ctx, async (db) => {
+        await requireBook(db, ctx, bookId);
+        if (scope.scope === 'ELEMENT') {
+            const e = await requireElement(db, ctx, bookId, scope.elementId);
+            return { elements: [{ id: e.id, name: e.name, kind: e.kind }], truncated: false };
+        }
+        const rows = await BibleElementRepository.listForInterview(db, ctx.workspaceId, bookId, { kind: scope.scope === 'KIND' ? scope.kind : undefined, take: SCOPE_ELEMENTS_MAX + 1 });
+        return { elements: rows.slice(0, SCOPE_ELEMENTS_MAX).map((e) => ({ id: e.id, name: e.name, kind: e.kind })), truncated: rows.length > SCOPE_ELEMENTS_MAX };
     });
 }
 
@@ -209,6 +250,7 @@ export async function nextRound(ctx: WorkspaceRequestContext, bookId: string, se
         assertNotEnded(session);
         return { session, claim: await claimRound(db, ctx, session, generator, packContext) };
     });
+    announceClaim(deps, claimed.claim);
     if (claimed.claim.kind === 'claimed') await generateClaimedRound(ctx, claimed.session, claimed.claim, deps);
     return runInWorkspaceContext(ctx, (db) => viewOf(db, ctx, bookId, sessionId));
 }
@@ -233,7 +275,8 @@ export async function closeRound(ctx: WorkspaceRequestContext, bookId: string, s
         if (!round) throw new NotFoundError('Round not found.');
         if (round.status !== 'OPEN') throw new ConflictError('That round is not open.', { reason: 'ROUND_NOT_OPEN', status: round.status });
 
-        const questions = await QuestionRepository.listForRound(db, ctx.workspaceId, sessionId, round.id, SESSION_QUESTIONS_MAX);
+        // The questions the round ASKS: one a rephrase replaced waits for nothing (Phase 2.4).
+        const questions = (await QuestionRepository.listForRound(db, ctx.workspaceId, sessionId, round.id, SESSION_QUESTIONS_MAX)).filter((q) => q.supersededAt === null);
         const latest = latestAnswers(await AnswerRepository.listForSession(db, ctx.workspaceId, sessionId, SESSION_ANSWERS_MAX));
         const unanswered = questions.filter((q) => !latest.has(q.id));
         if (unanswered.length > 0 && !parsed.skipUnanswered) {

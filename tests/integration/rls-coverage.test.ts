@@ -73,8 +73,13 @@ async function isolationLeaks(table: string, self: string, other: string): Promi
 
     // A row of `other`, copied as the owner (who sees everything) with a fresh
     // id, then inserted as app_user bound to `self`. Always rolled back.
+    // A vector of a QUESTION is refused by its source guard before RLS is
+    // asked (the question is invisible to `self`: VECTOR_SOURCE_MISSING), so
+    // the probe copies a vector of the fixture source, which has no guard.
+    // Unordered, LIMIT 1 picked either, and the test failed now and then.
+    const sourceFilter = table === 'VectorEmbedding' ? ` AND "sourceModel" <> 'Question'` : '';
     const [source] = await prisma.$queryRawUnsafe<Array<{ row: Record<string, unknown> }>>(
-        `SELECT row_to_json(t) AS row FROM "${table}" t WHERE "${col}" = $1 LIMIT 1`,
+        `SELECT row_to_json(t) AS row FROM "${table}" t WHERE "${col}" = $1${sourceFilter} LIMIT 1`,
         other,
     );
     if (!source) {

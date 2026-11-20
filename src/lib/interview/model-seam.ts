@@ -81,6 +81,7 @@ import { logger } from '@/lib/observability/logger';
 import type { GeneratedQuestionsSchema } from './candidates';
 import { GenerationStop, type GenerationFailureKind, type GenerationResult, type QuestionGenerator } from './generator';
 import { maxOutputTokensFor, QUESTION_PROMPT } from './prompt';
+import { REPHRASE_PROMPT } from './rephrase';
 
 type Schema = typeof GeneratedQuestionsSchema;
 
@@ -159,6 +160,23 @@ export function minimumQuestionCallMicroUsd(detail: number): number {
         inputTokens: INPUT_TOKEN_OVERHEAD + fixedBytes,
         outputTokens: maxOutputTokensFor(detail),
     });
+}
+
+/**
+ * The least a rephrase call can reserve (Phase 2.4): its template's fixed text,
+ * the framing and its whole output budget, at the fast tier's dearest rates.
+ */
+export function minimumRephraseCallMicroUsd(): number {
+    const fixedBytes = Buffer.byteLength(REPHRASE_PROMPT.system, 'utf8') + Buffer.byteLength(REPHRASE_PROMPT.task, 'utf8');
+    return worstCaseCostMicroUsd(modelForTier(REPHRASE_PROMPT.tier), {
+        inputTokens: INPUT_TOKEN_OVERHEAD + fixedBytes,
+        outputTokens: REPHRASE_PROMPT.maxOutputTokens ?? 0,
+    });
+}
+
+/** 2.1's stop signals for a rephrase: the kill switch, and whether the month can take one more rephrase call. */
+export async function rephraseBudgetSignals(db: PrismaTx, ctx: Pick<WorkspaceRequestContext, 'workspaceId'>): Promise<ModelBudgetState> {
+    return modelBudgetState(db, ctx, minimumRephraseCallMicroUsd());
 }
 
 /**

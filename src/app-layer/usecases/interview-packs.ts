@@ -18,9 +18,15 @@ import { packMounts, packRecordModeOf, type MountRefusal, type MountVerdict, typ
 import type { RecordKind } from '@/lib/interview/pack-evaluation';
 import { isPersonaKey } from '@/lib/interview/vocabulary';
 
-/** Which records mount a pack in this deployment (D11: a real model's in production, a structural one too elsewhere). */
+/** Which records mount a pack in this deployment (D11: a real model's in production, a structural one too elsewhere and on D13's loopback stub). */
 export function deploymentPackRecordMode(): PackRecordMode {
-    return packRecordModeOf({ NODE_ENV: env.NODE_ENV });
+    return packRecordModeOf({
+        NODE_ENV: env.NODE_ENV,
+        AI_MODEL_STUB: env.AI_MODEL_STUB,
+        ANTHROPIC_API_KEY: env.ANTHROPIC_API_KEY,
+        APP_URL: env.APP_URL,
+        NEXTAUTH_URL: env.NEXTAUTH_URL,
+    });
 }
 
 /** The named packs' verdicts in this deployment (or under `mode`, a test's); every pack's when `names` is omitted. Each computed once. */

@@ -1,6 +1,7 @@
 import { defineConfig, devices } from '@playwright/test';
 import os from 'node:os';
 import path from 'node:path';
+import { STUB_BASE_URL, STUB_PORT } from './tests/e2e/stub-server';
 
 /**
  * Playwright end-to-end tests (tests/e2e).
@@ -34,6 +35,31 @@ function e2eOnlyValue(name: string): string {
     return ['e2e', 'only', name, 'not', 'a', 'real', 'value'].join('-').padEnd(48, '-x');
 }
 
+/** What either E2E server needs to boot as production, unless the shell already has it. */
+function serverEnv(origin: string): Record<string, string> {
+    return {
+        REDIS_URL: process.env.REDIS_URL || 'redis://:e2e@localhost:6379',
+        AV_SCAN_MODE: process.env.AV_SCAN_MODE || 'disabled',
+        // Local storage needs an explicit root in production; the smoke uploads
+        // nothing, so a temp folder is the right one.
+        FILE_STORAGE_ROOT: process.env.FILE_STORAGE_ROOT || path.join(os.tmpdir(), 'inkquisitor-e2e-uploads'),
+        DATABASE_URL: process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/inkquisitor_test?schema=public',
+        // Identity and encryption (Phase 0.3), which production requires.
+        // Obviously-fake values built here, never real secrets; a shell that
+        // exports its own wins.
+        AUTH_SECRET: process.env.AUTH_SECRET || e2eOnlyValue('auth'),
+        NEXTAUTH_URL: origin,
+        DATA_ENCRYPTION_KEY: process.env.DATA_ENCRYPTION_KEY || e2eOnlyValue('kek'),
+        // The specs call no outside service: no breached-password lookup at sign-up.
+        PASSWORD_BREACH_CHECK: process.env.PASSWORD_BREACH_CHECK || 'off',
+        // Every spec signs up and in from one address within a minute, which
+        // the auth tier (10 a minute) and the sign-up budget (5 an hour) would
+        // refuse. The tiers are covered by the unit and integration suites; the
+        // smoke covers the flow.
+        RATE_LIMIT_ENABLED: process.env.RATE_LIMIT_ENABLED || '0',
+    };
+}
+
 export default defineConfig({
     testDir: './tests/e2e',
     fullyParallel: true,
@@ -59,46 +85,41 @@ export default defineConfig({
     ],
     webServer: process.env.URL
         ? undefined
-        : {
-              command: `npx next start -p ${port}`,
-              // `next start` runs as production, and production refuses to
-              // start without what it requires (src/lib/startup-checks.ts).
-              // The smoke serves pages and probes only, so it supplies the
-              // required values (no scanner: scanning disabled) unless the
-              // shell already has them.
-              env: {
-                  REDIS_URL: process.env.REDIS_URL || 'redis://:e2e@localhost:6379',
-                  AV_SCAN_MODE: process.env.AV_SCAN_MODE || 'disabled',
-                  // Local storage needs an explicit root in production; the
-                  // smoke uploads nothing, so a temp folder is the right one.
-                  FILE_STORAGE_ROOT: process.env.FILE_STORAGE_ROOT || path.join(os.tmpdir(), 'inkquisitor-e2e-uploads'),
-                  DATABASE_URL:
-                      process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/inkquisitor_test?schema=public',
-                  // Identity and encryption (Phase 0.3), which production
-                  // requires. Obviously-fake values built here, never real
-                  // secrets; a shell that exports its own wins.
-                  AUTH_SECRET: process.env.AUTH_SECRET || e2eOnlyValue('auth'),
-                  NEXTAUTH_URL: process.env.NEXTAUTH_URL || `http://localhost:${port}`,
-                  DATA_ENCRYPTION_KEY: process.env.DATA_ENCRYPTION_KEY || e2eOnlyValue('kek'),
-                  // The specs call no outside service: no breached-password
-                  // lookup at sign-up.
-                  PASSWORD_BREACH_CHECK: process.env.PASSWORD_BREACH_CHECK || 'off',
-                  // No test reaches a model provider, so the server holds no
-                  // ANTHROPIC_API_KEY; production refuses to start without
-                  // one unless AI is switched off (src/lib/ai/config.ts). So
-                  // the operator's kill switch is on: a session that would
-                  // need the model pauses KILL_SWITCH, named, and nothing is
-                  // faked. The start-up refusal for the missing key is
-                  // production-refusal.spec.ts.
-                  AI_DISABLED: process.env.AI_DISABLED || '1',
-                  // Every spec signs up and in from one address within a
-                  // minute, which the auth tier (10 a minute) and the sign-up
-                  // budget (5 an hour) would refuse. The tiers are covered by
-                  // the unit and integration suites; the smoke covers the flow.
-                  RATE_LIMIT_ENABLED: process.env.RATE_LIMIT_ENABLED || '0',
+        : [
+              {
+                  command: `npx next start -p ${port}`,
+                  // `next start` runs as production, and production refuses to
+                  // start without what it requires (src/lib/startup-checks.ts).
+                  // The smoke serves pages and probes only, so it supplies the
+                  // required values (no scanner: scanning disabled) unless the
+                  // shell already has them.
+                  env: {
+                      ...serverEnv(`http://localhost:${port}`),
+                      // No test reaches a model provider, so the server holds no
+                      // ANTHROPIC_API_KEY; production refuses to start without
+                      // one unless AI is switched off (src/lib/ai/config.ts). So
+                      // the operator's kill switch is on: a session that would
+                      // need the model pauses KILL_SWITCH, named, and nothing is
+                      // faked. The start-up refusal for the missing key is
+                      // production-refusal.spec.ts.
+                      AI_DISABLED: process.env.AI_DISABLED || '1',
+                  },
+                  url: `http://localhost:${port}/api/health`,
+                  reuseExistingServer: !isCI,
+                  timeout: 120_000,
               },
-              url: `http://localhost:${port}/api/health`,
-              reuseExistingServer: !isCI,
-              timeout: 120_000,
-          },
+              {
+                  // The interview server (Phase 2.4, tests/e2e/stub-server.ts):
+                  // the stubbed model answers every call in-process, so a whole
+                  // session runs with nothing sent anywhere. Production accepts
+                  // AI_MODEL_STUB=1 only with APP_URL and NEXTAUTH_URL on a
+                  // loopback address and no provider key; the refusal on a real
+                  // host is production-refusal.spec.ts.
+                  command: `npx next start -p ${STUB_PORT}`,
+                  env: { ...serverEnv(STUB_BASE_URL), APP_URL: STUB_BASE_URL, AI_MODEL_STUB: '1', AI_DISABLED: '0' },
+                  url: `${STUB_BASE_URL}/api/health`,
+                  reuseExistingServer: !isCI,
+                  timeout: 120_000,
+              },
+          ],
 });

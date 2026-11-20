@@ -121,10 +121,13 @@ enum QuestionMode {
 }
 
 /// Who worded a question: the model, or the field's craft pack when no
-/// generated question for it survived validation and deduplication.
+/// generated question for it survived validation and deduplication, or the
+/// model again when the author asked "Ask me this differently" (REPHRASE,
+/// Phase 2.4: the question replaces another, `Question.replacesQuestionId`).
 enum QuestionOrigin {
   MODEL
   PACK_FALLBACK
+  REPHRASE
 }
 
 /// What the author did with a question.

@@ -199,3 +199,63 @@ it('adds up the tokens every call reports (clamped), for the session’s budget'
     expect((await produceRound(input, { generator: fakeGenerator({ tokensPerCall: Number.NaN }) })).metrics.tokensUsed).toBe(0);
     expect((await produceRound(input, { generator: fakeGenerator({ tokensPerCall: 1e12 }) })).metrics.tokensUsed).toBe(2_000_000);
 });
+
+describe('watching a round as it is produced (Phase 2.4)', () => {
+    it('tells the observer each call and each call’s validated candidates, then that it is checking', async () => {
+        const input = setup('CHARACTER', 2, 3, {}, ['socratic']);
+        const events: string[] = [];
+        const out = await produceRound(input, {
+            generator: fakeGenerator(),
+            observer: {
+                callStarted: ({ index, total }) => events.push(`call ${index}/${total}`),
+                candidatesValidated: (c) => events.push(`drafts ${c.length}`),
+                checking: () => events.push('checking'),
+            },
+        });
+        expect(events).toEqual(['call 1/1', `drafts ${out.questions.length}`, 'checking']);
+    });
+
+    it('an observer that throws changes nothing', async () => {
+        const input = setup('CHARACTER', 2, 3);
+        const plain = await produceRound(input, { generator: fakeGenerator() });
+        const watched = await produceRound(input, {
+            generator: fakeGenerator(),
+            observer: {
+                callStarted: () => {
+                    throw new Error('boom');
+                },
+            },
+        });
+        expect(watched.questions).toEqual(plain.questions);
+    });
+
+    it('marks the questions of a call the guard flagged, and not the pack’s', async () => {
+        const input = setup('CHARACTER', 1, 2);
+        const base = fakeGenerator();
+        const out = await produceRound(input, { generator: { ...base, generateCandidates: async (r, s) => ({ ...(await base.generateCandidates(r, s)), reviewRequired: true }) } });
+        expect(out.questions.length).toBeGreaterThan(0);
+        expect(out.questions.every((q) => q.reviewRequired)).toBe(true);
+        const fallback = await produceRound(input, { generator: fakeGenerator({ fail: true }) });
+        expect(fallback.questions.every((q) => !q.reviewRequired)).toBe(true);
+    });
+
+    it('never takes the flag from what the model wrote: a question claiming it is not flagged', async () => {
+        const input = setup('CHARACTER', 1, 2);
+        const out = await produceRound(input, { generator: fakeGenerator({ mutate: (q) => ({ ...q, reviewRequired: true }) as typeof q }) });
+        expect(out.questions.length).toBeGreaterThan(0);
+        expect(out.questions.every((q) => q.reviewRequired === false)).toBe(true);
+        expect(out.metrics.guardFlaggedCalls).toBe(0);
+    });
+
+    it('hands the call the caller’s signal, and makes no call once it is aborted', async () => {
+        const input = setup('CHARACTER', 2, 3);
+        const abort = new AbortController();
+        const seen: Array<AbortSignal | undefined> = [];
+        const base = fakeGenerator();
+        await produceRound(input, { generator: { ...base, generateCandidates: (r, s) => (seen.push(s), base.generateCandidates(r, s)) }, signal: abort.signal });
+        expect(seen).toEqual([abort.signal]);
+        abort.abort();
+        const out = await produceRound(input, { generator: base, signal: abort.signal });
+        expect(out.metrics.generationCalls).toBe(0);
+    });
+});
