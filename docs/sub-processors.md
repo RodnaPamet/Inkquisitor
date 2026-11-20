@@ -97,6 +97,7 @@ actually left.
 | S3-compatible storage (optional) | Uploaded files (none today: an import is read and never stored, and a research file's text is stored encrypted in PostgreSQL) | When `STORAGE_PROVIDER=s3` |
 | Have I Been Pwned (optional) | The first five characters of a password's SHA-1 hash (k-anonymity) | Sign-up, unless `PASSWORD_BREACH_CHECK=off` |
 | Google (optional) | Sign-in identity | When Google sign-in is configured |
+| tldraw (tldraw Inc., `cdn.tldraw.com`) | One request for its watermark-tracking image (`TLDRAW_WATERMARK_TRACK_URL`, `src/lib/security/csp.ts`): the visitor's **IP address** and the product's **domain name** (the `Referer`, cut to the origin by `Referrer-Policy`), and the browser's ordinary request headers. **No author text, map content or account data**: the request is a fixed URL with no query. The CSP admits that one URL in `connect-src` and nothing else of the host (decision D20); fonts, icons and the translation are served from our own origin | Each time a story map opens on an https deployment (tldraw's licence manager, since tldraw 3.x is used unlicensed with its watermark, D1) |
 
 Embeddings are computed in the deployment (self-hosted TEI, subphase 2.0): no
 external embedding provider receives author text.

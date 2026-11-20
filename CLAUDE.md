@@ -1035,7 +1035,9 @@ closed beta with an explicit operator flag (D5, amended 2026-11-19).
   The two partition every path (`tests/unit/platform/proxy-matcher.test.ts`,
   with Next's own compilers): change them together, never as a bare prefix. Every inline `<script>` takes the nonce from `x-csp-nonce`
   (the root layout's two do). A new origin is added to the policy in the change
-  that needs it, never as a wildcard. `tests/e2e/security-headers.spec.ts`
+  that needs it, never as a wildcard; the one other origin today is tldraw's
+  watermark-track fetch, ONE full URL in `connect-src`
+  (`TLDRAW_WATERMARK_TRACK_URL`, D20; it moves with the tldraw version). `tests/e2e/security-headers.spec.ts`
   checks every kind of response, both copies of the list, and a browser walk
   with no violation.
 - **Probes.** `/api/health` and `/api/livez` (process up) and `/api/readyz`

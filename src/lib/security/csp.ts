@@ -26,8 +26,19 @@
  * script-src stays strict.
  *
  * Nothing is loaded from another origin: connect-src, img-src and font-src
- * are 'self' (plus `data:` / `blob:` where the primitives need them). A new
- * origin is added here, in the change that needs it, never as a wildcard.
+ * are 'self' (plus `data:` / `blob:` where the primitives need them), with ONE
+ * exception, below. A new origin is added here, in the change that needs it,
+ * never as a wildcard.
+ *
+ * THE ONE EXCEPTION (decision D20): tldraw's licence manager, unlicensed (we
+ * use tldraw 3.x with its watermark and no key, D1), `fetch`es one file from
+ * its CDN on an https page: `TLDRAW_WATERMARK_TRACK_URL`. connect-src admits
+ * exactly that URL — a source expression with a full path matches that path
+ * only — and no other path or directive names the host. The request carries no
+ * author text: tldraw learns the page's origin (the Referer, cut to the origin
+ * by `Referrer-Policy`) and the visitor's IP address (docs/sub-processors.md).
+ * `tests/unit/security/csp.test.ts` derives the URL from the installed
+ * @tldraw/editor, so a tldraw release that moves it fails there.
  * There is no violation-report endpoint yet: a report route is an
  * unauthenticated write, and it arrives with the feature that needs one.
  *
@@ -62,6 +73,13 @@ export function webpackNonceBridge(nonce: string): string {
     return `window.__webpack_nonce__=${literal};globalThis.__webpack_nonce__=${literal};`;
 }
 
+/**
+ * The one request tldraw makes to its CDN once mounted unlicensed on an https
+ * page (`@tldraw/editor`'s LicenseManager: `fetch(<cdn>/<version>/watermarks/
+ * watermark-track.svg)`), so connect-src. The version is @tldraw/editor's own.
+ */
+export const TLDRAW_WATERMARK_TRACK_URL = 'https://cdn.tldraw.com/3.15.6/watermarks/watermark-track.svg';
+
 type Directives = Record<string, readonly string[] | true>;
 
 function serialize(directives: Directives): string {
@@ -78,7 +96,7 @@ export function buildCspHeader(nonce: string, isDev = false): string {
         'style-src': ["'self'", "'unsafe-inline'"],
         'img-src': ["'self'", 'data:', 'blob:'],
         'font-src': ["'self'", 'data:'],
-        'connect-src': ["'self'", ...(isDev ? ['ws://localhost:*', 'ws://127.0.0.1:*'] : [])],
+        'connect-src': ["'self'", TLDRAW_WATERMARK_TRACK_URL, ...(isDev ? ['ws://localhost:*', 'ws://127.0.0.1:*'] : [])],
         'worker-src': ["'self'", 'blob:'],
         'manifest-src': ["'self'"],
         'media-src': ["'self'"],
