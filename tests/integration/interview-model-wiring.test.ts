@@ -27,6 +27,7 @@ import { QUESTION_PROMPT_VERSION } from '@/lib/interview/prompt';
 import { fakeAnthropic, setFakeApiKey, type FakeAnthropic } from '../helpers/fake-anthropic';
 import { questionModel } from '../helpers/fake-question-model';
 import { createAccount, workspaceCtx } from '../helpers/workspaces';
+import { escapeRegExp } from '../helpers/escape-regexp';
 
 afterAll(() => prisma.$disconnect());
 
@@ -74,7 +75,7 @@ it('a round’s call is recorded in AiCallLog, and its real token usage is charg
         requestedById: owner.userId,
         purpose: 'interview.questions',
         promptId: 'interview.questions',
-        promptVersion: expect.stringMatching(new RegExp(`^${QUESTION_PROMPT_VERSION.replace(/\./g, '\\.')}\\+packs\\.[0-9a-f]{12}$`)),
+        promptVersion: expect.stringMatching(new RegExp(`^${escapeRegExp(QUESTION_PROMPT_VERSION)}\\+packs\\.[0-9a-f]{12}$`)),
         tier: 'BALANCED',
         outcome: 'OK',
         inputTokens: 2_000,
@@ -147,7 +148,7 @@ it('the deployment’s own generator (none injected), holding a key, calls the M
     expect(view.round!.questions.every((q) => q.origin === 'MODEL')).toBe(true);
     const calls = await prisma.aiCallLog.findMany({ where: { workspaceId: owner.workspaceId } });
     expect(calls).toHaveLength(1);
-    expect(calls[0]).toMatchObject({ bookId, requestedById: owner.userId, promptVersion: expect.stringMatching(new RegExp(`^${QUESTION_PROMPT_VERSION.replace(/\./g, '\\.')}\\+packs\\.`)), outcome: 'OK' });
+    expect(calls[0]).toMatchObject({ bookId, requestedById: owner.userId, promptVersion: expect.stringMatching(new RegExp(`^${escapeRegExp(QUESTION_PROMPT_VERSION)}\\+packs\\.`)), outcome: 'OK' });
     const session = await prisma.interviewSession.findUniqueOrThrow({ where: { id: view.session.id } });
     expect(session.tokensUsed).toBe(2_800);
 });
