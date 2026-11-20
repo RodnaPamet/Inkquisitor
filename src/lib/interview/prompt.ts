@@ -53,8 +53,13 @@ export const QUESTION_PROMPT_VERSION = 'question-generation.2.3.0';
  * The round's metrics list the packs behind each digest.
  */
 export function callPromptVersion(packs: ReadonlyArray<{ name: string; version: number; contentHash: string }>): string {
+    return packsVersionOf(QUESTION_PROMPT_VERSION, packs);
+}
+
+/** `<version>+packs.<12 hex>`: a prompt version naming the packs its system prompt carries (2.3's rule; the rephrase prompt uses it too). */
+export function packsVersionOf(version: string, packs: ReadonlyArray<{ name: string; version: number; contentHash: string }>): string {
     const lines = packs.map((p) => `${p.name}@${p.version}:${p.contentHash}`).sort();
-    return `${QUESTION_PROMPT_VERSION}+packs.${createHash('sha256').update(lines.join('\n'), 'utf8').digest('hex').slice(0, 12)}`;
+    return `${version}+packs.${createHash('sha256').update(lines.join('\n'), 'utf8').digest('hex').slice(0, 12)}`;
 }
 
 /** The prompt's id and purpose as 2.1 records them (`AiCallLog.promptId`, `.purpose`). */

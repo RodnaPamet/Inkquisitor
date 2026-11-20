@@ -19,8 +19,10 @@
  *     else there is no rephrase.
  *
  * Pure but for the generator: the usecase (`interview-rephrase.ts`) loads the
- * state and persists the result under the session's lock. The evaluation set
- * (`evals/rephrase-cases.json`, `evals/rephrase.ts`) runs this same function.
+ * state, checks the session's pinned packs and the bible (rule 5), and
+ * persists the result under the session's lock. The call's version names the
+ * packs its system prompt carries (`packsVersionOf`, as a round's call does),
+ * so `AiCallLog` says what it was taught (rule 9).
  */
 import { definePrompt, type PromptTemplate } from '@/lib/ai/prompt';
 import { refKey } from './frontier';
@@ -28,7 +30,7 @@ import { candidateFrom, GeneratedQuestionsSchema, parseGeneratedQuestions, valid
 import { dedupe, type AskedQuestion, type DedupeTextContext } from './dedupe';
 import { GenerationStop, type GenerationFailureKind, type GenerationRequest, type GenerationResult, type QuestionGenerator } from './generator';
 import type { CraftPack, PersonaPack } from './packs';
-import { ENGINE_INSTRUCTIONS, questionDataBlocks, roundGuidance, type PromptAnswer, type PromptElement } from './prompt';
+import { ENGINE_INSTRUCTIONS, packsVersionOf, questionDataBlocks, roundGuidance, type PromptAnswer, type PromptElement } from './prompt';
 import { fillGapsFromPack, TOKENS_PER_CALL_REPORT_MAX, type RoundElement } from './round';
 import { sanitiseQuestionForStorage } from './storage';
 import type { Dials } from './dials';
@@ -138,7 +140,8 @@ export function buildRephraseRequest(input: RephraseInput): GenerationRequest {
         related: input.related,
         sessionAnswers: input.sessionAnswers,
     };
-    const template = definePrompt({ ...REPHRASE_PROMPT, system: `${REPHRASE_PROMPT.system}\n\n${roundGuidance(promptInput)}` });
+    const taught = [...promptInput.craftPacks, ...(input.persona ? [input.persona] : [])];
+    const template = definePrompt({ ...REPHRASE_PROMPT, version: packsVersionOf(REPHRASE_PROMPT_VERSION, taught), system: `${REPHRASE_PROMPT.system}\n\n${roundGuidance(promptInput)}` });
     const previous = {
         elementId: input.original.elementId,
         targetsFieldKeys: input.original.targetsFieldKeys,

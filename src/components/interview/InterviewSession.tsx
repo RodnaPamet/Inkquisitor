@@ -180,11 +180,29 @@ export function InterviewSession(props: InterviewSessionProps) {
         await runStream(INTERVIEW_API.nextRoundStream(ids.slug, ids.bookId, ids.sessionId), {}, ids.sessionId);
     }
 
-    async function finishRound(skipRest: boolean) {
+    /**
+     * Every card's unsaved answer saved, and every save settled, before a
+     * close or a stop: either could otherwise overtake an answer on its way (a
+     * close skipping it, a stop refusing it) and lose it. Null when a save
+     * failed: the answer is still only on screen, so nothing goes on.
+     */
+    async function flushAnswers(): Promise<{ open: number } | null> {
+        const results = await Promise.all(questions.map((q) => cardRefs.current.get(q.id)?.flush() ?? Promise.resolve(q.answer ? ('answered' as const) : ('open' as const))));
+        if (results.includes('unsaved')) {
+            toast.error(t('unsavedHold'));
+            return null;
+        }
+        return { open: results.filter((r) => r === 'open').length };
+    }
+
+    async function finishRound() {
         if (!ids || !round) return;
         setClosing(true);
         try {
-            const { interview } = await interviewApi.closeRound(ids, round.number, skipRest);
+            const flushed = await flushAnswers();
+            if (!flushed) return;
+            // "Skip the rest" only for what is still unanswered once every save has landed.
+            const { interview } = await interviewApi.closeRound(ids, round.number, flushed.open > 0);
             setView(interview);
             // Straight on to the next round, unless the session ended.
             if (interview.session.status === 'ACTIVE') await runStream(INTERVIEW_API.nextRoundStream(ids.slug, ids.bookId, ids.sessionId), {}, ids.sessionId);
@@ -200,6 +218,7 @@ export function InterviewSession(props: InterviewSessionProps) {
         setStopping(true);
         try {
             if (stream.busy) stream.cancel();
+            if (roundOpen && !(await flushAnswers())) return;
             const { interview } = await interviewApi.stop(ids);
             setView(interview);
             setStopOpen(false);
@@ -372,7 +391,7 @@ export function InterviewSession(props: InterviewSessionProps) {
                             <Button
                                 variant={unanswered === 0 ? 'primary' : 'secondary'}
                                 className="ml-auto"
-                                onClick={() => void finishRound(unanswered > 0)}
+                                onClick={() => void finishRound()}
                                 loading={closing}
                                 id="round-finish"
                             >

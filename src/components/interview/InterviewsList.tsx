@@ -27,7 +27,6 @@ export interface InterviewsListProps {
     sessions: SessionSummaryView[];
     truncated: boolean;
     kindLabels: Record<BibleKind, string>;
-    canEdit: boolean;
 }
 
 export function InterviewsList({ workspaceSlug, book, sessions, truncated, kindLabels }: InterviewsListProps) {

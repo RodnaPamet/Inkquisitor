@@ -715,11 +715,17 @@ closed beta with an explicit operator flag (D5, amended 2026-11-19).
   wording travels as a data block; the rephrase replaces the question
   (`replacesQuestionId`, the original `supersededAt`, one transaction), only
   one of the pair is answerable (409 QUESTION_SUPERSEDED), and a round holds at
-  most `REPHRASES_PER_ROUND_MAX`. Never change `QUESTION_PROMPT`'s text or
+  most `REPHRASES_PER_ROUND_MAX` (counted again under the lock before the
+  write). A rephrase is held to a round's rules: never a field the bible now
+  answers (409 ANSWERED_IN_BIBLE), only the session's pinned, mountable packs
+  (`pinMismatch`), its version naming them (`packsVersionOf`). Never change `QUESTION_PROMPT`'s text or
   version for UI work (2.3's evaluation records pin it). The setup sheet reads
   and sends the dials ONLY through `src/lib/interview/setup.ts`. A card saves
   each answer as it is given (a pick at once; text on save, Ctrl/⌘+Enter, or
   leaving the box), one request at a time, keeping the answer on failure;
+  finishing a round and stopping first `flush()` every card and wait for its
+  saves (a close or a stop never overtakes an answer), and a failed save holds
+  them;
   digits are bound `within` the card. Stop reasons and refusals are worded from
   their codes (`src/components/interview/messages.ts`; the stop table is keyed
   on `StopReason`, so a new reason fails `tsc` until worded); client code never

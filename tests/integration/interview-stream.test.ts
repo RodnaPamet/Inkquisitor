@@ -35,6 +35,14 @@ import type { InterviewView } from '@/app-layer/usecases/interview-state';
 import type { GenerationRequest, QuestionGenerator } from '@/lib/interview/generator';
 import { parseSseData, type InterviewStreamEvent } from '@/lib/interview/stream-events';
 import { fakeGenerator } from '../helpers/fake-question-generator';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
+import { updateElementFields } from '@/app-layer/usecases/bible-elements';
+import { fieldDefsFor } from '@/lib/bible/ui-model';
+import { loadPacks, PACKS_DIR } from '@/lib/interview/packs';
+import { REPHRASE_PROMPT_VERSION } from '@/lib/interview/rephrase';
+import { escapeRegExp } from '../helpers/escape-regexp';
 import { createAccount, workspaceCtx } from '../helpers/workspaces';
 
 afterAll(() => prisma.$disconnect());
@@ -260,6 +268,89 @@ describe('"Ask me this differently"', () => {
             current = await rephraseQuestion(ctx, bookId, view.session.id, current.id, { generator: gen, embedder: null });
         }
         await expect(rephraseQuestion(ctx, bookId, view.session.id, current.id, { generator: rephrasingGenerator(), embedder: null })).rejects.toMatchObject({ details: { reason: 'REPHRASE_LIMIT' } });
+    });
+});
+
+describe('"Ask me this differently", held to the rules a round is held to (Phase 2.4 review)', () => {
+    async function freshRound(name: string): Promise<{ view: InterviewView; elementId: string }> {
+        const elementId = await newElement(name);
+        return { elementId, view: await startInterview(ctx, bookId, { scope: 'ELEMENT', elementId, depth: 2, detail: 3 }, { generator: fakeGenerator(), embedder: null }) };
+    }
+    const wording = (i: number) => [`Picture a reader meeting this: what stands out first?`, `Say it to a stranger: how would it sound?`, `Look back from the ending: what changed?`, `Name the smallest detail that proves it: which is it?`, `Ask the person nearest to her: what would they say?`][i];
+    const nthWording = (i: number) => fakeGenerator({ mutate: (q, request) => (request.data.some((b) => b.label === 'previous-wording') ? { ...q, text: wording(i) } : q) });
+
+    it('holds REPHRASES_PER_ROUND_MAX under concurrency: two rephrases racing for the last one, one wins', async () => {
+        const { view } = await freshRound('Juno');
+        const [a, b] = view.round!.questions;
+        expect(b).toBeDefined();
+        let current = a;
+        for (let i = 0; i < REPHRASES_PER_ROUND_MAX - 1; i++) current = await rephraseQuestion(ctx, bookId, view.session.id, current.id, { generator: nthWording(i), embedder: null });
+        // Both requests pass the check before either writes: the model calls are held until both are in flight.
+        let release: () => void = () => {};
+        const gate = new Promise<void>((r) => (release = r));
+        let waiting = 0;
+        const held = (i: number): QuestionGenerator => {
+            const g = nthWording(i);
+            return {
+                ...g,
+                async generateCandidates(request, signal) {
+                    waiting += 1;
+                    if (waiting === 2) release();
+                    await gate;
+                    return g.generateCandidates(request, signal);
+                },
+            };
+        };
+        const results = await Promise.allSettled([
+            rephraseQuestion(ctx, bookId, view.session.id, current.id, { generator: held(3), embedder: null }),
+            rephraseQuestion(ctx, bookId, view.session.id, b.id, { generator: held(4), embedder: null }),
+        ]);
+        expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+        expect(results.find((r) => r.status === 'rejected')).toMatchObject({ reason: { details: { reason: 'REPHRASE_LIMIT' } } });
+        expect(await prisma.question.count({ where: { sessionId: view.session.id, roundId: view.round!.id, replacesQuestionId: { not: null } } })).toBe(REPHRASES_PER_ROUND_MAX);
+    });
+
+    it('never rephrases a field the bible now answers (rule 5): refused before any model call', async () => {
+        const { view, elementId } = await freshRound('Kestrel');
+        const q = view.round!.questions.find((x) => x.mode === 'FRONTIER')!;
+        const key = q.targetsFieldKeys[0];
+        const def = fieldDefsFor('CHARACTER').find((f) => f.key === key)!;
+        const value = def.type === 'list' ? ['A rope.'] : def.type === 'choice' ? def.options[0].value : def.type === 'scale' ? 3 : 'A rope.';
+        await updateElementFields(ctx, bookId, elementId, { fields: [{ key, value }], baseVersion: 1 });
+        const gen = rephrasingGenerator();
+        await expect(rephraseQuestion(ctx, bookId, view.session.id, q.id, { generator: gen, embedder: null })).rejects.toMatchObject({ details: { reason: 'ANSWERED_IN_BIBLE' } });
+        expect(gen.calls).toHaveLength(0);
+        expect(await prisma.question.count({ where: { sessionId: view.session.id, replacesQuestionId: q.id } })).toBe(0);
+    });
+
+    it('is taught only the packs the session pinned, and only packs that mount here (D11): 503 or 409, before any model call', async () => {
+        const { view } = await freshRound('Linnet');
+        const q = view.round!.questions[0];
+        // This deployment would mount only a real model's record: the shipped structural ones are refused.
+        const gen = rephrasingGenerator();
+        await expect(rephraseQuestion(ctx, bookId, view.session.id, q.id, { generator: gen, embedder: null, packRecordMode: 'model' })).rejects.toMatchObject({
+            status: 503,
+            details: { reason: 'PACKS_NOT_MOUNTABLE', packs: [{ name: 'craft-character', reason: 'STRUCTURAL_RECORD_REFUSED' }] },
+        });
+        // A pack whose text changed since the session pinned it.
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ink-rephrase-packs-'));
+        try {
+            fs.cpSync(PACKS_DIR, dir, { recursive: true });
+            const file = path.join(dir, 'craft/character/PACK.md');
+            const text = fs.readFileSync(file, 'utf8');
+            fs.writeFileSync(file, text.replace('\n---\n', '\n---\nAsk plainly.\n'));
+            await expect(rephraseQuestion(ctx, bookId, view.session.id, q.id, { generator: gen, embedder: null, packs: loadPacks(dir) })).rejects.toMatchObject({ details: { reason: 'PACK_CHANGED' } });
+        } finally {
+            fs.rmSync(dir, { recursive: true, force: true });
+        }
+        expect(gen.calls).toHaveLength(0);
+    });
+
+    it('names the packs it was taught in its prompt version (rule 9), as a round’s call does', async () => {
+        const { view } = await freshRound('Merle');
+        const gen = rephrasingGenerator();
+        await rephraseQuestion(ctx, bookId, view.session.id, view.round!.questions[0].id, { generator: gen, embedder: null });
+        expect(gen.calls.at(-1)!.template.version).toMatch(new RegExp(`^${escapeRegExp(REPHRASE_PROMPT_VERSION)}\\+packs\\.[0-9a-f]{12}$`));
     });
 });
 

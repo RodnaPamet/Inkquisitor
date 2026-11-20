@@ -22,6 +22,7 @@ import { applyInterviewEvent, IDLE_STREAM } from '@/components/interview/use-int
 import { KeyboardShortcutProvider } from '@/lib/hooks/use-keyboard-shortcut';
 import { KIND_LABELS, mockFetch } from '../helpers/bible-ui';
 import { answered, BOOK, controlledStream, ELEMENTS, IAPI, interview, question, SLUG, streamOf } from '../helpers/interview-ui';
+import type { InterviewView, QuestionView } from '@/lib/interview/api-client';
 
 const FIELD_LABELS = { CHARACTER: { want: 'Want', need: 'Need', wound: 'Wound' } };
 
@@ -182,6 +183,110 @@ it('finishing a round closes it (skipping what is left) and goes straight on to 
     expect(await screen.findByText('What does Aurel fear?')).toBeInTheDocument();
     expect(calls.map((c) => c.url)).toEqual([`${IAPI}/sess_1/rounds/1/close`, `${IAPI}/sess_1/rounds/stream`]);
     expect(calls[0].body).toEqual({ skipUnanswered: true });
+});
+
+describe('an answer typed before finishing or stopping is never lost', () => {
+    /** A server whose answer route answers only when released, and records every request in arrival order. */
+    function slowAnswers(q: QuestionView, after: { close?: InterviewView; stop?: InterviewView }) {
+        const calls: Array<{ url: string; body: unknown }> = [];
+        let release: () => void = () => {};
+        const answered$ = new Promise<void>((r) => (release = r));
+        global.fetch = jest.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
+            const u = String(url);
+            const body = init?.body ? JSON.parse(String(init.body)) : undefined;
+            calls.push({ url: u, body });
+            if (u.endsWith('/answer')) {
+                await answered$;
+                calls.push({ url: `${u} (answered)`, body: undefined });
+                return { ok: true, status: 201, json: async () => ({ question: answered(q, { text: body.text }) }) } as unknown as Response;
+            }
+            if (u.endsWith('/close')) return { ok: true, status: 200, json: async () => ({ interview: after.close }) } as unknown as Response;
+            if (u.endsWith('/stop')) return { ok: true, status: 200, json: async () => ({ interview: after.stop }) } as unknown as Response;
+            return streamOf([{ type: 'committed', interview: interview({ questions: [], status: 'COMPLETED', stopReason: 'FRONTIER_EMPTY', roundStatus: null }) }, { type: 'done' }]) as unknown as Response;
+        }) as unknown as typeof fetch;
+        return { calls, release };
+    }
+
+    it('finishing waits for the answer being saved, and then skips nothing it holds', async () => {
+        const q = question();
+        const { calls, release } = slowAnswers(q, { close: interview({ questions: [answered(q, { text: 'A boat.' })], roundStatus: 'CLOSED' }) });
+        mount({ kind: 'existing', interview: interview({ questions: [q] }) });
+        const box = screen.getByRole('textbox', { name: 'Your answer' });
+        fireEvent.change(box, { target: { value: 'A boat.' } });
+        // Leaving the box saves it; the click on Finish follows at once, as a mouse does.
+        fireEvent.blur(box);
+        fireEvent.click(screen.getByRole('button', { name: 'Skip the rest and finish' }));
+        await act(async () => {
+            await new Promise((r) => setTimeout(r, 20));
+        });
+        // Nothing closes the round while the answer is in flight.
+        expect(calls.map((c) => c.url)).toEqual([`${IAPI}/sess_1/questions/${q.id}/answer`]);
+        await act(async () => release());
+        await waitFor(() => expect(calls.some((c) => c.url.endsWith('/close'))).toBe(true));
+        const close = calls.findIndex((c) => c.url.endsWith('/close'));
+        expect(calls.findIndex((c) => c.url.endsWith('(answered)'))).toBeLessThan(close);
+        expect(calls[close].body).toEqual({});
+    });
+
+    it('finishing saves an answer still being typed (never blurred) before it closes', async () => {
+        const q = question();
+        const { calls, release } = slowAnswers(q, { close: interview({ questions: [answered(q, { text: 'Salt.' })], roundStatus: 'CLOSED' }) });
+        release();
+        mount({ kind: 'existing', interview: interview({ questions: [q] }) });
+        fireEvent.change(screen.getByRole('textbox', { name: 'Your answer' }), { target: { value: 'Salt.' } });
+        fireEvent.click(screen.getByRole('button', { name: 'Skip the rest and finish' }));
+        await waitFor(() => expect(calls.some((c) => c.url.endsWith('/close'))).toBe(true));
+        expect(calls[0]).toEqual({ url: `${IAPI}/sess_1/questions/${q.id}/answer`, body: { text: 'Salt.' } });
+        expect(calls.find((c) => c.url.endsWith('/close'))!.body).toEqual({});
+    });
+
+    it('a save that fails holds the round open: the answer stays, and nothing is skipped', async () => {
+        const q = question();
+        const calls: string[] = [];
+        global.fetch = jest.fn(async (url: RequestInfo | URL) => {
+            calls.push(String(url));
+            return { ok: false, status: 500, json: async () => ({ error: { code: 'INTERNAL', message: 'x' } }) } as unknown as Response;
+        }) as unknown as typeof fetch;
+        mount({ kind: 'existing', interview: interview({ questions: [q] }) });
+        fireEvent.change(screen.getByRole('textbox', { name: 'Your answer' }), { target: { value: 'Salt.' } });
+        fireEvent.click(screen.getByRole('button', { name: 'Skip the rest and finish' }));
+        expect(await screen.findByTestId('retry-answer')).toBeInTheDocument();
+        await act(async () => {
+            await new Promise((r) => setTimeout(r, 20));
+        });
+        expect(calls.filter((u) => u.endsWith('/close'))).toEqual([]);
+        expect(screen.getByRole('textbox', { name: 'Your answer' })).toHaveValue('Salt.');
+    });
+
+    it('stopping saves the answer being typed first', async () => {
+        const q = question();
+        const { calls, release } = slowAnswers(q, { stop: interview({ questions: [answered(q, { text: 'Rope.' })], status: 'STOPPED', stopReason: 'AUTHOR_STOPPED', roundStatus: 'CLOSED' }) });
+        mount({ kind: 'existing', interview: interview({ questions: [q] }) });
+        fireEvent.change(screen.getByRole('textbox', { name: 'Your answer' }), { target: { value: 'Rope.' } });
+        fireEvent.click(screen.getByRole('button', { name: 'Stop interview' }));
+        await waitFor(() => expect(document.getElementById('interview-stop-confirm')).not.toBeNull());
+        fireEvent.click(document.getElementById('interview-stop-confirm')!);
+        await act(async () => {
+            await new Promise((r) => setTimeout(r, 20));
+        });
+        expect(calls.some((c) => c.url.endsWith('/stop'))).toBe(false);
+        await act(async () => release());
+        await waitFor(() => expect(calls.some((c) => c.url.endsWith('/stop'))).toBe(true));
+        expect(calls.findIndex((c) => c.url.endsWith('(answered)'))).toBeLessThan(calls.findIndex((c) => c.url.endsWith('/stop')));
+    });
+
+    it('warns before the page is left with an answer typed and not yet saved', () => {
+        const q = question();
+        mockFetch({});
+        mount({ kind: 'existing', interview: interview({ questions: [q] }) });
+        const quiet = new Event('beforeunload', { cancelable: true });
+        window.dispatchEvent(quiet);
+        expect(quiet.defaultPrevented).toBe(false);
+        fireEvent.change(screen.getByRole('textbox', { name: 'Your answer' }), { target: { value: 'Unsaved.' } });
+        const leaving = new Event('beforeunload', { cancelable: true });
+        window.dispatchEvent(leaving);
+        expect(leaving.defaultPrevented).toBe(true);
+    });
 });
 
 it('stopping keeps every answer and says why it stopped; a paused session resumes from Continue', async () => {

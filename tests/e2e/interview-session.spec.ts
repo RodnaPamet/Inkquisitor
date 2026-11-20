@@ -1,6 +1,6 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import { signUp } from './helpers';
-import { STUB_BASE_URL } from './stub-server';
+import { SETUP_OPTIONS_TIMEOUT_MS, STUB_BASE_URL } from './stub-server';
 
 /**
  * A whole interview in the browser (Phase 2.4), against the production build
@@ -49,7 +49,7 @@ test('three rounds against the stubbed model: stream, answer by kind, ask differ
     await page.goto(`/w/${slug}/books/${bookId}/elements/${elementId}`);
     await main.locator('#element-enrich').click();
     const sheet = page.getByRole('dialog');
-    await expect(sheet.getByTestId('depth-preview')).toContainText('in up to 4 rounds');
+    await expect(sheet.getByTestId('depth-preview')).toContainText('in up to 4 rounds', { timeout: SETUP_OPTIONS_TIMEOUT_MS });
     await sheet.locator('#interview-start').click();
 
     // The page becomes the session's own as soon as it exists, and round 1 streams in.

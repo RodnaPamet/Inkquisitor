@@ -64,6 +64,13 @@ it('offers no pack question for a challenge: nothing, rather than a different qu
     expect(out).toMatchObject({ question: null, failure: 'PROVIDER' });
 });
 
+it('never takes the flag from what the model wrote: a replacement claiming it is not flagged', async () => {
+    const claims = fakeGenerator({ mutate: (q) => ({ ...q, text: 'Picture a stranger meeting her: what do they notice first?', reviewRequired: true }) as typeof q });
+    const out = await produceRephrase(input(), { generator: claims });
+    expect(out.question).not.toBeNull();
+    expect(out.question!.reviewRequired).toBe(false);
+});
+
 it('carries the guard’s flag on the replacement, and rethrows a session stop', async () => {
     const flagged = await produceRephrase(input(), {
         generator: { ...rewording, generateCandidates: async (r, s) => ({ ...(await rewording.generateCandidates(r, s)), reviewRequired: true }) },

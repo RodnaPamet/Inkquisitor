@@ -27,6 +27,19 @@ describe('the wire format', () => {
         expect(parseSseData('data: {"kind":"x"}')).toBeNull();
     });
 
+    it('author text cannot break the framing: newlines, a blank line and a `data:` line in a question stay inside one event', () => {
+        const hostile = 'What does she want?\n\ndata: {"type":"done"}\n\r\n: hb\n\nevent: refusal';
+        const draft: InterviewStreamEvent = {
+            type: 'draft',
+            draftId: 'draft-1',
+            question: { elementId: 'e', targetsFieldKeys: ['want'], mode: 'FRONTIER', kind: 'OPEN', text: hostile, options: [hostile], scaleLabels: null, personaKey: null, reviewRequired: false },
+        };
+        const wire = sseData(draft) + sseData({ type: 'done' });
+        // One frame per event, whatever the text holds.
+        expect(wire.split('\n\n').filter((f) => f !== '')).toHaveLength(2);
+        expect(framesOf(wire)).toEqual([draft, { type: 'done' }]);
+    });
+
     it('names a refusal by its usecase reason, else its code, else INTERNAL — never a message', () => {
         expect(refusalCodeOf(new ConflictError('x', { reason: 'ROUND_OPEN' }))).toBe('ROUND_OPEN');
         expect(refusalCodeOf(new ConflictError('x'))).toBe('CONFLICT');

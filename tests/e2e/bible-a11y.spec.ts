@@ -1,7 +1,7 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import { signUp } from './helpers';
-import { STUB_BASE_URL } from './stub-server';
+import { SETUP_OPTIONS_TIMEOUT_MS, STUB_BASE_URL } from './stub-server';
 
 /**
  * Accessibility of the bible pages (Phase 1.H, item 5), against the
@@ -173,7 +173,7 @@ test.describe('the interview pages (Phase 2.4, the stubbed-model server)', () =>
         const main = page.getByRole('main');
         await page.goto(`/w/${slug}/books/${bookId}/elements/${elementId}`);
         await main.locator('#element-enrich').click();
-        await expect(page.getByRole('dialog').getByTestId('depth-preview')).toBeVisible();
+        await expect(page.getByRole('dialog').getByTestId('depth-preview')).toBeVisible({ timeout: SETUP_OPTIONS_TIMEOUT_MS });
         await expectNoAxeViolations(page, 'interview setup sheet', '[role="dialog"]');
         await page.getByRole('dialog').locator('#interview-start').click();
         await expect(main.getByTestId('question-card').first()).toBeVisible({ timeout: 20_000 });
@@ -198,7 +198,7 @@ test.describe('the interview pages (Phase 2.4, the stubbed-model server)', () =>
         await tabTo(page, main.locator('#element-enrich'));
         await page.keyboard.press('Enter');
         const sheet = page.getByRole('dialog');
-        await expect(sheet.getByTestId('depth-preview')).toBeVisible();
+        await expect(sheet.getByTestId('depth-preview')).toBeVisible({ timeout: SETUP_OPTIONS_TIMEOUT_MS });
         await tabTo(page, sheet.locator('#interview-start'));
         await page.keyboard.press('Enter');
 

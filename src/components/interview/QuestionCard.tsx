@@ -29,7 +29,7 @@
  * other ways out. A question the guard flagged (`reviewRequired`) carries a
  * visible marker. A reader sees the question and its answer as text.
  */
-import { forwardRef, useImperativeHandle, useRef, useState, type ReactNode } from 'react';
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState, type ReactNode } from 'react';
 import { useTranslations } from 'next-intl';
 import { CornerDownRight, Repeat2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -45,6 +45,15 @@ import { useInterviewErrorMessage } from './messages';
 export interface QuestionCardHandle {
     /** Move focus into the card (its first control). */
     focus(): void;
+    /**
+     * Save what is typed or picked and not yet saved, and wait for every save
+     * of this card to settle. Before the round is finished or the interview
+     * stopped: a close (which may skip what is unanswered) or a stop must never
+     * overtake an answer on its way. `answered`: the question holds an answer;
+     * `open`: nothing to save and no answer; `unsaved`: a save failed, and the
+     * answer is still only on the screen.
+     */
+    flush(): Promise<'answered' | 'open' | 'unsaved'>;
 }
 
 export interface QuestionCardProps {
@@ -90,12 +99,20 @@ export const QuestionCard = forwardRef<QuestionCardHandle, QuestionCardProps>(fu
     const [busy, setBusy] = useState<null | 'skip' | 'later' | 'rephrase' | 'accept'>(null);
     const inFlight = useRef(false);
     const queued = useRef<{ pick: string | number | null; text: string } | null>(null);
+    /** The save running now (a queued one follows it): what `flush` waits for. */
+    const active = useRef<Promise<void> | null>(null);
+    /**
+     * The same values as the state, kept current synchronously: `flush` runs
+     * after awaits, before React has rendered what changed meanwhile.
+     */
+    const current = useRef({ pick, text });
+    const savedNow = useRef(saved);
+    const answeredNow = useRef(q.answer?.status === 'ANSWERED');
+    /** What was on screen when the author skipped or deferred: kept, never saved by a flush. */
+    const setAside = useRef<{ pick: string | number | null; text: string } | null>(null);
     // The answer whose save failed: kept, and offered again.
     const [failed, setFailed] = useState<{ pick: string | number | null; text: string } | null>(null);
 
-    useImperativeHandle(ref, () => ({
-        focus: () => (firstControlRef.current ?? cardRef.current)?.focus(),
-    }));
 
     const options = q.kind === 'SCALE' ? ['1', '2', '3', '4', '5'] : (q.options ?? []);
 
@@ -107,47 +124,86 @@ export const QuestionCard = forwardRef<QuestionCardHandle, QuestionCardProps>(fu
         return { choice: String(v.pick), ...(written ? { text: v.text } : {}) };
     }
 
-    async function send(v: { pick: string | number | null; text: string }) {
+    function send(v: { pick: string | number | null; text: string }): Promise<void> {
         const body = bodyOf(v);
-        if (!body) return;
+        if (!body) return Promise.resolve();
         if (inFlight.current) {
             queued.current = v;
-            return;
+            return active.current ?? Promise.resolve();
         }
         inFlight.current = true;
         setState('saving');
         setError(null);
         setFailed(null);
-        try {
-            const { question } = await interviewApi.answer(ids, q.id, body);
-            setSaved(v);
-            setState('saved');
-            onChanged(question);
-        } catch (err) {
-            // The answer stays on screen, unsaved, with the reason and a retry.
-            setState('error');
-            setError(errorMessage(reasonOf(err), err instanceof BibleApiError ? err.status : undefined));
-            setFailed(v);
-        } finally {
-            inFlight.current = false;
-            const next = queued.current;
-            queued.current = null;
-            if (next) void send(next);
-        }
+        const run = (async () => {
+            try {
+                const { question } = await interviewApi.answer(ids, q.id, body);
+                savedNow.current = v;
+                answeredNow.current = true;
+                setSaved(v);
+                setState('saved');
+                onChanged(question);
+            } catch (err) {
+                // The answer stays on screen, unsaved, with the reason and a retry.
+                setState('error');
+                setError(errorMessage(reasonOf(err), err instanceof BibleApiError ? err.status : undefined, err instanceof BibleApiError ? err.details : undefined));
+                setFailed(v);
+            } finally {
+                inFlight.current = false;
+                active.current = null;
+                const next = queued.current;
+                queued.current = null;
+                if (next) void send(next);
+            }
+        })();
+        active.current = run;
+        return run;
     }
+
+    const same = (a: { pick: string | number | null; text: string }, b: { pick: string | number | null; text: string } | null) => b !== null && a.pick === b.pick && a.text === b.text;
+    /** Something on screen that a save would send, and that the author did not set aside with Skip or Decide later. */
+    const pendingOf = (v: { pick: string | number | null; text: string }) => !same(v, savedNow.current) && !same(v, setAside.current) && bodyOf(v) !== null;
 
     const unsaved = pick !== saved.pick || text !== saved.text;
     const savable = editable && unsaved && bodyOf({ pick, text }) !== null;
 
+    // Leaving the page with an answer typed and not yet saved asks first
+    // (judged when the page is left, from the values on screen then).
+    useEffect(() => {
+        if (!editable) return;
+        const warn = (e: BeforeUnloadEvent) => {
+            if (!pendingOf(current.current)) return;
+            e.preventDefault();
+            e.returnValue = '';
+        };
+        window.addEventListener('beforeunload', warn);
+        return () => window.removeEventListener('beforeunload', warn);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [editable]);
+
     function choose(value: string | number) {
         if (!editable) return;
         setPick(value);
+        current.current = { ...current.current, pick: value };
         // A pick is an answer: saved at once.
-        void send({ pick: value, text });
+        void send({ pick: value, text: current.current.text });
+    }
+
+    function changeText(value: string) {
+        setText(value);
+        current.current = { ...current.current, text: value };
     }
 
     function saveNow() {
         if (savable) void send({ pick, text });
+    }
+
+    async function flush(): Promise<'answered' | 'open' | 'unsaved'> {
+        if (!editable) return answeredNow.current ? 'answered' : 'open';
+        if (pendingOf(current.current)) void send(current.current);
+        while (active.current) await active.current;
+        if (pendingOf(current.current)) return 'unsaved';
+        return answeredNow.current ? 'answered' : 'open';
     }
 
     async function act(kind: 'skip' | 'later' | 'accept' | 'rephrase') {
@@ -163,23 +219,37 @@ export const QuestionCard = forwardRef<QuestionCardHandle, QuestionCardProps>(fu
                 kind === 'skip' ? await interviewApi.skip(ids, q.id) : kind === 'later' ? await interviewApi.decideLater(ids, q.id) : await interviewApi.answer(ids, q.id, { acceptRecommendation: true });
             if (kind === 'accept' && question.answer) {
                 const v = { pick: question.kind === 'SCALE' ? question.answer.scale : question.answer.choice, text: question.answer.text ?? '' };
-                setPick(isPick(question.kind) ? v.pick : null);
-                setText(v.text);
-                setSaved(isPick(question.kind) ? v : { pick: null, text: v.text });
+                const shown = isPick(question.kind) ? v : { pick: null, text: v.text };
+                setPick(shown.pick);
+                setText(shown.text);
+                current.current = shown;
+                savedNow.current = shown;
+                answeredNow.current = true;
+                setSaved(shown);
                 setState('saved');
             } else {
-                // Skipped or deferred: what was typed stays, unsaved, in case the author returns to it.
+                // Skipped or deferred: what was typed stays, unsaved, in case
+                // the author returns to it — but it is set aside, so finishing
+                // the round never saves it over the author's skip.
+                setAside.current = { ...current.current };
+                savedNow.current = { pick: null, text: '' };
+                answeredNow.current = false;
                 setSaved({ pick: null, text: '' });
                 setState('saved');
             }
             onChanged(question);
         } catch (err) {
-            setError(errorMessage(reasonOf(err), err instanceof BibleApiError ? err.status : undefined));
+            setError(errorMessage(reasonOf(err), err instanceof BibleApiError ? err.status : undefined, err instanceof BibleApiError ? err.details : undefined));
             if (kind !== 'rephrase') setState('error');
         } finally {
             setBusy(null);
         }
     }
+
+    useImperativeHandle(ref, () => ({
+        focus: () => (firstControlRef.current ?? cardRef.current)?.focus(),
+        flush: () => flush(),
+    }));
 
     // ── Keyboard ──
     const digits = options.map((_, i) => String(i + 1));
@@ -273,7 +343,7 @@ export const QuestionCard = forwardRef<QuestionCardHandle, QuestionCardProps>(fu
                     pick={pick}
                     text={text}
                     onPick={choose}
-                    onText={setText}
+                    onText={changeText}
                     onBlurText={() => saveNow()}
                     labelledBy={headingId}
                     firstControlRef={firstControlRef}

@@ -52,6 +52,8 @@ export const INTERVIEW_WORDED_REASONS = [
     'QUESTION_ANSWERED',
     'REPHRASE_LIMIT',
     'NO_REPHRASE',
+    'ANSWERED_IN_BIBLE',
+    'PACK_CHANGED',
     'TOKEN_BUDGET',
     'WORKSPACE_CEILING',
     // Phase 2.3: production with no passing evaluation record for a pack the session would mount.

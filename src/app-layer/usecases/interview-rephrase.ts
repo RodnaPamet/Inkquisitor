@@ -8,7 +8,10 @@
  *      round of an active session, not already replaced), has no answer yet
  *      (409 QUESTION_ANSWERED: a rephrase never moves an answer), the round
  *      holds fewer than `REPHRASES_PER_ROUND_MAX` rephrases (409
- *      REPHRASE_LIMIT), the session's token budget can take one more call
+ *      REPHRASE_LIMIT), its fields are not answered by the bible meanwhile
+ *      (409 ANSWERED_IN_BIBLE: rule 5, as a round re-reads them), the packs it
+ *      would be taught are the ones the session pinned (409 PACK_CHANGED) and
+ *      mount here (503 PACKS_NOT_MOUNTABLE, D11), as a round's are, the session's token budget can take one more call
  *      (409 TOKEN_BUDGET), the kill switch is off and a call can be made at
  *      all (503 AI_UNAVAILABLE, naming 2.1's reason), and the month can take
  *      it (409 WORKSPACE_CEILING). Nothing is written.
@@ -16,7 +19,9 @@
  *      2.1, held to the rules in `src/lib/interview/rephrase.ts`.
  *   3. PERSIST (under the lock again): the tokens are charged whatever the
  *      outcome; when the question is still unanswered and unreplaced, the
- *      rephrase is written (sanitised again, encrypted; numbered after the
+ *      round still has a rephrase to spend (the cap is counted again HERE,
+ *      under the lock: two requests can both pass the first check) and the
+ *      bible still leaves its fields open, the rephrase is written (sanitised again, encrypted; numbered after the
  *      round's last position, shown in the place of the one it replaces) and
  *      the original stamped `supersededAt`, in ONE transaction, then its
  *      vector filed in a transaction of its own. Otherwise 409 (the reason).
@@ -40,9 +45,11 @@ import { produceRephrase, REPHRASE_PROMPT_VERSION, REPHRASES_PER_ROUND_MAX, TOKE
 import { encodeJson, decodeOptions, decodeScaleLabels, sanitiseQuestionForStorage } from '@/lib/interview/storage';
 import { isPersonaKey } from '@/lib/interview/vocabulary';
 import { logger } from '@/lib/observability/logger';
+import { packNamesFor, parsePackPins, pinMismatch, PacksNotMountableError } from '@/lib/interview/pack-mount';
 import { requireAnswerable } from './interview-answers';
 import { assertModelAvailable, generatorOf, type InterviewDeps } from './interview-rounds';
-import { loadInterviewState, questionView, type QuestionView } from './interview-state';
+import { loadInterviewState, questionView, SESSION_QUESTIONS_MAX, storedTextOf, type QuestionView } from './interview-state';
+import { deploymentPackMounts } from './interview-packs';
 import { defaultQuestionEmbedder, questionRecord, upsertQuestionVectors } from './question-embeddings';
 
 export { REPHRASES_PER_ROUND_MAX };
@@ -63,12 +70,17 @@ function originalOf(q: QuestionRow): RephraseOriginal {
     };
 }
 
+/** A FRONTIER question one of whose fields the bible now holds a value for (rule 5). A CHALLENGE tests a stored value by design. */
+function answeredInBible(question: QuestionRow, stored: ReadonlyMap<string, string>): boolean {
+    return question.mode === 'FRONTIER' && question.targetsFieldKeys.some((k) => stored.has(k));
+}
+
 export async function rephraseQuestion(
     ctx: WorkspaceRequestContext,
     bookId: string,
     sessionId: string,
     questionId: string,
-    deps: Pick<InterviewDeps, 'generator' | 'embedder' | 'packs' | 'signal'> = {},
+    deps: Pick<InterviewDeps, 'generator' | 'embedder' | 'packs' | 'signal' | 'packRecordMode'> = {},
 ): Promise<QuestionView> {
     await assertPermission(ctx, 'bible.edit');
     const generator = generatorOf(ctx, deps);
@@ -90,11 +102,19 @@ export async function rephraseQuestion(
         if (signals.workspaceCeilingReached) throw new ConflictError('The monthly AI limit for this workspace has been reached.', { reason: 'WORKSPACE_CEILING' });
         const element = state.elements.find((e) => e.elementId === question.elementId);
         if (!element) throw new NotFoundError('Element not found.');
+        // Rule 5: a field the bible answers now (the author filled it since the round opened) is not asked again.
+        if (answeredInBible(question, element.storedText)) throw new ConflictError('The bible answers this now; it is not asked again.', { reason: 'ANSWERED_IN_BIBLE' });
         return { session, question, state, element };
     });
 
     const { session, question, state, element } = prepared;
     const personaKey = question.personaKey && isPersonaKey(question.personaKey) ? question.personaKey : null;
+
+    // The packs the call is taught: the ones the session pinned, unchanged, and mountable here — as a round's (D11).
+    const needed = packNamesFor([element.kind], personaKey ? [personaKey] : []);
+    const problem = pinMismatch(parsePackPins(session.packPins), needed, packs, await deploymentPackMounts(packs, deps.packRecordMode, needed));
+    if (problem?.reason === 'PACK_NOT_MOUNTABLE') throw new PacksNotMountableError(problem.packs);
+    if (problem) throw new ConflictError('A question pack this interview was started with has changed.', { reason: 'PACK_CHANGED', problem: problem.reason, packs: problem.packs });
 
     // 2. The call, outside every transaction.
     let output: RephraseOutput | null = null;
@@ -135,6 +155,12 @@ export async function rephraseQuestion(
         if (!current || current.supersededAt !== null || answered) return { refused: answered ? 'QUESTION_ANSWERED' : 'QUESTION_SUPERSEDED' } as const;
         // The session or round may have moved meanwhile: the usual answerable check, under this lock.
         await requireAnswerable(db, ctx, bookId, sessionId, questionId);
+        // Counted again under the lock: two rephrases of one round can both pass the first check.
+        const roundQuestions = await QuestionRepository.listForRound(db, ctx.workspaceId, sessionId, question.roundId, SESSION_QUESTIONS_MAX);
+        if (roundQuestions.filter((x) => x.replacesQuestionId !== null).length >= REPHRASES_PER_ROUND_MAX) return { refused: 'REPHRASE_LIMIT' } as const;
+        // And the bible read again under the lock (rule 5), as a round's persist does.
+        const stored = (await storedTextOf(db, ctx, [element.elementId])).get(element.elementId) ?? new Map<string, string>();
+        if (answeredInBible(question, stored)) return { refused: 'ANSWERED_IN_BIBLE' } as const;
 
         const q = sanitiseQuestionForStorage(output.question);
         const position = (await QuestionRepository.maxPosition(db, ctx.workspaceId, sessionId, question.roundId)) + 1;

@@ -28,7 +28,6 @@ export default async function InterviewsPage({ params }: { params: Promise<{ wor
             sessions={sessions}
             truncated={truncated}
             kindLabels={kindLabels()}
-            canEdit={ctx.permissions.bible.edit}
         />
     );
 }

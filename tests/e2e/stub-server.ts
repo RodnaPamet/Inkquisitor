@@ -8,3 +8,11 @@
  */
 export const STUB_PORT = Number(process.env.E2E_PORT || 3100) + 2;
 export const STUB_BASE_URL = `http://localhost:${STUB_PORT}`;
+
+/**
+ * How long a spec waits for the setup sheet's options. The sheet reads
+ * `GET interview-packs`, and the first read in a server process judges every
+ * pack's evaluation record (2.3's mount gate replays each record: seconds on a
+ * cold server, more beside parallel specs); later reads are cached.
+ */
+export const SETUP_OPTIONS_TIMEOUT_MS = 20_000;

@@ -139,7 +139,7 @@ describe('the book’s interviews', () => {
     it('names what each asked about, its status and why it stopped, in words', async () => {
         const active = interview().session;
         const paused = { ...interview({ status: 'PAUSED', stopReason: 'WORKSPACE_CEILING' }).session, id: 's2', scope: 'KIND' as const, targetElementId: null, targetElementName: null, targetKind: 'SETTING' as const };
-        const { container } = render(<InterviewsList workspaceSlug={SLUG} book={{ id: BOOK.id, title: BOOK.title }} sessions={[active, paused]} truncated={false} kindLabels={KIND_LABELS} canEdit />);
+        const { container } = render(<InterviewsList workspaceSlug={SLUG} book={{ id: BOOK.id, title: BOOK.title }} sessions={[active, paused]} truncated={false} kindLabels={KIND_LABELS} />);
         expect(screen.getByRole('link', { name: 'Aurel Pask' })).toHaveAttribute('href', '/w/ada/books/book_1/interviews/sess_1');
         expect(screen.getByRole('link', { name: `Every ${KIND_LABELS.SETTING}` })).toHaveAttribute('href', '/w/ada/books/book_1/interviews/s2');
         expect(screen.getByText(/This workspace has reached its AI limit for the month/)).toBeInTheDocument();
@@ -151,7 +151,7 @@ describe('the book’s interviews', () => {
     });
 
     it('says so when there are none', () => {
-        render(<InterviewsList workspaceSlug={SLUG} book={{ id: BOOK.id, title: BOOK.title }} sessions={[]} truncated={false} kindLabels={KIND_LABELS} canEdit />);
+        render(<InterviewsList workspaceSlug={SLUG} book={{ id: BOOK.id, title: BOOK.title }} sessions={[]} truncated={false} kindLabels={KIND_LABELS} />);
         expect(screen.getByText('No interviews yet')).toBeInTheDocument();
     });
 });

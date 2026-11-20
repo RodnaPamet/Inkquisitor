@@ -3,7 +3,7 @@
  * stand-in for the Messages API, refused in a real production configuration.
  */
 import { productionConfigProblems, productionConfigWarnings } from '@/lib/startup-checks';
-import { aiUnavailableReason } from '@/lib/ai/config';
+import { aiUnavailableReason, stubModelActive } from '@/lib/ai/config';
 import { isLoopbackUrl, stubAnswer, stubMessagesFetch, stubModelProblems } from '@/lib/ai/model-stub';
 import { validateCandidate, candidateFrom, GeneratedQuestionsSchema } from '@/lib/interview/candidates';
 
@@ -51,8 +51,19 @@ describe('production refuses the stub unless the server is plainly a local test 
         expect(productionConfigProblems({ ...env, AI_MODEL_STUB: undefined }).some((p) => p.includes('ANTHROPIC_API_KEY is required'))).toBe(true);
     });
 
+    it('never answers for a real host in production, even where the start-up check did not run (D13)', () => {
+        // The start-up check is skipped for `next build` (NEXT_PHASE): a process carrying that marker is not checked at all.
+        const unchecked = { ...PROD, AI_DISABLED: undefined, AI_MODEL_STUB: '1', APP_URL: 'https://inkquisitor.example', NEXTAUTH_URL: 'https://inkquisitor.example', NEXT_PHASE: 'phase-production-build' };
+        expect(productionConfigProblems(unchecked)).toEqual([]);
+        // The stub itself still refuses: no call is possible, and none would be answered by the stub.
+        expect(stubModelActive(unchecked)).toBe(false);
+        expect(aiUnavailableReason(unchecked)).toBe('CREDENTIAL_NOT_CONFIGURED');
+        expect(stubModelActive({ ...unchecked, APP_URL: 'http://localhost:3332', NEXTAUTH_URL: 'http://127.0.0.1:3332' })).toBe(true);
+        expect(stubModelActive({ AI_MODEL_STUB: '1', NODE_ENV: 'development' })).toBe(true);
+    });
+
     it('makes a call possible without a key, but never past the kill switch', () => {
-        expect(aiUnavailableReason({ AI_MODEL_STUB: '1', NODE_ENV: 'production' })).toBeNull();
+        expect(aiUnavailableReason({ AI_MODEL_STUB: '1', NODE_ENV: 'production', APP_URL: 'http://localhost:3332', NEXTAUTH_URL: 'http://localhost:3332' })).toBeNull();
         expect(aiUnavailableReason({ AI_MODEL_STUB: '1', AI_DISABLED: '1' })).toBe('AI_DISABLED');
         expect(aiUnavailableReason({})).toBe('CREDENTIAL_NOT_CONFIGURED');
     });

@@ -765,7 +765,8 @@
             "scopeTruncated": "This book is large: the interview asks about its first entries only.",
             "backToBook": "Back to the book",
             "notStarted": "This interview could not start.",
-            "badSetup": "This link does not describe an interview. Start one from the book."
+            "badSetup": "This link does not describe an interview. Start one from the book.",
+            "unsavedHold": "An answer could not be saved, so nothing else was done. Try saving it again first."
         },
         "card": {
             "question": "Question {number}",
@@ -849,7 +850,9 @@
             "PACKS_NOT_MOUNTABLE": "The question packs are not ready on this server yet, so an interview cannot start.",
             "PACKS_NOT_MOUNTABLE_NAMED": "These question packs are not ready on this server, so the interview cannot go on: {packs}.",
             "packCraft": "{kind} questions",
-            "packPersona": "the {name} interviewer"
+            "packPersona": "the {name} interviewer",
+            "ANSWERED_IN_BIBLE": "Your bible now answers this, so it is not asked again. Skip it, or answer it as it is.",
+            "PACK_CHANGED": "A question pack this interview was started with has changed since, so it cannot be asked differently. Your answers are kept."
         }
     }
 }

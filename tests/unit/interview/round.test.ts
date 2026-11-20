@@ -239,6 +239,14 @@ describe('watching a round as it is produced (Phase 2.4)', () => {
         expect(fallback.questions.every((q) => !q.reviewRequired)).toBe(true);
     });
 
+    it('never takes the flag from what the model wrote: a question claiming it is not flagged', async () => {
+        const input = setup('CHARACTER', 1, 2);
+        const out = await produceRound(input, { generator: fakeGenerator({ mutate: (q) => ({ ...q, reviewRequired: true }) as typeof q }) });
+        expect(out.questions.length).toBeGreaterThan(0);
+        expect(out.questions.every((q) => q.reviewRequired === false)).toBe(true);
+        expect(out.metrics.guardFlaggedCalls).toBe(0);
+    });
+
     it('hands the call the caller’s signal, and makes no call once it is aborted', async () => {
         const input = setup('CHARACTER', 2, 3);
         const abort = new AbortController();

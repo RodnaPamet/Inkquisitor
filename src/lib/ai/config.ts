@@ -56,14 +56,18 @@
  */
 
 import { isAnthropicWorkspaceId } from './anthropic-workspace';
-import { stubModelEnabled, stubModelProblems } from './model-stub';
+import { loopbackStubMode, stubModelEnabled, stubModelProblems } from './model-stub';
 
 /**
  * The stubbed model is answering (Phase 2.4): switched on, and no provider key
  * configured beside it (a key wins; production refuses the pair at start-up,
- * `stubModelProblems`).
+ * `stubModelProblems`). In production, only in D13's loopback-only mode, asked
+ * here too and not only at start-up: a process whose start-up check did not
+ * run (it is skipped for `next build`) still never answers a real host's
+ * authors with canned questions.
  */
 export function stubModelActive(e: AiEnvRecord): boolean {
+    if (e.NODE_ENV === 'production') return loopbackStubMode(e);
     return stubModelEnabled(e) && !present(e.ANTHROPIC_API_KEY);
 }
 
