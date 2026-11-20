@@ -185,6 +185,8 @@ describe('wiring', () => {
             ResearchCitation: ['url', 'title', 'quotedSpan'],
             ResearchProposal: ['proposedValue', 'newName', 'newSummary', 'rationale'],
             ResearchEgress: ['text'],
+            StoryMap: ['freeformJson'],
+            MapSnapshot: ['snapshot'],
         });
         expect(compileManifest(ENCRYPTED_FIELDS).isEmpty).toBe(false);
     });

@@ -41,6 +41,8 @@ export const PUBLIC_ROUTES: Readonly<Record<string, string>> = Object.freeze({
     'src/app/api/readyz/route.ts': 'Readiness probe: dependency status in a fixed vocabulary, no data and no driver message.',
     'src/app/api/auth/[...nextauth]/route.ts': 'Sign-in itself (NextAuth): authenticates the caller; LOGIN_LIMIT and the edge auth tier bound it.',
     'src/app/api/auth/register/route.ts': 'Sign-up: creates the caller’s own account and workspace; WORKSPACE_CREATE_LIMIT bounds it.',
+    'src/app/api/canvas-assets/[...asset]/route.ts':
+        'tldraw’s own static files (fonts, icon sprite, embed icons, English translation) from the installed package: the same for every visitor, no data, an allowlist of paths (Phase 3.1).',
 });
 
 export const HTTP_METHODS = ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'] as const;

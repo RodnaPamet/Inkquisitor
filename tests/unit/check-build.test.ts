@@ -16,7 +16,16 @@ const check = require('../../scripts/check-build.js') as {
     findServerEnvNames(chunk: string, keys: string[]): string[];
     serverEnvKeys(envSource: string): string[];
     checkBuild(output: string, nextDir: string): string[];
+    findOnDemandInFirstLoad(nextDir: string): string[];
 };
+
+/** A page's client reference manifest, as `next build` writes it. */
+function writeManifest(dir: string, route: string, chunks: string[], css: string[] = []): void {
+    const file = path.join(dir, 'server', 'app', ...route.split('/').filter(Boolean), 'page_client-reference-manifest.js');
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    const manifest = { clientModules: { m1: { id: 1, name: '*', chunks, async: false } }, entryCSSFiles: { [route]: css.map((p) => ({ inlined: false, path: p })) } };
+    fs.writeFileSync(file, `globalThis.__RSC_MANIFEST=(globalThis.__RSC_MANIFEST||{});globalThis.__RSC_MANIFEST[${JSON.stringify(route + '/page')}]=${JSON.stringify(manifest)};`);
+}
 
 const PHASE_03_OUTPUT = [
     '▲ Next.js 16.4.6 (webpack)',
@@ -66,6 +75,9 @@ describe('checkBuild over a build folder', () => {
         fs.mkdirSync(path.join(dir, 'static', 'chunks'), { recursive: true });
         fs.writeFileSync(path.join(dir, 'server', 'middleware.js'), 'module.exports = {}');
         fs.writeFileSync(path.join(dir, 'static', 'chunks', 'a.js'), 'console.log(1)');
+        // tldraw, in a chunk of its own that no page loads up front (Phase 3.1).
+        fs.writeFileSync(path.join(dir, 'static', 'chunks', '399.js'), 'x="TLDRAW_USER_DATA_v3"');
+        writeManifest(dir, '/w/[slug]/books', ['static/chunks/a.js']);
     });
     afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));
 
@@ -82,6 +94,26 @@ describe('checkBuild over a build folder', () => {
         expect(problems.some((p) => p.includes('names server env variables: DATA_ENCRYPTION_KEY'))).toBe(true);
         fs.rmSync(path.join(dir, 'static'), { recursive: true });
         fs.rmSync(path.join(dir, 'server', 'middleware.js'));
-        expect(check.checkBuild('', dir)).toEqual([expect.stringContaining('no proxy bundle'), expect.stringContaining('no client chunks')]);
+        expect(check.checkBuild('', dir)).toEqual([
+            expect.stringContaining('no proxy bundle'),
+            expect.stringContaining('no client chunks'),
+            expect.stringContaining('tldraw is in no client chunk'),
+        ]);
+    });
+
+    it('fails a page that loads tldraw up front, by script or by stylesheet (Phase 3.1)', () => {
+        writeManifest(dir, '/w/[slug]/books/[bookId]/maps/[kind]', ['static/chunks/a.js', 'static/chunks/399.js']);
+        fs.mkdirSync(path.join(dir, 'static', 'css'), { recursive: true });
+        fs.writeFileSync(path.join(dir, 'static', 'css', 'tl.css'), '.tl-container{}');
+        writeManifest(dir, '/w/[slug]/settings', ['static/chunks/a.js'], ['static/css/tl.css']);
+        expect(check.findOnDemandInFirstLoad(dir)).toEqual([
+            expect.stringMatching(/maps\/\[kind\]\/page loads tldraw up front \(static\/chunks\/399\.js\)/),
+            expect.stringMatching(/settings\/page loads tldraw up front \(static\/css\/tl\.css\)/),
+        ]);
+    });
+
+    it('fails a build with no page manifests to read', () => {
+        fs.rmSync(path.join(dir, 'server', 'app'), { recursive: true });
+        expect(check.findOnDemandInFirstLoad(dir)).toEqual([expect.stringContaining('no client reference manifests')]);
     });
 });

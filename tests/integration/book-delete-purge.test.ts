@@ -30,6 +30,7 @@ import { ForbiddenError, NotFoundError } from '@/lib/errors/types';
 import { exportsOf, readRoute, routeHandlerFiles, urlAndParamsFor } from '../helpers/api-routes';
 import { seedInterview } from '../helpers/interview';
 import { seedBible } from '../helpers/bible';
+import { seedStoryMap } from '../helpers/canvas';
 import { seedResearchRun } from '../helpers/research';
 import { REPO_ROOT } from '../helpers/repo-files';
 import { seedVectors } from '../helpers/vectors';
@@ -95,6 +96,8 @@ describe('a deleted book', () => {
         const research = await seedResearchRun(ctx, seeded.bookId, seeded.characterId);
         const finding = await prisma.researchFinding.findFirstOrThrow({ where: { runId: research.runId } });
         const proposal = await prisma.researchProposal.findFirstOrThrow({ where: { runId: research.runId } });
+        // A saved relationship map (Phase 3.1), so its snapshot routes have a version 1 to answer for.
+        await seedStoryMap(ctx, seeded, 'routes');
         const routes = routeHandlerFiles().filter((f) => f.startsWith('src/app/api/w/[workspaceSlug]/books/[bookId]/'));
         expect(routes.length).toBeGreaterThanOrEqual(10);
         const value = (p: string) =>
@@ -111,6 +114,8 @@ describe('a deleted book', () => {
                 runId: research.runId,
                 findingId: finding.id,
                 proposalId: proposal.id,
+                kind: 'relationship',
+                version: '1',
             })[p] ?? `probe-${p}`;
         const call = async (file: string, method: string) => {
             // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -132,6 +137,8 @@ describe('a deleted book', () => {
                 'POST interviews/[sessionId]/proposals/bulk-accept/route.ts': { items: [{ proposalId: 'after-deletion', baseVersion: 1 }] },
                 'POST research/briefs/route.ts': { question: 'How were hawks hooded?', purpose: 'After deletion.', scopeElementIds: [seeded.characterId], depth: 'QUICK' },
                 'POST research/proposals/[proposalId]/accept/route.ts': { baseVersion: 1 },
+                'PUT maps/[kind]/route.ts': { expectedVersion: 1, nodes: [], edges: [], freeform: [] },
+                'POST maps/[kind]/snapshots/[version]/restore/route.ts': { expectedVersion: 1 },
             };
             const upload = tail === 'research/briefs/[briefId]/sources/route.ts';
             const body = ['GET', 'DELETE'].includes(method)

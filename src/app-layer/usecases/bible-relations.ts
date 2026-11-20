@@ -35,6 +35,7 @@ import { runInWorkspaceContext } from '@/lib/db/rls-middleware';
 import { ConflictError, NotFoundError, ValidationError } from '@/lib/errors/types';
 import { getRelationType, isSymmetric, relationAllowed } from '@/lib/bible/templates';
 import { isUniqueViolation, optionalBlock, requireBook } from './bible-common';
+import { lockMapsForBibleDeletion, recordMapsAfterBibleDeletion } from './story-maps';
 
 export interface CreatedRelationView {
     id: string;
@@ -118,7 +119,11 @@ export async function removeRelation(ctx: WorkspaceRequestContext, bookId: strin
         await requireBook(db, ctx, bookId);
         const relation = await BibleRelationRepository.find(db, ctx.workspaceId, bookId, relationId);
         if (!relation) throw new NotFoundError('Relation not found.');
+        // The book's map locks BEFORE the delete, and a snapshot of each map
+        // whose edge went with the relation (decision D20).
+        const maps = await lockMapsForBibleDeletion(db, ctx, bookId);
         await BibleRelationRepository.remove(db, ctx.workspaceId, bookId, relationId);
+        await recordMapsAfterBibleDeletion(db, ctx, bookId, maps);
         await logEvent(
             ctx,
             {

@@ -21,6 +21,8 @@ export const APP_ROUTES = {
     interviewReview: (workspaceSlug: string, bookId: string, sessionId: string) => `${bookPath(workspaceSlug, bookId)}/interviews/${encodeURIComponent(sessionId)}/review`,
     /** A book's research: briefs, runs, cited findings and the proposals they support (Phase 2.6). */
     research: (workspaceSlug: string, bookId: string) => `${bookPath(workspaceSlug, bookId)}/research`,
+    /** One of a book's story maps (Phase 3.1): `kind` is its URL segment (`mapKindSlug`: relationship, plot, timeline). */
+    storyMap: (workspaceSlug: string, bookId: string, kind: string) => `${bookPath(workspaceSlug, bookId)}/maps/${encodeURIComponent(kind)}`,
     /** A new interview, started with the setup in the query (`interviewSetupQuery`, `src/lib/interview/setup.ts`). */
     newInterview: (workspaceSlug: string, bookId: string, query: string) => `${bookPath(workspaceSlug, bookId)}/interviews/new?${query}`,
     /** The workspace's books deleted in the last 30 days (Phase 1.H; the OWNER's). */

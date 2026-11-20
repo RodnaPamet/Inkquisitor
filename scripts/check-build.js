@@ -21,6 +21,10 @@
  *      reached the browser bundle. The source-graph guard is
  *      tests/guards/client-reachable-modules-import-no-server-env.test.ts; this
  *      reads what was actually shipped.
+ *   4. AN ON-DEMAND LIBRARY in a route's first load (Phase 3.1): tldraw, which
+ *      the story canvas loads with `next/dynamic` and `ssr: false`, must sit
+ *      in no page's client chunks or entry stylesheets (each page's
+ *      `*_client-reference-manifest.js`), and must be in some chunk.
  *
  *   node scripts/check-build.js            build, then check
  *   node scripts/check-build.js --no-build check the existing .next only
@@ -31,6 +35,7 @@
 const { spawn } = require('node:child_process');
 const fs = require('node:fs');
 const path = require('node:path');
+const vm = require('node:vm');
 
 const ROOT = path.resolve(__dirname, '..');
 
@@ -98,6 +103,51 @@ function filesUnder(dir, ext) {
     return out;
 }
 
+/**
+ * Libraries that may load only ON DEMAND, never in a route's first load
+ * (Phase 3.1): tldraw is loaded with `next/dynamic` and `ssr: false` by the
+ * story canvas, so no page — not even the map page — carries it up front.
+ * Each is found by a string only its code (or stylesheet) contains; a build
+ * where it is in no chunk at all is a problem too (a check over nothing).
+ */
+const ON_DEMAND_ONLY = [{ module: 'tldraw', jsNeedle: 'TLDRAW_USER_DATA_v3', cssNeedle: '.tl-container' }];
+
+/** Every page's first-load files: the chunks of its client modules and its entry stylesheets. */
+function firstLoadFilesByRoute(nextDir) {
+    const out = new Map();
+    for (const file of filesUnder(path.join(nextDir, 'server', 'app'), '_client-reference-manifest.js')) {
+        const sandbox = {};
+        sandbox.globalThis = sandbox;
+        vm.runInNewContext(fs.readFileSync(file, 'utf8'), sandbox);
+        for (const [route, manifest] of Object.entries(sandbox.__RSC_MANIFEST ?? {})) {
+            const files = new Set();
+            for (const mod of Object.values(manifest.clientModules ?? {})) for (const c of mod.chunks ?? []) files.add(decodeURIComponent(c));
+            for (const sheets of Object.values(manifest.entryCSSFiles ?? {})) for (const sheet of sheets) files.add(typeof sheet === 'string' ? sheet : sheet.path);
+            out.set(route, files);
+        }
+    }
+    return out;
+}
+
+/** Problems with on-demand libraries: present in some route's first load, or built nowhere. */
+function findOnDemandInFirstLoad(nextDir) {
+    const problems = [];
+    const staticFiles = [...filesUnder(path.join(nextDir, 'static'), '.js'), ...filesUnder(path.join(nextDir, 'static'), '.css')];
+    const routes = firstLoadFilesByRoute(nextDir);
+    if (routes.size === 0) problems.push('no client reference manifests under .next/server/app (the first-load check would read nothing)');
+    for (const lib of ON_DEMAND_ONLY) {
+        const carriers = staticFiles
+            .filter((f) => fs.readFileSync(f, 'utf8').includes(f.endsWith('.css') ? lib.cssNeedle : lib.jsNeedle))
+            .map((f) => path.relative(nextDir, f).split(path.sep).join('/'));
+        if (!carriers.some((c) => c.endsWith('.js'))) problems.push(`${lib.module} is in no client chunk (did the canvas stop being built?)`);
+        for (const [route, files] of routes) {
+            const found = carriers.filter((c) => files.has(c));
+            if (found.length > 0) problems.push(`${route} loads ${lib.module} up front (${found.join(', ')}); load it with next/dynamic`);
+        }
+    }
+    return problems;
+}
+
 /** Every problem with the build in `nextDir`, given its printed output. */
 function checkBuild(output, nextDir = path.join(ROOT, '.next')) {
     const problems = [];
@@ -117,6 +167,7 @@ function checkBuild(output, nextDir = path.join(ROOT, '.next')) {
         const names = findServerEnvNames(fs.readFileSync(chunk, 'utf8'), keys);
         if (names.length > 0) problems.push(`${path.relative(ROOT, chunk)} names server env variables: ${names.join(', ')}`);
     }
+    problems.push(...findOnDemandInFirstLoad(nextDir));
     return problems;
 }
 
@@ -147,7 +198,7 @@ async function main() {
         process.stderr.write(`\ncheck-build: ${problems.length} problem(s)\n${problems.map((p) => `  - ${p}`).join('\n')}\n`);
         process.exit(1);
     }
-    process.stdout.write('\ncheck-build: no warnings, a clean proxy bundle, no server env in client chunks\n');
+    process.stdout.write('\ncheck-build: no warnings, a clean proxy bundle, no server env in client chunks, tldraw in no first load\n');
 }
 
 if (require.main === module) {
@@ -157,4 +208,4 @@ if (require.main === module) {
     });
 }
 
-module.exports = { LIBRARY_CLIENT_READS, findWarnings, findProxyNodeOnlyModules, findServerEnvNames, serverEnvKeys, checkBuild, PROXY_FORBIDDEN };
+module.exports = { ON_DEMAND_ONLY, findOnDemandInFirstLoad, firstLoadFilesByRoute, LIBRARY_CLIENT_READS, findWarnings, findProxyNodeOnlyModules, findServerEnvNames, serverEnvKeys, checkBuild, PROXY_FORBIDDEN };

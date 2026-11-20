@@ -33,9 +33,10 @@
  * `"type": "module"` with import-first entries. `sanitize-html` itself is
  * CommonJS and listed only so a copy nested under it is not ignored by the
  * outer path segment matching (`transformIgnorePatterns` is an unanchored
- * regex; inflect-compliance's jest.config.js tells the story).
+ * regex; inflect-compliance's jest.config.js tells the story). `@tldraw/assets`
+ * (Phase 3.1) ships its asset-URL modules as plain ESM.
  */
-const NODE_ESM_ALLOW_LIST = ['sanitize-html', 'htmlparser2', 'domhandler', 'domutils', 'dom-serializer', 'domelementtype', 'entities'].join('|');
+const NODE_ESM_ALLOW_LIST = ['sanitize-html', 'htmlparser2', 'domhandler', 'domutils', 'dom-serializer', 'domelementtype', 'entities', '@tldraw/assets'].join('|');
 
 const shared = {
     preset: 'ts-jest',
@@ -79,6 +80,7 @@ const RENDERED_ESM_ALLOW_LIST = [
     'orderedmap',
     'rope-sequence',
     'w3c-keyname',
+    '@tldraw/assets',
 ].join('|');
 
 /** @type {import('jest').Config} */

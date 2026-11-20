@@ -1,5 +1,5 @@
 import { expect, test, type APIResponse, type Page } from '@playwright/test';
-import { HSTS_HEADER, SECURITY_HEADERS, STATIC_ASSET_CSP } from '../../src/lib/security/csp';
+import { HSTS_HEADER, SECURITY_HEADERS, STATIC_ASSET_CSP, TLDRAW_WATERMARK_TRACK_URL } from '../../src/lib/security/csp';
 import { signUp } from './helpers';
 
 /**
@@ -35,6 +35,10 @@ function expectHeaders(res: APIResponse, kind: Kind, what: string): string {
         expect([what, scriptSrc.includes('unsafe-inline'), scriptSrc.includes('unsafe-eval')]).toEqual([what, false, false]);
         expect([what, csp]).toEqual([what, expect.stringContaining("frame-ancestors 'none'")]);
         expect([what, csp]).toEqual([what, expect.stringContaining("object-src 'none'")]);
+        // One other origin, one path, one directive: tldraw's watermark-track fetch (D20).
+        const connectSrc = /(?:^|;\s*)connect-src ([^;]*)/.exec(csp)?.[1] ?? '';
+        expect([what, connectSrc]).toEqual([what, `'self' ${TLDRAW_WATERMARK_TRACK_URL}`]);
+        expect([what, csp.split('cdn.tldraw.com').length - 1]).toEqual([what, 1]);
     }
     return csp;
 }

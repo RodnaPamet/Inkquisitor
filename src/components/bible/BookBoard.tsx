@@ -33,7 +33,7 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
-import { FileDown, FileText, Flame, MessagesSquare, Plus, Search, Trash2, Upload } from 'lucide-react';
+import { FileDown, FileText, Flame, MessagesSquare, Plus, Search, Trash2, Upload, Waypoints } from 'lucide-react';
 import { InterviewLauncher } from '@/components/interview/InterviewLauncher';
 import { buttonVariants } from '@/components/ui/button-variants';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
@@ -43,6 +43,7 @@ import { StatusBadge } from '@/components/ui/status-badge';
 import { APP_ROUTES } from '@/lib/app-routes';
 import { BIBLE_API, bibleFetch, type BoardKindView, type BookView, type ElementListItemView, type ElementPageView } from '@/lib/bible/api-client';
 import { completeness, type Completeness } from '@/lib/bible/completeness';
+import { STORY_MAP_KINDS, mapKindSlug } from '@/lib/canvas/map-kinds';
 import type { BibleKind } from '@/lib/bible/kinds';
 import type { KindSummary } from '@/lib/bible/ui-model';
 import { CompletenessMeter } from './CompletenessMeter';
@@ -70,6 +71,7 @@ export function BookBoard({ workspaceSlug, book, kinds, board, canEdit, canDelet
     const tInterview = useTranslations('interview.launch');
     const tSetup = useTranslations('interview.setup');
     const tResearch = useTranslations('research');
+    const tCanvas = useTranslations('canvas.kinds');
     const [creating, setCreating] = useState<{ kind: BibleKind | null } | null>(null);
     const [importing, setImporting] = useState(false);
     const [deleting, setDeleting] = useState(false);
@@ -95,6 +97,17 @@ export function BookBoard({ workspaceSlug, book, kinds, board, canEdit, canDelet
                             <Search className="size-4" aria-hidden="true" />
                             {tResearch('title')}
                         </Link>
+                        {STORY_MAP_KINDS.map((kind) => (
+                            <Link
+                                key={kind}
+                                href={APP_ROUTES.storyMap(workspaceSlug, book.id, mapKindSlug(kind))}
+                                className={buttonVariants({ variant: 'secondary' })}
+                                id={`book-map-${mapKindSlug(kind)}`}
+                            >
+                                <Waypoints className="size-4" aria-hidden="true" />
+                                {tCanvas(kind)}
+                            </Link>
+                        ))}
                         {canEdit ? (
                             <InterviewLauncher
                                 workspaceSlug={workspaceSlug}

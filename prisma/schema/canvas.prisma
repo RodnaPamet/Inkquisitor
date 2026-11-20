@@ -1,0 +1,137 @@
+// ─────────────────────────────────────────────────────────────────
+//  The story canvas (Phase 3.1).
+//
+//  A book has at most ONE map of each kind (decision D18: a relationship
+//  map, a plot board, a timeline), held by the unique (bookId, kind). A map
+//  is created on its first save, never on a read (the 3.1 note, "Lazy
+//  creation"): a map nobody has saved reads as empty at version 0.
+//
+//  ROWS ARE THE SOURCE OF TRUTH; tldraw is a view. A MapNode draws one
+//  BibleElement, a MapEdge draws one BibleRelation, and `freeformJson` holds
+//  everything else on the canvas (sticky notes, drawings, loose text) as the
+//  renderer's own records. An element appears on a map at most once, and a
+//  relation at most once, so the element and relation ids are the canvas's
+//  keys (`src/components/canvas/tldraw/serializer.ts`).
+//
+//  EVERY MODEL HERE IS WORKSPACE-SCOPED: `workspaceId`, FORCE ROW LEVEL
+//  SECURITY and the `workspace_isolation` / `superuser_bypass` policies in
+//  the migration, reached through `runInWorkspaceContext`.
+//
+//  THE BOOK TRAVELS IN EVERY FOREIGN KEY. A node points at its map by
+//  (workspaceId, bookId, mapId) and at its element by (bookId, elementId),
+//  so the database itself refuses a node drawing another book's element; an
+//  edge the same with its relation.
+//
+//  DELETING AN ELEMENT OR A RELATION CASCADES to its nodes and edges (the
+//  map is a picture of the bible, and a picture of something deleted is a
+//  lie), and a trigger bumps the map's version so an open canvas holding
+//  the old picture is refused 409 rather than drawing it back.
+//
+//  AUTHOR TEXT IS ENCRYPTED AT REST: StoryMap.freeformJson (sticky notes are
+//  author text) and MapSnapshot.snapshot are in
+//  `src/lib/security/encrypted-fields.ts`. Nodes and edges carry no text:
+//  names come from the bible.
+//
+//  MapSnapshot is APPEND-ONLY, one per version: a trigger refuses UPDATE and
+//  DELETE for every role, except its map's cascade and the clearing of
+//  `createdById` when that person is deleted. Every version a map reaches
+//  has its snapshot, a bible deletion's included (decision D20; a deferred
+//  trigger refuses a version without one at commit).
+// ─────────────────────────────────────────────────────────────────
+
+model StoryMap {
+  id           String       @id @default(cuid())
+  workspaceId  String
+  bookId       String
+  kind         StoryMapKind
+  /// The optimistic lock: every save names the version it read, and a save
+  /// that changes something bumps it. A cascade from the bible bumps it too.
+  version      Int          @default(1)
+  /// The renderer's own records (sticky notes, drawings, loose text, frames),
+  /// a JSON array serialised to a string so the encryption extension seals it
+  /// whole. NULL is an empty layer. Never projected into nodes or edges.
+  freeformJson String?
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  book      Book          @relation(fields: [workspaceId, bookId], references: [workspaceId, id], onDelete: Cascade)
+  nodes     MapNode[]
+  edges     MapEdge[]
+  snapshots MapSnapshot[]
+
+  /// Decision D18: one map of each kind per book.
+  @@unique([bookId, kind])
+  @@unique([workspaceId, id])
+  @@unique([workspaceId, bookId, id])
+}
+
+model MapNode {
+  id             String   @id @default(cuid())
+  workspaceId    String
+  bookId         String
+  mapId          String
+  bibleElementId String
+  /// Page position of the node's top-left corner.
+  x              Float
+  y              Float
+  /// The node's size: persisted, so a resize survives a reload.
+  w              Float
+  h              Float
+  /// The lane a node sits in, for the maps that have lanes (3.2: the plot
+  /// board's acts, the timeline's characters). An opaque key; order stays in
+  /// the bible.
+  lane           String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  map     StoryMap     @relation(fields: [workspaceId, bookId, mapId], references: [workspaceId, bookId, id], onDelete: Cascade)
+  element BibleElement @relation(fields: [bookId, bibleElementId], references: [bookId, id], onDelete: Cascade)
+
+  @@unique([mapId, bibleElementId])
+  @@index([workspaceId, bookId, mapId])
+  @@index([bookId, bibleElementId])
+}
+
+model MapEdge {
+  id              String   @id @default(cuid())
+  workspaceId     String
+  bookId          String
+  mapId           String
+  bibleRelationId String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  map      StoryMap      @relation(fields: [workspaceId, bookId, mapId], references: [workspaceId, bookId, id], onDelete: Cascade)
+  relation BibleRelation @relation(fields: [bookId, bibleRelationId], references: [bookId, id], onDelete: Cascade)
+
+  @@unique([mapId, bibleRelationId])
+  @@index([workspaceId, bookId, mapId])
+  @@index([bookId, bibleRelationId])
+}
+
+model MapSnapshot {
+  id                  String   @id @default(cuid())
+  workspaceId         String
+  mapId               String
+  /// The map version this save produced.
+  version             Int
+  /// The saved map — `{ nodes, edges, freeform }` as canonical JSON — sealed
+  /// whole by the encryption extension.
+  snapshot            String
+  nodeCount           Int
+  edgeCount           Int
+  /// Set when the save was a restore of an earlier snapshot.
+  restoredFromVersion Int?
+  /// Set when no save wrote this version: a bible deletion took nodes or
+  /// edges off the map (decision D20: history never skips a version).
+  fromBibleDeletion   Boolean  @default(false)
+  createdById         String?
+  createdAt           DateTime @default(now())
+
+  map       StoryMap @relation(fields: [workspaceId, mapId], references: [workspaceId, id], onDelete: Cascade)
+  createdBy User?    @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@unique([mapId, version])
+  @@index([workspaceId, mapId, version])
+  @@index([createdById])
+}
