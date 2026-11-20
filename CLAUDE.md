@@ -995,8 +995,17 @@ closed beta with an explicit operator flag (D5, amended 2026-11-19).
   tldraw stays on major 3 with the watermark on and no licence key
   (`tests/guards/tldraw-major-version.test.ts`,
   `tldraw-licence-and-watermark.test.ts`); auto-layout is dagre only (D18).
-  tldraw's TipTap dependencies are overridden to the root's 3.x line
-  (GHSA-cp6q-959q-f8rh has no TipTap 2 fix; the 3.1 note). `bible.view` reads
+  THE TIPTAP OVERRIDE (D20): `package.json` overrides tldraw's and
+  `@tldraw/editor`'s TipTap dependencies onto the root's 3.x line, because
+  GHSA-cp6q-959q-f8rh has no TipTap 2 fix and tldraw 3.x declares TipTap 2. It
+  and the tldraw major-version guard move together: a tldraw bump re-reads the
+  override, and `tests/guards/tldraw-tiptap-override.test.ts` fails on a
+  TipTap package off major 3, a TipTap dependency of tldraw's left
+  un-overridden, or a tldraw that no longer declares TipTap 2 (then the
+  override goes). Under it the canvas runs tldraw's rich text on
+  `STORY_TEXT_OPTIONS` (TipTap 3's StarterKit cut back to TipTap 2's set, so
+  tldraw's own Link is the only one). The sticky-note E2E
+  (`tests/e2e/story-map.spec.ts`) is its proof in a browser. `bible.view` reads
   a map, `bible.edit` saves and restores. jsdom tests mount tldraw through
   `tests/helpers/tldraw-jsdom.ts` (its `fetch` is a local stub).
 - **Sanitising author text.** Every author-text write sanitises at the
