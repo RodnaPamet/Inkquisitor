@@ -25,6 +25,7 @@ import { aiDisabled, aiUnavailableReason, monthlyCeilingMicroUsd, type AiEnvReco
 import type { AiUnavailableReason } from '@/lib/ai/errors';
 import { env } from '@/env';
 import { logger } from '@/lib/observability/logger';
+import { recordReservationsReleased } from '@/lib/ai/ledger-metrics';
 import {
     callStructured as callStructuredCore,
     type StructuredCallDeps,
@@ -47,10 +48,21 @@ export function workspaceAiLedger(ctx: Pick<WorkspaceRequestContext, 'workspaceI
             return runInWorkspaceContext(ctx, async (db) => {
                 await AiCallRepository.lockSpend(db, ctx.workspaceId);
                 // The database's clock decides expiry (issue #30, item 9), and an
-                // expired, unsettled reservation is charged before this one is judged.
+                // expired, unsettled reservation is released, charged nothing (D17),
+                // logged and counted so the spend it may have lost is visible.
                 const now = await AiCallRepository.dbNow(db);
-                const abandoned = await AiCallRepository.chargeAbandoned(db, ctx.workspaceId, now);
-                if (abandoned.count > 0) logger.warn('ai.reservation_abandoned', { component: 'ai', workspaceId: ctx.workspaceId, count: abandoned.count, microUsd: abandoned.microUsd });
+                const released = await AiCallRepository.releaseExpired(db, ctx.workspaceId, now);
+                if (released.length > 0) {
+                    const reservedMicroUsd = released.reduce((sum, r) => sum + r.amountMicroUsd, 0);
+                    logger.warn('ai.reservation_released', {
+                        component: 'ai',
+                        workspaceId: ctx.workspaceId,
+                        reservationIds: released.map((r) => r.id),
+                        count: released.length,
+                        reservedMicroUsd,
+                    });
+                    recordReservationsReleased(released.length, reservedMicroUsd);
+                }
                 const held = await AiCallRepository.reserve(db, ctx.workspaceId, {
                     callId: request.callId,
                     periodStart,

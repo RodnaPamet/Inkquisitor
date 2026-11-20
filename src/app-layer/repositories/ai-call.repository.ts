@@ -27,14 +27,16 @@
  *
  * The lock is held for two short statements; the row carries the claim across
  * the call. A reservation EXPIRES (`expiresAt`, the call's deadline plus a
- * grace) so a process that dies mid-call stops holding budget. Its spend is
- * NOT lost (issue #30, item 9): the workspace's next reservation, under the
- * lock, CHARGES every expired, unsettled reservation's amount to its month —
- * the call's worst case, an upper bound on what the provider may have billed —
- * and deletes it (`chargeAbandoned`, logged `ai.reservation_abandoned`). Over-
- * charging a call that died before it was sent is the price of never under-
- * counting one that was. Expiry is judged by the DATABASE's clock (`dbNow`),
- * one clock for every app server, never a server's own.
+ * grace) so a process that dies mid-call stops holding budget. An expired,
+ * unsettled reservation is RELEASED, charged nothing (D17, decided
+ * 2026-11-20): the workspace's next reservation, under the lock, deletes it
+ * (`releaseExpired`), and the caller logs the ids and reserved amounts and
+ * counts them (`ai.reservations.released`), so the spend that may have been
+ * lost is visible. A call that did reach the provider before its process died
+ * goes uncounted; the owner accepts that. A call that outlived its reservation
+ * and settles after all is charged its cost as usual, once. Expiry is judged
+ * by the DATABASE's clock (`dbNow`), one clock for every app server, never a
+ * server's own.
  *
  * The settled spend lives in `AiSpendMonth`, not in a sum over `AiCallLog`:
  * a book's purge deletes its call records by cascade, and must not lower the
@@ -46,8 +48,8 @@ import { periodStartOf } from '@/lib/ai/call-record';
 
 type Db = Prisma.TransactionClient;
 
-/** Expired reservations charged per sweep at most (the rest wait for the next reservation). */
-const ABANDONED_PER_SWEEP = 100;
+/** Expired reservations released per sweep at most (the rest wait for the next reservation). */
+const RELEASED_PER_SWEEP = 100;
 
 const TIER: Readonly<Record<AiCallRecord['tier'], AiModelTier>> = { fast: 'FAST', balanced: 'BALANCED', deep: 'DEEP' };
 
@@ -64,30 +66,20 @@ export const AiCallRepository = {
     },
 
     /**
-     * Under the lock: charge every expired, unsettled reservation's amount to
-     * its month and delete it (see the header). Returns what was charged.
+     * Under the lock: release (delete, charging nothing) every expired,
+     * unsettled reservation of the workspace, at most `RELEASED_PER_SWEEP` a
+     * sweep (D17; see the header). Returns each released reservation's id and
+     * amount, for the caller's log line and counter.
      */
-    async chargeAbandoned(db: Db, workspaceId: string, now: Date): Promise<{ count: number; microUsd: number }> {
+    async releaseExpired(db: Db, workspaceId: string, now: Date): Promise<Array<{ id: string; amountMicroUsd: number }>> {
         const expired = await db.aiSpendReservation.findMany({
             where: { workspaceId, expiresAt: { lte: now } },
-            select: { id: true, periodStart: true, amountMicroUsd: true },
+            select: { id: true, amountMicroUsd: true },
             orderBy: { expiresAt: 'asc' },
-            take: ABANDONED_PER_SWEEP,
+            take: RELEASED_PER_SWEEP,
         });
-        let microUsd = 0;
-        for (const r of expired) {
-            const amount = Number(r.amountMicroUsd);
-            if (amount > 0) {
-                await db.aiSpendMonth.upsert({
-                    where: { workspaceId_periodStart: { workspaceId, periodStart: r.periodStart } },
-                    create: { workspaceId, periodStart: r.periodStart, spentMicroUsd: BigInt(amount) },
-                    update: { spentMicroUsd: { increment: BigInt(amount) } },
-                });
-            }
-            microUsd += amount;
-        }
         if (expired.length > 0) await db.aiSpendReservation.deleteMany({ where: { workspaceId, id: { in: expired.map((r) => r.id) } } });
-        return { count: expired.length, microUsd };
+        return expired.map((r) => ({ id: r.id, amountMicroUsd: Number(r.amountMicroUsd) }));
     },
 
     /** Serialise every check and settlement of one workspace's spend, until the transaction ends. */

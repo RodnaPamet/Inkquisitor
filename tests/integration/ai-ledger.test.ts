@@ -10,7 +10,7 @@
  *   - the spend ceiling holds under concurrency: of concurrent calls that
  *     each fit alone, only as many as fit together are admitted, and the rest
  *     are refused before anything is sent;
- *   - an expired reservation stops counting, and another month's spend never
+ *   - an expired reservation is released, charged nothing (D17), and another month's spend never
  *     counts.
  */
 import { randomBytes } from 'node:crypto';
@@ -20,6 +20,8 @@ import { runInWorkspaceContext } from '@/lib/db/rls-middleware';
 import { callStructured, workspaceAiLedger } from '@/app-layer/usecases/model-calls';
 import { AiSpendCeilingError } from '@/lib/ai/errors';
 import { periodStartOf } from '@/lib/ai/call-record';
+import * as ledgerMetrics from '@/lib/ai/ledger-metrics';
+import { logger } from '@/lib/observability/logger';
 import { seedBible } from '../helpers/bible';
 import { SEED_SCHEMA, SEED_TEMPLATE, seedAiCall, seedReservation } from '../helpers/ai-calls';
 import { fakeAnthropic, setFakeApiKey } from '../helpers/fake-anthropic';
@@ -291,21 +293,74 @@ describe('the spend ceiling, under concurrency', () => {
         }
     });
 
-    it('an expired reservation (its process died) is CHARGED to its month, never lost (issue #30, item 9)', async () => {
+    it('an expired reservation (its process died) is RELEASED, charged nothing, logged with ids and amounts and counted (D17)', async () => {
         const fresh = await createAccount({ workspaceName: 'Ceiling Expired' });
         const ledger = workspaceAiLedger(workspaceCtx(fresh));
         const startedAt = new Date();
         const dead = id();
         expect((await ledger.reserve({ callId: dead, amountMicroUsd: 900_000, ceilingMicroUsd: 1_000_000, ttlMs: 1, startedAt })).ok).toBe(true);
         await new Promise((r) => setTimeout(r, 20));
-        // The dead call's worst case is now settled spend: a second 900k does not fit under 1M.
-        const refused = await ledger.reserve({ callId: id(), amountMicroUsd: 900_000, ceilingMicroUsd: 1_000_000, ttlMs: 60_000, startedAt });
-        expect(refused).toMatchObject({ ok: false, spentMicroUsd: 900_000, reservedMicroUsd: 0 });
-        expect(await prisma.aiSpendReservation.count({ where: { id: dead } })).toBe(0);
+        const warn = jest.spyOn(logger, 'warn');
+        const counted = jest.spyOn(ledgerMetrics, 'recordReservationsReleased');
+        try {
+            // The dead call's worst case is released, not charged: a second 900k fits under 1M.
+            const second = await ledger.reserve({ callId: id(), amountMicroUsd: 900_000, ceilingMicroUsd: 1_000_000, ttlMs: 60_000, startedAt });
+            expect(second).toMatchObject({ ok: true });
+            expect(await prisma.aiSpendReservation.count({ where: { id: dead } })).toBe(0);
+            const month = await prisma.aiSpendMonth.findUnique({ where: { workspaceId_periodStart: { workspaceId: fresh.workspaceId, periodStart: periodStartOf(startedAt) } } });
+            expect(Number(month?.spentMicroUsd ?? 0)).toBe(0);
+            expect(warn).toHaveBeenCalledWith('ai.reservation_released', {
+                component: 'ai',
+                workspaceId: fresh.workspaceId,
+                reservationIds: [dead],
+                count: 1,
+                reservedMicroUsd: 900_000,
+            });
+            expect(counted).toHaveBeenCalledWith(1, 900_000);
+        } finally {
+            warn.mockRestore();
+            counted.mockRestore();
+        }
+    });
+
+    it('a call that settles AFTER its expired reservation was released is charged its cost once, with its one record', async () => {
+        const fresh = await createAccount({ workspaceName: 'Ceiling Late Settle' });
+        const ledger = workspaceAiLedger(workspaceCtx(fresh));
+        const startedAt = new Date();
+        const late = id();
+        expect((await ledger.reserve({ callId: late, amountMicroUsd: 900_000, ceilingMicroUsd: 10_000_000, ttlMs: 1, startedAt })).ok).toBe(true);
+        await new Promise((r) => setTimeout(r, 20));
+        // Another call's reservation releases the stalled call's.
+        expect((await ledger.reserve({ callId: id(), amountMicroUsd: 1_000, ceilingMicroUsd: 10_000_000, ttlMs: 60_000, startedAt })).ok).toBe(true);
+        expect(await prisma.aiSpendReservation.count({ where: { id: late } })).toBe(0);
+        await ledger.settle({
+            id: late,
+            bookId: null,
+            requestedById: null,
+            purpose: 'test.late',
+            promptId: 'test.late',
+            promptVersion: '1',
+            tier: 'fast',
+            model: 'claude-haiku-5-5',
+            outputMode: 'json_schema',
+            attempts: 1,
+            inputTokens: 500,
+            outputTokens: 50,
+            cacheReadTokens: 0,
+            cacheWriteTokens: 0,
+            costMicroUsd: 300_000,
+            costEstimated: false,
+            worstCaseMicroUsd: 900_000,
+            durationMs: 10,
+            outcome: 'OK',
+            errorCode: null,
+            guardRuleIds: [],
+            guardReviewRequired: false,
+            startedAt,
+        });
         const month = await prisma.aiSpendMonth.findUniqueOrThrow({ where: { workspaceId_periodStart: { workspaceId: fresh.workspaceId, periodStart: periodStartOf(startedAt) } } });
-        expect(Number(month.spentMicroUsd)).toBe(900_000);
-        // A small call still fits beside it.
-        expect((await ledger.reserve({ callId: id(), amountMicroUsd: 50_000, ceilingMicroUsd: 1_000_000, ttlMs: 60_000, startedAt })).ok).toBe(true);
+        expect(Number(month.spentMicroUsd)).toBe(300_000);
+        expect(await prisma.aiCallLog.count({ where: { id: late } })).toBe(1);
     });
 
     it('expiry is judged by the database’s clock, not an app server’s (a server clock hours ahead releases nothing)', async () => {

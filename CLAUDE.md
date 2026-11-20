@@ -907,10 +907,13 @@ closed beta with an explicit operator flag (D5, amended 2026-11-19).
   budget also takes its reconcile: `nextRoundTokens`), a rephrase (409),
   reconcile (REFUSED `TOKEN_BUDGET`), research (BUDGET_SPENT), each the ceiling
   too; and every request that will call a model charges
-  `chargeModelCalls(workspaceId, calls)` first (`MODEL_CALLS_LIMIT`, in-process,
-  off where the rate tiers are off). The ledger judges expiry by the database's
-  clock (`dbNow`) and CHARGES an expired, unsettled reservation to its month
-  (`chargeAbandoned`); a stream cut off mid-way is charged its unseen output at
+  `chargeModelCalls(workspaceId, calls)` first (`MODEL_CALLS_LIMIT`, 100 a
+  minute per workspace, D17; in-process, off where the rate tiers are off). The
+  ledger judges expiry by the database's clock (`dbNow`) and RELEASES an
+  expired, unsettled reservation, charging nothing (`releaseExpired`, D17),
+  logged `ai.reservation_released` (ids and amounts) and counted
+  (`ai.reservations.released`, `…_micro_usd`); a stream cut off mid-way, the
+  research gather's PDF stop included, is charged its unseen output at
   `max_tokens`, `costEstimated`. STREAMS: every SSE route takes
   `takeStreamSlot(ctx.workspaceId)` (429 `STREAM_CAPACITY`) and releases it
   once, after the run settles; a new stream route does the same. FAILURES end
