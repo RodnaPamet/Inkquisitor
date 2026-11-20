@@ -7,6 +7,7 @@
  * one-map-per-kind constraint (decision D18).
  */
 import { prisma } from '@/lib/db';
+import { runInWorkspaceContext } from '@/lib/db/rls-middleware';
 import { createBook } from '@/app-layer/usecases/books';
 import { createElement, deleteElement } from '@/app-layer/usecases/bible-elements';
 import { addRelation, removeRelation } from '@/app-layer/usecases/bible-relations';
@@ -365,6 +366,10 @@ describe('snapshots', () => {
         await expect(prisma.$executeRaw`UPDATE "MapSnapshot" SET "nodeCount" = 9 WHERE "mapId" = ${map.id}`).rejects.toThrow(/MAP_SNAPSHOT_APPEND_ONLY/);
         await expect(prisma.$executeRaw`DELETE FROM "MapSnapshot" WHERE "mapId" = ${map.id}`).rejects.toThrow(/MAP_SNAPSHOT_APPEND_ONLY/);
         await expect(prisma.$executeRaw`TRUNCATE "MapSnapshot"`).rejects.toThrow(/MAP_SNAPSHOT_APPEND_ONLY/);
+        // app_user cannot reach the cascade exception by deleting the map itself.
+        await expect(runInWorkspaceContext(ctx, (db) => db.$executeRaw`DELETE FROM "StoryMap" WHERE "id" = ${map.id}`)).rejects.toThrow(/permission denied/);
+        await expect(runInWorkspaceContext(ctx, (db) => db.$executeRaw`DELETE FROM "MapSnapshot" WHERE "mapId" = ${map.id}`)).rejects.toThrow(/permission denied/);
+        expect(await prisma.mapSnapshot.count({ where: { mapId: map.id } })).toBe(1);
         // The purge: a book deleted long enough ago goes, with its maps and their history.
         await prisma.book.update({ where: { id: book.bookId }, data: { deletedAt: new Date(Date.now() - 40 * 24 * 3600 * 1000) } });
         await prisma.$executeRaw`DELETE FROM "Book" WHERE "id" = ${book.bookId}`;

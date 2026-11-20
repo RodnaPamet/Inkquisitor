@@ -219,7 +219,8 @@ ALTER TABLE "MapSnapshot" ADD CONSTRAINT "MapSnapshot_shape"
 -- ═══════════════════════════════════════════════════════════════════
 --
 -- A map's history is what it looked like after each save; nothing rewrites
--- it. app_user may read and insert; it holds no UPDATE, DELETE or TRUNCATE,
+-- it. app_user may read and insert; it holds no UPDATE, DELETE or TRUNCATE
+-- (nor DELETE on StoryMap, whose deletion takes the history with it),
 -- and the trigger below refuses UPDATE and DELETE for every role (P0001,
 -- prefix MAP_SNAPSHOT_APPEND_ONLY) and TRUNCATE, as BibleEntryVersion's does.
 -- Two writes pass, both the database's own referential actions:
@@ -233,6 +234,11 @@ ALTER TABLE "MapSnapshot" ADD CONSTRAINT "MapSnapshot_shape"
 -- Keep the function VOLATILE: each check reads a fresh snapshot.
 
 REVOKE UPDATE, DELETE, TRUNCATE ON TABLE "MapSnapshot" FROM app_user;
+-- The first exception reads "the map is gone", so whoever may delete a map may
+-- delete its history. The product never deletes a map (it goes with its book
+-- or workspace, by the database's own cascade, which runs as the table owner),
+-- so app_user may not either.
+REVOKE DELETE, TRUNCATE ON TABLE "StoryMap" FROM app_user;
 
 CREATE OR REPLACE FUNCTION map_snapshot_append_only() RETURNS trigger
 LANGUAGE plpgsql
