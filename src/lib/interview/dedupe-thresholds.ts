@@ -60,6 +60,23 @@ export function parseCosineThresholds(value: string | undefined): Map<string, Co
     return out;
 }
 
+/**
+ * What production refuses to start with: an entry the env schema's grammar
+ * admits but the parse refuses (a threshold at or below 0.5, a same-target bar
+ * above the other). Without this a value like `rev=0.98,0.9` passed the
+ * start-up and then threw in every interview round's generation.
+ */
+export function cosineThresholdsConfigProblems(value: string | undefined): string[] {
+    try {
+        parseCosineThresholds(value);
+        return [];
+    } catch {
+        return [
+            'DEDUPE_COSINE_THRESHOLDS must be `<revision>=<same>,<other>` entries separated by `;`, each threshold in (0.5, 1] and the same-target one no higher than the other.',
+        ];
+    }
+}
+
 /** The thresholds for `revision` and where they came from. */
 export function cosineThresholdsFor(revision: string, envValue: string | undefined): CosineThresholds & { source: ThresholdSource } {
     const fromEnv = parseCosineThresholds(envValue).get(revision);

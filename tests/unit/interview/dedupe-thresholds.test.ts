@@ -5,7 +5,8 @@
  * the ones `dedupe` judges by.
  */
 import { DEFAULT_COSINE_THRESHOLDS, dedupe, duplicateSignal, type AskedQuestion } from '@/lib/interview/dedupe';
-import { CALIBRATED_COSINE_THRESHOLDS, cosineThresholdsFor, DEDUPE_COSINE_THRESHOLDS_PATTERN, parseCosineThresholds } from '@/lib/interview/dedupe-thresholds';
+import { CALIBRATED_COSINE_THRESHOLDS, cosineThresholdsConfigProblems, cosineThresholdsFor, DEDUPE_COSINE_THRESHOLDS_PATTERN, parseCosineThresholds } from '@/lib/interview/dedupe-thresholds';
+import { productionConfigProblems } from '@/lib/startup-checks';
 
 const ctx = { elementNames: new Map([['e', 'Mara']]) };
 const q = (id: string, text: string, key = 'want'): AskedQuestion => ({ id, scope: 'SESSION', elementId: 'e', targetsFieldKeys: [key], kind: 'OPEN', text, options: null, scaleLabels: null });
@@ -28,6 +29,17 @@ describe('the thresholds of a revision', () => {
         }
         expect(DEDUPE_COSINE_THRESHOLDS_PATTERN.test('a=0.9,0.97;b=0.8,0.9')).toBe(true);
         expect(DEDUPE_COSINE_THRESHOLDS_PATTERN.test('a=0.9;b')).toBe(false);
+    });
+});
+
+describe('production refuses at start what the parse would refuse in every round', () => {
+    it('a value the env grammar admits but the parse refuses (a bar of 0, a same-target bar above the other) is a start-up problem', () => {
+        for (const bad of ['rev=0,0.9', 'rev=0.98,0.9', 'rev=0.9,0.97;b=0.4,0.9']) {
+            expect(DEDUPE_COSINE_THRESHOLDS_PATTERN.test(bad)).toBe(true);
+            expect(productionConfigProblems({ NODE_ENV: 'production', DEDUPE_COSINE_THRESHOLDS: bad }).some((p) => p.startsWith('DEDUPE_COSINE_THRESHOLDS'))).toBe(true);
+        }
+        expect(cosineThresholdsConfigProblems('a=0.9,0.97;b=0.8,0.9')).toEqual([]);
+        expect(cosineThresholdsConfigProblems(undefined)).toEqual([]);
     });
 });
 
