@@ -149,24 +149,31 @@ describe('reading frontmatter', () => {
         expect(Object.keys(parseYamlFrontmatter(keys.join('\n')) as object)).toHaveLength(20_000);
         expect(refusal(() => parseYamlFrontmatter([...keys, 'k7: again'].join('\n')))).toBe('YAML_INVALID');
 
-        // Growth, not a wall-clock bound: four times the keys must cost far less
-        // than the sixteen times a quadratic check (the library's `uniqueKeys`,
-        // ~4.9 s at 20,000 keys) would. Both sizes run on the same machine under
-        // the same load, so the ratio holds where an absolute limit did not; the
-        // median of five runs damps a stray pause.
-        const medianMs = (text: string): number => {
-            const runs: number[] = [];
-            for (let i = 0; i < 5; i += 1) {
-                const started = process.hrtime.bigint();
-                parseYamlFrontmatter(text);
-                runs.push(Number(process.hrtime.bigint() - started) / 1e6);
-            }
-            return runs.sort((a, b) => a - b)[2];
+        // Growth, not a wall-clock bound: eight times the keys must cost far less
+        // than the sixty-four times a quadratic check (the library's `uniqueKeys`,
+        // ~4.9 s at 20,000 keys) would. The two sizes are timed INTERLEAVED, so
+        // a burst of load on a shared CI runner falls on both, and the FASTEST
+        // run of each is compared: noise only ever adds time, so the minimum is
+        // the run closest to the work itself (a median of five, timed in two
+        // separate blocks, once read 8.05 on CI against a healthy 4.1-4.8
+        // at four times the keys; at eight times a linear read measures about
+        // 8-10 and the quadratic one well past 16).
+        const timeMs = (text: string): number => {
+            const started = process.hrtime.bigint();
+            parseYamlFrontmatter(text);
+            return Number(process.hrtime.bigint() - started) / 1e6;
         };
         const small = mapping(2_500).join('\n');
-        const large = mapping(10_000).join('\n');
-        medianMs(small); // warm the parser and the JIT before measuring
-        expect(medianMs(large) / medianMs(small)).toBeLessThan(8);
+        const large = mapping(20_000).join('\n');
+        timeMs(small); // warm the parser and the JIT before measuring
+        timeMs(large);
+        let fastestSmall = Infinity;
+        let fastestLarge = Infinity;
+        for (let i = 0; i < 7; i += 1) {
+            fastestSmall = Math.min(fastestSmall, timeMs(small));
+            fastestLarge = Math.min(fastestLarge, timeMs(large));
+        }
+        expect(fastestLarge / fastestSmall).toBeLessThan(16);
     });
 
     it('reads plain values with the core schema: no YAML 1.1 surprises', () => {
