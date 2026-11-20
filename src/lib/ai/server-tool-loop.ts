@@ -542,6 +542,13 @@ export async function runServerToolLoop(input: ServerToolLoopInput, deps: Server
             if (!partial && ending.errorCode !== 'PROVIDER_HTTP_ERROR' && ending.errorCode !== 'REQUEST_REFUSED') {
                 costEstimated = true;
                 cost += worstCaseCostMicroUsd(resolved.model, { inputTokens: inputTokenBound(request), outputTokens: 0 });
+            } else if (partial) {
+                // Cut off mid-stream (issue #30, item 10): the unseen output is charged at its bound, marked estimated.
+                const unseen = Math.max(0, request.max_tokens - partial.outputTokens);
+                if (unseen > 0) {
+                    cost += costMicroUsd(resolved.model, { ...ZERO, outputTokens: unseen });
+                    costEstimated = true;
+                }
             }
             await settle({ callId, startedAt, t0, usage, cost, costEstimated, worstCase, attempts: 1, outcome: ending.outcome, errorCode: ending.errorCode });
             return fail(ending, callId);

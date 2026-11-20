@@ -201,8 +201,8 @@ export type CoverageReport =
           calls: CallAccount;
           sessions: SessionReport[];
           passed: number;
-          /** `mustCover` keys the generator reached, over all of them. */
-          coverage: number;
+          /** `mustCover` keys the generator reached, over all of them; null when no session names one (rule 6: not assessed, never 0; issue #32, item 10). */
+          coverage: number | null;
       };
 
 export interface CoverageRunOptions {
@@ -336,6 +336,6 @@ export async function runCoverageEvaluation(cases: readonly CoverageCase[], gene
         calls,
         sessions,
         passed: sessions.filter((r) => r.passed).length,
-        coverage: required === 0 ? 0 : reached / required,
+        coverage: required === 0 ? null : reached / required,
     };
 }

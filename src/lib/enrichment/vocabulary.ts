@@ -56,6 +56,7 @@ export type ReconcileRunStatus = (typeof RECONCILE_RUN_STATUSES)[number];
  *   CLAIM_EXPIRED             FAILED: the process running it died; the next request found the claim stale
  *   AI_UNAVAILABLE            REFUSED: no model call can be made under this deployment's configuration
  *   RECONCILE_NOT_EVALUATED   REFUSED: the reconcile prompt has no evaluation record this deployment accepts (D11)
+ *   TOKEN_BUDGET              REFUSED: the session's token budget cannot take the call (2.H item 2); nothing was sent
  *
  * A FAILED or REFUSED run may be run again; nothing is ever proposed from a
  * failed call (design 10.2: no partial output).
@@ -74,11 +75,12 @@ export const RECONCILE_OUTCOMES = [
     'AI_UNAVAILABLE',
     'RECONCILE_NOT_EVALUATED',
     'CLAIM_EXPIRED',
+    'TOKEN_BUDGET',
 ] as const;
 export type ReconcileOutcome = (typeof RECONCILE_OUTCOMES)[number];
 
 export const DONE_OUTCOMES: readonly ReconcileOutcome[] = ['OK', 'NOTHING_TO_RECONCILE'];
-export const REFUSED_OUTCOMES: readonly ReconcileOutcome[] = ['AI_UNAVAILABLE', 'RECONCILE_NOT_EVALUATED'];
+export const REFUSED_OUTCOMES: readonly ReconcileOutcome[] = ['AI_UNAVAILABLE', 'RECONCILE_NOT_EVALUATED', 'TOKEN_BUDGET'];
 
 /**
  * A RUNNING run older than this is a claim whose process died (the balanced

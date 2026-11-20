@@ -288,13 +288,39 @@ describe('the spend ceiling, under concurrency', () => {
         }
     });
 
-    it('an expired reservation (its process died) stops counting', async () => {
+    it('an expired reservation (its process died) is CHARGED to its month, never lost (issue #30, item 9)', async () => {
         const fresh = await createAccount({ workspaceName: 'Ceiling Expired' });
         const ledger = workspaceAiLedger(workspaceCtx(fresh));
         const startedAt = new Date();
-        expect((await ledger.reserve({ callId: id(), amountMicroUsd: 900_000, ceilingMicroUsd: 1_000_000, ttlMs: 1, startedAt })).ok).toBe(true);
+        const dead = id();
+        expect((await ledger.reserve({ callId: dead, amountMicroUsd: 900_000, ceilingMicroUsd: 1_000_000, ttlMs: 1, startedAt })).ok).toBe(true);
         await new Promise((r) => setTimeout(r, 20));
+        // The dead call's worst case is now settled spend: a second 900k does not fit under 1M.
+        const refused = await ledger.reserve({ callId: id(), amountMicroUsd: 900_000, ceilingMicroUsd: 1_000_000, ttlMs: 60_000, startedAt });
+        expect(refused).toMatchObject({ ok: false, spentMicroUsd: 900_000, reservedMicroUsd: 0 });
+        expect(await prisma.aiSpendReservation.count({ where: { id: dead } })).toBe(0);
+        const month = await prisma.aiSpendMonth.findUniqueOrThrow({ where: { workspaceId_periodStart: { workspaceId: fresh.workspaceId, periodStart: periodStartOf(startedAt) } } });
+        expect(Number(month.spentMicroUsd)).toBe(900_000);
+        // A small call still fits beside it.
+        expect((await ledger.reserve({ callId: id(), amountMicroUsd: 50_000, ceilingMicroUsd: 1_000_000, ttlMs: 60_000, startedAt })).ok).toBe(true);
+    });
+
+    it('expiry is judged by the database’s clock, not an app server’s (a server clock hours ahead releases nothing)', async () => {
+        const fresh = await createAccount({ workspaceName: 'Ceiling Clock' });
+        const ledger = workspaceAiLedger(workspaceCtx(fresh));
+        const startedAt = new Date();
         expect((await ledger.reserve({ callId: id(), amountMicroUsd: 900_000, ceilingMicroUsd: 1_000_000, ttlMs: 60_000, startedAt })).ok).toBe(true);
+        // This server's clock jumps three hours ahead; only `Date` is faked, every timer runs for real.
+        jest.useFakeTimers({
+            doNotFake: ['hrtime', 'nextTick', 'performance', 'queueMicrotask', 'requestAnimationFrame', 'cancelAnimationFrame', 'requestIdleCallback', 'cancelIdleCallback', 'setImmediate', 'clearImmediate', 'setInterval', 'clearInterval', 'setTimeout', 'clearTimeout'],
+        });
+        try {
+            jest.setSystemTime(new Date(Date.now() + 3 * 60 * 60 * 1000));
+            const second = await ledger.reserve({ callId: id(), amountMicroUsd: 900_000, ceilingMicroUsd: 1_000_000, ttlMs: 60_000, startedAt });
+            expect(second).toMatchObject({ ok: false, reservedMicroUsd: 900_000 });
+        } finally {
+            jest.useRealTimers();
+        }
     });
 
     it('counts this UTC month only: last month’s spend never counts against this one', async () => {

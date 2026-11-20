@@ -15,5 +15,7 @@ export const dynamic = 'force-dynamic';
 type Params = { workspaceSlug: string; bookId: string; runId: string };
 
 export const GET = withApiErrorHandling(
-    requirePermission<Params>('bible.view', async (req, { params }, ctx) => researchStreamResponse(req, () => getResearchRun(ctx, params.bookId, params.runId))),
+    requirePermission<Params>('bible.view', async (req, { params }, ctx) =>
+        researchStreamResponse(req, () => getResearchRun(ctx, params.bookId, params.runId), { workspaceId: ctx.workspaceId }),
+    ),
 );

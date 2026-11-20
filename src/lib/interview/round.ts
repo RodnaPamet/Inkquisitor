@@ -36,7 +36,7 @@ import {
     type ValidationElement,
 } from './candidates';
 import { kindsAllowed, type Dials } from './dials';
-import { dedupe, dedupeTokens, exactKey, questionDedupeKey, type AskedQuestion, type DedupeTextContext, type DuplicateSignal, type EmbeddingNeighbour } from './dedupe';
+import { dedupe, dedupeTokens, exactKey, questionDedupeKey, type AskedQuestion, type CosineThresholds, type DedupeTextContext, type DuplicateSignal, type EmbeddingNeighbour } from './dedupe';
 import { refKey, type FieldRef } from './frontier';
 import { GenerationStop, type GenerationFailureKind, type GenerationResult, type QuestionGenerator } from './generator';
 import type { CraftPack, PackRegistry } from './packs';
@@ -73,6 +73,8 @@ export interface RoundInput {
     /** Exact-repeat keys (`exactKey`) already known to the caller; `findExactRepeats` adds the book's own. */
     askedKeys?: ReadonlySet<string>;
     packs: Pick<PackRegistry, 'craft' | 'personas'>;
+    /** The cosine thresholds of the embedder's revision (`cosineThresholdsFor`, issue #32 item 1); default: uncalibrated. */
+    cosineThresholds?: CosineThresholds;
 }
 
 export interface RoundDeps {
@@ -478,6 +480,7 @@ export async function produceRound(input: RoundInput, deps: RoundDeps): Promise<
         neighbourTargets: found?.neighbourTargets,
         askedKeys,
         vectors: candidateVectors,
+        cosine: input.cosineThresholds,
     });
     for (const d of deduped.dropped) {
         bump(metrics.dropped, 'DUPLICATE');

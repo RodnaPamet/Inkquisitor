@@ -22,6 +22,18 @@
  *       (src/lib/research/evals/evaluation-record.json). Re-run after editing
  *       the sets, the research prompts or their output schemas.
  *
+ *   npm run packs:evaluate -- --rephrase [--no-packs]
+ *       also the rephrase prompt's set (Phase 2.H, "Ask me this
+ *       differently"): the structural rephraser's record is written beside
+ *       the set (src/lib/interview/evals/rephrase-evaluation-record.json).
+ *       Re-run after editing the set or the rephrase prompt.
+ *
+ *   npm run packs:evaluate -- --judge
+ *       also judge the ungraded behaviours of the pack records the run wrote
+ *       (the structural judge here; the model judge on a model run). The
+ *       report is evals-out/judge-report.json (or under --out); it gates
+ *       nothing: no pass bar is set until real-model evidence argues one.
+ *
  *   npm run packs:evaluate -- --generator model --out evals-out [--packs a,b] [--coverage] [--reconcile]
  *       a REAL model, through the product's own wired generator and 2.1's
  *       `callStructured` (guard, fence, ledger and spend ceiling all apply),
@@ -55,9 +67,12 @@ import {
 import type { QuestionGenerator } from '../src/lib/interview/generator';
 import type { Reconciler } from '../src/lib/enrichment/reconciler';
 import { REFERENCE_RECONCILER_ID, referenceReconciler } from '../src/lib/enrichment/evals/evaluation';
-import { meteredReconciler, reconcilerWithinRunMonth, RECONCILE_RECORD_RELATIVE, runReconcileEvaluation } from '../src/lib/interview/evals/run-evaluations';
+import { meteredReconciler, reconcilerWithinRunMonth, RECONCILE_RECORD_RELATIVE, REPHRASE_RECORD_RELATIVE, runReconcileEvaluation, runRephraseEvaluation } from '../src/lib/interview/evals/run-evaluations';
+import { STRUCTURAL_REPHRASER_ID, structuralRephraser } from '../src/lib/interview/evals/rephrase-evaluation';
+import { modelJudge, structuralJudge, type Judge } from '../src/lib/evals/judge';
+import { runJudge } from '../src/lib/interview/evals/run-evaluations';
 import type { Researcher } from '../src/lib/research/researcher';
-import { checkResearchRecord, modelAnswersWith, RESEARCH_RECORD_FORMAT, structuralRecord } from '../src/lib/research/evals/evaluation';
+import { checkResearchRecord, modelAnswersWith, researchPromptHash, RESEARCH_RECORD_FORMAT, structuralRecord } from '../src/lib/research/evals/evaluation';
 import { researchEvalSets } from '../src/lib/research/evals/eval-set';
 import { RESEARCH_PROMPT_VERSION } from '../src/lib/research/prompt';
 import * as fs from 'node:fs';
@@ -73,6 +88,7 @@ async function runResearchEvaluation(researcher: Researcher | null, modelId: str
               format: RESEARCH_RECORD_FORMAT,
               sets: { research: { ...researchEvalSets.research }, adversarial: { ...researchEvalSets.adversarial } },
               promptVersion: RESEARCH_PROMPT_VERSION,
+              promptHash: researchPromptHash(),
               generator: { kind: 'model' as const, id: modelId ?? 'model' },
               ranAt: now.toISOString(),
               answers: await modelAnswersWith(researcher),
@@ -94,7 +110,7 @@ function fail(message: string, code: number): never {
 }
 
 /** The wired model generator in a throwaway workspace, and what it closes. */
-async function modelGenerator(): Promise<{ generator: QuestionGenerator; reconciler: Reconciler; researcher: Researcher; id: string; reconcilerId: string; close: () => Promise<void> }> {
+async function modelGenerator(): Promise<{ generator: QuestionGenerator; reconciler: Reconciler; researcher: Researcher; judge: Judge; id: string; reconcilerId: string; rephraserId: string; close: () => Promise<void> }> {
     if (!process.env.ANTHROPIC_API_KEY?.trim()) fail('ANTHROPIC_API_KEY is not set: a model run never falls back to the structural generator', 2);
     if (!process.env.DATABASE_URL) fail('a model run needs DATABASE_URL (a migrated database: the call ledger and the spend ceiling live there)', 2);
     const budget = (() => {
@@ -140,7 +156,11 @@ async function modelGenerator(): Promise<{ generator: QuestionGenerator; reconci
     if (unavailable) fail(`no model call can be made (${unavailable})`, 2);
     const id = modelForTier(QUESTION_PROMPT.tier);
     out(`packs:evaluate: model ${id}, budget $${budget} (the run's workspace ceiling)`);
-    return { generator, reconciler, researcher, id, reconcilerId: modelForTier(RECONCILE_PROMPT.tier), close: () => prisma.$disconnect() };
+    const { REPHRASE_PROMPT } = await import('../src/lib/interview/rephrase');
+    const { callStructured } = await import('../src/app-layer/usecases/model-calls');
+    // The judge's calls go through the same ledger and ceiling as the run's (2.1), in the same throwaway workspace.
+    const judge = modelJudge((input) => callStructured(ctx, { ...input, bookId: null }));
+    return { generator, reconciler, researcher, judge, id, reconcilerId: modelForTier(RECONCILE_PROMPT.tier), rephraserId: modelForTier(REPHRASE_PROMPT.tier), close: () => prisma.$disconnect() };
 }
 
 async function main(): Promise<void> {
@@ -176,6 +196,14 @@ async function main(): Promise<void> {
             const file = args.out ? path.join(path.resolve(args.out), 'reconcile', 'evaluation-record.json') : path.resolve(RECONCILE_RECORD_RELATIVE);
             reconcile = await runReconcileEvaluation(reconciler, rWho, file);
         }
+        let rephrase = null;
+        if (args.rephrase) {
+            const file = args.out ? path.join(path.resolve(args.out), 'rephrase', 'evaluation-record.json') : path.resolve(REPHRASE_RECORD_RELATIVE);
+            const rephraser = model ? generator : structuralRephraser();
+            const rWho = model ? { kind: 'model' as const, id: model.rephraserId } : { kind: 'structural' as const, id: STRUCTURAL_REPHRASER_ID };
+            rephrase = await runRephraseEvaluation(registry, rephraser, rWho, file);
+        }
+        const judgeReport = args.judge ? await runJudge(registry, results, model?.judge ?? structuralJudge(), args.out ? path.resolve(args.out) : path.resolve('evals-out')) : null;
         let research = null;
         if (args.research) {
             const file = args.out ? path.join(path.resolve(args.out), 'research', 'evaluation-record.json') : path.resolve(RESEARCH_RECORD_RELATIVE);
@@ -183,12 +211,15 @@ async function main(): Promise<void> {
         }
         for (const line of summaryLines(results, coverage, model ? spent : null, reconcile)) out(line);
         if (research) out(`Research: ${research.passed ? 'passed' : 'NOT passed'} (${research.detail}).`);
+        if (judgeReport) out(`Judge (${judgeReport.basis}): ${judgeReport.status}; ${judgeReport.failures.length} failing items; ${judgeReport.behaviours.map((b) => `${b.behaviour} ${b.passRate === null ? 'not judged' : `${(b.passRate * 100).toFixed(0)}%`}`).join(', ')}.`);
+        if (rephrase) out(`Rephrase: ${rephrase.passed ? 'passed' : 'NOT passed'}; ${rephrase.cases - rephrase.failedCases.length}/${rephrase.cases} cases pass${rephrase.refusal ? ` (${rephrase.refusal})` : ''}; ${rephrase.ungraded} ungraded behaviours.`);
         const ok =
             results.every((r) => r.passed) &&
             results.length === names.length &&
             (!coverage || coverage.status === 'NOT_ASSESSED' || coverage.passed === coverage.sessions.length) &&
             (!reconcile || reconcile.passed) &&
-            (!research || research.passed);
+            (!research || research.passed) &&
+            (!rephrase || rephrase.passed);
         process.exitCode = ok ? 0 : 1;
     } finally {
         await model?.close();

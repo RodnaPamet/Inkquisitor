@@ -24,6 +24,6 @@ type Params = { workspaceSlug: string; bookId: string };
 export const POST = withApiErrorHandling(
     requirePermission<Params>('bible.edit', async (req, { params }, ctx) => {
         const body = await readJsonBody(req);
-        return interviewStreamResponse(req, (sink) => startInterview(ctx, params.bookId, body, { stream: sink, signal: sink.signal }));
+        return interviewStreamResponse(req, (sink) => startInterview(ctx, params.bookId, body, { stream: sink, signal: sink.signal }), { workspaceId: ctx.workspaceId });
     }),
 );

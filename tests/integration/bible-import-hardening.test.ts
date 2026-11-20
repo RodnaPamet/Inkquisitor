@@ -111,3 +111,23 @@ it('yields between files: a bundle never holds the event loop for more than one 
     // The loop turned between every two files' parses.
     for (let i = 1; i < mockParseTurns.length; i++) expect(mockParseTurns[i]).toBeGreaterThan(mockParseTurns[i - 1]);
 });
+
+it('a field whose template type changed is carried over losslessly, or refused FIELD_TYPE_CHANGED by name (issue #27, item 8)', async () => {
+    const book = (await createBook(ctx, { title: 'Changed types' })).id;
+    // A list field written as one string, a rich-text field written as plain text: carried over.
+    const carried = `---\nkind: CHARACTER\nname: Ada Fenn\nslug: ada-fenn\nstatus: DRAFT\nfields:\n  defining_traits: stubborn\n  speaking_voice: Clipped and dry.\n---\n`;
+    await importBibleBundle(ctx, book, writeZip(new Map([['manifest.json', manifest], ['character/ada-fenn.md', carried]])), {}, clean);
+    const el = await prisma.bibleElement.findFirstOrThrow({ where: { bookId: book, slug: 'ada-fenn' }, select: { id: true } });
+    const rows = await prisma.bibleField.findMany({ where: { elementId: el.id }, select: { key: true }, orderBy: { key: 'asc' } });
+    expect(rows.map((r) => r.key)).toEqual(['defining_traits', 'speaking_voice']);
+    // A plain field written as rich text, and a list of two written into a plain field: refused, nothing written.
+    const lossy = `---\nkind: CHARACTER\nname: Bo Lark\nslug: bo-lark\nstatus: DRAFT\nfields:\n  role: "<p>The <strong>ferry</strong> keeper.</p>"\n  want: [to leave, to stay]\n---\n`;
+    const problems = await problemsOf(importBibleBundle(ctx, book, writeZip(new Map([['manifest.json', manifest], ['character/bo-lark.md', lossy]])), {}, clean));
+    expect(problems).toEqual(
+        expect.arrayContaining([
+            { path: 'character/bo-lark.md', reason: 'FIELD_TYPE_CHANGED', key: 'fields.role' },
+            { path: 'character/bo-lark.md', reason: 'FIELD_TYPE_CHANGED', key: 'fields.want' },
+        ]),
+    );
+    expect(await prisma.bibleElement.count({ where: { bookId: book, slug: 'bo-lark' } })).toBe(0);
+});

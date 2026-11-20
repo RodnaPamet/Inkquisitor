@@ -160,7 +160,11 @@ export function InterviewSession(props: InterviewSessionProps) {
 
     const session = view?.session ?? null;
     const round = view?.round ?? null;
-    const ended = session?.status === 'COMPLETED' || session?.status === 'STOPPED';
+    // A session from before pack pinning (2.2) can never resume (issue #36,
+    // item 2): the server ends it on its next round, and a row still paused
+    // from before that is shown as ended too — never offered "Continue".
+    const unpinned = session?.stopReason === 'PACK_CHANGED' && (session.stopDetail as { problem?: unknown } | null)?.problem === 'PACK_NOT_PINNED';
+    const ended = session?.status === 'COMPLETED' || session?.status === 'STOPPED' || unpinned;
     const roundOpen = round?.status === 'OPEN' && session?.status === 'ACTIVE';
     const questions = roundOpen || round?.status === 'CLOSED' ? (round?.questions ?? []) : [];
     const unanswered = roundOpen ? questions.filter((q) => q.answer === null).length : 0;

@@ -67,6 +67,13 @@ describe('the runner', () => {
         expect(report.sessions.some((s) => s.fallbackOnly.length > 0)).toBe(true);
     });
 
+    it('over sessions none of which names a must-cover key, coverage is NOT ASSESSED (null), never 0 (rule 6; issue #32, item 10)', async () => {
+        const noKeys = cases.slice(0, 1).map((c) => ({ ...c, sessions: c.sessions.map((s) => ({ ...s, expect: { ...s.expect, mustCover: [] } })) }));
+        const report = await runCoverageEvaluation(noKeys, fakeGenerator(), { packs });
+        if (report.status !== 'MEASURED') throw new Error('expected a measured report');
+        expect(report.coverage).toBeNull();
+    });
+
     it('a generator that asks about fields it was not given is caught attempting ASKS_ANSWERED_FIELD', async () => {
         const report = await runCoverageEvaluation(cases.slice(0, 1), fakeGenerator({ mutate: (q) => [q, { ...q, targetsFieldKeys: ['central_character'] }] }), { packs });
         if (report.status !== 'MEASURED') throw new Error('expected a measured report');

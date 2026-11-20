@@ -25,12 +25,14 @@
 import type { PackRecordMode } from '@/lib/interview/pack-records-config';
 import committedRecord from './evals/evaluation-record.json';
 import { checkReconcileRecord, type ReconcileRecordCheck } from './evals/evaluation';
+import { processSharedMap } from '@/lib/process-shared-cache';
 
 export type ReconcileGateVerdict =
     | { mounted: true; recordKind: 'structural' | 'model' }
     | { mounted: false; reason: 'STRUCTURAL_RECORD_REFUSED' | 'NO_PASSING_RECORD'; detail: string };
 
-const verdicts = new Map<string, Promise<ReconcileGateVerdict>>();
+/** Shared by every module graph of the process (issue #36, item 7): the start-up report's check is the one the close route reads. */
+const verdicts = processSharedMap<Promise<ReconcileGateVerdict>>('reconcile-gate-verdicts');
 
 /** The verdict on a record under a mode. Pure but for the replay. */
 export async function gateVerdict(record: unknown, mode: PackRecordMode): Promise<ReconcileGateVerdict> {

@@ -15,6 +15,16 @@
 # Docker builds the same image uncached, smoke-tests it and gates it with the
 # same Trivy rule as the application image.
 #
+# DOCKER HUB IS READ THROUGH A MIRROR (issue #23, item 4). Test, E2E and
+# Docker each need postgres:16-alpine, golang and redis (and Docker the node
+# base); pulled from Docker Hub on every run they meet its anonymous pull
+# limit, a red indistinguishable from a broken build. Every buildx builder is
+# configured with Google's public Docker Hub mirror (mirror.gcr.io, no
+# credentials) as docker.io's mirror, falling back to Docker Hub when the
+# mirror misses; Redis is run from the mirror by name. Digests are unchanged
+# (the golang stage is pinned by digest and the mirror serves the same
+# manifests), and the GitHub Actions cache still holds the built layers.
+#
 # Job names are the check names a branch protection rule requires; renaming
 # one silently drops it from the required set (a check that never runs is
 # indistinguishable from one that passed). tests/unit/ci-workflow.test.ts
@@ -96,7 +106,7 @@ jobs:
     # need a real Redis (they use logical database 14).
     services:
       redis:
-        image: redis:7-alpine
+        image: mirror.gcr.io/library/redis:7-alpine
         ports:
           - 6379:6379
         options: >-
@@ -112,6 +122,10 @@ jobs:
       - uses: actions/checkout@v7
       # Postgres with pgvector, from the Dockerfile in this checkout.
       - uses: docker/setup-buildx-action@v4
+        with:
+          buildkitd-config-inline: |
+            [registry."docker.io"]
+              mirrors = ["mirror.gcr.io"]
       - name: Build the inkquisitor-postgres image (no push)
         uses: docker/build-push-action@v7
         with:
@@ -238,6 +252,10 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: docker/setup-buildx-action@v4
+        with:
+          buildkitd-config-inline: |
+            [registry."docker.io"]
+              mirrors = ["mirror.gcr.io"]
       - name: Build the image (no push)
         uses: docker/build-push-action@v7
         with:
@@ -313,6 +331,10 @@ jobs:
       - uses: actions/checkout@v7
       # Postgres with pgvector, from the Dockerfile in this checkout.
       - uses: docker/setup-buildx-action@v4
+        with:
+          buildkitd-config-inline: |
+            [registry."docker.io"]
+              mirrors = ["mirror.gcr.io"]
       - name: Build the inkquisitor-postgres image (no push)
         uses: docker/build-push-action@v7
         with:
@@ -338,7 +360,7 @@ jobs:
       - run: npx playwright install --only-shell chromium
       - name: Start Redis with a password
         run: |
-          docker run -d --name e2e-redis -p 6379:6379 redis:7-alpine redis-server --requirepass e2e
+          docker run -d --name e2e-redis -p 6379:6379 mirror.gcr.io/library/redis:7-alpine redis-server --requirepass e2e
           for i in $(seq 1 30); do docker exec e2e-redis redis-cli -a e2e --no-auth-warning ping | grep -q PONG && exit 0; sleep 1; done
           echo "Redis did not come up"; exit 1
       - name: Apply migrations

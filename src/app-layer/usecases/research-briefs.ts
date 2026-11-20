@@ -33,6 +33,7 @@ import type { Prisma } from '@prisma/client';
 import type { WorkspaceRequestContext } from '@/app-layer/types';
 import { logEvent } from '@/app-layer/events/audit';
 import { enqueue } from '@/app-layer/jobs/queue';
+import { chargeModelCalls } from '@/lib/security/model-call-rate-limit';
 import { assertPermission } from '@/app-layer/policies/permission.policy';
 import { ResearchBriefRepository, ResearchRunRepository, ResearchSourceRepository, type ResearchRunRow } from '@/app-layer/repositories/research.repository';
 import { CreateBriefInput, ResearchIdParam, SOURCES_PER_BRIEF_MAX } from '@/app-layer/schemas/research';
@@ -195,6 +196,8 @@ export async function dispatchResearchRun(ctx: WorkspaceRequestContext, bookId: 
             }
             const book = await readBookText(db, ctx, bookId);
             assertBriefLeavesNoBookText({ question: brief.question, purpose: brief.purpose, urls: decodeSourceUrls(brief.sourceUrls) }, book.index);
+            // The workspace's model-call rate (issue #32, item 5): the gather turn's requests and the findings and fit calls, before the run exists.
+            chargeModelCalls(ctx.workspaceId, DEPTH_BUDGETS[brief.depth].requests + 2);
             const created = await ResearchRunRepository.create(db, ctx.workspaceId, {
                 bookId,
                 briefId: id,

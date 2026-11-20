@@ -412,6 +412,18 @@ export async function callStructured<S extends z.ZodType>(
             const partial = usageOf(stream.currentMessage?.usage);
             if (partial) {
                 addUsage(partial);
+                // Cut off MID-STREAM (issue #30, item 10): the stream's output
+                // count is what it had reported when it stopped, and the bill
+                // can be higher — generation runs on until the provider sees the
+                // disconnect, and thinking is not streamed (its display is
+                // omitted) though it is billed. So the unseen output is charged
+                // at its bound, `max_tokens`, and the charge is marked
+                // estimated. Never more than the reservation already held.
+                const unseen = Math.max(0, request.max_tokens - partial.outputTokens);
+                if (unseen > 0) {
+                    spent += costMicroUsd(resolved.model, { inputTokens: 0, outputTokens: unseen, cacheReadTokens: 0, cacheWriteTokens: 0 });
+                    costEstimated = true;
+                }
             } else if (ending.errorCode !== 'PROVIDER_HTTP_ERROR' && ending.errorCode !== 'REQUEST_REFUSED') {
                 costEstimated = true;
                 spent += worstCaseCostMicroUsd(resolved.model, { inputTokens: inputTokenBound(request), outputTokens: 0 });

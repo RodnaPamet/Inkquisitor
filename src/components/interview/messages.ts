@@ -56,6 +56,12 @@ export const INTERVIEW_WORDED_REASONS = [
     'PACK_CHANGED',
     'TOKEN_BUDGET',
     'WORKSPACE_CEILING',
+    // Phase 2.H: the workspace holds as many streams as it may (`src/lib/http/stream-capacity.ts`).
+    'STREAM_CAPACITY',
+    // Phase 2.H: production holds no real-model evaluation record of the rephrase prompt (D11).
+    'REPHRASE_NOT_EVALUATED',
+    // Issue #32, item 5: the workspace's model-call rate.
+    'MODEL_RATE_LIMITED',
     // Phase 2.3: production with no passing evaluation record for a pack the session would mount.
     'PACKS_NOT_MOUNTABLE',
 ] as const;

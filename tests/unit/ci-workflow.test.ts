@@ -47,6 +47,21 @@ describe('.github/workflows/ci.yml', () => {
         for (const u of uses) expect([u, /@v\d+(\.\d+){0,2}$/.test(u)]).toEqual([u, true]);
     });
 
+    it('reads Docker Hub through a mirror: every buildx builder and every Redis (issue #23, item 4)', () => {
+        const builders = [...ci.matchAll(/- uses: docker\/setup-buildx-action@v\d+\n((?: {8}.*\n)*)/g)];
+        expect(builders.length).toBe(3);
+        for (const b of builders) {
+            expect(b[1]).toContain('buildkitd-config-inline: |');
+            expect(b[1]).toContain('[registry."docker.io"]');
+            expect(b[1]).toContain('mirrors = ["mirror.gcr.io"]');
+        }
+        // No image is run from Docker Hub by its bare name.
+        const images = [...ci.matchAll(/image: (\S+)/g)].map((m) => m[1]);
+        const redis = [...ci.matchAll(/(\S*)redis:7-alpine/g)].map((m) => m[1]);
+        expect(redis.length).toBe(2);
+        for (const r of [...images, ...redis.map((prefix) => `${prefix}redis`)]) expect([r, r.startsWith('mirror.gcr.io/')]).toEqual([r, true]);
+    });
+
     it('Security gates npm audit at moderate on production deps and runs the secret scan', () => {
         expect(all.security).toMatch(/run: npm audit --omit=dev --audit-level=moderate$/m);
         expect(all.security).toMatch(/run: bash scripts\/detect-secrets\.sh --all$/m);
@@ -126,7 +141,7 @@ describe('.github/workflows/ci.yml', () => {
         // started before anything touches it (subphase 2.0, D7): the
         // migrations create the vector extension, which postgres:16 lacks.
         expect(test).not.toMatch(/image: postgres/);
-        expect(test).toMatch(/\n {6}redis:\n {8}image: redis:7/);
+        expect(test).toMatch(/\n {6}redis:\n {8}image: mirror\.gcr\.io\/library\/redis:7/);
         const order = [
             'name: Build the inkquisitor-postgres image (no push)',
             'run: deploy/postgres/start.sh',
