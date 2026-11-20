@@ -1305,7 +1305,8 @@
                 "saved": "Saved",
                 "conflict": "Saved elsewhere since you opened it"
             },
-            "conflict": "Someone else saved this element (now version {version}) since it was opened here. Save yours over it, or close this and open it again to see theirs.",
+            "conflict": "Someone else saved this element (now version {version}) since it was opened here. Save yours over it, or reload their version (yours are then dropped).",
+            "reloadTheirs": "Reload their version",
             "keepMine": "Save mine over it",
             "orderLabel": "Place in the story order",
             "earlier": "Earlier",

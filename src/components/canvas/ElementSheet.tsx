@@ -85,11 +85,6 @@ function SheetBody({
     const t = useTranslations('canvas.sheet');
     const errorMessage = useApiErrorMessage();
     const [element, setElement] = useState(initial);
-    const [name, setName] = useState(initial.name);
-    const [nameMissing, setNameMissing] = useState(false);
-    const [values, setValues] = useState(() => new Map<string, FieldValue | null>(initial.fields.map((f) => [f.key, f.value as FieldValue | null])));
-    const [moving, setMoving] = useState(false);
-    const [moveError, setMoveError] = useState<string | null>(null);
     const autosave = useElementAutosave({
         workspaceSlug,
         bookId,
@@ -101,6 +96,46 @@ function SheetBody({
             onSaved?.(saved);
         },
     });
+    // The inputs show the element as read, under any edits held in a conflict
+    // when the sheet (or the element's page) was last closed: those come back
+    // unsaved with the conflict, and "Save mine" sends exactly what is shown.
+    const [name, setName] = useState(() => {
+        const held = autosave.restored?.details.get('name');
+        return typeof held === 'string' ? held : initial.name;
+    });
+    const [nameMissing, setNameMissing] = useState(false);
+    const [values, setValues] = useState(() => {
+        const v = new Map<string, FieldValue | null>(initial.fields.map((f) => [f.key, f.value as FieldValue | null]));
+        for (const [key, value] of autosave.restored?.fields ?? []) v.set(key, value);
+        return v;
+    });
+    // Bumped when the values are replaced from the server, so every editor re-reads them.
+    const [revision, setRevision] = useState(0);
+    const [resolving, setResolving] = useState(false);
+    const [reloadError, setReloadError] = useState<string | null>(null);
+    const [moving, setMoving] = useState(false);
+    const [moveError, setMoveError] = useState<string | null>(null);
+
+    /** The conflict's other way out: drop the held edits and show the element as it is now saved. */
+    async function reloadTheirs() {
+        setResolving(true);
+        setReloadError(null);
+        try {
+            const { element: fresh } = await bibleFetch<{ element: ElementView }>(BIBLE_API.element(workspaceSlug, bookId, initial.id));
+            autosave.discardAll();
+            autosave.setBaseVersion(fresh.versionNumber);
+            setElement(fresh);
+            setName(fresh.name);
+            setNameMissing(false);
+            setValues(new Map(fresh.fields.map((f) => [f.key, f.value as FieldValue | null])));
+            setRevision((r) => r + 1);
+            onSaved?.(fresh);
+        } catch (err) {
+            setReloadError(errorMessage(reasonOf(err)));
+        } finally {
+            setResolving(false);
+        }
+    }
 
     function changeField(key: string, value: FieldValue | null) {
         setValues((m) => new Map(m).set(key, value));
@@ -158,9 +193,15 @@ function SheetBody({
                 {autosave.conflict ? (
                     <div className="space-y-tight rounded-md border border-border-default bg-bg-warning p-3" role="alert" data-testid="element-sheet-conflict">
                         <p className="text-sm text-content-default">{t('conflict', { version: autosave.conflict.currentVersion })}</p>
-                        <Button variant="primary" size="sm" onClick={() => void autosave.keepMine()} id="element-sheet-keep">
-                            {t('keepMine')}
-                        </Button>
+                        <div className="flex flex-wrap gap-tight">
+                            <Button variant="secondary" size="sm" onClick={() => void reloadTheirs()} disabled={resolving} id="element-sheet-reload">
+                                {t('reloadTheirs')}
+                            </Button>
+                            <Button variant="primary" size="sm" onClick={() => void autosave.keepMine()} disabled={resolving} id="element-sheet-keep">
+                                {t('keepMine')}
+                            </Button>
+                        </div>
+                        {reloadError ? <p className="text-xs text-content-error">{reloadError}</p> : null}
                     </div>
                 ) : null}
                 {order && canEdit ? (
@@ -198,7 +239,7 @@ function SheetBody({
             </div>
             <div className="space-y-section" data-testid="element-sheet-fields">
                 {fieldDefs.map((def) => (
-                    <FieldEditor key={def.key} def={def} value={values.get(def.key) ?? null} onChange={(v) => changeField(def.key, v)} readOnly={!canEdit} refused={refused.has(def.key)} />
+                    <FieldEditor key={`${def.key}:${revision}`} def={def} value={values.get(def.key) ?? null} onChange={(v) => changeField(def.key, v)} readOnly={!canEdit} refused={refused.has(def.key)} />
                 ))}
             </div>
             <Link className="inline-block text-sm font-medium text-content-brand underline-offset-2 hover:underline" href={APP_ROUTES.bibleElement(workspaceSlug, bookId, initial.id)}>

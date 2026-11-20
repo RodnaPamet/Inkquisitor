@@ -12,6 +12,7 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import userEvent from '@testing-library/user-event';
 import { axe } from 'jest-axe';
 
+import { clearHeldEditsForTests } from '@/components/bible/use-element-autosave';
 import { ElementSheet } from '@/components/canvas/ElementSheet';
 import { RelationTypePicker } from '@/components/canvas/RelationTypePicker';
 import { StoryMapPreview } from '@/components/canvas/StoryMapPreview';
@@ -70,6 +71,7 @@ describe('RelationTypePicker', () => {
 });
 
 describe('ElementSheet', () => {
+    beforeEach(() => clearHeldEditsForTests());
     const EL = `${API}/elements/el_1`;
     const fieldDefs = { CHARACTER: fieldDefsFor('CHARACTER'), PLOT_BEAT: fieldDefsFor('PLOT_BEAT') };
 
@@ -105,6 +107,44 @@ describe('ElementSheet', () => {
         mockFetch({});
         render(<ElementSheet open onOpenChange={jest.fn()} workspaceSlug={SLUG} bookId={BOOK.id} elementId="el_1" fieldDefs={fieldDefs} kindLabels={KIND_LABELS} canEdit />);
         expect(await screen.findByTestId('element-sheet-failed')).toHaveTextContent('no longer in the bible');
+    });
+
+    it('a conflict: closing keeps the edits, reopening SHOWS them, and "Reload theirs" drops them for the saved version', async () => {
+        const conflict = { status: 409, json: { error: { code: 'CONFLICT', message: 'x', details: { reason: 'VERSION_CONFLICT', currentVersion: 5, baseVersion: 3 } } } };
+        const { requests } = mockFetch({
+            [`GET ${EL}`]: { json: { element: elementView({ versionNumber: 3, values: { want: 'Theirs' } }) } },
+            [`PUT ${EL}/fields`]: conflict,
+        });
+        const sheet = (open: boolean) => (
+            <ElementSheet open={open} onOpenChange={jest.fn()} workspaceSlug={SLUG} bookId={BOOK.id} elementId={open ? 'el_1' : null} fieldDefs={fieldDefs} kindLabels={KIND_LABELS} canEdit />
+        );
+        const { rerender } = render(sheet(true));
+        await screen.findByTestId('element-sheet-body');
+        fireEvent.change(screen.getByRole('textbox', { name: /Conscious want/ }), { target: { value: 'Mine' } });
+        await screen.findByTestId('element-sheet-conflict', {}, { timeout: 3000 });
+
+        // Closed and opened again: the held edit is what the box shows, not the saved value it would overwrite.
+        rerender(sheet(false));
+        mockFetch({ [`GET ${EL}`]: { json: { element: elementView({ versionNumber: 5, values: { want: 'Theirs' } }) } }, [`PUT ${EL}/fields`]: conflict });
+        rerender(sheet(true));
+        await screen.findByTestId('element-sheet-body');
+        expect(screen.getByTestId('element-sheet-conflict')).toBeInTheDocument();
+        expect(screen.getByRole('textbox', { name: /Conscious want/ })).toHaveValue('Mine');
+
+        // Their version instead: the held edit is gone, the box shows theirs, and nothing is sent.
+        const { requests: after } = mockFetch({ [`GET ${EL}`]: { json: { element: elementView({ versionNumber: 5, values: { want: 'Theirs' } }) } } });
+        await act(async () => {
+            fireEvent.click(screen.getByRole('button', { name: 'Reload their version' }));
+        });
+        await waitFor(() => expect(screen.queryByTestId('element-sheet-conflict')).not.toBeInTheDocument());
+        expect(screen.getByRole('textbox', { name: /Conscious want/ })).toHaveValue('Theirs');
+        expect(after.filter((r) => r.method === 'PUT')).toHaveLength(0);
+        // The next edit is based on their version.
+        const { requests: next } = mockFetch({ [`PUT ${EL}/fields`]: { json: { element: { ...elementView({ versionNumber: 6, values: { want: 'Again' } }), changedKeys: ['want'] } } } });
+        fireEvent.change(screen.getByRole('textbox', { name: /Conscious want/ }), { target: { value: 'Again' } });
+        await waitFor(() => expect(next.filter((r) => r.method === 'PUT')).toHaveLength(1), { timeout: 3000 });
+        expect(next[0].body).toMatchObject({ baseVersion: 5, fields: [{ key: 'want', value: 'Again' }] });
+        expect(requests.filter((r) => r.method === 'PUT')).toHaveLength(1);
     });
 
     it('moves the element in its order by keyboard: unsaved edits first, then the move, whose version is the next save’s base', async () => {
