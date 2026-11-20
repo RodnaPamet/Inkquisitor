@@ -50,6 +50,8 @@ export interface RelationOption {
     direction: 'outgoing' | 'incoming';
     /** Kinds the other element may be. */
     otherKinds: BibleKind[];
+    /** The type reads the same from both ends (one fact either way: stored once, refused twice). */
+    symmetric: boolean;
 }
 
 export function relationOptionsFor(kind: BibleKind): RelationOption[] {
@@ -59,6 +61,7 @@ export function relationOptionsFor(kind: BibleKind): RelationOption[] {
         label: r.label,
         direction: 'outgoing',
         otherKinds: [...r.targetKinds],
+        symmetric: isSymmetric(r),
     }));
     const incoming: RelationOption[] = relationTypesInto(kind)
         .filter(({ fromKind, type }) => !(fromKind === kind && isSymmetric(type)))
@@ -68,6 +71,7 @@ export function relationOptionsFor(kind: BibleKind): RelationOption[] {
             label: type.inverseLabel,
             direction: 'incoming',
             otherKinds: [fromKind],
+            symmetric: isSymmetric(type),
         }));
     const builtIn: RelationOption = {
         id: `out:${BUILT_IN_RELATION.key}`,
@@ -75,6 +79,7 @@ export function relationOptionsFor(kind: BibleKind): RelationOption[] {
         label: BUILT_IN_RELATION.label,
         direction: 'outgoing',
         otherKinds: [...BIBLE_KINDS],
+        symmetric: true,
     };
     return [...outgoing, ...incoming, builtIn];
 }

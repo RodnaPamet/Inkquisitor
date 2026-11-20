@@ -1,0 +1,233 @@
+{
+  "format": "inkquisitor-pack-evaluation/1",
+  "pack": {
+    "name": "craft-plot_beat",
+    "version": 1,
+    "contentHash": "sha256:abbf8c6d7c53f75103168d87511f3455bc47f6cb2ef46bb6ad913eefb28d3dc6"
+  },
+  "set": {
+    "hash": "sha256:4ca99255a44c399571c73e812c4720fd4c3448d5a5c83fb615637d2343f55128"
+  },
+  "promptVersion": "question-generation.2.3.0",
+  "promptHash": "sha256:7a9fad9b14690582fe4e9b20cd32f82bbe8f1d9a4c2b21804da0973f1facaafe",
+  "generator": {
+    "kind": "structural",
+    "id": "structural-generator.1"
+  },
+  "ranAt": "2026-11-20T17:43:56.919Z",
+  "answers": [
+    {
+      "caseId": "plot_beat-01",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-plot_beat-01",
+              "targetsFieldKeys": [
+                "what_happens"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the what happens.",
+              "kind": "CHOICE",
+              "text": "Which way does the what happens lean?",
+              "options": [
+                "what happens leans inward",
+                "what happens leans outward",
+                "what happens holds still"
+              ]
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "plot_beat-02",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-plot_beat-02",
+              "targetsFieldKeys": [
+                "what_happens"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the what happens.",
+              "kind": "OPEN",
+              "text": "What what happens matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "plot_beat-03",
+      "outputs": []
+    },
+    {
+      "caseId": "plot_beat-04",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-plot_beat-04",
+              "targetsFieldKeys": [
+                "act"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the act.",
+              "kind": "OPEN",
+              "text": "What act matters most here, in your own words?"
+            },
+            {
+              "elementId": "eval-plot_beat-04",
+              "targetsFieldKeys": [
+                "cause"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the cause.",
+              "kind": "OPEN",
+              "text": "What cause matters most here, in your own words?"
+            },
+            {
+              "elementId": "eval-plot_beat-04",
+              "targetsFieldKeys": [
+                "effect"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the effect.",
+              "kind": "OPEN",
+              "text": "What effect matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "plot_beat-05",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-plot_beat-05",
+              "targetsFieldKeys": [
+                "cause"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the cause.",
+              "kind": "CHOICE",
+              "text": "Which way does the cause lean?",
+              "options": [
+                "cause leans inward",
+                "cause leans outward",
+                "cause holds still"
+              ]
+            },
+            {
+              "elementId": "eval-plot_beat-05",
+              "targetsFieldKeys": [
+                "effect"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the effect.",
+              "kind": "CHOICE",
+              "text": "Which way does the effect lean?",
+              "options": [
+                "effect leans inward",
+                "effect leans outward",
+                "effect holds still"
+              ]
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "plot_beat-06",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-plot_beat-06",
+              "targetsFieldKeys": [
+                "effect"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the effect.",
+              "kind": "OPEN",
+              "text": "What effect matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "plot_beat-07",
+      "outputs": []
+    },
+    {
+      "caseId": "plot_beat-08",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-plot_beat-08",
+              "targetsFieldKeys": [
+                "effect"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the effect.",
+              "kind": "OPEN",
+              "text": "What effect matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "plot_beat-09",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-plot_beat-09",
+              "targetsFieldKeys": [
+                "act"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the act.",
+              "kind": "OPEN",
+              "text": "What act matters most here, in your own words?"
+            },
+            {
+              "elementId": "eval-plot_beat-09",
+              "targetsFieldKeys": [
+                "cause"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the cause.",
+              "kind": "OPEN",
+              "text": "What cause matters most here, in your own words?"
+            },
+            {
+              "elementId": "eval-plot_beat-09",
+              "targetsFieldKeys": [
+                "effect"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the effect.",
+              "kind": "OPEN",
+              "text": "What effect matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    }
+  ]
+}

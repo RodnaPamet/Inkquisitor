@@ -43,3 +43,21 @@ it('freeform is stored whole, so a sticky note rotated or edited is an edit, and
 it('camera, pointer and other records are never edits', () => {
     expect(batchIsSubstantive(classifyTldrawDiff({ added: { c: { typeName: 'camera' } }, removed: {}, updated: { p: [{ typeName: 'pointer', x: 1 }, { typeName: 'pointer', x: 2 }] } }))).toBe(false);
 });
+
+describe('a derived map (Phase 3.2: the plot board, the timeline)', () => {
+    const derived = (from: TldrawRecordLike, to: TldrawRecordLike) => classifyTldrawDiff({ added: {}, removed: {}, updated: { x: [from, to] } }, { derivedPositions: true });
+
+    it('a node moved, resized or put in another lane is NOT an edit: its place is the bible’s, and a drag there is an order move', () => {
+        expect(batchIsSubstantive(derived(node(), node({ x: 5, y: 9 })))).toBe(false);
+        expect(batchIsSubstantive(derived(node(), node({ props: { w: 300, h: 10 } })))).toBe(false);
+        expect(batchIsSubstantive(derived(node(), node({ props: { lane: 'crisis' } })))).toBe(false);
+    });
+
+    it('a node added, removed or pointed at another element still is, and so is freeform', () => {
+        expect(batchIsSubstantive(derived(node(), node({ props: { elementId: 'b' } })))).toBe(true);
+        expect(batchIsSubstantive(classifyTldrawDiff({ added: { n: node() }, removed: {}, updated: {} }, { derivedPositions: true }))).toBe(true);
+        expect(batchIsSubstantive(classifyTldrawDiff({ added: {}, removed: { n: node() }, updated: {} }, { derivedPositions: true }))).toBe(true);
+        const note = (x: number): TldrawRecordLike => ({ typeName: 'shape', type: 'note', x, y: 0, props: { text: 'hi' } });
+        expect(batchIsSubstantive(derived(note(0), note(9)))).toBe(true);
+    });
+});

@@ -39,6 +39,7 @@ export class StoryNodeShapeUtil extends ShapeUtil<StoryNodeShape> {
             kindLabel: '',
             badgeLabel: '',
             badgeTone: 'none',
+            detail: '',
         };
     }
 
@@ -50,8 +51,22 @@ export class StoryNodeShapeUtil extends ShapeUtil<StoryNodeShape> {
         return true;
     }
 
-    override canResize(): boolean {
-        return true;
+    /**
+     * Resizing is the author's on the relationship map. A card on the plot
+     * board or the timeline (a node with a lane) is laid out by the bible
+     * (`src/lib/canvas/lanes.ts`) and keeps the lane's size.
+     */
+    override canResize(shape: StoryNodeShape): boolean {
+        return shape.props.lane === null;
+    }
+
+    /**
+     * A double-click opens the element (the host listens, Phase 3.2), never
+     * tldraw's fallback of a new text shape on the canvas: an unchanged
+     * "change" tells the select tool the double-click was handled.
+     */
+    override onDoubleClick(shape: StoryNodeShape) {
+        return { id: shape.id, type: shape.type };
     }
 
     override hideRotateHandle(): boolean {
@@ -64,7 +79,7 @@ export class StoryNodeShapeUtil extends ShapeUtil<StoryNodeShape> {
     }
 
     override component(shape: StoryNodeShape) {
-        const { name, kindLabel, badgeLabel, badgeTone, elementId } = shape.props;
+        const { name, kindLabel, badgeLabel, badgeTone, elementId, detail } = shape.props;
         return (
             <HTMLContainer
                 id={shape.id}
@@ -73,6 +88,11 @@ export class StoryNodeShapeUtil extends ShapeUtil<StoryNodeShape> {
                 data-story-node={elementId}
             >
                 <span className="truncate text-sm font-medium text-content-emphasis">{name}</span>
+                {detail !== '' ? (
+                    <span className="truncate text-xs text-content-muted" data-story-node-detail="">
+                        {detail}
+                    </span>
+                ) : null}
                 <span className="flex items-center justify-between gap-tight text-xs text-content-muted">
                     <span className="truncate">{kindLabel}</span>
                     {badgeLabel !== '' && (

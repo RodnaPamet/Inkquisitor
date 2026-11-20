@@ -183,9 +183,37 @@ export const MapBibleReads = {
         if (ids.length === 0) return Promise.resolve([]);
         return db.bibleElement.findMany({
             where: { workspaceId, bookId, id: { in: [...ids] } },
-            select: { id: true, kind: true, name: true, customLabel: true },
+            select: { id: true, kind: true, name: true, customLabel: true, orderRank: true },
             take: ids.length,
         });
+    },
+
+    /**
+     * The characters taking part in some timeline events (Phase 3.2: the
+     * timeline's per-character lanes): `takes_part_in` relations from a
+     * character to each event. `take` bounds it; ask one more to know it was cut.
+     */
+    participants(db: Db, workspaceId: string, bookId: string, eventIds: readonly string[], take: number) {
+        if (eventIds.length === 0) return Promise.resolve([]);
+        return db.bibleRelation.findMany({
+            where: { workspaceId, bookId, type: 'takes_part_in', toElementId: { in: [...eventIds] }, from: { kind: 'CHARACTER' } },
+            select: { toElementId: true, from: { select: { id: true, name: true } } },
+            orderBy: { id: 'asc' },
+            take,
+        });
+    },
+
+    /** One field's stored value for some elements (decrypted by the extension), or none: an act, a story time. */
+    fieldValues(db: Db, workspaceId: string, elementIds: readonly string[], key: string) {
+        if (elementIds.length === 0) return Promise.resolve([]);
+        return db.bibleField.findMany({ where: { workspaceId, elementId: { in: [...elementIds] }, key }, select: { elementId: true, value: true }, take: elementIds.length });
+    },
+
+    /** Each element's latest version number (a node's base for an order move). */
+    async latestVersions(db: Db, workspaceId: string, elementIds: readonly string[]): Promise<Map<string, number>> {
+        if (elementIds.length === 0) return new Map();
+        const rows = await db.bibleEntryVersion.groupBy({ by: ['elementId'], where: { workspaceId, elementId: { in: [...elementIds] } }, _max: { versionNumber: true } });
+        return new Map(rows.map((r) => [r.elementId, r._max.versionNumber ?? 0] as const));
     },
 
     relationsById(db: Db, workspaceId: string, bookId: string, ids: readonly string[]) {

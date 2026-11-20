@@ -145,16 +145,16 @@ it('a marker planted in every author-text path reaches no log line, span, Sentry
     await addRelation(ctx, bookId, { fromElementId: ilse.id, toElementId: light.id, type: 'related_to', note: marked('She lives there.') });
     await importConceptNote(ctx, bookId, { text: marked('A note about tides and lamps.') }, { scan: CLEAN_SCAN });
 
-    // The story canvas (Phase 3.1): a sticky note on the plot board, saved through the request wrapper, and a refused layer.
+    // The story canvas (Phase 3.1): a sticky note on the relationship map, saved through the request wrapper, and a refused layer.
     await wrapped(() =>
-        saveStoryMap(ctx, bookId, 'plot', {
+        saveStoryMap(ctx, bookId, 'relationship', {
             expectedVersion: 0,
             nodes: [{ elementId: ilse.id, x: 0, y: 0, w: 220, h: 88, lane: null }],
             edges: [],
             freeform: [{ id: 'shape:note1', typeName: 'shape', type: 'note', x: 0, y: 0, props: { text: marked('Ilse sees the ship') } }],
         }),
     );
-    const refusedLayer = await wrapped(() => saveStoryMap(ctx, bookId, 'plot', { expectedVersion: 1, nodes: [], edges: [], freeform: [{ id: 'shape:x', typeName: 'shape', type: 'story-node', props: { text: marked('refused') } }] }));
+    const refusedLayer = await wrapped(() => saveStoryMap(ctx, bookId, 'relationship', { expectedVersion: 1, nodes: [], edges: [], freeform: [{ id: 'shape:x', typeName: 'shape', type: 'story-node', props: { text: marked('refused') } }] }));
     expect(refusedLayer.status).toBe(400);
 
     // Word search (Phase 3.4): the query is author text and so are the snippets it answers with — through the

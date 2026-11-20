@@ -11,6 +11,7 @@
  * stored bounds on what is left.
  */
 import { z } from 'zod';
+import { ORDER_RANK_MAX } from '@/lib/bible/story-order';
 import { BIBLE_ELEMENT_STATUSES, BIBLE_KINDS, BOOK_STAGES, IDENTIFIER_MAX, IDENTIFIER_PATTERN } from '@/lib/bible/kinds';
 import { SLUG_MAX, SLUG_PATTERN } from '@/lib/bible/slug';
 import { BUNDLE_FORMAT } from '@/lib/bible/bundle-format';
@@ -115,6 +116,8 @@ export const BundleElementFrontmatter = z
         slug,
         status: z.enum(BIBLE_ELEMENT_STATUSES),
         customLabel: raw(CUSTOM_LABEL_MAX).optional(),
+        /** A plot beat's or timeline event's place in its story order (Phase 3.2): its rank, checked by the importer. */
+        order: z.string().max(ORDER_RANK_MAX).optional(),
         summary: raw(ELEMENT_SUMMARY_MAX).optional(),
         fields: z
             .record(identifier, BundleFieldValue)

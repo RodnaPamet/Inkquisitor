@@ -230,7 +230,7 @@ describe('pack pins', () => {
 
     it('a book session pins the craft pack of every kind', async () => {
         const view = await startInterview(ctx, bookId, { scope: 'BOOK', depth: 1, detail: 1 }, { generator: fakeGenerator(), embedder });
-        expect(view.session.packs!.filter((p) => p.name.startsWith('craft-'))).toHaveLength(15);
+        expect(view.session.packs!.filter((p) => p.name.startsWith('craft-'))).toHaveLength(16);
     });
 
     it('a session refuses a pack whose file changed after it started (PACK_CHANGED), and resumes when the file is restored', async () => {
@@ -301,14 +301,14 @@ describe('the routes', () => {
         return { status: res.status, json: (await res.json()) as Record<string, unknown> };
     }
 
-    it('GET interview-packs lists the six personas and fifteen craft packs with their mount status, and no pack text', async () => {
+    it('GET interview-packs lists the six personas and sixteen craft packs (one per kind) with their mount status, and no pack text', async () => {
         const res = await call(packsRoute, `/api/w/${owner.workspaceSlug}/interview-packs`, {});
         expect(res.status).toBe(200);
         const body = res.json as { recordMode: string; personas: Array<Record<string, unknown>>; craft: Array<Record<string, unknown>>; mountable: number; total: number };
         expect(body.recordMode).toBe('structural');
         expect(body.personas.map((p) => p.displayName)).toEqual(['Gentle Mentor', 'Ruthless Editor', 'Socratic', "Devil's Advocate", 'Target Reader', 'Genre Specialist']);
-        expect(body.craft).toHaveLength(15);
-        expect(body).toMatchObject({ mountable: 21, total: 21 });
+        expect(body.craft).toHaveLength(16);
+        expect(body).toMatchObject({ mountable: 22, total: 22 });
         expect(body.personas[0]).toMatchObject({ name: 'persona-gentle-mentor', mountable: true, refusal: null, recordKind: 'structural', coverage: null });
         expect(body.craft.find((c) => c.key === 'CHARACTER')).toMatchObject({ name: 'craft-character', coverage: getPacks().craft.CHARACTER.coverage });
         expect(JSON.stringify(body)).not.toContain('## How to question');

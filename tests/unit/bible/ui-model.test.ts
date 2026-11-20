@@ -31,7 +31,7 @@ describe('relationOptionsFor', () => {
 
     it('reads a relation another kind declares with its inverse label', () => {
         const member = relationOptionsFor('FACTION').find((o) => o.type === 'member_of' && o.direction === 'incoming');
-        expect(member).toEqual({ id: 'in:CHARACTER:member_of', type: 'member_of', label: 'has member', direction: 'incoming', otherKinds: ['CHARACTER'] });
+        expect(member).toEqual({ id: 'in:CHARACTER:member_of', type: 'member_of', label: 'has member', direction: 'incoming', otherKinds: ['CHARACTER'], symmetric: false });
     });
 
     it('offers a symmetric type a kind declares towards itself once, and a directed one from both ends', () => {

@@ -250,6 +250,8 @@ export interface VersionMeta {
      */
     sourceFindingIds?: readonly string[];
     sourceResearchProposalId?: string | null;
+    /** The save moved the element in its story order (Phase 3.2): the history words it from this. */
+    movedInOrder?: boolean;
 }
 
 /**
@@ -268,6 +270,7 @@ export async function recordVersion(db: PrismaTx, ctx: WorkspaceRequestContext, 
             status: element.status,
             summary: element.summary,
             customLabel: element.customLabel,
+            orderRank: element.orderRank,
         },
         fields: [...values].map(([key, value]) => ({ key, value, order: getFieldDef(element.kind, key)?.order ?? 0 })),
     });
@@ -292,5 +295,6 @@ export async function recordVersion(db: PrismaTx, ctx: WorkspaceRequestContext, 
         sourceAnswerIds,
         sourceFindingIds,
         sourceResearchProposalId: meta.sourceResearchProposalId ?? null,
+        movedInOrder: meta.movedInOrder ?? false,
     });
 }

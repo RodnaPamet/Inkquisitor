@@ -317,6 +317,17 @@ src/app/api/canvas-assets/[...asset] → tldraw's fonts, icons and translation f
 src/app/w/[workspaceSlug]/books/[bookId]/maps/[kind] → the map page
 ```
 
+Phase 3.2 (the three maps, D22) added:
+
+```
+prisma/migrations/…_plot_beat_kind, …_story_order → PLOT_BEAT; BibleElement.orderRank (+ unique, CHECK); BibleEntryVersion.movedInOrder
+src/lib/bible/templates/plot_beat.json, src/lib/interview/packs/craft/plot_beat/ → the kind and its craft pack
+src/lib/bible/story-order.ts → fractional ranks (rankBetween, placeRank); ORDERED_KINDS in kinds.ts
+src/app-layer/usecases/bible-order.ts, …/elements/[elementId]/order → the order move
+src/lib/canvas/lanes.ts, relation-picker.ts → derived layout, drop and keyboard moves; the type picker's choices
+src/components/canvas/ → RelationTypePicker, ElementSheet, LaneBackdrop, StoryMapPreview (SVG, no tldraw), tldraw/lane-host
+```
+
 Phase 3.4 (word search, D21) added:
 
 ```
@@ -1021,6 +1032,35 @@ closed beta with an explicit operator flag (D5, amended 2026-11-19).
   (`tests/e2e/story-map.spec.ts`) is its proof in a browser. `bible.view` reads
   a map, `bible.edit` saves and restores. jsdom tests mount tldraw through
   `tests/helpers/tldraw-jsdom.ts` (its `fetch` is a local stub).
+- **The three maps (Phase 3.2; D22).** Each map draws its own kinds
+  (`MAP_ELEMENT_KINDS`: relationship CHARACTER/FACTION, plot board PLOT_BEAT,
+  timeline TIMELINE_EVENT); `saveStoryMap` refuses another 400
+  `KIND_NOT_ON_MAP`. The plot board and the timeline are DERIVED
+  (`mapLayoutMode`): a card's lane and place come from the bible — a beat's
+  `act` field and its rank, an event's rank — through `deriveLaneLayout`
+  (`src/lib/canvas/lanes.ts`), which the server applies to every save, restore
+  and view and the canvas to every relayout; never store a position the
+  author dragged there. A drop is an ORDER MOVE (`moveElementInOrder`, POST
+  `…/elements/:id/order`, `bible.edit`): the order's advisory lock
+  (`lockOrder`, BEFORE any element lock, and the bundle import takes it the
+  same way) then the element's, `baseVersion` checked, one rank written
+  strictly between the neighbours (`placeRank`), one version marked
+  `movedInOrder` (never a product sentence in `changeSummary`). Ranks are
+  compared in code (`compareRanks`), never by a collation; the unique
+  `(bookId, kind, orderRank)` is the guarantee; NULL is "not placed yet"
+  (creation places nothing). A restore keeps the element's place. The canvas
+  puts cards back with `placeCards` / `showNodes` (`mergeRemoteChanges`: no
+  edit, no undo step), and on a derived map a node's move is not a map edit
+  (`derivedPositions`). Timeline lanes come from `takes_part_in` relations,
+  never the free-text `participants` list. An arrow with no relation to draw
+  opens `RelationTypePicker` (the kinds' templates plus `related_to`, stored
+  from the declaring end); deleting an edge removes its RELATION through
+  `useToastWithUndo`, after saving the map without it. A node opens in
+  `ElementSheet` (the element page's `FieldEditor` and `useElementAutosave`).
+  The embedded views on element pages are `StoryMapPreview`, an SVG with no
+  tldraw. The bundle carries a rank as `order:` (refused `ORDER_NOT_ALLOWED`,
+  `ORDER_INVALID`, `ORDER_DUPLICATE`, `ORDER_TAKEN`); the PDF prints ordered
+  kinds in story order.
 - **Word search (Phase 3.4; D21).** OPTION A, DECRYPT AND SCAN: `searchBook`
   reads one book through `runInWorkspaceContext` (the encryption extension
   decrypts it), turns every source into plain text, and ranks it in memory

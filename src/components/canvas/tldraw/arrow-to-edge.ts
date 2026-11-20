@@ -21,8 +21,10 @@
  * The book's relations between the two elements, in the order the host
  * gives them, either direction; the first not already drawn is the edge, and
  * the edge runs the RELATION's way, whatever way the arrow was drawn. With
- * none the arrow is refused `NO_RELATION` (3.2 adds the type picker that
- * creates one); with every one drawn, `DUPLICATE_EDGE`.
+ * none — or with every one already drawn — the host is asked for a NEW
+ * relation (Phase 3.2: `onNeedsRelation` opens the type picker, which creates
+ * a BibleRelation and then draws it with `drawRelationEdge`); a host that
+ * offers no picker refuses the arrow `NO_RELATION` / `DUPLICATE_EDGE`.
  *
  * ═══ WHY CONVERSION WAITS FOR THE POINTER ═══
  *
@@ -91,9 +93,25 @@ export function classifyArrow(
     return { kind: 'convert', relationId: free.relationId, sourceElementId: free.sourceElementId, targetElementId: free.targetElementId };
 }
 
+/** Two story nodes an arrow joined with no undrawn relation between them (Phase 3.2: the type picker's question). */
+export interface RelationRequest {
+    /** The arrow, left on the canvas until the host draws the edge or drops it. */
+    arrowId: string;
+    /** The element the arrow STARTS at, and the one it ends at. */
+    fromElementId: string;
+    toElementId: string;
+}
+
 interface InstallOptions {
     /** The book's relations, read at conversion time (the host's list may change). */
     relations: () => readonly KnownRelation[];
+    /**
+     * Asked when the two nodes have no undrawn relation between them, before
+     * any refusal: the host may create one (Phase 3.2's type picker). Answering
+     * true takes the arrow on (the host resolves it); false, or no host, and
+     * the arrow is refused as before.
+     */
+    onNeedsRelation?: (request: RelationRequest) => boolean;
     /** Told why an arrow between two nodes did not become an edge. */
     onRefuse?: (verdict: Extract<ArrowVerdict, { kind: 'refuse' | 'no-relation' }>) => void;
     /** Called after a conversion, so the host can mark the map dirty. */
@@ -124,6 +142,56 @@ function drawnRelations(editor: Editor): Set<string> {
 }
 
 /**
+ * Draw one relation as an edge between the two nodes of its elements — the
+ * binding and its line — and, given one, remove the arrow that asked for it,
+ * all in ONE undoable step (`editor.run`: loose writes inside a side-effect
+ * handler never reach the undo stack; measured in inflect). False when either
+ * element has no node on the page.
+ */
+export function drawRelationEdge(
+    editor: Editor,
+    relation: { relationId: string; sourceElementId: string; targetElementId: string },
+    label: string,
+    arrowId?: string,
+): boolean {
+    const nodes = nodesOnPage(editor);
+    const shapeIdOf = (elementId: string) => [...nodes.entries()].find(([, el]) => el === elementId)?.[0];
+    const fromId = shapeIdOf(relation.sourceElementId);
+    const toId = shapeIdOf(relation.targetElementId);
+    if (!fromId || !toId) return false;
+    editor.run(
+        () => {
+            editor.createBindings([
+                {
+                    type: STORY_EDGE_BINDING_TYPE,
+                    fromId: fromId as TLShapeId,
+                    toId: toId as TLShapeId,
+                    props: { relationId: relation.relationId, sourceElementId: relation.sourceElementId, targetElementId: relation.targetElementId },
+                },
+            ] as never);
+            const from = editor.getShapePageBounds(fromId as TLShapeId);
+            const to = editor.getShapePageBounds(toId as TLShapeId);
+            if (from && to) {
+                const g = edgeLineGeometry(from, to);
+                editor.createShapes([
+                    {
+                        id: shapeIdForRelation(relation.relationId),
+                        type: STORY_EDGE_SHAPE_TYPE,
+                        x: g.x,
+                        y: g.y,
+                        props: { relationId: relation.relationId, label, dx: g.dx, dy: g.dy },
+                    },
+                ] as never);
+            }
+            // The arrow goes last, so its own binding hooks do not fire mid-create.
+            if (arrowId && editor.getShape(arrowId as TLShapeId)) editor.deleteShapes([arrowId as TLShapeId]);
+        },
+        { history: 'record' },
+    );
+    return true;
+}
+
+/**
  * Watch for arrows worth converting, and convert them. Returns a disposer.
  */
 export function installArrowToEdgeConversion(editor: Editor, opts: InstallOptions): () => void {
@@ -144,48 +212,17 @@ export function installArrowToEdgeConversion(editor: Editor, opts: InstallOption
         }));
         const verdict = classifyArrow(ends, new Set(nodes.values()), drawnRelations(editor), opts.relations());
         if (verdict.kind === 'annotation') return;
+        const allDrawn = verdict.kind === 'refuse' && verdict.refusals.length === 1 && verdict.refusals[0].code === 'DUPLICATE_EDGE';
+        if (verdict.kind === 'no-relation' || allDrawn) {
+            const start = ends.find((e) => e.terminal === 'start')!.elementId!;
+            const end = ends.find((e) => e.terminal === 'end')!.elementId!;
+            if (opts.onNeedsRelation?.({ arrowId, fromElementId: start, toElementId: end })) return;
+        }
         if (verdict.kind !== 'convert') {
             opts.onRefuse?.(verdict);
             return;
         }
-
-        const shapeIdOf = (elementId: string) => [...nodes.entries()].find(([, el]) => el === elementId)?.[0];
-        const fromId = shapeIdOf(verdict.sourceElementId);
-        const toId = shapeIdOf(verdict.targetElementId);
-        if (!fromId || !toId) return;
-
-        // `editor.run` makes the swap one undoable step (loose writes inside a
-        // side-effect handler never reach the undo stack; measured in inflect).
-        editor.run(
-            () => {
-                editor.createBindings([
-                    {
-                        type: STORY_EDGE_BINDING_TYPE,
-                        fromId: fromId as TLShapeId,
-                        toId: toId as TLShapeId,
-                        props: { relationId: verdict.relationId, sourceElementId: verdict.sourceElementId, targetElementId: verdict.targetElementId },
-                    },
-                ] as never);
-                const from = editor.getShapePageBounds(fromId as TLShapeId);
-                const to = editor.getShapePageBounds(toId as TLShapeId);
-                if (from && to) {
-                    const g = edgeLineGeometry(from, to);
-                    editor.createShapes([
-                        {
-                            id: shapeIdForRelation(verdict.relationId),
-                            type: STORY_EDGE_SHAPE_TYPE,
-                            x: g.x,
-                            y: g.y,
-                            props: { relationId: verdict.relationId, label: opts.resolveLabel?.(verdict.relationId) ?? '', dx: g.dx, dy: g.dy },
-                        },
-                    ] as never);
-                }
-                // The arrow goes last, so its own binding hooks do not fire mid-create.
-                editor.deleteShapes([arrowId as TLShapeId]);
-            },
-            { history: 'record' },
-        );
-        opts.onConverted?.(verdict.relationId);
+        if (drawRelationEdge(editor, verdict, opts.resolveLabel?.(verdict.relationId) ?? '', arrowId)) opts.onConverted?.(verdict.relationId);
     };
 
     const offCreate = editor.sideEffects.registerAfterCreateHandler('binding', (binding) => {
@@ -255,16 +292,47 @@ export function installOneNodePerElement(editor: Editor): () => void {
  * removed because its node went (the binding util's own hook) finds the
  * binding already on its way out and removes nothing more. Returns a disposer.
  */
-export function installEdgeLineRemovesEdge(editor: Editor): () => void {
-    return editor.sideEffects.registerAfterDeleteHandler('shape', (shape) => {
+export function installEdgeLineRemovesEdge(
+    editor: Editor,
+    opts: {
+        /**
+         * Told, once the operation completes, of every edge the AUTHOR removed
+         * (Phase 3.2): its line went while both its nodes stayed on the page.
+         * An edge that went with its node is not one (the node left the map;
+         * the relation stays in the bible).
+         */
+        onAuthorRemoved?: (edge: { relationId: string; sourceElementId: string; targetElementId: string }) => void;
+    } = {},
+): () => void {
+    const removed = new Map<string, { relationId: string; sourceElementId: string; targetElementId: string }>();
+    const offDelete = editor.sideEffects.registerAfterDeleteHandler('shape', (shape, source) => {
         if (shape.type !== STORY_EDGE_SHAPE_TYPE) return;
         const relationId = (shape.props as { relationId?: unknown }).relationId;
-        const orphans = editor.store
+        const bindings = editor.store
             .allRecords()
             .filter((r) => r.typeName === 'binding' && (r as { type?: string }).type === STORY_EDGE_BINDING_TYPE && (r as unknown as StoryEdgeBinding).props.relationId === relationId)
-            .map((r) => r.id);
-        if (orphans.length > 0) editor.deleteBindings(orphans as never);
+            .map((r) => r as unknown as StoryEdgeBinding);
+        if (source === 'user' && typeof relationId === 'string' && bindings[0]) {
+            const p = bindings[0].props;
+            removed.set(relationId, { relationId, sourceElementId: p.sourceElementId, targetElementId: p.targetElementId });
+        }
+        if (bindings.length > 0) editor.deleteBindings(bindings.map((b) => b.id) as never);
     });
+    const offComplete = editor.sideEffects.registerOperationCompleteHandler(() => {
+        if (removed.size === 0) return;
+        const edges = [...removed.values()];
+        removed.clear();
+        if (!opts.onAuthorRemoved) return;
+        const onPage = new Set(nodesOnPage(editor).values());
+        for (const edge of edges) {
+            if (onPage.has(edge.sourceElementId) && onPage.has(edge.targetElementId)) opts.onAuthorRemoved(edge);
+        }
+    });
+    return () => {
+        offDelete();
+        offComplete();
+        removed.clear();
+    };
 }
 
 export { edgeEndpointIds };

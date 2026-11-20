@@ -27,22 +27,42 @@ export interface BadgeWords {
     percent: (percent: number) => string;
 }
 
-export function nodeDisplayFor(element: DisplayElement, kindLabels: Readonly<Record<string, string>>, words: BadgeWords): NodeDisplay {
+export function nodeDisplayFor(element: DisplayElement, kindLabels: Readonly<Record<string, string>>, words: BadgeWords, detail = ''): NodeDisplay {
     const c = completeness({ entries: 1, filled: element.filledFieldCount, fieldsPerEntry: element.fieldCount });
     const kindLabel = element.customLabel ?? kindLabels[element.kind] ?? element.kind;
-    if (c.state !== 'measured') return { name: element.name, kindLabel, badgeLabel: words.notAssessed, badgeTone: 'none' };
+    if (c.state !== 'measured') return { name: element.name, kindLabel, badgeLabel: words.notAssessed, badgeTone: 'none', detail };
     const percent = completenessPercent(c);
-    return { name: element.name, kindLabel, badgeLabel: words.percent(percent), badgeTone: percent === 100 ? 'complete' : percent === 0 ? 'none' : 'partial' };
+    return { name: element.name, kindLabel, badgeLabel: words.percent(percent), badgeTone: percent === 100 ? 'complete' : percent === 0 ? 'none' : 'partial', detail };
+}
+
+/** A derived map's facts about an element (Phase 3.2), for its card's second line. */
+export interface OrderFacts {
+    kind: string;
+    orderRank?: string | null;
+    storyTime?: string | null;
+}
+
+/**
+ * A card's second line (Phase 3.2): a timeline event shows "when it happens"
+ * (the author's own words) and a plot beat or event not placed in the story
+ * order yet says so; anything else shows none.
+ */
+export function nodeDetailFor(element: OrderFacts, words: { unplaced: string }): string {
+    const ordered = element.kind === 'PLOT_BEAT' || element.kind === 'TIMELINE_EVENT';
+    if (ordered && (element.orderRank ?? null) === null) return words.unplaced;
+    if (element.kind === 'TIMELINE_EVENT') return element.storyTime ?? '';
+    return '';
 }
 
 export function buildMapDisplay(
-    nodes: ReadonlyArray<{ elementId: string; element: DisplayElement }>,
+    nodes: ReadonlyArray<{ elementId: string; element: DisplayElement & Partial<OrderFacts> }>,
     relations: ReadonlyArray<{ relationId: string; label: string }>,
     kindLabels: Readonly<Record<string, string>>,
-    words: BadgeWords,
+    words: BadgeWords & { unplaced?: string },
 ): MapDisplay {
+    const unplaced = words.unplaced ?? '';
     return {
-        nodes: new Map(nodes.map((n) => [n.elementId, nodeDisplayFor(n.element, kindLabels, words)])),
+        nodes: new Map(nodes.map((n) => [n.elementId, nodeDisplayFor(n.element, kindLabels, words, nodeDetailFor({ kind: n.element.kind, orderRank: n.element.orderRank, storyTime: n.element.storyTime }, { unplaced }))])),
         edgeLabels: new Map(relations.map((r) => [r.relationId, r.label])),
     };
 }

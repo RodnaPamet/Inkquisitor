@@ -157,13 +157,13 @@ beforeAll(async () => {
     Object.assign(ids, { ResearchBrief: brief.id, Run: runId });
 
     // A story map with a sticky note (Phase 3.1): the map's freeform layer and its save's snapshot.
-    await saveStoryMap(ctx, book.id, 'plot', {
+    await saveStoryMap(ctx, book.id, 'relationship', {
         expectedVersion: 0,
         nodes: [{ elementId: falconer.id, x: 0, y: 0, w: 220, h: 88, lane: null }],
         edges: [],
         freeform: [{ id: 'shape:mark-note', typeName: 'shape', type: 'note', x: 0, y: 0, props: { text: `The hood ${MARK} goes on at dusk.` } }],
     });
-    const map = await prisma.storyMap.findFirstOrThrow({ where: { bookId: book.id, kind: 'PLOT' }, select: { id: true } });
+    const map = await prisma.storyMap.findFirstOrThrow({ where: { bookId: book.id, kind: 'RELATIONSHIP' }, select: { id: true } });
     Object.assign(ids, { StoryMap: map.id });
 });
 

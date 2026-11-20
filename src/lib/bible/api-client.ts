@@ -15,6 +15,7 @@
 import type { BookListView, BookView, DeletedBookView } from '@/app-layer/usecases/books';
 import type { BoardKindView, ElementListItemView, ElementPageView, ElementSummaryView, ElementView, FieldsSaveResult } from '@/app-layer/usecases/bible-elements';
 import type { CreatedRelationView } from '@/app-layer/usecases/bible-relations';
+import type { OrderMoveResult } from '@/app-layer/usecases/bible-order';
 import type { RestoreResult, VersionMetaView, VersionView } from '@/app-layer/usecases/bible-versions';
 import type { BundleImportReport, ConceptNoteReport, ImportProblem } from '@/app-layer/usecases/bible-import';
 
@@ -29,6 +30,7 @@ export type {
     ElementView,
     FieldsSaveResult,
     CreatedRelationView,
+    OrderMoveResult,
     RestoreResult,
     VersionMetaView,
     VersionView,
@@ -55,6 +57,8 @@ export const BIBLE_API = {
     },
     element: (slug: string, bookId: string, elementId: string) => `/api/w/${enc(slug)}/books/${enc(bookId)}/elements/${enc(elementId)}`,
     fields: (slug: string, bookId: string, elementId: string) => `${BIBLE_API.element(slug, bookId, elementId)}/fields`,
+    /** Move a plot beat or a timeline event in its story order (Phase 3.2). */
+    order: (slug: string, bookId: string, elementId: string) => `${BIBLE_API.element(slug, bookId, elementId)}/order`,
     versions: (slug: string, bookId: string, elementId: string, query: { before?: number; take?: number } = {}) => {
         const params = new URLSearchParams();
         if (query.take !== undefined) params.set('take', String(query.take));

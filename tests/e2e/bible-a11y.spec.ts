@@ -17,6 +17,11 @@ import { SETUP_OPTIONS_TIMEOUT_MS, STUB_BASE_URL } from './stub-server';
  *     Research page with a finished run (Phase 2.6) — against the
  *     stubbed-model server (and its worker), so a round really opens and a
  *     research run really runs;
+ *   - and on the story maps (Phase 3.2): the relationship map, the plot
+ *     board and the timeline (their own controls; tldraw's canvas is a
+ *     third party's and is excluded), the type picker, the element sheet, and
+ *     the read-only maps embedded on a character's, a beat's and an event's
+ *     page;
  *   - an author can create, edit, relate and restore with the KEYBOARD ONLY:
  *     after the page is opened, every step is a key press — focus moves by
  *     Tab, controls answer Enter, Space, typing and the arrow keys — and no
@@ -25,7 +30,7 @@ import { SETUP_OPTIONS_TIMEOUT_MS, STUB_BASE_URL } from './stub-server';
 
 const WCAG = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'];
 
-async function expectNoAxeViolations(page: Page, label: string, include?: string) {
+async function expectNoAxeViolations(page: Page, label: string, include?: string, exclude?: string) {
     // Let entrance animations (the layouts fade in) finish: mid-fade the text
     // is part-transparent, and its contrast is measured as such.
     await page.evaluate(() =>
@@ -38,6 +43,7 @@ async function expectNoAxeViolations(page: Page, label: string, include?: string
     );
     let builder = new AxeBuilder({ page }).withTags(WCAG);
     if (include) builder = builder.include(include);
+    if (exclude) builder = builder.exclude(exclude);
     const { violations } = await builder.analyze();
     expect(
         violations.map((v) => `${label}: ${v.id} (${v.impact}) — ${v.nodes.map((n) => `${n.target.join(' ')} ${n.html.slice(0, 160)}`).join(' | ')}`),
@@ -104,6 +110,62 @@ test('axe finds no WCAG 2.1 AA violation on the bible pages and dialogs', async 
     await page.goto(`/w/${slug}/deleted-books`);
     await expect(main.getByRole('heading', { level: 1, name: 'Recently deleted' })).toBeVisible();
     await expectNoAxeViolations(page, 'recently deleted');
+});
+
+test('axe finds no WCAG 2.1 AA violation on the story maps, the type picker, the element sheet and the embedded maps (Phase 3.2)', async ({ page }) => {
+    test.setTimeout(150_000);
+    const { slug, bookId, elementId } = await bookWithCharacter(page);
+    const main = page.getByRole('main');
+    const api = `/api/w/${slug}/books/${bookId}`;
+    const create = async (kind: string, name: string, fields: Array<{ key: string; value: unknown }> = []) =>
+        ((await (await page.request.post(`${api}/elements`, { data: { kind, name, fields } })).json()) as { element: { id: string } }).element.id;
+    const tam = await create('CHARACTER', 'Tam');
+    const beat = await create('PLOT_BEAT', 'The pardon refused', [{ key: 'act', value: 'opening' }]);
+    const event = await create('TIMELINE_EVENT', 'The flood', [{ key: 'story_time', value: 'Spring' }]);
+    await page.request.post(`${api}/elements/${event}/order`, { data: { baseVersion: 1, after: null, before: null } });
+    const node = (id: string, x: number) => ({ elementId: id, x, y: 0, w: 220, h: 88, lane: null });
+    await page.request.put(`${api}/maps/relationship`, { data: { expectedVersion: 0, nodes: [node(elementId, 0), node(tam, 520)], edges: [], freeform: [] } });
+    await page.request.put(`${api}/maps/plot`, { data: { expectedVersion: 0, nodes: [node(beat, 0)], edges: [], freeform: [] } });
+    await page.request.put(`${api}/maps/timeline`, { data: { expectedVersion: 0, nodes: [node(event, 0)], edges: [], freeform: [] } });
+    const canvasReady = () => expect(page.locator('[data-story-canvas] .tlui-toolbar')).toBeVisible({ timeout: 20_000 });
+
+    await page.goto(`/w/${slug}/books/${bookId}/maps/relationship`);
+    await canvasReady();
+    await expectNoAxeViolations(page, 'relationship map', undefined, '[data-story-canvas]');
+    // The type picker: an arrow from one character to the other.
+    await page.locator('[data-story-canvas] [data-testid="tools.arrow"]').click();
+    const box = async (id: string) => (await page.locator(`[data-story-node="${id}"]`).boundingBox())!;
+    const [a, b] = [await box(elementId), await box(tam)];
+    await page.mouse.move(a.x + a.width / 2, a.y + a.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2, { steps: 12 });
+    await page.mouse.up();
+    await expect(page.getByRole('dialog', { name: 'How are these related?' })).toBeVisible({ timeout: 10_000 });
+    await expectNoAxeViolations(page, 'type picker', '[role="dialog"]');
+    await page.getByRole('button', { name: 'Cancel' }).click();
+    // The element sheet, opened from the toolbar by keyboard-reachable controls.
+    await main.getByRole('combobox', { name: 'Open an element' }).click();
+    await page.getByRole('option', { name: 'Tam' }).click();
+    await expect(page.getByRole('dialog', { name: 'Tam' }).getByTestId('element-sheet-body')).toBeVisible();
+    await expectNoAxeViolations(page, 'element sheet', '[role="dialog"]');
+    await page.keyboard.press('Escape');
+
+    await page.goto(`/w/${slug}/books/${bookId}/maps/plot`);
+    await canvasReady();
+    await expectNoAxeViolations(page, 'plot board', undefined, '[data-story-canvas]');
+    await page.goto(`/w/${slug}/books/${bookId}/maps/timeline`);
+    await canvasReady();
+    await expectNoAxeViolations(page, 'timeline', undefined, '[data-story-canvas]');
+
+    for (const [id, map, label] of [
+        [elementId, 'RELATIONSHIP', 'character page with its relationship map'],
+        [beat, 'PLOT', 'plot beat page with its plot board'],
+        [event, 'TIMELINE', 'timeline event page with its timeline'],
+    ] as const) {
+        await page.goto(`/w/${slug}/books/${bookId}/elements/${id}`);
+        await expect(main.getByTestId(`map-preview-${map}`)).toBeVisible();
+        await expectNoAxeViolations(page, label);
+    }
 });
 
 test('create, edit, relate and restore with the keyboard alone', async ({ page }) => {

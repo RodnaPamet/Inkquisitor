@@ -17,7 +17,7 @@ import type { ReportMeta } from '@/lib/pdf/types';
 import { drawableText, PDF_FONT } from '@/lib/pdf/fonts';
 import { BIBLE_KINDS } from './kinds';
 import { getTemplate } from './templates';
-import { relationLinesBySlug, sortElements, STATUS_WORDS, valueLines, type BibleBundle } from './bundle-format';
+import { readingOrder, relationLinesBySlug, sortElements, STATUS_WORDS, valueLines, type BibleBundle } from './bundle-format';
 
 const STAGE_WORDS: Readonly<Record<string, string>> = {
     CONCEPT: 'Concept',
@@ -114,7 +114,8 @@ export function renderBiblePdf(bundle: BibleBundle, meta: BiblePdfMeta): Promise
 
     const lines = relationLinesBySlug(elements);
     for (const kind of BIBLE_KINDS) {
-        const ofKind = elements.filter((e) => e.kind === kind);
+        // Plot beats and timeline events in their story order (Phase 3.2).
+        const ofKind = readingOrder(elements.filter((e) => e.kind === kind));
         if (ofKind.length === 0) continue;
         const template = getTemplate(kind);
         doc.addPage();

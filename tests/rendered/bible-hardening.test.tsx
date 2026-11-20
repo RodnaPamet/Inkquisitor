@@ -56,6 +56,7 @@ const entry = (id: string, name: string, filledFieldCount = 0): ElementListItemV
     kind: 'CHARACTER',
     name,
     slug: id,
+    orderRank: null,
     status: 'DRAFT',
     customLabel: null,
     updatedAt: '2026-11-19T10:00:00.000Z',

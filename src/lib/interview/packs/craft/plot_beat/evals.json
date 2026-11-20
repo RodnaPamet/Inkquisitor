@@ -1,0 +1,311 @@
+[
+  {
+    "id": "plot_beat-01",
+    "rationale": "Fresh entry at depth 1, detail 1. Only what happens has no prerequisites; the act, the cause and the effect wait on it. A right output offers a pick among kinds of happening, recommending one only if the name supports it. A likely wrong one asks for the act first or offers specific incidents as options.",
+    "elementName": "The refused pardon",
+    "bibleState": {
+      "what_happens": null,
+      "act": null,
+      "cause": null,
+      "effect": null
+    },
+    "priorAnswers": [],
+    "dials": {
+      "depth": 1,
+      "detail": 1
+    },
+    "expect": {
+      "targetsAnyOf": [
+        "what_happens"
+      ],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "EXCEEDS_DEPTH",
+        "MISMATCHES_DETAIL",
+        "MALFORMED_OPTIONS",
+        "UNGROUNDED_RECOMMENDATION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE",
+        "USES_BRANDED_FRAMEWORK"
+      ]
+    }
+  },
+  {
+    "id": "plot_beat-02",
+    "rationale": "Fresh entry at depth 5, detail 5, the contrast to plot_beat-01. The deepest dial does not lift the dependency order: act, cause and effect all wait on what happens. A right output invites the beat in the author's own words. A likely wrong one bundles the act into it or drafts the beat as a scene.",
+    "elementName": "The flood at the toll house",
+    "bibleState": {
+      "what_happens": null,
+      "act": null,
+      "cause": null,
+      "effect": null
+    },
+    "priorAnswers": [],
+    "dials": {
+      "depth": 5,
+      "detail": 5
+    },
+    "expect": {
+      "targetsAnyOf": [
+        "what_happens"
+      ],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "MISMATCHES_DETAIL",
+        "COMPOUND_QUESTION",
+        "LEADING_QUESTION",
+        "MALFORMED_OPTIONS",
+        "UNGROUNDED_RECOMMENDATION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE"
+      ]
+    }
+  },
+  {
+    "id": "plot_beat-03",
+    "rationale": "What happens is stored and the dial is at depth 1. Every other field sits at level 2 or deeper, so nothing is eligible: the right output asks nothing and says the act, cause and effect wait on a deeper dial. Likely wrong outputs re-ask what happens or reach for the act anyway.",
+    "elementName": "The refused pardon",
+    "bibleState": {
+      "what_happens": "Mara refuses the guild's offer of a pardon in front of the whole quay. She tears up the writ and the harbourmaster has her ferry impounded on the spot.",
+      "act": null,
+      "cause": null,
+      "effect": null
+    },
+    "priorAnswers": [],
+    "dials": {
+      "depth": 1,
+      "detail": 3
+    },
+    "expect": {
+      "targetsAnyOf": [],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "EXCEEDS_DEPTH",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE"
+      ]
+    }
+  },
+  {
+    "id": "plot_beat-04",
+    "rationale": "Same entry at depth 3, detail 3. With what happens stored, the act, the cause and the effect are all in reach. A right output targets one of them, building on the stored beat. The tempting mistakes are to ask for the beat again or to name a later beat the author never gave.",
+    "elementName": "The refused pardon",
+    "bibleState": {
+      "what_happens": "Mara refuses the guild's offer of a pardon in front of the whole quay. She tears up the writ and the harbourmaster has her ferry impounded on the spot.",
+      "act": null,
+      "cause": null,
+      "effect": null
+    },
+    "priorAnswers": [],
+    "dials": {
+      "depth": 3,
+      "detail": 3
+    },
+    "expect": {
+      "targetsAnyOf": [
+        "act",
+        "cause",
+        "effect"
+      ],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "COMPOUND_QUESTION",
+        "LEADING_QUESTION",
+        "UNGROUNDED_RECOMMENDATION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE"
+      ]
+    }
+  },
+  {
+    "id": "plot_beat-05",
+    "rationale": "What happens and the act are stored at depth 2, detail 1. The cause and the effect remain. A right output offers kinds of link to pick from. A likely wrong one asks the act again, or offers an invented incident as an option.",
+    "elementName": "The refused pardon",
+    "bibleState": {
+      "what_happens": "Mara refuses the guild's offer of a pardon in front of the whole quay. She tears up the writ and the harbourmaster has her ferry impounded on the spot.",
+      "act": "escalation",
+      "cause": null,
+      "effect": null
+    },
+    "priorAnswers": [],
+    "dials": {
+      "depth": 2,
+      "detail": 1
+    },
+    "expect": {
+      "targetsAnyOf": [
+        "cause",
+        "effect"
+      ],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "MISMATCHES_DETAIL",
+        "LEADING_QUESTION",
+        "MALFORMED_OPTIONS",
+        "UNGROUNDED_RECOMMENDATION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE"
+      ]
+    }
+  },
+  {
+    "id": "plot_beat-06",
+    "rationale": "Everything but the effect is stored, at depth 5, detail 4. Only the effect is open among the core fields. A right output asks what the refusal sets in motion, quoting the stored beat. A likely wrong one asks the cause again or supplies the next beat itself.",
+    "elementName": "The refused pardon",
+    "bibleState": {
+      "what_happens": "Mara refuses the guild's offer of a pardon in front of the whole quay. She tears up the writ and the harbourmaster has her ferry impounded on the spot.",
+      "act": "escalation",
+      "cause": "The guild's pardon comes with a condition: she must name the smugglers who saved her brother. She has known for a week that the offer was coming.",
+      "effect": null
+    },
+    "priorAnswers": [],
+    "dials": {
+      "depth": 5,
+      "detail": 4
+    },
+    "expect": {
+      "targetsAnyOf": [
+        "effect"
+      ],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "MISMATCHES_DETAIL",
+        "VERDICT_NOT_QUESTION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE"
+      ]
+    }
+  },
+  {
+    "id": "plot_beat-07",
+    "rationale": "Every core field is stored at depth 5. Nothing core is open, and an evaluation run asks about core fields only, so the right output asks nothing. A likely wrong one re-asks a stored field as if it were empty.",
+    "elementName": "The refused pardon",
+    "bibleState": {
+      "what_happens": "Mara refuses the guild's offer of a pardon in front of the whole quay. She tears up the writ and the harbourmaster has her ferry impounded on the spot.",
+      "act": "escalation",
+      "cause": "The guild's pardon comes with a condition: she must name the smugglers who saved her brother. She has known for a week that the offer was coming.",
+      "effect": "With her ferry gone she has no way across the drowned country, so she has to take passage on the smugglers' boat she just refused to betray."
+    },
+    "priorAnswers": [],
+    "dials": {
+      "depth": 5,
+      "detail": 3
+    },
+    "expect": {
+      "targetsAnyOf": [],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE"
+      ]
+    }
+  },
+  {
+    "id": "plot_beat-08",
+    "rationale": "What happens is stored; earlier this session the author deferred the act and skipped the cause. At depth 2, detail 2, the effect is the one core field left to ask. Likely wrong outputs come back to the act or the cause.",
+    "elementName": "The refused pardon",
+    "bibleState": {
+      "what_happens": "Mara refuses the guild's offer of a pardon in front of the whole quay. She tears up the writ and the harbourmaster has her ferry impounded on the spot.",
+      "act": null,
+      "cause": null,
+      "effect": null
+    },
+    "priorAnswers": [
+      {
+        "id": "a1",
+        "questionKind": "CHOICE",
+        "question": "Which part of the book does this beat fall in?",
+        "options": [
+          "opening",
+          "escalation",
+          "crisis",
+          "resolution"
+        ],
+        "targetsFieldKeys": [
+          "act"
+        ],
+        "status": "DECIDE_LATER",
+        "answer": null
+      },
+      {
+        "id": "a2",
+        "questionKind": "OPEN",
+        "question": "What brings this beat about?",
+        "targetsFieldKeys": [
+          "cause"
+        ],
+        "status": "SKIPPED",
+        "answer": null
+      }
+    ],
+    "dials": {
+      "depth": 2,
+      "detail": 2
+    },
+    "expect": {
+      "targetsAnyOf": [
+        "effect"
+      ],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "REPEATS_PRIOR_QUESTION",
+        "SKIPS_DEPENDENCY",
+        "MISMATCHES_DETAIL",
+        "MALFORMED_OPTIONS",
+        "UNGROUNDED_RECOMMENDATION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE"
+      ]
+    }
+  },
+  {
+    "id": "plot_beat-09",
+    "rationale": "Nothing is stored, but this session the author answered what happens in a reply. At depth 3, detail 3, its answer satisfies the field, so the act, the cause and the effect are in reach. A wrong output asks what happens again.",
+    "elementName": "The toll-house bargain",
+    "bibleState": {
+      "what_happens": null,
+      "act": null,
+      "cause": null,
+      "effect": null
+    },
+    "priorAnswers": [
+      {
+        "id": "a1",
+        "questionKind": "OPEN",
+        "question": "What happens in this beat?",
+        "targetsFieldKeys": [
+          "what_happens"
+        ],
+        "status": "ANSWERED",
+        "answer": "Mara trades her ferry licence for one night's passage through the toll house."
+      }
+    ],
+    "dials": {
+      "depth": 3,
+      "detail": 3
+    },
+    "expect": {
+      "targetsAnyOf": [
+        "act",
+        "cause",
+        "effect"
+      ],
+      "mustNot": [
+        "ASKS_ANSWERED_FIELD",
+        "REPEATS_PRIOR_QUESTION",
+        "SKIPS_DEPENDENCY",
+        "LEADING_QUESTION",
+        "UNGROUNDED_RECOMMENDATION",
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE"
+      ]
+    }
+  }
+]

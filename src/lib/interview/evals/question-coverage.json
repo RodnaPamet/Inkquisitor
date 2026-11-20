@@ -238,6 +238,40 @@
             "READS_OTHER_BOOK"
           ]
         }
+      },
+      {
+        "kind": "PLOT_BEAT",
+        "elementName": "Hester finds the changed line",
+        "dials": { "depth": 2, "detail": 3 },
+        "statedInConcept": [
+          "what_happens"
+        ],
+        "authorKnows": {
+          "act": "Opening",
+          "cause": "The appeal court asks her to certify her own transcript, so she reads it back for the first time in a year.",
+          "effect": "She copies the page before returning the file, and from then on she is the only person who can prove the record was changed."
+        },
+        "expect": {
+          "mustCover": [
+            "act",
+            "cause",
+            "effect"
+          ],
+          "mustNotTarget": [
+            "what_happens"
+          ],
+          "mustNot": [
+            "ASKS_ANSWERED_FIELD",
+            "REPEATS_PRIOR_QUESTION",
+            "SKIPS_DEPENDENCY",
+            "EXCEEDS_DEPTH",
+            "MISMATCHES_DETAIL",
+            "MALFORMED_OPTIONS",
+            "PROPOSES_STORY_CONTENT",
+            "WRITES_PROSE",
+            "READS_OTHER_BOOK"
+          ]
+        }
       }
     ]
   },

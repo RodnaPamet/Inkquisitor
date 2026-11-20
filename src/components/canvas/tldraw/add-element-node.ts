@@ -31,7 +31,7 @@ export function addElementNode(editor: Editor, elementId: string, display: NodeD
                 type: STORY_NODE_SHAPE_TYPE,
                 x: Math.round(centre.x - NODE_DEFAULT_W / 2),
                 y: Math.round(centre.y - NODE_DEFAULT_H / 2),
-                props: { w: NODE_DEFAULT_W, h: NODE_DEFAULT_H, elementId, lane: null, ...display },
+                props: { w: NODE_DEFAULT_W, h: NODE_DEFAULT_H, elementId, lane: null, ...display, detail: display.detail ?? '' },
             },
         ] as never);
         editor.select(shapeId);

@@ -9,12 +9,12 @@
     }
   },
   "promptVersion": "research.2.6.0+research-gather.2.6.0+research-findings.2.6.0+research-fit.2.6.0",
-  "promptHash": "sha256:a08aeaf2c1400e6af0ace5a43b45320a18cf1094899855be4a4330e8e1fe4f12",
+  "promptHash": "sha256:c40bfd31b8a11918dbefefa59728450c510bb3f677be768c2e9b5833eb15f515",
   "generator": {
     "kind": "structural",
     "id": "reference-researcher.1"
   },
-  "ranAt": "2026-11-20T11:26:14.236Z",
+  "ranAt": "2026-11-20T17:44:10.909Z",
   "answers": [
     {
       "caseId": "rs-01",

@@ -33,7 +33,7 @@ const BOOK: BookView = {
     createdAt: '2026-11-19T10:00:00.000Z',
     updatedAt: '2026-11-19T10:00:00.000Z',
 };
-const character = { id: 'e1', bookId: BOOK.id, kind: 'CHARACTER' as const, name: 'Mara', slug: 'mara', status: 'DRAFT' as const, customLabel: null, updatedAt: BOOK.updatedAt, filledFieldCount: 0 };
+const character = { id: 'e1', bookId: BOOK.id, kind: 'CHARACTER' as const, name: 'Mara', slug: 'mara', status: 'DRAFT' as const, customLabel: null, orderRank: null, updatedAt: BOOK.updatedAt, filledFieldCount: 0 };
 
 beforeEach(() => {
     push.mockClear();

@@ -8,10 +8,15 @@
  *
  * The ORDER is significant: a relation between two kinds is declared once, on
  * the template of the kind that comes first (`src/lib/bible/templates.ts`).
+ * PLOT_BEAT (Phase 3.2, decision D22) sits straight after PLOT on purpose: a
+ * beat then declares its own relations to the characters, settings, events
+ * and objects it involves, and only the beat's plotline (`has_beat`) is
+ * declared on PLOT.
  */
 export const BIBLE_KINDS = [
     'PREMISE',
     'PLOT',
+    'PLOT_BEAT',
     'CHARACTER',
     'SETTING',
     'THEME',
@@ -31,6 +36,19 @@ export type BibleKind = (typeof BIBLE_KINDS)[number];
 
 export function isBibleKind(value: unknown): value is BibleKind {
     return typeof value === 'string' && (BIBLE_KINDS as readonly string[]).includes(value);
+}
+
+/**
+ * The kinds that carry a place in a story order (Phase 3.2, decision D22):
+ * `BibleElement.orderRank`, a fractional rank (`./story-order.ts`). A plot
+ * beat's order runs within its act; a timeline event's is the timeline axis.
+ * The migration's CHECK names the same two.
+ */
+export const ORDERED_KINDS = ['PLOT_BEAT', 'TIMELINE_EVENT'] as const satisfies readonly BibleKind[];
+export type OrderedKind = (typeof ORDERED_KINDS)[number];
+
+export function isOrderedKind(kind: string): kind is OrderedKind {
+    return (ORDERED_KINDS as readonly string[]).includes(kind);
 }
 
 /** The kind's position in the fixed order (0-based). */

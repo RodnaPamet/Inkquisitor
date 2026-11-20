@@ -19,6 +19,8 @@ enum WorkspaceRole {
 enum BibleElementKind {
   PREMISE
   PLOT
+  /// Phase 3.2 (decision D22): one beat of a plotline, a card on the plot board.
+  PLOT_BEAT
   CHARACTER
   SETTING
   THEME
