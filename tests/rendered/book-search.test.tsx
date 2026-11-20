@@ -99,6 +99,30 @@ it('searches at once on Enter', async () => {
     expect(requests).toHaveLength(1);
 });
 
+it('never shows an answer under newer text: a change aborts the request in flight', async () => {
+    const pending: Array<(answer: { json: unknown }) => void> = [];
+    const { requests } = mockFetch({ [`POST ${URL_}`]: () => new Promise((resolve) => pending.push(resolve)) });
+    render(<BookSearch workspaceSlug={SLUG} bookId={BOOK_ID} kindLabels={{}} />);
+    await typeAndWait('run');
+    expect(requests).toHaveLength(1);
+    // The author types on before "run" is answered; its answer arrives inside the debounce.
+    fireEvent.change(screen.getByLabelText('Search this book'), { target: { value: 'rune' } });
+    await act(async () => {
+        pending[0]({ json: RESULT });
+    });
+    expect(screen.getByTestId('book-search-status')).not.toHaveTextContent('2 results');
+    expect(screen.queryByRole('list', { name: 'Search results' })).toBeNull();
+    // The newer text is searched and answered.
+    await act(async () => {
+        jest.advanceTimersByTime(SEARCH_DEBOUNCE_MS);
+    });
+    expect(requests.map((r) => r.body)).toEqual([{ q: 'run' }, { q: 'rune' }]);
+    await act(async () => {
+        pending[1]({ json: { ...RESULT, hits: [], totalHits: 0 } });
+    });
+    expect(screen.getByTestId('book-search-status')).toHaveTextContent('Nothing in this book matches.');
+});
+
 it('says when nothing matches, and words a refusal from its reason', async () => {
     let answer: { status?: number; json: unknown } = { json: { ...RESULT, hits: [], totalHits: 0 } };
     mockFetch({ [`POST ${URL_}`]: () => answer });

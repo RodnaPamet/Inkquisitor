@@ -5,8 +5,8 @@
  * its ranked results, for every viewer (`bible.view`).
  *
  * The box searches as the author types (debounced; a request in flight is
- * aborted by the next one, so an answer never lands under a newer query) and
- * at once on Enter. The query travels in a POST body (`BIBLE_API.search`) and
+ * aborted as soon as the box changes, and by the next request, so an answer
+ * never lands under newer text) and at once on Enter. The query travels in a POST body (`BIBLE_API.search`) and
  * is never put in the page's URL, so it stays out of history and every log
  * that records a URL.
  *
@@ -82,6 +82,8 @@ export function BookSearch({ workspaceSlug, bookId, kindLabels }: BookSearchProp
 
     function onChange(value: string) {
         setQuery(value);
+        // The box no longer holds the query in flight: its answer must not land under the newer text.
+        controller.current?.abort();
         if (timer.current) clearTimeout(timer.current);
         timer.current = setTimeout(() => void run(value), SEARCH_DEBOUNCE_MS);
     }
