@@ -47,7 +47,9 @@
  * it is rejected (or what it created is gone) 409 END_GONE. A NEW_ELEMENT that
  * fills a BETWEEN slot is created with its first fields and the slot's act,
  * then placed between the slot's neighbours by the order move
- * (`placeNewElementInOrderTx`), under the order's lock taken before any other.
+ * (`placeNewElementInOrderTx`), under the names lock and then the order's lock,
+ * both before any element lock (the book's lock order, as the bundle import
+ * takes them).
  * Neither new kind is offered for bulk acceptance or edited on acceptance: a
  * link is accepted as proposed or rejected, and its fields edited afterwards.
  *
@@ -101,7 +103,7 @@ import {
 } from './bible-common';
 import { createElementInTx } from './bible-elements';
 import { ACT_FIELD_KEY, placeNewElementInOrderTx } from './bible-order';
-import { createRelationInTx, relationExists } from './bible-relations';
+import { createRelationInTx, relationExists, relationGoneAsNotFound } from './bible-relations';
 import { bookHoldsElementName } from './enrichment-names';
 import { assertRelationBaseVersion, normaliseRelationFieldEntries, readRelationFieldValues, recordRelationVersion, relationForSave, requireRelationWithEnds, writeRelationFieldValues } from './relation-common';
 
@@ -611,9 +613,15 @@ async function acceptField(db: PrismaTx, ctx: WorkspaceRequestContext, bookId: s
 async function acceptNewElement(db: PrismaTx, ctx: WorkspaceRequestContext, bookId: string, sessionId: string, proposalId: string, input: AcceptProposalInput): Promise<DecisionResult> {
     const peek = await EnrichmentProposalRepository.find(db, ctx.workspaceId, sessionId, ProposalIdParam.parse(proposalId));
     if (!peek || peek.bookId !== bookId) throw new NotFoundError('Proposal not found.');
-    // A slot's element (Phase 3.3) is placed in its kind's order: the order's lock first, before the names lock and any element lock.
+    // A slot's element (Phase 3.3) is placed in its kind's order. The book's lock order is names, then order, then
+    // element (the bundle import takes names then every order it writes): so the names lock FIRST, then the order's,
+    // and only then the name check and the create (which take the names lock again, re-entrantly). Taking the order's
+    // lock before the names lock deadlocked against a concurrent import.
     const session = peek.fillsSlot ? await InterviewSessionRepository.find(db, ctx.workspaceId, bookId, sessionId) : null;
-    if (peek.fillsSlot && peek.newKind) await BibleElementRepository.lockOrder(db, bookId, peek.newKind);
+    if (peek.fillsSlot && peek.newKind) {
+        await BibleElementRepository.lockNames(db, bookId);
+        await BibleElementRepository.lockOrder(db, bookId, peek.newKind);
+    }
     const p = await requirePending(db, ctx, bookId, sessionId, proposalId);
     if (p.kind !== 'NEW_ELEMENT') throw new ValidationError('This proposal changes a field.', { reason: 'EDIT_NOT_ALLOWED' });
     if (input.value !== undefined) throw new ValidationError('A new element takes a name and a summary, not a value.', { reason: 'EDIT_NOT_ALLOWED' });
@@ -769,7 +777,7 @@ export async function acceptProposal(ctx: WorkspaceRequestContext, bookId: strin
     });
     if (kind === null) throw new NotFoundError('Proposal not found.');
     if (kind === 'FIELD') return runInWorkspaceContext(ctx, (db) => acceptField(db, ctx, bookId, sessionId, proposalId, parsed));
-    if (kind === 'RELATION_FIELD') return runInWorkspaceContext(ctx, (db) => acceptRelationField(db, ctx, bookId, sessionId, proposalId, parsed));
+    if (kind === 'RELATION_FIELD') return relationGoneAsNotFound(() => runInWorkspaceContext(ctx, (db) => acceptRelationField(db, ctx, bookId, sessionId, proposalId, parsed)));
     if (kind === 'NEW_RELATION') {
         try {
             return await runInWorkspaceContext(ctx, (db) => acceptNewRelation(db, ctx, bookId, sessionId, proposalId, parsed));

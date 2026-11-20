@@ -30,6 +30,7 @@ import { addRelation, getRelation, saveRelationFields } from '@/app-layer/usecas
 import { moveElementInOrder } from '@/app-layer/usecases/bible-order';
 import { answerQuestion } from '@/app-layer/usecases/interview-answers';
 import { startInterview } from '@/app-layer/usecases/interviews';
+import { loadInterviewPage } from '@/app-layer/usecases/interview-pages';
 import { closeRoundAndReconcile } from '@/app-layer/usecases/enrichment-reconcile';
 import { acceptProposal, getSessionReview, listPendingStructure } from '@/app-layer/usecases/enrichment-review';
 import { searchBook } from '@/app-layer/usecases/book-search';
@@ -62,6 +63,26 @@ async function refusal(p: Promise<unknown>): Promise<{ status: number; details: 
 const clean: ImportDeps = { scan: async (): Promise<ScanResult> => ({ status: 'CLEAN', engine: 'test', durationMs: 0 }) };
 
 const deps = { generator: fakeGenerator(), embedder: stubQuestionEmbedder };
+
+/** Resolve when some backend is waiting on an advisory lock. */
+async function untilWaitingOnAdvisoryLock() {
+    for (let i = 0; i < 400; i++) {
+        const [row] = await prisma.$queryRaw<Array<{ n: bigint }>>`SELECT count(*) AS n FROM pg_locks WHERE locktype = 'advisory' AND NOT granted`;
+        if (Number(row.n) > 0) return;
+        await new Promise((r) => setTimeout(r, 25));
+    }
+    throw new Error('nothing waited on an advisory lock');
+}
+
+/** Resolve when some backend is waiting on another transaction (a row lock), not an advisory lock. */
+async function untilWaitingOnTransaction() {
+    for (let i = 0; i < 400; i++) {
+        const [row] = await prisma.$queryRaw<Array<{ n: bigint }>>`SELECT count(*) AS n FROM pg_locks WHERE locktype = 'transactionid' AND NOT granted`;
+        if (Number(row.n) > 0) return;
+        await new Promise((r) => setTimeout(r, 25));
+    }
+    throw new Error('nothing waited on a transaction');
+}
 
 async function book() {
     const owner = await createAccount();
@@ -109,6 +130,22 @@ describe('SELECTION: "Grill this"', () => {
             expect(q.elementId).toBe(mara.id);
             expect(['history', 'wants', 'unspoken', 'change']).toContain(q.targetsFieldKeys[0]);
         }
+    });
+
+    it('names on its page the scope frozen at start, not a relation made between the selected elements since', async () => {
+        const { ctx, bookId } = await book();
+        const mara = await createElement(ctx, bookId, { kind: 'CHARACTER', name: 'Mara Vell' });
+        const tam = await createElement(ctx, bookId, { kind: 'CHARACTER', name: 'Tam Vell' });
+        const before = await addRelation(ctx, bookId, { fromElementId: mara.id, toElementId: tam.id, type: 'sibling_of' });
+        const view = await startInterview(ctx, bookId, { scope: 'SELECTION', elementIds: [mara.id, tam.id], relationIds: [], depth: 2, detail: 3 }, deps);
+        const later = await addRelation(ctx, bookId, { fromElementId: mara.id, toElementId: tam.id, type: 'mentor_of' });
+        const page = await loadInterviewPage(ctx, bookId, view.session.id);
+        const named = page.elements.map((e) => e.id);
+        expect(named).toEqual(expect.arrayContaining([mara.id, tam.id, before.id]));
+        expect(named).not.toContain(later.id);
+        // The session itself never asks about it either.
+        const session = await prisma.interviewSession.findUniqueOrThrow({ where: { id: view.session.id } });
+        expect(session.scopeRelationIds).toEqual([before.id]);
     });
 
     it('refuses an empty selection and another book’s element, writing nothing', async () => {
@@ -161,6 +198,30 @@ describe('an edge alone: "Question this relation"', () => {
         const names = found.hits.map((h) => h.name).sort();
         expect(names).toEqual(['Mara Vell', 'The Salt Guild']);
         expect(found.hits[0].matches[0]).toMatchObject({ source: 'relationField' });
+    });
+});
+
+describe('a relation deleted while its fields are being saved', () => {
+    it('is a 404, never a 500: the save waiting on the deletion meets the relation gone', async () => {
+        const { ctx, bookId } = await book();
+        const mara = await createElement(ctx, bookId, { kind: 'CHARACTER', name: 'Mara Vell' });
+        const guild = await createElement(ctx, bookId, { kind: 'FACTION', name: 'The Salt Guild' });
+        const rel = await addRelation(ctx, bookId, { fromElementId: mara.id, toElementId: guild.id, type: 'member_of' });
+        // A deletion (an end's, or the relation's own) takes no relation lock: it is under way, not yet committed,
+        // when the save reads the relation and writes its field.
+        let saving: Promise<unknown> | null = null;
+        await prisma.$transaction(
+            async (tx) => {
+                await tx.bibleRelation.delete({ where: { id: rel.id } });
+                saving = saveRelationFields(ctx, bookId, rel.id, { baseVersion: 1, fields: [{ key: 'basis', value: 'She was born into it.' }] });
+                saving.catch(() => undefined);
+                await untilWaitingOnTransaction();
+            },
+            { timeout: 20_000 },
+        );
+        const refused = await refusal(saving!);
+        expect(refused.status).toBe(404);
+        expect(await prisma.bibleRelationField.count({ where: { relationId: rel.id } })).toBe(0);
     });
 });
 
@@ -224,6 +285,31 @@ describe('BETWEEN: "What happens between these?"', () => {
             ]),
         );
         expect((await listPendingStructure(ctx, bookId)).proposals).toHaveLength(0);
+    });
+
+    it('accepting the slot’s beat takes the names lock before the order’s, as the bundle import does: the two never deadlock', async () => {
+        const { ctx, bookId, first, second } = await twoBeats();
+        const view = await startInterview(ctx, bookId, { scope: 'BETWEEN', afterElementId: first.id, beforeElementId: second.id, depth: 2, detail: 3 }, deps);
+        await answerAndClose(ctx, bookId, view);
+        const beat = (await listPendingStructure(ctx, bookId)).proposals.find((p) => p.kind === 'NEW_ELEMENT')!;
+        expect(beat).toBeDefined();
+        // An import's order (bible-import.ts): the book's names lock, then each story order's. Hold the names lock,
+        // let the acceptance queue behind it, then ask for the plot board's order lock as the import would.
+        let accepted: Promise<Awaited<ReturnType<typeof acceptProposal>>> | null = null;
+        await prisma.$transaction(
+            async (tx) => {
+                await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${'bible-element-names:' + bookId}))`;
+                accepted = acceptProposal(ctx, bookId, view.session.id, beat.id, {});
+                accepted.catch(() => undefined);
+                await untilWaitingOnAdvisoryLock();
+                await tx.$executeRaw`SET LOCAL lock_timeout = '5s'`;
+                // Had the acceptance taken the order's lock first, this would deadlock (40P01) with it.
+                await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${'bible-order:' + bookId + ':PLOT_BEAT'}))`;
+            },
+            { timeout: 20_000 },
+        );
+        const made = await accepted!;
+        expect(made.placed).toBe(true);
     });
 
     it('refuses a slot that is not one, and another book’s beat', async () => {

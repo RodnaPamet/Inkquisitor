@@ -48,7 +48,7 @@ import type { FieldValue } from '@/lib/bible/field-values';
 import type { RelationFieldDef } from '@/lib/bible/template-schema';
 import { getRelationType, isSymmetric, relationAllowed, relationFieldDefs } from '@/lib/bible/templates';
 import type { BibleVersionSource } from '@/lib/bible/kinds';
-import { isUniqueViolation, optionalBlock, requireBook, type FieldEntry } from './bible-common';
+import { isForeignKeyViolation, isUniqueViolation, optionalBlock, requireBook, type FieldEntry } from './bible-common';
 import {
     assertRelationBaseVersion,
     readRelationFieldValues,
@@ -252,7 +252,7 @@ export async function getRelation(ctx: WorkspaceRequestContext, bookId: string, 
 export async function saveRelationFields(ctx: WorkspaceRequestContext, bookId: string, relationId: string, input: unknown): Promise<RelationView> {
     await assertPermission(ctx, 'bible.edit');
     const parsed = RelationFieldsUpdateInput.parse(input);
-    return runInWorkspaceContext(ctx, async (db) => {
+    return relationGoneAsNotFound(() => runInWorkspaceContext(ctx, async (db) => {
         await requireBook(db, ctx, bookId);
         await BibleRelationRepository.lock(db, relationId);
         const r = await requireRelationWithEnds(db, ctx, bookId, relationId);
@@ -268,7 +268,23 @@ export async function saveRelationFields(ctx: WorkspaceRequestContext, bookId: s
             );
         }
         return relationView(db, ctx, bookId, relationId);
-    });
+    }));
+}
+
+/**
+ * A relation deleted by a transaction that committed while a save of its
+ * fields was writing (its own removal, or an end's deletion cascading to it,
+ * neither of which takes the relation's lock) surfaces as a foreign-key
+ * violation on the field row: the relation is gone, so the save is a 404, as
+ * it would have been had the deletion committed first, never a 500.
+ */
+export async function relationGoneAsNotFound<T>(run: () => Promise<T>): Promise<T> {
+    try {
+        return await run();
+    } catch (err) {
+        if (isForeignKeyViolation(err)) throw new NotFoundError('Relation not found.');
+        throw err;
+    }
 }
 
 export async function removeRelation(ctx: WorkspaceRequestContext, bookId: string, relationId: string): Promise<{ id: string }> {

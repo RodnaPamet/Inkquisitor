@@ -256,7 +256,8 @@ export type ScopeQuery =
     | { scope: 'ELEMENT'; elementId: string }
     | { scope: 'KIND'; kind: BibleElementKind }
     | { scope: 'BOOK' }
-    | { scope: 'SELECTION'; elementIds: readonly string[]; relationIds: readonly string[] }
+    /** `frozen`: a started session's scope, exactly as the start resolved it (no relation made since is added). */
+    | { scope: 'SELECTION'; elementIds: readonly string[]; relationIds: readonly string[]; frozen?: boolean }
     | { scope: 'BETWEEN'; afterElementId: string; beforeElementId: string };
 
 /**
@@ -271,8 +272,10 @@ export async function interviewScopeElements(ctx: WorkspaceRequestContext, bookI
         await requireBook(db, ctx, bookId);
         if (scope.scope === 'SELECTION') {
             // The selection's elements, its relations and those between its elements (as the start resolves them; one gone since is left out).
+            // A started session's scope is FROZEN: its stored relations already hold those between its elements, and a relation
+            // made since is not asked about, so it is not named either.
             const elements = await BibleElementRepository.listByIds(db, ctx.workspaceId, bookId, scope.elementIds.slice(0, SCOPE_ELEMENTS_MAX));
-            const between = await BibleRelationRepository.listBetween(db, ctx.workspaceId, bookId, elements.map((e) => e.id), SCOPE_RELATIONS_MAX);
+            const between = scope.frozen ? [] : await BibleRelationRepository.listBetween(db, ctx.workspaceId, bookId, elements.map((e) => e.id), SCOPE_RELATIONS_MAX);
             const relationIds = [...new Set([...scope.relationIds, ...between.map((r) => r.id)])].slice(0, SCOPE_RELATIONS_MAX);
             const relations = await BibleRelationRepository.listByIdsWithEnds(db, ctx.workspaceId, bookId, relationIds);
             return {

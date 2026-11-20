@@ -55,6 +55,11 @@ export function isUniqueViolation(err: unknown): boolean {
     return typeof err === 'object' && err !== null && (err as { code?: unknown }).code === 'P2002';
 }
 
+/** A Prisma foreign-key violation (P2003): a row the write references was deleted by a transaction that committed meanwhile. */
+export function isForeignKeyViolation(err: unknown): boolean {
+    return typeof err === 'object' && err !== null && (err as { code?: unknown }).code === 'P2003';
+}
+
 export const SLUG_TAKEN = { reason: 'SLUG_TAKEN' } as const;
 
 export function slugConflict(): ConflictError {

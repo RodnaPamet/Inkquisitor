@@ -37,7 +37,7 @@ export async function loadInterviewPage(ctx: WorkspaceRequestContext, bookId: st
             : s.scope === 'KIND' && s.targetKind
               ? interviewScopeElements(ctx, bookId, { scope: 'KIND', kind: s.targetKind })
               : s.scope === 'SELECTION'
-                ? interviewScopeElements(ctx, bookId, { scope: 'SELECTION', elementIds: s.scopeElementIds, relationIds: s.scopeRelationIds })
+                ? interviewScopeElements(ctx, bookId, { scope: 'SELECTION', elementIds: s.scopeElementIds, relationIds: s.scopeRelationIds, frozen: true })
                 : s.scope === 'BETWEEN' && s.slot
                   ? interviewScopeElements(ctx, bookId, { scope: 'BETWEEN', afterElementId: s.slot.afterElementId, beforeElementId: s.slot.beforeElementId }).catch(() => ({ elements: [], truncated: false }))
                   : interviewScopeElements(ctx, bookId, { scope: 'BOOK' });
