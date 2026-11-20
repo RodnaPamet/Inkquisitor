@@ -140,6 +140,7 @@ describe('a deleted book', () => {
                 'POST research/proposals/[proposalId]/accept/route.ts': { baseVersion: 1 },
                 'PUT maps/[kind]/route.ts': { expectedVersion: 1, nodes: [], edges: [], freeform: [] },
                 'POST maps/[kind]/snapshots/[version]/restore/route.ts': { expectedVersion: 1 },
+                'POST search/route.ts': { q: 'keeper' },
             };
             const upload = tail === 'research/briefs/[briefId]/sources/route.ts';
             const body = ['GET', 'DELETE'].includes(method)

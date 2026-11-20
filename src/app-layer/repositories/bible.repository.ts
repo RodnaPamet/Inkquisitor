@@ -184,6 +184,20 @@ export const BibleElementRepository = {
         return db.bibleElement.findMany({ where: { workspaceId, bookId }, orderBy: [{ name: 'asc' }, { id: 'asc' }], take, select: ELEMENT_SELECT });
     },
 
+    /**
+     * The book's elements as word search reads them (Phase 3.4): only the
+     * columns it searches (the summary decrypted), by name. `take` bounds it;
+     * ask one more to know the book was cut.
+     */
+    listForSearch(db: Db, workspaceId: string, bookId: string, take: number) {
+        return db.bibleElement.findMany({
+            where: { workspaceId, bookId },
+            orderBy: [{ name: 'asc' }, { id: 'asc' }],
+            take,
+            select: { id: true, kind: true, name: true, summary: true, customLabel: true },
+        });
+    },
+
     /** How many elements the book holds of each kind (an aggregate: no row is read out). */
     async countByKind(db: Db, workspaceId: string, bookId: string): Promise<Map<BibleElementKind, number>> {
         const rows = await db.bibleElement.groupBy({ by: ['kind'], where: { workspaceId, bookId }, _count: { _all: true } });
@@ -293,6 +307,41 @@ export const BibleFieldRepository = {
     },
 
     /**
+     * How many stored bytes the fields word search would read hold, per
+     * element (Phase 3.4): the sum of each value's `octet_length` (the
+     * ciphertext's size, which bounds the plain text it decrypts to), every key
+     * but `skipKeys`. Nothing is decrypted, and PostgreSQL answers the length
+     * of a TOASTed value from its header without reading it. Elements with no
+     * such field are absent. One row per element asked for, at most.
+     */
+    async storedBytesForSearch(db: Db, workspaceId: string, elementIds: readonly string[], skipKeys: readonly string[]): Promise<Map<string, number>> {
+        if (elementIds.length === 0) return new Map();
+        const rows = await db.$queryRaw<Array<{ elementId: string; bytes: number }>>`
+            SELECT "elementId", sum(octet_length("value"))::float8 AS "bytes"
+            FROM "BibleField"
+            WHERE "workspaceId" = ${workspaceId}
+              AND "elementId" = ANY(${[...elementIds]}::text[])
+              AND NOT ("key" = ANY(${[...skipKeys]}::text[]))
+            GROUP BY "elementId"`;
+        return new Map(rows.map((r) => [r.elementId, Number(r.bytes)]));
+    },
+
+    /**
+     * The stored fields of some elements that word search reads (Phase 3.4):
+     * every key but `skipKeys` (keys that hold no text in any template, so
+     * their values need not be decrypted). Bounded by the elements asked for
+     * times `perElement`.
+     */
+    listForSearch(db: Db, workspaceId: string, elementIds: readonly string[], perElement: number, skipKeys: readonly string[]) {
+        if (elementIds.length === 0) return Promise.resolve([]);
+        return db.bibleField.findMany({
+            where: { workspaceId, elementId: { in: [...elementIds] }, ...(skipKeys.length > 0 ? { key: { notIn: [...skipKeys] } } : {}) },
+            select: { elementId: true, key: true, value: true },
+            take: elementIds.length * perElement,
+        });
+    },
+
+    /**
      * Which keys each element has a stored value for (no values: nothing is
      * decrypted). Bounded by the elements asked for times `perElement`.
      */
@@ -381,6 +430,20 @@ export const BibleRelationRepository = {
                 from: { select: { slug: true } },
                 to: { select: { slug: true } },
             },
+        });
+    },
+
+    /**
+     * The book's relations that carry a note, the note decrypted, oldest
+     * first, for word search (Phase 3.4). Only whether a note is set is asked
+     * of the database, never what it says. `take` bounds it.
+     */
+    listNotesForBook(db: Db, workspaceId: string, bookId: string, take: number) {
+        return db.bibleRelation.findMany({
+            where: { workspaceId, bookId, note: { not: null } },
+            orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+            take,
+            select: { id: true, fromElementId: true, toElementId: true, note: true },
         });
     },
 

@@ -1320,5 +1320,41 @@
             "empty": "The {map} is empty.",
             "label": "The {map}, with {name} marked"
         }
+    },
+    "search": {
+        "label": "Search this book",
+        "help": "Finds words in names, labels, summaries, fields and relation notes, in any form (ran finds running). Put a phrase in quotes to find its words in order.",
+        "placeholder": "A word, or a \"quoted phrase\"",
+        "searching": "Searching…",
+        "resultsAria": "Search results",
+        "countOne": "1 result",
+        "count": "{count} results",
+        "none": "Nothing in this book matches.",
+        "emptyQuery": "Type a word to search for.",
+        "failed": "The search could not be run. Try again.",
+        "truncated": "Showing the best {shown} of {count} results. Add a word to narrow the search.",
+        "partial": {
+            "ELEMENTS_CAP": "Only the first {searched} of {count} entries, by name, were searched.",
+            "RELATIONS_CAP": "Some relation notes were not searched: the book holds more than one search reads.",
+            "TEXT_BUDGET": "Only {searched} of {count} entries were searched: the book holds more text than one search reads."
+        },
+        "book": "{title} (this book)",
+        "moreOne": "1 more match in this entry",
+        "more": "{count} more matches in this entry",
+        "source": {
+            "title": "Title",
+            "logline": "Logline",
+            "name": "Name",
+            "label": "Label",
+            "summary": "Summary",
+            "field": "Field",
+            "relationNote": "Note on the link to {name}",
+            "relationNoteUnnamed": "Note on a link"
+        },
+        "errors": {
+            "QUERY_TOO_LONG": "That search is too long. Use fewer words.",
+            "QUERY_TOO_MANY_TERMS": "That search has too many words. Use twelve or fewer.",
+            "QUERY_TOO_MANY_PHRASES": "That search has too many quoted phrases. Use four or fewer."
+        }
     }
 }

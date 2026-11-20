@@ -8,8 +8,9 @@ import { SETUP_OPTIONS_TIMEOUT_MS, STUB_BASE_URL } from './stub-server';
  * production build:
  *
  *   - axe (WCAG 2.1 A and AA) finds nothing on the books list, the book
- *     board, the element page's Fields and History tabs, the create and
- *     delete dialogs, and the recently-deleted page;
+ *     board (and its word search with results, Phase 3.4), the element page's
+ *     Fields and History tabs, the create and delete dialogs, and the
+ *     recently-deleted page;
  *   - and on the interview pages and dialogs (Phase 2.4): the setup sheet, a
  *     session with a round open, the stop dialog and a book's interviews, and
  *     the review of an interview's proposed changes (Phase 2.5), and the
@@ -85,6 +86,10 @@ test('axe finds no WCAG 2.1 AA violation on the bible pages and dialogs', async 
     await page.goto(`/w/${slug}/books/${bookId}`);
     await expect(main.locator('[data-kind="CHARACTER"]')).toContainText('Mara');
     await expectNoAxeViolations(page, 'book board');
+    // Word search (Phase 3.4): the box and a result with its highlighted snippet.
+    await main.locator('#book-search-input').fill('tidewarden');
+    await expect(main.getByTestId('book-search-hit').first()).toContainText('The Tidewardens');
+    await expectNoAxeViolations(page, 'book board, word search results');
     await main.locator('#create-element').click();
     await expect(page.getByRole('dialog')).toBeVisible();
     await expectNoAxeViolations(page, 'create element dialog', '[role="dialog"]');

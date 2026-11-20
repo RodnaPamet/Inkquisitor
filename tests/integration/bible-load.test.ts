@@ -9,6 +9,14 @@
  * more" and the relation picker's search), and the element page for the
  * element with the longest history.
  *
+ * Word search (Phase 3.4, decision D21) is measured beside them under its own
+ * bound, `WORD_SEARCH_P95_BOUND_MS`: option A reads and decrypts the WHOLE
+ * book on every search (every summary, field value and relation note), so
+ * its cost grows with the book where a page's does not. At the roadmap's
+ * 2,000 elements the decryption and row reads alone are a few hundred
+ * milliseconds here; the 3.4 note records the numbers, and its counted-work
+ * test (`book-search-work.test.ts`) holds how the work grows.
+ *
  * Size: CI runs a smaller book so the Test job keeps its time budget
  * (`BIBLE_LOAD_ELEMENTS` / `BIBLE_LOAD_VERSIONS`, default 400 / 4,000);
  * `npm run test:load` runs the roadmap's 2,000 elements and 20,000 versions.
@@ -18,6 +26,7 @@
 import { prisma } from '@/lib/db';
 import { listElements } from '@/app-layer/usecases/bible-elements';
 import { loadBookPage, loadBooksPage, loadElementPage } from '@/app-layer/usecases/bible-pages';
+import { searchBook } from '@/app-layer/usecases/book-search';
 import { measure, seedLoadBook, type LoadBook } from '../helpers/bible-load';
 import { createAccount, workspaceCtx } from '../helpers/workspaces';
 
@@ -27,6 +36,8 @@ const ELEMENTS = Number(process.env.BIBLE_LOAD_ELEMENTS ?? 400);
 const VERSIONS = Number(process.env.BIBLE_LOAD_VERSIONS ?? 4_000);
 const RUNS = Number(process.env.BIBLE_LOAD_RUNS ?? 30);
 const P95_BOUND_MS = 300;
+/** Word search's bound: a whole-book read and decrypt per request (option A, the 3.4 note). */
+const WORD_SEARCH_P95_BOUND_MS = 1_000;
 
 let ctx: ReturnType<typeof workspaceCtx>;
 let book: LoadBook;
@@ -71,4 +82,15 @@ it.each([
     const r = await measure(read, RUNS);
     results[page] = r;
     expect(r.p95).toBeLessThan(P95_BOUND_MS);
+});
+
+// Word search (Phase 3.4): the whole book read, decrypted, turned into plain text and ranked on every
+// request. A word in almost every field (the worst case: every rich-text source tokenised), and a name.
+it.each([
+    ['search (common)', () => searchBook(ctx, book.bookId, { q: 'considered paragraphs' })],
+    ['search (a name)', () => searchBook(ctx, book.bookId, { q: 'entry 00042' })],
+] as const)(`%s: p95 under ${WORD_SEARCH_P95_BOUND_MS} ms`, async (page, read) => {
+    const r = await measure(read, RUNS);
+    results[page] = r;
+    expect(r.p95).toBeLessThan(WORD_SEARCH_P95_BOUND_MS);
 });

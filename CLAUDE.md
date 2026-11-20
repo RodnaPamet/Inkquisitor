@@ -328,6 +328,18 @@ src/lib/canvas/lanes.ts, relation-picker.ts → derived layout, drop and keyboar
 src/components/canvas/ → RelationTypePicker, ElementSheet, LaneBackdrop, StoryMapPreview (SVG, no tldraw), tldraw/lane-host
 ```
 
+Phase 3.4 (word search, D21) added:
+
+```
+src/lib/search/              → porter2 (Snowball English, PORTER2_VERSION), irregular (the reviewed table), analyse (normalise,
+                               Intl.Segmenter tokens, foldText), plain-text (HtmlTextReader), query (parser), rank (needles, BM25F,
+                               snippets, counted work), vocabulary (bounds, weights, wire types; client-safe)
+src/app-layer/usecases/book-search.ts, schemas/search.ts → searchBook, readSearchDocuments (decrypt and scan, stores nothing)
+src/app/api/w/[workspaceSlug]/books/[bookId]/search → POST { q } (a body, never a query string)
+src/components/search/BookSearch.tsx → the board's search box and highlighted results
+tests/fixtures/snowball/     → Snowball's English voc.txt / output.txt (BSD-3), golden-pin.json
+```
+
 ## Rules every change obeys
 
 These are `docs/ROADMAP.md` section 3, restated. The roadmap is authoritative
@@ -1049,6 +1061,42 @@ closed beta with an explicit operator flag (D5, amended 2026-11-19).
   tldraw. The bundle carries a rank as `order:` (refused `ORDER_NOT_ALLOWED`,
   `ORDER_INVALID`, `ORDER_DUPLICATE`, `ORDER_TAKEN`); the PDF prints ordered
   kinds in story order.
+- **Word search (Phase 3.4; D21).** OPTION A, DECRYPT AND SCAN: `searchBook`
+  reads one book through `runInWorkspaceContext` (the encryption extension
+  decrypts it), turns every source into plain text, and ranks it in memory
+  after the transaction commits; it STORES NOTHING — no token table, tsvector,
+  blind index or cache that outlives the request (option B, a blind index, is
+  deferred). Searched: an element's name, custom label, summary, every stored
+  field (rich text through `HtmlTextReader`, never a tag-stripping pattern,
+  with a break between blocks; a list's items; a choice's label; not a scale)
+  and its relation notes (both ends), and the book's title and logline; not
+  answers, research, versions or proposals yet. A plain-text source is never
+  parsed as HTML again. THE STEMMER is `porter2Stem`, Snowball English
+  written from `english.sbl` and held to Snowball's own 42,649-word
+  vocabulary and output (`tests/fixtures/snowball/`); a change that moves a
+  stem moves `PORTER2_VERSION` and re-pins `golden-pin.json`. The irregular
+  table takes only forms that are almost always that lemma (no left, saw,
+  rose, fell…). It is NOT the question engine's `stem()` in
+  `src/lib/interview/text.ts`, which grounding and dedupe depend on: neither
+  imports the other (`tests/guards/search-stemmer-separate.test.ts`). Every
+  word has a surface form (folded: NFKC, `'`, diacritics, possessive) and a
+  stem; unquoted words match by stem (exact surface 1.0 above stem 0.6, an
+  exact-case match of a capitalised query word 1.3: a signal, never a filter),
+  a "quoted phrase" or quoted word is required and matched by surface. BM25F
+  weights a name above a summary above field text. A source is tokenised only
+  when its folded text holds a needle (`candidateNeedles`: a stem minus its
+  last two characters and its irregular forms); keep that sound — the golden
+  test checks the two-character property, and the rank test compares results
+  with skipping off. Every read and the results are bounded
+  (`vocabulary.ts`), and a cut is named (`coverage.cut`, `truncated`), never
+  silent. PRIVACY: the query is author text — the route is a POST with a JSON
+  body, never `?q=` (Next's own request span records `http.target` with the
+  query string, a proxy's access log the URI), the page never puts it in its
+  URL, and nothing logs, traces or audits it or a snippet
+  (`privacy-sinks.test.ts` plants one). Snippets are plain text with
+  highlight offsets; the client renders `<mark>` as React text. `bible.view`
+  searches. Cost is linear in the book: the load test holds it to its own
+  `WORD_SEARCH_P95_BOUND_MS`, and `book-search-work.test.ts` to counted work.
 - **Sanitising author text.** Every author-text write sanitises at the
   usecase layer before it is stored: plain text through `plainLine` /
   `plainBlock` (`src/lib/bible/text.ts`, over `sanitizePlainText`), rich text

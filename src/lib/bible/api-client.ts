@@ -75,6 +75,8 @@ export const BIBLE_API = {
     importBundle: (slug: string, bookId: string, options: { applyBookDetails?: boolean } = {}) =>
         `${BIBLE_API.book(slug, bookId)}/import/bundle${options.applyBookDetails ? '?bookDetails=apply' : ''}`,
     importConceptNote: (slug: string, bookId: string) => `${BIBLE_API.book(slug, bookId)}/import/concept-note`,
+    /** Word search (Phase 3.4): POST `{ q }`, never a query string (the query is author text). */
+    search: (slug: string, bookId: string) => `${BIBLE_API.book(slug, bookId)}/search`,
     deletedBooks: (slug: string) => `/api/w/${enc(slug)}/deleted-books`,
     restoreBook: (slug: string, bookId: string) => `/api/w/${enc(slug)}/deleted-books/${enc(bookId)}/restore`,
 } as const;
@@ -96,8 +98,9 @@ export function reasonOf(err: unknown): string | null {
 }
 
 /** A JSON request to the bible API; throws `BibleApiError` on a non-2xx answer. */
-export async function bibleFetch<T>(url: string, init: { method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'; body?: unknown } = {}): Promise<T> {
+export async function bibleFetch<T>(url: string, init: { method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'; body?: unknown; signal?: AbortSignal } = {}): Promise<T> {
     const res = await fetch(url, {
+        signal: init.signal,
         method: init.method ?? 'GET',
         headers: init.body !== undefined ? { 'content-type': 'application/json' } : undefined,
         body: init.body !== undefined ? JSON.stringify(init.body) : undefined,
