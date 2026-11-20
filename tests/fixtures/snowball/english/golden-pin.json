@@ -1,0 +1,8 @@
+{
+  "porter2Version": "snowball-english-06e1f74f",
+  "algorithm": "snowballstem/snowball algorithms/english.sbl at 06e1f74f7cf61ea8913c6269480b8d392c33dbae",
+  "vocabulary": "snowballstem/snowball-data english/voc.txt at 019921c3a41c2b70063ee3feb215a00c8e594597",
+  "vocabularySha256": "9e44b83e85d8b9c41ed40a0dd0d17a3ca9e7eb3a04683992982e7834f96ebc0f",
+  "output": "snowballstem/snowball-data english/output.txt at 019921c3a41c2b70063ee3feb215a00c8e594597",
+  "outputSha256": "8bb926ad62d3f4bb067f530ae754cee26ecd48de56192629af4dba32c34991a6"
+}
