@@ -16,7 +16,8 @@ import { randomBytes } from 'node:crypto';
 import { prisma } from '@/lib/db';
 import { runInWorkspaceContext } from '@/lib/db/rls-middleware';
 import { workspaceAiLedger } from '@/app-layer/usecases/model-calls';
-import { createElementInTx, createElement } from '@/app-layer/usecases/bible-elements';
+import { createElementInTx, createElement, updateElement } from '@/app-layer/usecases/bible-elements';
+import { restoreVersion } from '@/app-layer/usecases/bible-versions';
 import { bookHoldsElementName } from '@/app-layer/usecases/enrichment-names';
 import { deleteBook } from '@/app-layer/usecases/books';
 import { purgeExpiredAiCallLogs } from '@/app-layer/usecases/ai-call-retention';
@@ -139,6 +140,37 @@ describe('equivalent element names cannot both be created past a check (issues #
         release();
         await creating;
         expect(await checking).toBe(true);
+    });
+
+    it('a restore (which can bring an old name back) waits for an in-flight name check, as a rename does', async () => {
+        const ctx = workspaceCtx(account);
+        const { bookId, characterId } = await seedBible(ctx, `names3-${randomBytes(3).toString('hex')}`);
+        await updateElement(ctx, bookId, characterId, { name: 'Ilse Varga', baseVersion: 1 });
+        let release!: () => void;
+        const gate = new Promise<void>((r) => (release = r));
+        let checked!: () => void;
+        const checkDone = new Promise<void>((r) => (checked = r));
+
+        // An accept's name check, held open after it answered (its lock held to commit).
+        const checking = runInWorkspaceContext(ctx, async (db) => {
+            const held = await bookHoldsElementName(db, ctx, bookId, 'Some New Name');
+            checked();
+            await gate;
+            return held;
+        });
+        await checkDone;
+
+        let restored = false;
+        const restoring = restoreVersion(ctx, bookId, characterId, 1, { baseVersion: 2 }).then((r) => {
+            restored = true;
+            return r;
+        });
+        await new Promise((r) => setTimeout(r, 300));
+        // The restore renames the element back: it waits on the book's names lock.
+        expect(restored).toBe(false);
+        release();
+        expect(await checking).toBe(false);
+        expect((await restoring).version.versionNumber).toBe(3);
     });
 
     it('two concurrent creates through the usecase both still succeed (a manual create never refuses a name): only checks wait', async () => {
