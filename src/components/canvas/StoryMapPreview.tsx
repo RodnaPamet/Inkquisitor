@@ -22,7 +22,7 @@ import { useTranslations } from 'next-intl';
 
 import { APP_ROUTES } from '@/lib/app-routes';
 import type { StoryMapView } from '@/lib/canvas/api-client';
-import { deriveLaneLayout, type Participant } from '@/lib/canvas/lanes';
+import { deriveLaneLayout, participantsByEvent } from '@/lib/canvas/lanes';
 import { mapKindSlug, type StoryMapKindValue } from '@/lib/canvas/map-kinds';
 
 export interface StoryMapPreviewProps {
@@ -44,8 +44,7 @@ export function StoryMapPreview({ workspaceSlug, bookId, mapKind, map, currentEl
     const t = useTranslations('canvas');
     const mapLabel = t(`kinds.${mapKind}`);
     const lanes = useMemo(() => {
-        const participants = new Map<string, Participant[]>();
-        for (const p of map.participants) participants.set(p.eventId, [...(participants.get(p.eventId) ?? []), { id: p.characterId, name: p.characterName }]);
+        const participants = participantsByEvent(map.participants);
         return deriveLaneLayout(
             mapKind,
             map.nodes.map((n) => ({ elementId: n.elementId, name: n.element.name, orderRank: n.element.orderRank, act: n.element.act })),

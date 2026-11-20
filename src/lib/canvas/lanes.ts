@@ -65,6 +65,25 @@ export interface Participant {
     name: string;
 }
 
+/**
+ * The map view's participant links grouped by event, each character once per
+ * event, in the order given. Linear in the links: a list copied or searched
+ * per link would be quadratic in one crowded event.
+ */
+export function participantsByEvent(links: ReadonlyArray<{ eventId: string; characterId: string; characterName: string }>): Map<string, Participant[]> {
+    const byEvent = new Map<string, Participant[]>();
+    const seen = new Set<string>();
+    for (const l of links) {
+        const key = `${l.eventId}\u0000${l.characterId}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        const list = byEvent.get(l.eventId);
+        if (list) list.push({ id: l.characterId, name: l.characterName });
+        else byEvent.set(l.eventId, [{ id: l.characterId, name: l.characterName }]);
+    }
+    return byEvent;
+}
+
 export interface LaneWords {
     noAct: string;
     unplaced: string;
@@ -183,22 +202,29 @@ function timelineLayout(nodes: readonly LaneNodeInput[], options: LaneLayoutOpti
 
     // Character lanes: everyone taking part in an event on the map, in the
     // order of their first placed event (then the unplaced, then by name).
+    // ONE pass over the events and their participants gathers each
+    // character's events in sequence order, so the layout is linear in the
+    // participant links (a lane per character times every event would be
+    // characters × events: a second for a book with thousands of each).
     const participants = options.participants ?? new Map<string, readonly Participant[]>();
-    const first = new Map<string, { at: number; who: Participant }>();
+    const first = new Map<string, { at: number; who: Participant; events: string[] }>();
     seq.forEach((n, i) => {
-        for (const p of participants.get(n.elementId) ?? []) if (!first.has(p.id)) first.set(p.id, { at: i, who: p });
+        for (const p of participants.get(n.elementId) ?? []) {
+            const seen = first.get(p.id);
+            if (!seen) first.set(p.id, { at: i, who: p, events: [n.elementId] });
+            else if (seen.events[seen.events.length - 1] !== n.elementId) seen.events.push(n.elementId);
+        }
     });
     const characters = [...first.values()].sort((a, b) => a.at - b.at || (a.who.name < b.who.name ? -1 : a.who.name > b.who.name ? 1 : 0) || compareRanks(a.who.id, b.who.id));
     const lanesTop = rowH + LANE_GAP;
     const width = slotX(unplacedStart + unplaced.length) - TIMELINE_LABEL_W;
     const marks: LaneMark[] = [];
-    characters.forEach(({ who }, i) => {
+    characters.forEach(({ who, events }, i) => {
         const y = lanesTop + i * TIMELINE_LANE_H;
         bands.push({ key: `character:${who.id}`, label: who.name, x: 0, y, w: TIMELINE_LABEL_W + Math.max(width, slotW), h: TIMELINE_LANE_H, role: 'character' });
-        for (const n of seq) {
-            if (!(participants.get(n.elementId) ?? []).some((p) => p.id === who.id)) continue;
-            const at = positions.get(n.elementId)!;
-            marks.push({ characterId: who.id, elementId: n.elementId, x: at.x + at.w / 2, y: y + TIMELINE_LANE_H / 2 });
+        for (const elementId of events) {
+            const at = positions.get(elementId)!;
+            marks.push({ characterId: who.id, elementId, x: at.x + at.w / 2, y: y + TIMELINE_LANE_H / 2 });
         }
     });
     return { map: 'TIMELINE', positions, sequences: new Map([[PLACED_LANE, placed], [UNPLACED_LANE, unplaced]]), bands, marks };

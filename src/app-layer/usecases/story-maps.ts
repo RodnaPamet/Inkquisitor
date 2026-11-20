@@ -64,7 +64,7 @@ import { decodeFieldValue } from '@/lib/bible/field-values';
 import { getFieldDef, getRelationType, getTemplate } from '@/lib/bible/templates';
 import { assertFreeformIdsFree, parseStoredFreeform, sanitiseFreeformForStorage } from '@/lib/canvas/freeform';
 import { MAX_MAP_EDGES, MAX_MAP_NODES, SNAPSHOT_LIST_MAX } from '@/lib/canvas/limits';
-import { deriveLaneLayout, type ActOption, type LaneNodeInput, type Participant } from '@/lib/canvas/lanes';
+import { deriveLaneLayout, participantsByEvent, type ActOption, type LaneNodeInput } from '@/lib/canvas/lanes';
 import { MAP_ELEMENT_KINDS, STORY_MAP_KINDS, mapKindFromSlug, mapLayoutMode, mapTakesKind, type StoryMapKindValue } from '@/lib/canvas/map-kinds';
 import { parseMapState, serialiseMapState, type MapEdgeRow, type MapNodeRow, type MapState } from '@/lib/canvas/map-state';
 import { runInWorkspaceContext, type PrismaTx } from '@/lib/db/rls-middleware';
@@ -238,12 +238,7 @@ async function elementFacts(db: PrismaTx, ctx: WorkspaceRequestContext, bookId: 
 async function participantsOf(db: PrismaTx, ctx: WorkspaceRequestContext, bookId: string, eventIds: readonly string[]) {
     const rows = await MapBibleReads.participants(db, ctx.workspaceId, bookId, eventIds, MAP_PARTICIPANTS_MAX + 1);
     const shown = rows.slice(0, MAP_PARTICIPANTS_MAX);
-    const byEvent = new Map<string, Participant[]>();
-    for (const r of shown) {
-        const list = byEvent.get(r.toElementId) ?? [];
-        if (!list.some((p) => p.id === r.from.id)) list.push({ id: r.from.id, name: r.from.name });
-        byEvent.set(r.toElementId, list);
-    }
+    const byEvent = participantsByEvent(shown.map((r) => ({ eventId: r.toElementId, characterId: r.from.id, characterName: r.from.name })));
     return { byEvent, rows: shown, truncated: rows.length > MAP_PARTICIPANTS_MAX };
 }
 

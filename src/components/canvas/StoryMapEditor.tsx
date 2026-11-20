@@ -48,7 +48,7 @@ import type { FieldDef } from '@/lib/bible/template-schema';
 import type { RelationOption } from '@/lib/bible/ui-model';
 import { MAP_API, type MapRestoreResult, type StoryMapSaveResult, type StoryMapView } from '@/lib/canvas/api-client';
 import { buildMapDisplay, nodeDetailFor, nodeDisplayFor, type BadgeWords } from '@/lib/canvas/display';
-import { deriveLaneLayout, dropTarget, stepMove, type DropMove, type Participant } from '@/lib/canvas/lanes';
+import { deriveLaneLayout, dropTarget, participantsByEvent, stepMove, type DropMove } from '@/lib/canvas/lanes';
 import { MAP_ELEMENT_KINDS, mapLayoutMode, type StoryMapKindValue } from '@/lib/canvas/map-kinds';
 import type { MapState } from '@/lib/canvas/map-state';
 import { MapConflictError } from '@/lib/canvas/map-save';
@@ -161,8 +161,7 @@ export default function StoryMapEditor({
 
     // ─── The derived maps' lanes, from the bible ────────────────────
     const lanes = useMemo(() => {
-        const participants = new Map<string, Participant[]>();
-        for (const p of map.participants) participants.set(p.eventId, [...(participants.get(p.eventId) ?? []), { id: p.characterId, name: p.characterName }]);
+        const participants = participantsByEvent(map.participants);
         return deriveLaneLayout(
             mapKind,
             map.nodes.map((n) => ({ elementId: n.elementId, name: n.element.name, orderRank: n.element.orderRank, act: n.element.act })),

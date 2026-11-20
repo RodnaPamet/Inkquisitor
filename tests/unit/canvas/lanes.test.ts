@@ -4,7 +4,7 @@
  * and story order, and a drop is read back as the order move it asks for.
  */
 import { compareRanks } from '@/lib/bible/story-order';
-import { LANE_CARD_H, LANE_CARD_W, NO_ACT_LANE, PLACED_LANE, UNPLACED_LANE, deriveLaneLayout, dropTarget, sequenceOf, stepMove, type LaneLayout, type LaneNodeInput } from '@/lib/canvas/lanes';
+import { LANE_CARD_H, LANE_CARD_W, NO_ACT_LANE, PLACED_LANE, UNPLACED_LANE, deriveLaneLayout, dropTarget, participantsByEvent, sequenceOf, stepMove, type LaneLayout, type LaneNodeInput } from '@/lib/canvas/lanes';
 
 const ACTS = [
     { value: 'opening', label: 'Opening' },
@@ -120,6 +120,39 @@ describe('the timeline', () => {
         expect(dropTarget(layout, 'e3', { x: 0, y: 0 }, { act: null, orderRank: null })).toEqual({ elementId: 'e3', after: null, before: 'e2' });
         expect(dropTarget(layout, 'e1', centre(layout, 'e3'), { act: null, orderRank: 'q' })).toBeNull();
         expect(dropTarget(layout, 'e5', centre(layout, 'e5'), { act: null, orderRank: 'j' })).toBeNull();
+    });
+
+    it('is linear in the participant links, not characters × events (counted reads of the participants)', () => {
+        // 200 events, each with 10 characters of its own: 2,000 characters, 2,000 links.
+        const many = Array.from({ length: 200 }, (_, i) => event(`ev${String(i).padStart(3, '0')}`, null));
+        const links = new Map<string, Array<{ id: string; name: string }>>();
+        many.forEach((e, i) => links.set(e.elementId, Array.from({ length: 10 }, (_, k) => ({ id: `c${i}-${k}`, name: `C${i}-${k}` }))));
+        let reads = 0;
+        const counted = new Map(links);
+        const get = counted.get.bind(counted);
+        counted.get = (key: string) => {
+            reads++;
+            return get(key);
+        };
+        const big = deriveLaneLayout('TIMELINE', many, { participants: counted })!;
+        expect(big.marks).toHaveLength(2_000);
+        expect(big.bands.filter((b) => b.role === 'character')).toHaveLength(2_000);
+        // A bounded number of reads per event: never one per (character, event) pair (400,000 here).
+        expect(reads).toBeLessThanOrEqual(2 * many.length);
+    });
+
+    it('marks a character once per event, however often a link repeats', () => {
+        const twice = deriveLaneLayout('TIMELINE', [event('x', 'a')], { participants: new Map([['x', [{ id: 'c', name: 'C' }, { id: 'c', name: 'C' }]]]) })!;
+        expect(twice.marks).toHaveLength(1);
+        expect(participantsByEvent([
+            { eventId: 'x', characterId: 'c', characterName: 'C' },
+            { eventId: 'x', characterId: 'c', characterName: 'C' },
+            { eventId: 'x', characterId: 'd', characterName: 'D' },
+            { eventId: 'y', characterId: 'c', characterName: 'C' },
+        ])).toEqual(new Map([
+            ['x', [{ id: 'c', name: 'C' }, { id: 'd', name: 'D' }]],
+            ['y', [{ id: 'c', name: 'C' }]],
+        ]));
     });
 
     it('with nothing placed yet, the empty first slot is where the first event goes', () => {
