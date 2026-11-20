@@ -140,6 +140,13 @@ export const AiCallRepository = {
     async settle(db: Db, workspaceId: string, record: AiCallRecord): Promise<void> {
         const periodStart = periodStartOf(record.startedAt);
         await db.aiSpendReservation.deleteMany({ where: { workspaceId, id: record.id } });
+        // IDEMPOTENT: a call already settled is not charged or recorded again.
+        // `settleRecord` retries a settlement that threw, and a transaction can
+        // commit and still throw (the acknowledgement lost with the
+        // connection): the retry must then find the call settled and succeed,
+        // not fail on the record's primary key and turn a paid, recorded
+        // answer into an error. Under the spend lock, so no race.
+        if (await db.aiCallLog.findUnique({ where: { id: record.id }, select: { id: true } })) return;
         if (record.costMicroUsd > 0) {
             await db.aiSpendMonth.upsert({
                 where: { workspaceId_periodStart: { workspaceId, periodStart } },

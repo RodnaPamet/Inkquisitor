@@ -19,7 +19,8 @@ import { prisma } from '@/lib/db';
 import { runInWorkspaceContext } from '@/lib/db/rls-middleware';
 import { callStructured, workspaceAiLedger } from '@/app-layer/usecases/model-calls';
 import { AiSpendCeilingError } from '@/lib/ai/errors';
-import { periodStartOf } from '@/lib/ai/call-record';
+import { periodStartOf, type AiCallRecord } from '@/lib/ai/call-record';
+import { settleRecord } from '@/lib/ai/call-structured';
 import * as ledgerMetrics from '@/lib/ai/ledger-metrics';
 import { logger } from '@/lib/observability/logger';
 import { seedBible } from '../helpers/bible';
@@ -177,7 +178,7 @@ describe('append-only, with the cascades', () => {
         );
     });
 
-    it('a settlement repeated for the same call charges the month once', async () => {
+    it('a settlement repeated for the same call charges the month once, and the repeat succeeds (a lost commit acknowledgement)', async () => {
         const fresh = await createAccount({ workspaceName: 'Ledger Twice' });
         const ctx = workspaceCtx(fresh);
         const callId = await seedAiCall(ctx, null, 'twice');
@@ -195,9 +196,59 @@ describe('append-only, with the cascades', () => {
                 outcome: 'OK',
                 errorCode: null,
             }),
-        ).rejects.toThrow();
+        ).resolves.toBeUndefined();
         expect((await month()).spentMicroUsd).toBe(before);
         expect(await prisma.aiCallLog.count({ where: { id: callId } })).toBe(1);
+    });
+
+    it('settleRecord: a settlement that committed but threw is not failed by its own retry', async () => {
+        const fresh = await createAccount({ workspaceName: 'Ledger Lost Ack' });
+        const ctx = workspaceCtx(fresh);
+        const real = workspaceAiLedger(ctx);
+        let first = true;
+        // The first settlement COMMITS, then its acknowledgement is lost.
+        const flaky = {
+            reserve: real.reserve,
+            settle: async (r: AiCallRecord) => {
+                await real.settle(r);
+                if (first) {
+                    first = false;
+                    throw new Error('Connection terminated unexpectedly');
+                }
+            },
+        };
+        const callId = id();
+        const record: AiCallRecord = {
+            id: callId,
+            bookId: null,
+            requestedById: null,
+            purpose: 'test.lost-ack',
+            promptId: 'test.lost-ack',
+            promptVersion: '1',
+            tier: 'fast',
+            model: 'claude-haiku-5-5',
+            outputMode: 'json_schema',
+            attempts: 1,
+            inputTokens: 1_000,
+            outputTokens: 100,
+            cacheReadTokens: 0,
+            cacheWriteTokens: 0,
+            costMicroUsd: 1_234,
+            costEstimated: false,
+            worstCaseMicroUsd: 5_000,
+            durationMs: 10,
+            outcome: 'OK',
+            errorCode: null,
+            guardRuleIds: [],
+            guardReviewRequired: false,
+            startedAt: new Date(),
+        };
+        await expect(settleRecord(flaky, record)).resolves.toBeUndefined();
+        expect(await prisma.aiCallLog.count({ where: { id: callId } })).toBe(1);
+        const month = await prisma.aiSpendMonth.findUniqueOrThrow({
+            where: { workspaceId_periodStart: { workspaceId: fresh.workspaceId, periodStart: periodStartOf(record.startedAt) } },
+        });
+        expect(month.spentMicroUsd).toBe(BigInt(1_234));
     });
 
     it('the workspace’s cascade deletes its call records, spend and reservations', async () => {
