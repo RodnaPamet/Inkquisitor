@@ -33,7 +33,7 @@ export const BULK_ACCEPT_MAX = 50;
  *                    `{ unplaced: true }` (accepted, not placed yet), or the
  *                    two neighbours the author chose, as an order move names
  *                    them (`after` / `before`; both null: the end of the
- *                    slot's act). Refused for any other proposal.
+ *                    story order, D25 as amended). Refused for any other proposal.
  */
 export const SlotPlacementInput = z.union([
     z.object({ unplaced: z.literal(true) }).strict(),

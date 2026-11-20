@@ -694,8 +694,8 @@ async function acceptNewElement(db: PrismaTx, ctx: WorkspaceRequestContext, book
     if (p.fillsSlot && session && !(input.placement && 'unplaced' in input.placement)) {
         const target =
             input.placement && 'after' in input.placement
-                ? { after: input.placement.after, before: input.placement.before, act: session.slotAct }
-                : { after: session.slotAfterElementId, before: session.slotBeforeElementId, act: session.slotAct };
+                ? { after: input.placement.after, before: input.placement.before }
+                : { after: session.slotAfterElementId, before: session.slotBeforeElementId };
         placement = await placeNewElementInOrderTx(db, ctx, bookId, element, target, { source: 'INTERVIEW', sourceAnswerIds: answerIds });
     }
     const placed = placement !== null;

@@ -1200,9 +1200,14 @@ closed beta with an explicit operator flag (D5, amended 2026-11-19).
   row, a rank change takes it FOR UPDATE); a bible deletion takes the map locks
   before the element's (`deleteElement`); `removeRelation` takes the map locks,
   then the relation's. A rank is placed only by `rankForTarget`
-  (`bible-order.ts`): named neighbours must be placed (409 ORDER_STALE); a beat
-  with none named goes to the END OF ITS ACT (after its own and earlier acts'
-  beats; beats' story order is act, then rank: `actIndex`); a spent gap
+  (`bible-order.ts`): named neighbours must be placed (409 ORDER_STALE). The
+  story order is ONE FREE ORDER per book and kind, the rank alone (D25 as the
+  owner amended it): a beat in Act 2 may stand before one in Act 1, the plot
+  board's act lanes each show their beats in that rank order, and 4.2 reads
+  before and after from the rank alone, never act first. With no neighbour
+  named a placed element keeps its rank (a beat moved into another act, an
+  empty one included, changes only its act) and an unplaced one goes to the end
+  of the order. A spent gap
   REBALANCES the whole order (`rebalancedRanks`, under the order's lock, one
   `BIBLE_ORDER_REBALANCED` audit row, no version: no place relative to another
   moves) and is placed again. A whole-order read is `readPlacedOrder` (409

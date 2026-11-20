@@ -15,9 +15,10 @@
  *      `VERSION_CONFLICT`: the card was saved elsewhere since it was drawn);
  *   3. the new rank, strictly between the neighbours the author saw (`after`
  *      and `before`) and unique in the whole order, written to the ONE element
- *      moved — nobody else's row changes, however long the order (a beat
- *      with no neighbour named goes to the end of its act, D25; a spent gap
- *      first REBALANCES the order, writing no version: `rankForTarget`);
+ *      moved — nobody else's row changes, however long the order (with no
+ *      neighbour named, a placed element keeps its rank and an unplaced one
+ *      goes to the end of the order, D25; a spent gap first REBALANCES the
+ *      order, writing no version: `rankForTarget`);
  *   4. for a beat dropped into another lane, its `act` field, through the
  *      field path every save takes (`writeFieldValues`, the template's options);
  *   5. one `BibleEntryVersion`, `movedInOrder`, and an audit row.
@@ -45,7 +46,6 @@ import { ElementOrderInput } from '@/app-layer/schemas/bible';
 import { decodeFieldValue } from '@/lib/bible/field-values';
 import { isOrderedKind } from '@/lib/bible/kinds';
 import { compareRanks, placeRank, rebalancedRanks } from '@/lib/bible/story-order';
-import { getFieldDef } from '@/lib/bible/templates';
 import { runInWorkspaceContext, type PrismaTx } from '@/lib/db/rls-middleware';
 import { ConflictError, ValidationError } from '@/lib/errors/types';
 import { assertBaseVersion, isUniqueViolation, readFieldValues, recordVersion, requireBook, requireElement, writeFieldValues, type VersionMeta } from './bible-common';
@@ -95,24 +95,10 @@ export async function actsOf(db: PrismaTx, ctx: WorkspaceRequestContext, ids: re
     return out;
 }
 
-/**
- * An act's place in the story: its option's index in the beat template, and
- * after every act a beat with none (or an act the template no longer offers),
- * as the plot board lays its lanes out.
- */
-export function actIndex(act: string | null): number {
-    const def = getFieldDef('PLOT_BEAT', ACT_FIELD_KEY);
-    const options = def?.type === 'choice' ? def.options : [];
-    const i = act === null ? -1 : options.findIndex((o) => o.value === act);
-    return i === -1 ? options.length : i;
-}
-
-/** Where an element is asked to go: the neighbours by id, as a view drew them, and a beat's act. */
+/** Where an element is asked to go: the neighbours by id, as a view drew them. */
 export interface OrderTarget {
     after: string | null;
     before: string | null;
-    /** A beat's act after the move (its lane): the cross-act rule reads it when no neighbour is named. */
-    act?: string | null;
 }
 
 /**
@@ -122,11 +108,12 @@ export interface OrderTarget {
  *   NEIGHBOURS   each named one must be a placed element of the order (409
  *                ORDER_STALE otherwise), and the rank is strictly between them
  *                and unique in the whole order (`placeRank`).
- *   ACROSS ACTS  (decision D25) a beat with no neighbour named goes to the END
- *                OF ITS ACT in the whole order: after the last placed beat of
- *                its own and every earlier act, before the first of a later
- *                one — so a beat dropped into an empty lane does not land after
- *                every other act's beats. Any other kind goes to the end.
+ *   NONE NAMED   the end of the whole order. The story order is ONE free order
+ *                per book and kind, the rank alone (decision D25 as the owner
+ *                amended it, 2026-11-20): a beat's act draws its lane on the
+ *                plot board and never decides its place, so a beat in a later
+ *                act may stand before one in an earlier act, and 4.2 reads
+ *                before and after from the rank alone.
  *   REBALANCE    (issue #50 item 7) a gap split past the rank's bound is not
  *                refused at once: the whole order is given short, evenly
  *                spaced ranks in the same order (`rebalancedRanks`), and the
@@ -141,7 +128,7 @@ export async function rankForTarget(
     target: OrderTarget,
 ): Promise<{ rank: string; rebalanced: number }> {
     let ranked = await readPlacedOrder(db, ctx, bookId, element.kind);
-    const decide = (order: ReadonlyArray<{ id: string; orderRank: string }>, acts: ReadonlyMap<string, string | null> | null) => {
+    const decide = (order: ReadonlyArray<{ id: string; orderRank: string }>) => {
         const rankOf = new Map(order.map((r) => [r.id, r.orderRank] as const));
         const neighbour = (id: string | null) => {
             if (id === null) return null;
@@ -150,28 +137,18 @@ export async function rankForTarget(
             return rank;
         };
         const others = order.filter((r) => r.id !== element.id);
-        let placement = { after: neighbour(target.after), before: neighbour(target.before) };
-        if (placement.after === null && placement.before === null && acts !== null) {
-            const own = actIndex(target.act ?? null);
-            const sorted = others.map((r) => r.orderRank).sort(compareRanks);
-            const byRank = new Map(others.map((r) => [r.orderRank, r.id] as const));
-            const earlier = sorted.filter((r) => actIndex(acts.get(byRank.get(r)!) ?? null) <= own);
-            const lower = earlier.length > 0 ? earlier[earlier.length - 1] : null;
-            const upper = sorted.find((r) => actIndex(acts.get(byRank.get(r)!) ?? null) > own && (lower === null || compareRanks(lower, r) < 0)) ?? null;
-            placement = { after: lower, before: upper };
-        }
+        const placement = { after: neighbour(target.after), before: neighbour(target.before) };
         return placeRank(
             others.map((r) => r.orderRank),
             placement,
         );
     };
-    const acts = element.kind === 'PLOT_BEAT' && target.after === null && target.before === null ? await actsOf(db, ctx, ranked.filter((r) => r.id !== element.id).map((r) => r.id)) : null;
-    let decision = decide(ranked, acts);
+    let decision = decide(ranked);
     let rebalanced = 0;
     if (!decision.ok && decision.reason === 'ORDER_RANK_EXHAUSTED') {
         rebalanced = await rebalanceOrder(db, ctx, bookId, element.kind, ranked);
         ranked = await readPlacedOrder(db, ctx, bookId, element.kind);
-        decision = decide(ranked, acts);
+        decision = decide(ranked);
     }
     if (!decision.ok) throw decision.reason === 'ORDER_STALE' ? stale() : exhausted();
     return { rank: decision.rank, rebalanced };
@@ -275,7 +252,8 @@ export async function moveElementInOrder(ctx: WorkspaceRequestContext, bookId: s
             const after = neighbour(parsed.after);
             const before = neighbour(parsed.before);
             const current = element.orderRank;
-            // Already there: between the two named (with none named, a placed beat that keeps its act stays put).
+            // Already there: between the two named. With none named a placed element stays where it is, whatever its act:
+            // one free order (D25 as amended), so an act change alone moves no rank.
             const standsThere =
                 current !== null && (after === null || compareRanks(after, current) < 0) && (before === null || compareRanks(current, before) < 0);
             if (standsThere && !actChanges) {
@@ -284,9 +262,8 @@ export async function moveElementInOrder(ctx: WorkspaceRequestContext, bookId: s
             }
 
             let rank = current;
-            // A beat moved into another act with no neighbour named goes to the end of that act (D25), even if placed.
-            if (!standsThere || (actChanges && parsed.after === null && parsed.before === null)) {
-                rank = (await rankForTarget(db, ctx, bookId, { id: elementId, kind }, { after: parsed.after, before: parsed.before, act: actChanges ? (parsed.act ?? null) : currentAct })).rank;
+            if (!standsThere) {
+                rank = (await rankForTarget(db, ctx, bookId, { id: elementId, kind }, { after: parsed.after, before: parsed.before })).rank;
                 await BibleElementRepository.setOrderRank(db, ctx.workspaceId, bookId, elementId, rank);
             }
             if (actChanges) await writeFieldValues(db, ctx, element, [{ key: ACT_FIELD_KEY, value: parsed.act }]);

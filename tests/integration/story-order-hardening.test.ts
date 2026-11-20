@@ -9,8 +9,9 @@
  *   one beat a slot    a later round proposes no second beat for a gap that has
  *                      one, and the session asks nothing more about it (#53 item 1)
  *   a link's ends      an accepted link names the ends it was created between
- *   across acts        a beat moved into an empty act lands after the earlier
- *                      acts' beats, not after every beat (D25, #50 item 4)
+ *   one free order     the rank alone is the story order: an act change keeps
+ *                      the beat's place unless neighbours are named, and an
+ *                      unplaced beat with none goes to the end (D25 as amended)
  *   a rebalance        a spent gap rebalances the order and the move succeeds,
  *                      with one version (the move's) and one audit row (#50 item 7)
  *   lock order         a map save takes the order's lock after the map's, so it
@@ -210,8 +211,8 @@ describe('one beat a slot, across rounds (#53 item 1)', () => {
     });
 });
 
-describe('across acts (D25, #50 item 4)', () => {
-    it('a beat moved into an empty act lands after every beat of the earlier acts and before the later acts’, not at the end', async () => {
+describe('one free order (D25 as amended, #50 item 4)', () => {
+    it('an act change with no neighbour named keeps the beat\u2019s place; an unplaced one goes to the end of the whole order', async () => {
         const { ctx, bookId } = await book();
         const open = await beat(ctx, bookId, 'Opening beat', 'opening');
         const crisis = await beat(ctx, bookId, 'Crisis beat', 'crisis');
@@ -220,15 +221,39 @@ describe('across acts (D25, #50 item 4)', () => {
         await move(ctx, bookId, crisis.id, null, null);
         await move(ctx, bookId, resolution.id, null, null);
         expect(await orderOf(bookId)).toEqual([open.id, crisis.id, resolution.id]);
-        // An unplaced beat dropped into the empty escalation lane (no neighbour named).
+        // An unplaced beat dropped into the empty escalation lane (no neighbour named): the end of the whole order,
+        // not after the earlier acts' beats.
         const escalation = await beat(ctx, bookId, 'Escalation beat', null);
-        await move(ctx, bookId, escalation.id, null, null, 'escalation');
-        expect(await orderOf(bookId)).toEqual([open.id, escalation.id, crisis.id, resolution.id]);
-        // A placed beat moved into another, empty act the same way.
+        const placed = await move(ctx, bookId, escalation.id, null, null, 'escalation');
+        expect(placed).toMatchObject({ moved: true, act: 'escalation' });
+        expect(await orderOf(bookId)).toEqual([open.id, crisis.id, resolution.id, escalation.id]);
+        // A placed beat moved into another, empty act: its act changes and its rank does not.
+        const rank = await rankOf(open.id);
+        const before = await versionOf(ctx, bookId, open.id);
+        const moved = await move(ctx, bookId, open.id, null, null, 'resolution');
+        expect(moved).toMatchObject({ moved: true, act: 'resolution', orderRank: rank });
+        expect(await rankOf(open.id)).toBe(rank);
+        expect(await versionOf(ctx, bookId, open.id)).toBe(before + 1);
+        expect(await orderOf(bookId)).toEqual([open.id, crisis.id, resolution.id, escalation.id]);
+    });
+
+    it('the author places a beat of a later act before a beat of an earlier one, and the order is the rank alone', async () => {
+        const { ctx, bookId } = await book();
+        const open = await beat(ctx, bookId, 'Opening beat', 'opening');
+        const crisis = await beat(ctx, bookId, 'Crisis beat', 'crisis');
+        await move(ctx, bookId, open.id, null, null);
+        await move(ctx, bookId, crisis.id, open.id, null);
+        // A crisis beat dragged before the opening beat, with its neighbour named.
+        const early = await beat(ctx, bookId, 'Early crisis', 'crisis');
+        await move(ctx, bookId, early.id, null, open.id);
+        expect(await orderOf(bookId)).toEqual([early.id, open.id, crisis.id]);
+        // And an opening beat after the crisis beats, by naming them.
         const late = await beat(ctx, bookId, 'Late opening', 'opening');
-        await move(ctx, bookId, late.id, open.id, null);
-        await move(ctx, bookId, late.id, null, null, 'resolution');
-        expect(await orderOf(bookId)).toEqual([open.id, escalation.id, crisis.id, resolution.id, late.id]);
+        await move(ctx, bookId, late.id, crisis.id, null);
+        expect(await orderOf(bookId)).toEqual([early.id, open.id, crisis.id, late.id]);
+        // Moving into another act while naming neighbours places it between them.
+        await move(ctx, bookId, late.id, early.id, open.id, 'escalation');
+        expect(await orderOf(bookId)).toEqual([early.id, late.id, open.id, crisis.id]);
     });
 });
 
