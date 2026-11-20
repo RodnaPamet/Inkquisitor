@@ -42,8 +42,8 @@ export interface RoundStreamState {
     committed: InterviewView | null;
     /** A refusal after the stream began, as a code the page words. */
     refusal: string | null;
-    /** A refusal before it began (the route's JSON error), or a transport failure (`status` 0). */
-    error: { status: number; reason: string | null } | null;
+    /** A refusal before it began (the route's JSON error, with its `details`), or a transport failure (`status` 0). */
+    error: { status: number; reason: string | null; details?: unknown } | null;
     /** The stream ended with nothing at all (a dropped connection, not an empty round). */
     connectionClosed: boolean;
     /** The author cancelled. */
@@ -90,14 +90,15 @@ export function applyInterviewEvent(state: RoundStreamState, event: InterviewStr
     }
 }
 
-/** The reason a JSON refusal names (`error.details.reason`), or null. */
-async function reasonOfResponse(res: Response): Promise<string | null> {
+/** The reason a JSON refusal names (`error.details.reason`, or null) and its details (a 503 PACKS_NOT_MOUNTABLE lists its packs there). */
+async function refusalOfResponse(res: Response): Promise<{ reason: string | null; details?: unknown }> {
     try {
         const body: unknown = await res.json();
-        const reason = (body as { error?: { details?: { reason?: unknown } } } | null)?.error?.details?.reason;
-        return typeof reason === 'string' ? reason : null;
+        const details = (body as { error?: { details?: unknown } } | null)?.error?.details;
+        const reason = (details as { reason?: unknown } | null | undefined)?.reason;
+        return { reason: typeof reason === 'string' ? reason : null, details };
     } catch {
-        return null;
+        return { reason: null };
     }
 }
 
@@ -151,8 +152,8 @@ export function useInterviewStream() {
                 return local;
             }
             if (!res.ok || res.body === null) {
-                const reason = await reasonOfResponse(res);
-                update((s) => ({ ...s, phase: 'done', error: { status: res.status, reason } }));
+                const refusal = await refusalOfResponse(res);
+                update((s) => ({ ...s, phase: 'done', error: { status: res.status, ...refusal } }));
                 if (abortRef.current === abort) abortRef.current = null;
                 return local;
             }

@@ -639,7 +639,20 @@
             "personaNone": "No particular interviewer",
             "personaNoneSummary": "Plain questions in the craft pack's own voice.",
             "personaLimit": "Choose up to {max} interviewers.",
-            "personaUnavailable": "Not available in this workspace",
+            "personaOrder": "(asks {n})",
+            "personaPreview": {
+                "none": "The craft pack words every question, in one call a round.",
+                "one": "One interviewer words every question, in one call a round.",
+                "many": "{count} interviewers share each round, each in its own call ({calls} calls a round); the first leads round 1."
+            },
+            "packRefusal": {
+                "STRUCTURAL_RECORD_REFUSED": "Not available here yet: it has not been evaluated on a real model.",
+                "NO_RECORD": "Not available here: it has not been evaluated.",
+                "TEXT_REFUSED": "Not available here: its text did not pass the safety scan.",
+                "generic": "Not available here: its evaluation does not pass."
+            },
+            "sourceBook": "This book's default.",
+            "sourceWorkspace": "This workspace's default.",
             "toggles": "Options",
             "offerRecommended": "Offer a recommended answer",
             "offerRecommendedOn": "Questions may suggest an answer drawn from what you wrote; take it with one click.",
@@ -710,7 +723,8 @@
             "NO_ACCEPTABLE_QUESTION": "No usable question came back this time. Your answers are kept; try the next round again.",
             "GUARD_REFUSED": "The safety check held this round back. Your answers are kept; try again, or edit the entry first.",
             "generic": "This interview has stopped. Your answers are kept.",
-            "PACK_CHANGED": "A question pack this interview was started with has changed since. Your answers are kept; start a new interview to go on."
+            "PACK_CHANGED": "A question pack this interview was started with has changed since. Your answers are kept; start a new interview to go on.",
+            "PACK_NOT_PINNED": "This interview was started before question packs were recorded with it, so it cannot go on. Your answers are kept; start a new interview to continue."
         },
         "session": {
             "breadcrumbInterviews": "Interviews",
@@ -832,7 +846,10 @@
             "TOKEN_BUDGET": "This interview has used its share of the AI budget.",
             "WORKSPACE_CEILING": "This workspace has reached its AI limit for the month.",
             "generic": "Something went wrong. Try again.",
-            "PACKS_NOT_MOUNTABLE": "The question packs are not ready on this server yet, so an interview cannot start."
+            "PACKS_NOT_MOUNTABLE": "The question packs are not ready on this server yet, so an interview cannot start.",
+            "PACKS_NOT_MOUNTABLE_NAMED": "These question packs are not ready on this server, so the interview cannot go on: {packs}.",
+            "packCraft": "{kind} questions",
+            "packPersona": "the {name} interviewer"
         }
     }
 }

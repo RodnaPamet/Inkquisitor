@@ -9,6 +9,8 @@
  */
 import { useCallback } from 'react';
 import { useTranslations } from 'next-intl';
+import type { BibleKind } from '@/lib/bible/kinds';
+import { packOfName } from '@/lib/interview/setup';
 import type { StopReason } from '@/lib/interview/vocabulary';
 
 /**
@@ -56,10 +58,22 @@ export const INTERVIEW_WORDED_REASONS = [
     'PACKS_NOT_MOUNTABLE',
 ] as const;
 
-export function useStopMessage(): (reason: string | null) => string {
+/** The `problem` a PACK_CHANGED stop records (`stopDetail.problem`): PACK_CHANGED, or PACK_NOT_PINNED for a session from before pinning. */
+function stopProblemOf(detail: unknown): string | null {
+    const problem = detail && typeof detail === 'object' ? (detail as { problem?: unknown }).problem : null;
+    return typeof problem === 'string' ? problem : null;
+}
+
+/**
+ * A stop reason in words. A PACK_CHANGED stop whose detail says the session was
+ * never pinned (a 2.2 session) says so: such a session stays paused for good,
+ * and the author needs to start another.
+ */
+export function useStopMessage(): (reason: string | null, detail?: unknown) => string {
     const t = useTranslations('interview.stop');
     return useCallback(
-        (reason: string | null) => {
+        (reason: string | null, detail?: unknown) => {
+            if (reason === 'PACK_CHANGED' && stopProblemOf(detail) === 'PACK_NOT_PINNED') return t('PACK_NOT_PINNED');
             if (reason && reason in STOP_MESSAGE_KEYS) return t(STOP_MESSAGE_KEYS[reason as StopReason]);
             return t('generic');
         },
@@ -67,20 +81,44 @@ export function useStopMessage(): (reason: string | null) => string {
     );
 }
 
+/** The pack names a 503 `PACKS_NOT_MOUNTABLE` lists (`details.packs[].name`), in order, at most once each. */
+export function refusedPackNames(details: unknown): string[] {
+    const packs = details && typeof details === 'object' ? (details as { packs?: unknown }).packs : null;
+    if (!Array.isArray(packs)) return [];
+    const names = packs.map((p) => (p && typeof p === 'object' ? (p as { name?: unknown }).name : null)).filter((n): n is string => typeof n === 'string');
+    return [...new Set(names)];
+}
+
 /**
  * A refusal in words. A 503 is "AI is not available here" whatever 2.1 named
  * in `details.reason` (no key, the kill switch, …): to the author, those are
  * one thing, and the codes are not spelled here (a client chunk naming a
- * server variable fails the build's check).
+ * server variable fails the build's check). `PACKS_NOT_MOUNTABLE` names the
+ * packs its `details` list: a persona by its name, a craft pack by its kind's
+ * label (`kindLabels`, template product text) — a name this client does not
+ * know is left out rather than shown raw.
  */
-export function useInterviewErrorMessage(): (reason: string | null, status?: number) => string {
+export function useInterviewErrorMessage(kindLabels?: Partial<Record<BibleKind, string>>): (reason: string | null, status?: number, details?: unknown) => string {
     const t = useTranslations('interview.errors');
+    const tPersona = useTranslations('interview.personas');
     return useCallback(
-        (reason: string | null, status?: number) => {
+        (reason: string | null, status?: number, details?: unknown) => {
+            if (reason === 'PACKS_NOT_MOUNTABLE') {
+                const named = refusedPackNames(details)
+                    .map((name) => {
+                        const pack = packOfName(name);
+                        if (!pack) return null;
+                        if (pack.group === 'persona') return t('packPersona', { name: tPersona(`${pack.key}.name`) });
+                        const kind = kindLabels?.[pack.kind];
+                        return kind ? t('packCraft', { kind }) : null;
+                    })
+                    .filter((n): n is string => n !== null);
+                if (named.length > 0) return t('PACKS_NOT_MOUNTABLE_NAMED', { packs: named.join(', ') });
+            }
             if (reason && (INTERVIEW_WORDED_REASONS as readonly string[]).includes(reason)) return t(reason);
             if (status === 503) return t('AI_UNAVAILABLE');
             return t('generic');
         },
-        [t],
+        [t, tPersona, kindLabels],
     );
 }

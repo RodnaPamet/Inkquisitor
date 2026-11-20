@@ -21,6 +21,7 @@ jest.mock('next/navigation', () => ({
 import { ElementPage } from '@/components/bible/ElementPage';
 import { AUTOSAVE_DEBOUNCE_MS } from '@/components/bible/use-element-autosave';
 import { API, elementView, mockFetch, pageProps } from '../helpers/bible-ui';
+import { setupRoutes } from '../helpers/interview-ui';
 
 // TipTap (the rich-text fields) calls document.elementFromPoint while mounting; jsdom has none.
 beforeAll(() => {
@@ -259,7 +260,7 @@ it('a list field sends its items, leaving blank rows out', async () => {
 
 it('Enrich opens the interview setup for this element; starting it opens the interview with the setup in the query', async () => {
     jest.useRealTimers();
-    mockFetch({});
+    mockFetch(setupRoutes('ada', 'book_1'));
     mount();
     const enrich = screen.getByRole('button', { name: 'Enrich' });
     expect(enrich).not.toHaveAttribute('aria-disabled');

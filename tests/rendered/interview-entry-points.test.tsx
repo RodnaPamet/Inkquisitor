@@ -20,7 +20,7 @@ import { InterviewsList } from '@/components/interview/InterviewsList';
 import type { BookView } from '@/lib/bible/api-client';
 import { kindSummaries } from '@/lib/bible/ui-model';
 import { boardOf, KIND_LABELS, mockFetch, SLUG } from '../helpers/bible-ui';
-import { interview } from '../helpers/interview-ui';
+import { interview, setupRoutes } from '../helpers/interview-ui';
 
 const BOOK: BookView = {
     id: 'book_1',
@@ -37,7 +37,7 @@ const character = { id: 'e1', bookId: BOOK.id, kind: 'CHARACTER' as const, name:
 
 beforeEach(() => {
     push.mockClear();
-    mockFetch({});
+    mockFetch(setupRoutes(SLUG, BOOK.id));
 });
 
 describe('Grill me on the board', () => {
@@ -86,14 +86,46 @@ describe('the setup sheet', () => {
         expect(screen.getByText('No suggestions: every answer is yours to write.')).toBeInTheDocument();
     });
 
-    it('starts with the chosen setup in the new interview’s address (one interviewer at most, 2.2)', async () => {
+    it('opens on the book’s defaults, says where each came from, and previews them as the server reported', async () => {
+        mockFetch(setupRoutes(SLUG, BOOK.id, { book: { depth: 5, personaKeys: ['socratic'] } }));
         open();
-        fireEvent.click(await screen.findByRole('radio', { name: /Ruthless Editor/ }));
+        expect(await screen.findByTestId('depth-preview')).toHaveTextContent('Consistency with related entries and edge cases; it may question what you wrote. Up to 6 rounds.');
+        expect(screen.getAllByText("This book's default.")).toHaveLength(2);
+        expect(screen.getByRole('checkbox', { name: /Socratic/ })).toBeChecked();
+        expect(screen.getByTestId('persona-preview')).toHaveTextContent('One interviewer words every question');
+        fireEvent.click(within(screen.getByRole('radiogroup', { name: 'Depth' })).getByRole('radio', { name: '2' }));
+        expect(screen.getAllByText("This book's default.")).toHaveLength(1);
+    });
+
+    it('starts with up to three interviewers, in the order chosen, in the new interview’s address', async () => {
+        open();
+        fireEvent.click(await screen.findByRole('checkbox', { name: /Ruthless Editor/ }));
+        fireEvent.click(screen.getByRole('checkbox', { name: /Socratic/ }));
+        fireEvent.click(screen.getByRole('checkbox', { name: /Target Reader/ }));
+        expect(screen.getByTestId('persona-preview')).toHaveTextContent('3 interviewers share each round, each in its own call (3 calls a round)');
+        // At the limit, the rest cannot be chosen (nothing earlier is silently dropped).
+        expect(screen.getByRole('checkbox', { name: /Gentle Mentor/ })).toBeDisabled();
         fireEvent.click(screen.getByRole('checkbox', { name: /Multiple choice where possible/ }));
         fireEvent.click(screen.getByRole('button', { name: 'Start interview' }));
         const url = new URL(push.mock.calls[0][0] as string, 'http://x');
         expect(url.pathname).toBe('/w/ada/books/book_1/interviews/new');
-        expect(Object.fromEntries(url.searchParams)).toEqual({ scope: 'BOOK', depth: '3', detail: '3', personas: 'ruthless-editor', recommend: '1', choice: '1' });
+        expect(Object.fromEntries(url.searchParams)).toEqual({ scope: 'BOOK', depth: '3', detail: '3', personas: 'ruthless-editor,socratic,target-reader', recommend: '1', choice: '1' });
+    });
+
+    it('offers an interviewer whose pack does not mount disabled, with its reason', async () => {
+        mockFetch(setupRoutes(SLUG, BOOK.id, { unmountable: ['devils-advocate'] }));
+        open();
+        const box = await screen.findByRole('checkbox', { name: /Devil's Advocate/ });
+        expect(box).toBeDisabled();
+        expect(box).toHaveAccessibleDescription('Not available here yet: it has not been evaluated on a real model.');
+        expect(screen.getByRole('checkbox', { name: /Socratic/ })).toBeEnabled();
+    });
+
+    it('says so when the options cannot be read', async () => {
+        mockFetch({});
+        open();
+        expect(await screen.findByText('The interview options could not be loaded.')).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Start interview' })).toBeDisabled();
     });
 
     it('has no axe violations', async () => {

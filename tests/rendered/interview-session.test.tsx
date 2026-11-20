@@ -56,7 +56,7 @@ describe('a round streams in', () => {
         }) as unknown as typeof fetch;
         const replaceState = jest.spyOn(window.history, 'replaceState');
         mount(START);
-        await waitFor(() => expect(requests[0]).toMatchObject({ method: 'POST', url: `${IAPI}/stream`, body: { scope: 'ELEMENT', elementId: 'el_1', depth: 2, detail: 3, persona: null } }));
+        await waitFor(() => expect(requests[0]).toMatchObject({ method: 'POST', url: `${IAPI}/stream`, body: { scope: 'ELEMENT', elementId: 'el_1', depth: 2, detail: 3, personaKeys: [], offerRecommended: true, preferChoice: false } }));
         expect(screen.getByTestId('session-progress')).toHaveTextContent('Not assessed');
 
         await act(async () => stream.push({ type: 'started', sessionId: 'sess_1' }));
@@ -116,6 +116,35 @@ describe('a round streams in', () => {
         expect(await screen.findByTestId('stream-error')).toHaveTextContent('AI questions are not available on this server right now.');
         expect(screen.getByRole('link', { name: 'Back to the book' })).toBeInTheDocument();
     });
+
+    it('names the packs a 503 PACKS_NOT_MOUNTABLE lists, by persona and by kind, and leaves out a name it does not know', async () => {
+        const packs = [
+            { name: 'craft-character', reason: 'STRUCTURAL_RECORD_REFUSED' },
+            { name: 'persona-socratic', reason: 'STRUCTURAL_RECORD_REFUSED' },
+            { name: 'persona-nobody', reason: 'UNKNOWN_PACK' },
+        ];
+        mockFetch({ [`POST ${IAPI}/stream`]: { status: 503, json: { error: { code: 'SERVICE_UNAVAILABLE', message: 'x', details: { reason: 'PACKS_NOT_MOUNTABLE', packs } } } } });
+        mount(START);
+        expect(await screen.findByTestId('stream-error')).toHaveTextContent(
+            `These question packs are not ready on this server, so the interview cannot go on: ${KIND_LABELS.CHARACTER} questions, the Socratic interviewer.`,
+        );
+    });
+
+    it('says the packs are not ready, unnamed, when the refusal lists none it knows', async () => {
+        mockFetch({ [`POST ${IAPI}/stream`]: { status: 503, json: { error: { code: 'SERVICE_UNAVAILABLE', message: 'x', details: { reason: 'PACKS_NOT_MOUNTABLE', packs: [{ name: 'x', reason: 'NO_RECORD' }] } } } } });
+        mount(START);
+        expect(await screen.findByTestId('stream-error')).toHaveTextContent('The question packs are not ready on this server yet, so an interview cannot start.');
+    });
+});
+
+it('a session paused PACK_CHANGED says why, and a session from before pinning says to start another', () => {
+    const { unmount } = mount({ kind: 'existing', interview: interview({ status: 'PAUSED', stopReason: 'PACK_CHANGED', roundStatus: 'CLOSED' }) });
+    expect(screen.getByTestId('stop-reason')).toHaveTextContent('A question pack this interview was started with has changed since.');
+    unmount();
+    const unpinned = interview({ status: 'PAUSED', stopReason: 'PACK_CHANGED', roundStatus: 'CLOSED' });
+    unpinned.session.stopDetail = { problem: 'PACK_NOT_PINNED', packs: ['craft-character'] };
+    mount({ kind: 'existing', interview: unpinned });
+    expect(screen.getByTestId('stop-reason')).toHaveTextContent('This interview was started before question packs were recorded with it, so it cannot go on.');
 });
 
 it('the side panel fills as answers arrive: pending enrichment, the answer read-only', async () => {

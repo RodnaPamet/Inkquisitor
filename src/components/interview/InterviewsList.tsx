@@ -69,7 +69,7 @@ export function InterviewsList({ workspaceSlug, book, sessions, truncated, kindL
                 {
                     id: 'reason',
                     header: t('colReason'),
-                    cell: ({ row }) => (row.original.stopReason ? <span className="text-sm text-content-default">{stopMessage(row.original.stopReason)}</span> : '—'),
+                    cell: ({ row }) => (row.original.stopReason ? <span className="text-sm text-content-default">{stopMessage(row.original.stopReason, row.original.stopDetail)}</span> : '—'),
                 },
                 { id: 'started', header: t('colStarted'), cell: ({ row }) => formatDate(row.original.createdAt) },
             ]),

@@ -8,10 +8,11 @@
  * first round streams in.
  *
  * What it may offer comes from `src/lib/interview/setup.ts`, the one seam to
- * the dials API: Phase 2.2 stores depth, detail, at most one persona and the
- * two toggles; Phase 2.3 adds more personas and the book's and workspace's
- * defaults, wired there. The previews are computed from the dial tables
- * (`src/lib/interview/dials.ts`), the same ones the engine runs on.
+ * the dials API (Phase 2.3): the personas with their mount status (one that
+ * does not mount is shown disabled, with its reason), up to three chosen in
+ * order, and the book's effective defaults with where each came from. The
+ * previews are the server's `effects` for those defaults, and the same pure
+ * rule (`dialEffects`) once the author moves a dial (`previewEffects`).
  */
 import { useEffect, useId, useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -22,8 +23,7 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Sheet } from '@/components/ui/sheet';
 import { ToggleGroup } from '@/components/ui/toggle-group';
 import { APP_ROUTES } from '@/lib/app-routes';
-import { DETAIL, roundBudgetFor } from '@/lib/interview/dials';
-import { interviewSetupQuery, loadSetupOptions, type InterviewSetup, type InterviewTarget, type SetupOptions } from '@/lib/interview/setup';
+import { interviewSetupQuery, loadSetupOptions, previewEffects, type InterviewSetup, type InterviewTarget, type SetupOptions, type SetupSource } from '@/lib/interview/setup';
 import type { PersonaKey } from '@/lib/interview/vocabulary';
 
 export interface InterviewSetupSheetProps {
@@ -72,16 +72,28 @@ export function InterviewSetupSheet({ open, setOpen, workspaceSlug, bookId, targ
 
     function togglePersona(key: PersonaKey, on: boolean) {
         if (!setup || !options) return;
-        const next = on ? [...setup.personaKeys, key].slice(-options.maxPersonas) : setup.personaKeys.filter((k) => k !== key);
-        change('personaKeys', next);
+        // At the limit the unchosen boxes are disabled, so a pick never silently drops an earlier one.
+        if (on && (setup.personaKeys.includes(key) || setup.personaKeys.length >= options.maxPersonas)) return;
+        change('personaKeys', on ? [...setup.personaKeys, key] : setup.personaKeys.filter((k) => k !== key));
     }
+
+    const effects = options && setup ? previewEffects(options, setup) : null;
+    /** "Default from this book / the workspace", while the dial still holds that default. */
+    const sourceNote = (key: keyof InterviewSetup): string | null => {
+        if (!options || !setup) return null;
+        const source: SetupSource = options.sources[key];
+        if (source === 'code') return null;
+        const same = key === 'personaKeys' ? setup.personaKeys.join(',') === options.defaults.personaKeys.join(',') : setup[key] === options.defaults[key];
+        return same ? t(source === 'book' ? 'sourceBook' : 'sourceWorkspace') : null;
+    };
+    const refusalText = (code: string | null) => t.has(`packRefusal.${code}`) ? t(`packRefusal.${code}`) : t('packRefusal.generic');
 
     return (
         // `autoFocus`: focus goes into the sheet on open (vaul's default leaves it on the opener).
         <Sheet open={open} onOpenChange={setOpen} size="md" title={title} description={t('description')} autoFocus>
             <Sheet.Header title={title} description={t('description')} />
             <Sheet.Body className="space-y-section" data-testid="interview-setup">
-                {!setup || !options ? (
+                {!setup || !options || !effects ? (
                     <p className="text-sm text-content-muted" role="status">
                         {failed ? t('loadFailed') : t('loading')}
                     </p>
@@ -94,8 +106,9 @@ export function InterviewSetupSheet({ open, setOpen, workspaceSlug, bookId, targ
                             <p className="text-xs text-content-muted">{t('depthHelp')}</p>
                             <ToggleGroup ariaLabel={t('depth')} options={DIAL_OPTIONS} selected={String(setup.depth)} selectAction={(v) => change('depth', Number(v))} />
                             <p id={`${ids}-depth-preview`} className="text-sm text-content-default" data-testid="depth-preview" aria-live="polite">
-                                {t(`depthPreview.${setup.depth}`, { rounds: roundBudgetFor(setup.depth) })}
+                                {t(`depthPreview.${setup.depth}`, { rounds: effects.roundBudget })}
                             </p>
+                            <SourceNote text={sourceNote('depth')} />
                         </div>
                         <div role="group" aria-labelledby={`${ids}-detail`} aria-describedby={`${ids}-detail-preview`} className="space-y-tight">
                             <p id={`${ids}-detail`} className="text-sm font-medium text-content-emphasis">
@@ -104,8 +117,9 @@ export function InterviewSetupSheet({ open, setOpen, workspaceSlug, bookId, targ
                             <p className="text-xs text-content-muted">{t('detailHelp')}</p>
                             <ToggleGroup ariaLabel={t('detail')} options={DIAL_OPTIONS} selected={String(setup.detail)} selectAction={(v) => change('detail', Number(v))} />
                             <p id={`${ids}-detail-preview`} className="text-sm text-content-default" data-testid="detail-preview" aria-live="polite">
-                                {t(`detailPreview.${setup.detail}`, { cap: DETAIL[setup.detail].roundCap })}
+                                {t(`detailPreview.${setup.detail}`, { cap: effects.roundCap })}
                             </p>
+                            <SourceNote text={sourceNote('detail')} />
                         </div>
                         <div role="group" aria-labelledby={`${ids}-persona`} className="space-y-tight">
                             <p id={`${ids}-persona`} className="text-sm font-medium text-content-emphasis">
@@ -126,29 +140,47 @@ export function InterviewSetupSheet({ open, setOpen, workspaceSlug, bookId, targ
                                             id={`${ids}-p-${p.key}`}
                                             value={p.key}
                                             name={tPersona(`${p.key}.name`)}
-                                            summary={p.mountable ? tPersona(`${p.key}.summary`) : t('personaUnavailable')}
+                                            summary={p.mountable ? tPersona(`${p.key}.summary`) : refusalText(p.refusal)}
                                             disabled={!p.mountable}
                                         />
                                     ))}
                                 </RadioGroup>
                             ) : (
                                 <ul className="space-y-tight" data-testid="persona-picker">
-                                    {options.personas.map((p) => (
-                                        <li key={p.key} className="flex items-start gap-tight">
-                                            <Checkbox
-                                                id={`${ids}-pc-${p.key}`}
-                                                checked={setup.personaKeys.includes(p.key)}
-                                                disabled={!p.mountable}
-                                                onCheckedChange={(v) => togglePersona(p.key, v === true)}
-                                            />
-                                            <label htmlFor={`${ids}-pc-${p.key}`} className="text-sm">
-                                                <span className="font-medium text-content-emphasis">{tPersona(`${p.key}.name`)}</span>
-                                                <span className="block text-xs text-content-muted">{p.mountable ? tPersona(`${p.key}.summary`) : t('personaUnavailable')}</span>
-                                            </label>
-                                        </li>
-                                    ))}
+                                    {options.personas.map((p) => {
+                                        const chosen = setup.personaKeys.indexOf(p.key);
+                                        return (
+                                            <li key={p.key} className="flex items-start gap-tight">
+                                                <Checkbox
+                                                    id={`${ids}-pc-${p.key}`}
+                                                    checked={chosen >= 0}
+                                                    disabled={!p.mountable || (chosen < 0 && setup.personaKeys.length >= options.maxPersonas)}
+                                                    onCheckedChange={(v) => togglePersona(p.key, v === true)}
+                                                    aria-describedby={`${ids}-pc-${p.key}-summary`}
+                                                    className="mt-0.5"
+                                                />
+                                                <label htmlFor={`${ids}-pc-${p.key}`} className="text-sm">
+                                                    <span className="font-medium text-content-emphasis">
+                                                        {tPersona(`${p.key}.name`)}
+                                                        {chosen >= 0 && setup.personaKeys.length > 1 ? <span className="ml-1 text-xs text-content-muted">{t('personaOrder', { n: chosen + 1 })}</span> : null}
+                                                    </span>
+                                                    <span id={`${ids}-pc-${p.key}-summary`} className="block text-xs text-content-muted">
+                                                        {p.mountable ? tPersona(`${p.key}.summary`) : refusalText(p.refusal)}
+                                                    </span>
+                                                </label>
+                                            </li>
+                                        );
+                                    })}
                                 </ul>
                             )}
+                            <p className="text-sm text-content-default" data-testid="persona-preview" aria-live="polite">
+                                {setup.personaKeys.length === 0
+                                    ? t('personaPreview.none')
+                                    : setup.personaKeys.length === 1
+                                      ? t('personaPreview.one')
+                                      : t('personaPreview.many', { count: setup.personaKeys.length, calls: effects.generationCallsPerRound })}
+                            </p>
+                            <SourceNote text={sourceNote('personaKeys')} />
                         </div>
                         <div role="group" aria-labelledby={`${ids}-toggles`} className="space-y-default">
                             <p id={`${ids}-toggles`} className="text-sm font-medium text-content-emphasis">
@@ -182,6 +214,10 @@ export function InterviewSetupSheet({ open, setOpen, workspaceSlug, bookId, targ
             </Sheet.Actions>
         </Sheet>
     );
+}
+
+function SourceNote({ text }: { text: string | null }) {
+    return text ? <p className="text-xs text-content-muted">{text}</p> : null;
 }
 
 function PersonaRow({ id, value, name, summary, disabled }: { id: string; value: string; name: string; summary: string; disabled?: boolean }) {

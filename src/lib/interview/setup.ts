@@ -4,36 +4,41 @@
  * ════════════════════════════════════════════════════════════════════
  *
  * The setup sheet (Phase 2.4, `src/components/interview/InterviewSetupSheet.tsx`)
- * shows what a new interview will run with and sends it. Phase 2.2's start
- * route stores depth, detail, AT MOST ONE persona and the two toggles, with
- * the code's defaults beneath them. Phase 2.3 (built in parallel) widens it:
- * up to three personas (`personaKeys`), the packs' own names and mount status
- * (`GET /api/w/<slug>/interview-packs`), and workspace and book defaults
- * (`GET …/books/<bookId>/interview-defaults`, with `effective` and `sources`).
+ * shows what a new interview will run with and sends it. Phase 2.3's API is
+ * read and written here and nowhere else on the client:
  *
- * Everything the sheet needs from that API passes through this file and
- * nothing else does, so wiring 2.3 in is a change here:
- *
- *   `SetupOptions`         what the sheet may offer: the personas (key, whether
- *                          it mounts), how many may be chosen, the defaults the
- *                          sheet opens on and where each came from
- *   `loadSetupOptions`     2.2: no request — the six persona keys, one at most,
- *                          the code defaults (`DEFAULT_DIALS`).
- *                          2.3: read the packs and the book's defaults
- *   `startRequestBody`     2.2: `{ persona }` (the first chosen, or null).
- *                          2.3: `{ personaKeys }`
- *
- * The previews (one line per setting) are computed from the dial tables
- * (`dials.ts`), the ones 2.3's `effects` (`dialEffects`) is built from, so
- * they agree with what 2.3's defaults routes report.
+ *   `loadSetupOptions`     `GET /api/w/<slug>/interview-packs` (the personas,
+ *                          each with the mount gate's verdict) and
+ *                          `GET …/books/<bookId>/interview-defaults` (the
+ *                          EFFECTIVE dials a session would start on — book,
+ *                          then workspace, then code — their `sources`, and the
+ *                          `effects` those dials have)
+ *   `previewEffects`       what the one-line previews show: the server's
+ *                          `effects` while the sheet still holds the defaults,
+ *                          `dialEffects` (the same pure function the server
+ *                          ran) once the author moves a dial
+ *   `startRequestBody`     the start route's body: the target, depth, detail,
+ *                          up to three `personaKeys` in the author's order, and
+ *                          the two toggles
+ *   `packOfName`           which persona or kind a pack name (a 503
+ *                          `PACKS_NOT_MOUNTABLE`, a `PACK_CHANGED` stop) is
  *   `interviewSetupQuery` / `setupFromQuery`  the setup as the new-interview
  *                          page's query string, and back
  *
- * Client-safe: no server import.
+ * A persona whose pack does not mount here is offered disabled with its
+ * refusal (`PersonaOption.refusal`), and is never among the defaults the sheet
+ * opens on: a stored default naming it would only start an interview the
+ * server refuses.
+ *
+ * Client-safe: no server import (types only from the usecases).
  */
-import { DEFAULT_DIALS, DIAL_MAX, DIAL_MIN, isDial } from './dials';
-import { INTERVIEW_SCOPES, PERSONA_KEYS, isPersonaKey, type PersonaKey } from './vocabulary';
+import type { DefaultsView } from '@/app-layer/usecases/interview-defaults';
+import type { PacksView } from '@/app-layer/usecases/interview-packs';
 import { BIBLE_KINDS, type BibleKind } from '@/lib/bible/kinds';
+import { bibleFetch } from '@/lib/bible/api-client';
+import { CODE_DEFAULT_DIALS, PERSONAS_PER_SESSION_MAX, dialEffects, type DialEffects } from './dial-settings';
+import { DIAL_MAX, DIAL_MIN, isDial } from './dials';
+import { INTERVIEW_SCOPES, PERSONA_KEYS, isPersonaKey, type PersonaKey } from './vocabulary';
 
 /** What a new interview asks about. */
 export type InterviewTarget = { scope: 'ELEMENT'; elementId: string } | { scope: 'KIND'; kind: BibleKind } | { scope: 'BOOK' };
@@ -42,66 +47,125 @@ export type InterviewTarget = { scope: 'ELEMENT'; elementId: string } | { scope:
 export interface InterviewSetup {
     depth: number;
     detail: number;
-    /** In the author's order (2.3: the first leads round 1). */
+    /** In the author's order (the first leads round 1, and the lead rotates). */
     personaKeys: PersonaKey[];
     offerRecommended: boolean;
     preferChoice: boolean;
 }
 
-/** Where a default came from (2.3's `sources`; 2.2 has only the code's). */
+/** Where a default came from (2.3's `sources` for a book's defaults). */
 export type SetupSource = 'book' | 'workspace' | 'code';
 
 export interface PersonaOption {
     key: PersonaKey;
-    /** 2.3: false when the pack does not mount here (the sheet offers it disabled). */
+    /** False when the pack does not mount here (the sheet offers it disabled). */
     mountable: boolean;
+    /** Why it does not mount: the mount gate's refusal code (`MountRefusal`), worded by the sheet; null when it mounts. */
+    refusal: string | null;
 }
 
 export interface SetupOptions {
     personas: PersonaOption[];
-    /** How many personas one interview may carry: 1 in 2.2, 3 in 2.3. */
+    /** How many personas one interview may carry (2.3: three). */
     maxPersonas: number;
+    /** The effective dials a session would start on, unmountable personas left out. */
     defaults: InterviewSetup;
     sources: Record<keyof InterviewSetup, SetupSource>;
+    /** What the server says the defaults do (`DefaultsView.effects`). */
+    effects: DialEffects;
 }
 
-/** The code defaults: what 2.2's start route uses for a dial the request leaves out. */
+/** The code defaults: what the start route uses for a dial no layer sets. */
 export const CODE_SETUP_DEFAULTS: Readonly<InterviewSetup> = Object.freeze({
-    depth: DEFAULT_DIALS.depth,
-    detail: DEFAULT_DIALS.detail,
+    depth: CODE_DEFAULT_DIALS.depth,
+    detail: CODE_DEFAULT_DIALS.detail,
     personaKeys: [],
-    offerRecommended: true,
-    preferChoice: false,
+    offerRecommended: CODE_DEFAULT_DIALS.offerRecommended,
+    preferChoice: CODE_DEFAULT_DIALS.preferChoice,
 });
 
-/** 2.2: one persona at most per interview (the session's CHECK). */
-export const MAX_PERSONAS_2_2 = 1;
+const SETUP_KEYS = ['depth', 'detail', 'personaKeys', 'offerRecommended', 'preferChoice'] as const satisfies ReadonlyArray<keyof InterviewSetup>;
+
+const enc = encodeURIComponent;
+export const SETUP_API = {
+    packs: (slug: string) => `/api/w/${enc(slug)}/interview-packs`,
+    bookDefaults: (slug: string, bookId: string) => `/api/w/${enc(slug)}/books/${enc(bookId)}/interview-defaults`,
+} as const;
+
+type Fetcher = <T>(url: string) => Promise<T>;
+
+function sourceOf(s: string | undefined): SetupSource {
+    return s === 'book' || s === 'workspace' ? s : 'code';
+}
 
 /**
- * What the sheet may offer for a book. 2.2: no request is made.
- * 2.3: `GET` the packs and the book's defaults here (the sheet awaits it).
+ * What the sheet may offer for a book: the personas and their mount status,
+ * and the book's effective defaults with where each came from and what they
+ * do. Throws (`BibleApiError`) when either read fails; the sheet says so.
  */
-export async function loadSetupOptions(slug: string, bookId: string): Promise<SetupOptions> {
-    void slug;
-    void bookId;
+export async function loadSetupOptions(slug: string, bookId: string, get: Fetcher = (url) => bibleFetch(url)): Promise<SetupOptions> {
+    const [packs, { defaults }] = await Promise.all([get<PacksView>(SETUP_API.packs(slug)), get<{ defaults: DefaultsView }>(SETUP_API.bookDefaults(slug, bookId))]);
+    const byKey = new Map(packs.personas.filter((p) => isPersonaKey(p.key)).map((p) => [p.key as PersonaKey, p] as const));
+    const personas: PersonaOption[] = PERSONA_KEYS.filter((k) => byKey.has(k)).map((key) => {
+        const p = byKey.get(key)!;
+        return { key, mountable: p.mountable === true, refusal: p.mountable === true ? null : (p.refusal?.reason ?? 'NO_RECORD') };
+    });
+    const mountable = new Set(personas.filter((p) => p.mountable).map((p) => p.key));
+    const e = defaults.effective;
     return {
-        personas: PERSONA_KEYS.map((key) => ({ key, mountable: true })),
-        maxPersonas: MAX_PERSONAS_2_2,
-        defaults: { ...CODE_SETUP_DEFAULTS, personaKeys: [] },
-        sources: { depth: 'code', detail: 'code', personaKeys: 'code', offerRecommended: 'code', preferChoice: 'code' },
+        personas,
+        maxPersonas: PERSONAS_PER_SESSION_MAX,
+        defaults: {
+            depth: e.depth,
+            detail: e.detail,
+            personaKeys: e.personaKeys.filter((k) => mountable.has(k)).slice(0, PERSONAS_PER_SESSION_MAX),
+            offerRecommended: e.offerRecommended,
+            preferChoice: e.preferChoice,
+        },
+        sources: Object.fromEntries(SETUP_KEYS.map((k) => [k, sourceOf(defaults.sources[k])])) as Record<keyof InterviewSetup, SetupSource>,
+        effects: defaults.effects,
     };
 }
 
-/** The start route's body for a target and a setup. 2.2 takes one `persona`; 2.3 takes `personaKeys`. */
+function sameSetup(a: InterviewSetup, b: InterviewSetup): boolean {
+    return (
+        a.depth === b.depth &&
+        a.detail === b.detail &&
+        a.offerRecommended === b.offerRecommended &&
+        a.preferChoice === b.preferChoice &&
+        a.personaKeys.length === b.personaKeys.length &&
+        a.personaKeys.every((k, i) => b.personaKeys[i] === k)
+    );
+}
+
+/** What the previews show for `setup`: the server's effects while it is the defaults, the same pure rule once the author changes a dial. */
+export function previewEffects(options: SetupOptions, setup: InterviewSetup): DialEffects {
+    return sameSetup(options.defaults, setup) ? options.effects : dialEffects(setup);
+}
+
+/** The start route's body for a target and a setup (2.3's `InterviewStartInput`). */
 export function startRequestBody(target: InterviewTarget, setup: InterviewSetup): Record<string, unknown> {
     return {
         ...target,
         depth: setup.depth,
         detail: setup.detail,
-        persona: setup.personaKeys[0] ?? null,
+        personaKeys: setup.personaKeys.slice(0, PERSONAS_PER_SESSION_MAX),
         offerRecommended: setup.offerRecommended,
         preferChoice: setup.preferChoice,
     };
+}
+
+/** Which persona or kind a pack name (`persona-<key>`, `craft-<kind>`) is; null for a name this client does not know. */
+export function packOfName(name: string): { group: 'persona'; key: PersonaKey } | { group: 'craft'; kind: BibleKind } | null {
+    if (name.startsWith('persona-')) {
+        const key = name.slice('persona-'.length);
+        return isPersonaKey(key) ? { group: 'persona', key } : null;
+    }
+    if (name.startsWith('craft-')) {
+        const kind = name.slice('craft-'.length).toUpperCase();
+        return (BIBLE_KINDS as readonly string[]).includes(kind) ? { group: 'craft', kind: kind as BibleKind } : null;
+    }
+    return null;
 }
 
 /** The target and setup as the new-interview page's query (`APP_ROUTES.newInterview`). */
@@ -149,12 +213,13 @@ export function setupFromQuery(q: Query): { target: InterviewTarget; setup: Inte
     const personas = (one(q, 'personas') ?? '')
         .split(',')
         .filter((k): k is PersonaKey => isPersonaKey(k));
+    const personaKeys = [...new Set(personas)].slice(0, PERSONAS_PER_SESSION_MAX);
     return {
         target,
         setup: {
             depth: dial('depth', CODE_SETUP_DEFAULTS.depth),
             detail: dial('detail', CODE_SETUP_DEFAULTS.detail),
-            personaKeys: [...new Set(personas)],
+            personaKeys,
             offerRecommended: one(q, 'recommend') !== '0',
             preferChoice: one(q, 'choice') === '1',
         },

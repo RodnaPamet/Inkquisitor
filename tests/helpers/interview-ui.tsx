@@ -12,6 +12,9 @@ const g = globalThis as unknown as { TextEncoder?: unknown; TextDecoder?: unknow
 g.TextEncoder ??= NodeTextEncoder;
 g.TextDecoder ??= NodeTextDecoder;
 import type { InterviewView, QuestionView } from '@/lib/interview/api-client';
+import { dialEffects, resolveDials, type DialLayer } from '@/lib/interview/dial-settings';
+import { SETUP_API } from '@/lib/interview/setup';
+import { PERSONA_KEYS } from '@/lib/interview/vocabulary';
 
 export const SLUG = 'ada';
 export const BOOK = { id: 'book_1', title: 'The Salt Roads' };
@@ -125,4 +128,44 @@ export function streamOf(events: InterviewStreamEvent[]) {
     for (const e of events) s.push(e);
     s.end();
     return s.response;
+}
+
+/**
+ * The setup sheet's two reads as 2.3's routes answer them (for `mockFetch`):
+ * `GET interview-packs` (every persona, each mountable unless named in
+ * `unmountable`) and the book's `GET interview-defaults` resolved from `book`
+ * with the real rule (`resolveDials`, `dialEffects`).
+ */
+export function setupRoutes(slug: string, bookId: string, opts: { book?: DialLayer; unmountable?: string[] } = {}) {
+    const resolved = resolveDials({ book: opts.book ?? null });
+    const persona = (key: string) => {
+        const mountable = !(opts.unmountable ?? []).includes(key);
+        return {
+            name: `persona-${key}`,
+            group: 'persona',
+            key,
+            displayName: key,
+            version: 1,
+            description: '',
+            contentHash: 'sha256:0',
+            coverage: null,
+            evaluationCases: 3,
+            mountable,
+            refusal: mountable ? null : { reason: 'STRUCTURAL_RECORD_REFUSED', detail: 'D11' },
+            recordKind: mountable ? 'structural' : null,
+        };
+    };
+    return {
+        [`GET ${SETUP_API.packs(slug)}`]: { json: { recordMode: 'structural', personas: PERSONA_KEYS.map(persona), craft: [], mountable: 0, total: 0 } },
+        [`GET ${SETUP_API.bookDefaults(slug, bookId)}`]: {
+            json: {
+                defaults: {
+                    stored: { depth: null, detail: null, personaKeys: null, offerRecommended: null, preferChoice: null },
+                    effective: resolved.settings,
+                    sources: resolved.sources,
+                    effects: dialEffects(resolved.settings),
+                },
+            },
+        },
+    };
 }

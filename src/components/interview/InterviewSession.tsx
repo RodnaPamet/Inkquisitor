@@ -73,7 +73,7 @@ export function InterviewSession(props: InterviewSessionProps) {
     const tPersona = useTranslations('interview.personas');
     const tScope = useTranslations('interview.scope');
     const stopMessage = useStopMessage();
-    const errorMessage = useInterviewErrorMessage();
+    const errorMessage = useInterviewErrorMessage(kindLabels);
     const stream = useInterviewStream();
 
     const [view, setView] = useState<InterviewView | null>(initial.kind === 'existing' ? initial.interview : null);
@@ -189,7 +189,7 @@ export function InterviewSession(props: InterviewSessionProps) {
             // Straight on to the next round, unless the session ended.
             if (interview.session.status === 'ACTIVE') await runStream(INTERVIEW_API.nextRoundStream(ids.slug, ids.bookId, ids.sessionId), {}, ids.sessionId);
         } catch (err) {
-            toast.error(errorMessage(reasonOf(err), statusOf(err)));
+            toast.error(errorMessage(reasonOf(err), statusOf(err), err instanceof BibleApiError ? err.details : undefined));
         } finally {
             setClosing(false);
         }
@@ -205,7 +205,7 @@ export function InterviewSession(props: InterviewSessionProps) {
             setStopOpen(false);
             setNotice(t('stopped'));
         } catch (err) {
-            toast.error(errorMessage(reasonOf(err), statusOf(err)));
+            toast.error(errorMessage(reasonOf(err), statusOf(err), err instanceof BibleApiError ? err.details : undefined));
         } finally {
             setStopping(false);
         }
@@ -243,7 +243,7 @@ export function InterviewSession(props: InterviewSessionProps) {
     const about = (q: { elementId: string; targetsFieldKeys: readonly string[] }) =>
         `${naming.elementName(q.elementId)} · ${q.targetsFieldKeys.map((k) => naming.fieldLabel(q.elementId, k)).join(', ')}`;
 
-    const streamError = s.phase === 'done' && s.error ? errorMessage(s.error.reason, s.error.status) : null;
+    const streamError = s.phase === 'done' && s.error ? errorMessage(s.error.reason, s.error.status, s.error.details) : null;
     const streamRefusal = s.phase === 'done' && s.refusal ? errorMessage(s.refusal) : null;
 
     return (
@@ -306,7 +306,7 @@ export function InterviewSession(props: InterviewSessionProps) {
                 {notice ? <p className="text-sm text-content-default">{notice}</p> : null}
                 {session && session.status !== 'ACTIVE' && session.stopReason && !streaming ? (
                     <p className="rounded-lg border border-border-default bg-bg-subtle p-3 text-sm text-content-default" data-testid="stop-reason" data-reason={session.stopReason}>
-                        {stopMessage(session.stopReason)}
+                        {stopMessage(session.stopReason, session.stopDetail)}
                     </p>
                 ) : null}
                 {view?.generatingRound && !streaming ? (
