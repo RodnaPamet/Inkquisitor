@@ -131,23 +131,6 @@ describe('cost: "Ask me this differently" stops at the session budget and at the
     });
 });
 
-describe('"Ask me this differently" is gated on its evaluation record (D11, 2.H item 7)', () => {
-    it('without a record this deployment accepts it is a 503 REPHRASE_NOT_EVALUATED before any call, nothing written', async () => {
-        const { owner, ctx, bookId, elementId } = await setup();
-        const view = await startInterview(ctx, bookId, { scope: 'ELEMENT', elementId, depth: 2, detail: 3 }, { generator: fakeGenerator(), embedder: null });
-        const api = fakeAnthropic([questionModel({ usage: USAGE })]);
-        const gate = async () => ({ mounted: false as const, reason: 'STRUCTURAL_RECORD_REFUSED' as const, detail: 'test' });
-        expect(await refusal(rephraseQuestion(ctx, bookId, view.session.id, view.round!.questions[0].id, { generator: wiredGenerator(ctx, api), embedder: null, rephraseGate: gate }))).toEqual({
-            status: 503,
-            reason: 'REPHRASE_NOT_EVALUATED',
-        });
-        expect(api.requests).toHaveLength(0);
-        expect(await prisma.aiCallLog.count({ where: { workspaceId: owner.workspaceId } })).toBe(0);
-        expect(await prisma.question.count({ where: { sessionId: view.session.id, replacesQuestionId: { not: null } } })).toBe(0);
-        plainMessage(en.interview.errors, 'REPHRASE_NOT_EVALUATED');
-    });
-});
-
 describe('cost: the workspace’s model-call rate (issue #32, item 5)', () => {
     afterEach(() => {
         delete process.env.RATE_LIMIT_ENABLED;

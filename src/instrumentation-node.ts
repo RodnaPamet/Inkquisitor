@@ -42,12 +42,11 @@ export interface RegisterNodeSeams {
 }
 
 async function loadServices() {
-    const [sentinel, packs, mount, reconcileGate, rephraseGate, telemetry, sentry, mailer, shutdown] = await Promise.all([
+    const [sentinel, packs, mount, reconcileGate, telemetry, sentry, mailer, shutdown] = await Promise.all([
         import('@/lib/security/encryption-sentinel'),
         import('@/lib/interview/packs'),
         import('@/lib/interview/pack-mount'),
         import('@/lib/enrichment/record-gate'),
-        import('@/lib/interview/rephrase-record-gate'),
         import('@/lib/observability/instrumentation'),
         import('@/lib/observability/sentry'),
         import('@/lib/mailer'),
@@ -59,8 +58,6 @@ async function loadServices() {
         packMountReport: async () => mountReport(await mount.packMounts(packs.getPacks(), mount.packRecordModeOf(process.env))),
         /** Phase 2.5: the reconcile step's D11 gate, read the packs' way. */
         reconcileGateReport: () => reconcileGate.reconcileGateReport(mount.packRecordModeOf(process.env)),
-        /** Phase 2.H: the rephrase prompt's D11 gate, read the packs' way. */
-        rephraseGateReport: () => rephraseGate.rephraseGateReport(packs.getPacks(), mount.packRecordModeOf(process.env)),
         initTelemetry: telemetry.initTelemetry,
         initSentry: sentry.initSentry,
         initMailerFromEnv: mailer.initMailerFromEnv,
@@ -126,8 +123,6 @@ export async function registerNode(seams: RegisterNodeSeams = {}): Promise<void>
         if (line) report(`[startup] WARN: ${line}`);
         const reconcile = await services.reconcileGateReport();
         if (reconcile) report(`[startup] WARN: ${reconcile}`);
-        const rephrase = await services.rephraseGateReport();
-        if (rephrase) report(`[startup] WARN: ${rephrase}`);
     }
 
     await services.initTelemetry();

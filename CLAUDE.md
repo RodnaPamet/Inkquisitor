@@ -295,7 +295,7 @@ src/lib/http/stream-capacity.ts   → per-workspace (4) and per-process (32) str
 src/lib/security/model-call-rate-limit.ts → chargeModelCalls: model calls a minute per workspace (429 MODEL_RATE_LIMITED)
 src/lib/ai/prompt-hash.ts         → promptContentHash: what a record pins besides the version
 src/lib/evals/judge.ts            → the evaluation-time judge (model in Evals, structural fallback), never in a product path
-src/lib/interview/evals/rephrase* → the rephrase prompt's set, evaluation and record; rephrase-record-gate.ts (D11)
+src/lib/interview/evals/rephrase* → the rephrase prompt's set, evaluation and record (no production gate: D17)
 src/lib/interview/repetition.ts, dedupe-thresholds.ts; src/lib/process-shared-cache.ts; src/lib/bible/field-coercion.ts
 tests/guards/evaluation-records-current.test.ts → every prompt and pack hash recomputed against its committed record
 ```
@@ -926,8 +926,11 @@ closed beta with an explicit operator flag (D5, amended 2026-11-19).
   `promptContentHash` (and every pack record its pack's and set's hashes);
   `tests/guards/evaluation-records-current.test.ts` recomputes them, so after
   editing a prompt, a pack or a set re-run `npm run packs:evaluate` with the
-  flag that covers it. A new product prompt needs a set, a record and a gate
-  (the rephrase prompt's is the smallest example). The judge
+  flag that covers it. A new product prompt needs a set and a record (the
+  rephrase prompt's is the smallest example), and a production gate on a
+  real-model record unless the owner decides otherwise: reconcile and research
+  have one; "Ask me this differently" runs in production without one (D17: it
+  only rewords a question), its record and hash pin held in CI. The judge
   (`src/lib/evals/judge.ts`) grades the ungraded behaviours in the Evals
   workflow only; no product module imports it, and its pass bar is unset.
   Verdict caches that two module graphs (instrumentation and routes) both read

@@ -1,12 +1,12 @@
 /**
  * "Ask me this differently" is evaluated like every other prompt (Phase 2.H
  * item 7; issue #36, item 4): its set, its record replayed through the
- * product's own step, and D11's gate over it.
+ * product's own step. No gate reads it on the request path (D17): a
+ * rephrase runs in production without a real-model record.
  */
 import { getPacks } from '@/lib/interview/packs';
 import committed from '@/lib/interview/evals/rephrase-evaluation-record.json';
 import { checkRephraseRecord, rephraseEvalSet, STRUCTURAL_REPHRASER_ID, type RephraseRecord } from '@/lib/interview/evals/rephrase-evaluation';
-import { rephraseGateVerdict } from '@/lib/interview/rephrase-record-gate';
 
 const registry = getPacks();
 const record = committed as unknown as RephraseRecord;
@@ -21,11 +21,6 @@ describe('the rephrase evaluation', () => {
         const check = await checkRephraseRecord(record, registry);
         expect(check).toMatchObject({ ok: true });
         if (check.ok) expect(check.grades.every((g) => g.passed)).toBe(true);
-    });
-
-    it('D11: production refuses the structural record; development and test accept it', async () => {
-        await expect(rephraseGateVerdict(record, registry, 'model')).resolves.toMatchObject({ mounted: false, reason: 'STRUCTURAL_RECORD_REFUSED' });
-        await expect(rephraseGateVerdict(record, registry, 'structural')).resolves.toMatchObject({ mounted: true, recordKind: 'structural' });
     });
 
     it('a record made under another prompt text is refused PROMPT_HASH_MISMATCH, whatever its version says', async () => {

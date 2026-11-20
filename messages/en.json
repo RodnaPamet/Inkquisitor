@@ -863,7 +863,6 @@
             "ANSWERED_IN_BIBLE": "Your bible now answers this, so it is not asked again. Skip it, or answer it as it is.",
             "PACK_CHANGED": "A question pack this interview was started with has changed since, so it cannot be asked differently. Your answers are kept.",
             "STREAM_CAPACITY": "Too many interviews are generating at once in this workspace. Wait for one to finish, then try again.",
-            "REPHRASE_NOT_EVALUATED": "Asking a question differently is not available here yet. Answer, skip or set the question aside instead.",
             "MODEL_RATE_LIMITED": "Too many AI requests in this workspace just now. Wait a minute, then try again."
         }
     },

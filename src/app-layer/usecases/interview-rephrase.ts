@@ -14,10 +14,12 @@
  *      mount here (503 PACKS_NOT_MOUNTABLE, D11), as a round's are, the session's token budget can take one more call
  *      (409 TOKEN_BUDGET), the kill switch is off and a call can be made at
  *      all (503 AI_UNAVAILABLE, naming 2.1's reason), and the month can take
- *      it (409 WORKSPACE_CEILING). Nothing is written.
- *      Then the rephrase prompt's evaluation record (D11, Phase 2.H item 7):
- *      production rephrases only on a real model's, else 503
- *      REPHRASE_NOT_EVALUATED, nothing written.
+ *      it (409 WORKSPACE_CEILING). Nothing is written. The rephrase prompt's
+ *      own evaluation record is NOT asked here: a rephrase runs in production
+ *      without a real-model record (D17, decided 2026-11-20: it only rewords
+ *      a question the round already validated); its set, structural record
+ *      and prompt-hash pin are held in CI
+ *      (`tests/guards/evaluation-records-current.test.ts`).
  *   2. REPHRASE (no transaction): `produceRephrase`, one `fast` call through
  *      2.1, held to the rules in `src/lib/interview/rephrase.ts`.
  *   3. PERSIST (under the lock again): the tokens are charged whatever the
@@ -38,7 +40,7 @@ import { logEvent } from '@/app-layer/events/audit';
 import { assertPermission } from '@/app-layer/policies/permission.policy';
 import { AnswerRepository, InterviewSessionRepository, QuestionRepository, type QuestionRow } from '@/app-layer/repositories/interview.repository';
 import { runInWorkspaceContext } from '@/lib/db/rls-middleware';
-import { ConflictError, NotFoundError, ServiceUnavailableError } from '@/lib/errors/types';
+import { ConflictError, NotFoundError } from '@/lib/errors/types';
 import { AiUnavailableError } from '@/lib/ai/errors';
 import { dedupeTokens, questionDedupeKey } from '@/lib/interview/dedupe';
 import { GenerationStop } from '@/lib/interview/generator';
@@ -52,8 +54,7 @@ import { packNamesFor, parsePackPins, pinMismatch, PacksNotMountableError } from
 import { requireAnswerable } from './interview-answers';
 import { assertModelAvailable, generatorOf, type InterviewDeps } from './interview-rounds';
 import { loadInterviewState, questionView, SESSION_QUESTIONS_MAX, storedTextOf, type QuestionView } from './interview-state';
-import { deploymentPackMounts, deploymentPackRecordMode } from './interview-packs';
-import { rephraseGate, type RephraseGateVerdict } from '@/lib/interview/rephrase-record-gate';
+import { deploymentPackMounts } from './interview-packs';
 import { chargeModelCalls } from '@/lib/security/model-call-rate-limit';
 import { defaultQuestionEmbedder, questionRecord, upsertQuestionVectors } from './question-embeddings';
 
@@ -85,7 +86,7 @@ export async function rephraseQuestion(
     bookId: string,
     sessionId: string,
     questionId: string,
-    deps: Pick<InterviewDeps, 'generator' | 'embedder' | 'packs' | 'signal' | 'packRecordMode'> & { rephraseGate?: () => Promise<RephraseGateVerdict> } = {},
+    deps: Pick<InterviewDeps, 'generator' | 'embedder' | 'packs' | 'signal' | 'packRecordMode'> = {},
 ): Promise<QuestionView> {
     await assertPermission(ctx, 'bible.edit');
     const generator = generatorOf(ctx, deps);
@@ -121,9 +122,6 @@ export async function rephraseQuestion(
     if (problem?.reason === 'PACK_NOT_MOUNTABLE') throw new PacksNotMountableError(problem.packs);
     if (problem) throw new ConflictError('A question pack this interview was started with has changed.', { reason: 'PACK_CHANGED', problem: problem.reason, packs: problem.packs });
 
-    // The rephrase prompt's own evaluation record (D11, Phase 2.H item 7): production asks it only of a real model's.
-    const gate = await (deps.rephraseGate ? deps.rephraseGate() : rephraseGate(packs, deps.packRecordMode ?? deploymentPackRecordMode()));
-    if (!gate.mounted) throw new ServiceUnavailableError('Asking a question differently is not available here.', { reason: 'REPHRASE_NOT_EVALUATED', gate: gate.reason });
     chargeModelCalls(ctx.workspaceId, 1);
 
     // 2. The call, outside every transaction.

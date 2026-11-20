@@ -24,8 +24,10 @@
  * THE STRUCTURAL REPHRASER reads the request's `previous-wording` block and
  * asks the same target from a reader's angle, deterministically: a record of
  * it proves the set, the step's rules and the grader agree, and nothing about
- * a model — development and test mount it, production never does
- * (`rephrase-record-gate.ts`). A structural record must be exactly what it
+ * a model. No gate reads the record on the request path: a rephrase runs in
+ * production without a real-model record (D17); the record and its prompt
+ * hash are held in CI (`tests/guards/evaluation-records-current.test.ts`),
+ * and the Evals workflow makes real-model ones. A structural record must be exactly what it
  * produces today; a model record holding its output for every case is
  * refused STRUCTURAL_OUTPUT_AS_MODEL.
  */
