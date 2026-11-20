@@ -57,6 +57,8 @@ export const ENCRYPTED_FIELDS: EncryptedFieldManifest = Object.freeze({
     ResearchFinding: Object.freeze(['claim', 'summary', 'noFitReason']),
     ResearchCitation: Object.freeze(['url', 'title', 'quotedSpan']),
     ResearchProposal: Object.freeze(['proposedValue', 'newName', 'newSummary', 'rationale']),
+    // Decision D15: every query and fetch URL a research run sent.
+    ResearchEgress: Object.freeze(['text']),
 });
 
 /** The lookups the extension runs per operation, compiled once per manifest. */

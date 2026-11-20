@@ -19,6 +19,8 @@ export const URL_MAX = 2_000;
 export const URLS_MAX = 8;
 export const FILENAME_MAX = 200;
 export const TITLE_MAX = 300;
+/** A query or fetch URL as a run's egress list stores it (D15). */
+export const EGRESS_TEXT_MAX = 2_000;
 
 export class ResearchTextNotStorableError extends Error {
     constructor(readonly what: string) {
@@ -125,4 +127,14 @@ export function decodeResearchValue(stored: string | null): FieldValue | null {
     } catch {
         return null;
     }
+}
+
+/**
+ * One query or fetch URL a run sent, as stored (decision D15): plain text,
+ * bounded. An input that was not a string (the tripwire refused it unread) is
+ * stored as its JSON, so the list still shows that something was asked.
+ */
+export function sanitiseEgressForStorage(input: unknown): string {
+    const raw = typeof input === 'string' ? input : (JSON.stringify(input ?? null) ?? 'null');
+    return plainLine(bounded(raw, EGRESS_TEXT_MAX)).slice(0, EGRESS_TEXT_MAX);
 }

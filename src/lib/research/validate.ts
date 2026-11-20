@@ -6,7 +6,7 @@
  *   the claim and the summary sanitise to text; at least one citation; every
  *   citation names a source this run READ; every quote is long enough to mean
  *   something and occurs verbatim in that source's retrieved text
- *   (`quoteFound`); no quote carries an instruction the guard flags; no
+ *   (`quoteFound`), as written AND as it will be stored (sanitised); no quote carries an instruction the guard flags; no
  *   markup, script scheme, unsourced URL or flagged text in the claim or the
  *   summary; every sentence of the claim and of the summary grounded in the
  *   cited sources (2.2's `groundSentence`); no claim twice; no more findings
@@ -155,6 +155,15 @@ export function validateFindings(parsed: ParsedFindings, sources: readonly Resea
                 refusal = 'QUOTE_FLAGGED';
                 break;
             }
+            // What is STORED is the sanitised span: it must itself be a span of the
+            // source, so a quote made of markup (which sanitises to nothing) or one
+            // whose entities decode to other text is refused here, never stored
+            // altered and never left to fail the whole run's save.
+            const quotedSpan = plainBlock(c.quote).trim();
+            if (!quoteFound(quotedSpan, source.text)) {
+                refusal = 'QUOTE_NOT_IN_SOURCE';
+                break;
+            }
             if (!cited.includes(source)) cited.push(source);
             citations.push({
                 sourceRef: source.ref,
@@ -162,7 +171,7 @@ export function validateFindings(parsed: ParsedFindings, sources: readonly Resea
                 url: source.url,
                 sourceId: source.sourceId,
                 title: source.title,
-                quotedSpan: plainBlock(c.quote).trim(),
+                quotedSpan,
                 retrievedAt: source.retrievedAt,
             });
         }

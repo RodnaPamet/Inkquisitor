@@ -19,7 +19,9 @@
  *              call can be made (503 AI_UNAVAILABLE) or the research prompts
  *              have no evaluation record this deployment accepts (503
  *              RESEARCH_NOT_EVALUATED, D11); refused 409 RUN_IN_PROGRESS while
- *              the brief has a live run; and the brief is checked against the
+ *              the brief has a live run (a stale one, which reads FAILED
+ *              CLAIM_EXPIRED, is ended in the database first, so its job can
+ *              no longer claim or save it); and the brief is checked against the
  *              book's text again (the bible may have moved since it was
  *              written). Then one QUEUED run, committed, and one BullMQ job
  *              naming it by id (`research-run`, payload `{ workspaceId, runId }`,
@@ -41,7 +43,7 @@ import { logger } from '@/lib/observability/logger';
 import type { PackRecordMode } from '@/lib/interview/pack-records-config';
 import { RESEARCH_PROMPT_VERSION } from '@/lib/research/prompt';
 import { researchGate, type ResearchGateVerdict } from '@/lib/research/record-gate';
-import { decodeSourceUrls, sanitiseBriefForStorage, sanitiseSourceForStorage } from '@/lib/research/storage';
+import { decodeSourceUrls, ResearchTextNotStorableError, sanitiseBriefForStorage, sanitiseSourceForStorage } from '@/lib/research/storage';
 import { webUrlOf } from '@/lib/research/sources';
 import { DEPTH_BUDGETS, EMPTY_PROGRESS, effectiveRunState } from '@/lib/research/vocabulary';
 import { assertUploadClean } from './bible-import';
@@ -74,7 +76,14 @@ export async function createResearchBrief(ctx: WorkspaceRequestContext, bookId: 
         if (!url) throw new ValidationError('A source URL must be an http or https address.', { reason: 'URL_INVALID' });
         if (!urls.includes(url)) urls.push(url);
     }
-    const text = sanitiseBriefForStorage({ question: parsed.question, purpose: parsed.purpose, urls });
+    let text: ReturnType<typeof sanitiseBriefForStorage>;
+    try {
+        text = sanitiseBriefForStorage({ question: parsed.question, purpose: parsed.purpose, urls });
+    } catch (err) {
+        // A question or purpose that sanitises to nothing (blank, or markup alone) is the author's to fix: a 400, never a 500.
+        if (err instanceof ResearchTextNotStorableError) throw new ValidationError('Write the question and what it is for in words.', { reason: 'BRIEF_EMPTY', part: err.what });
+        throw err;
+    }
     const scopeIds = [...new Set(parsed.scopeElementIds)];
     return runInWorkspaceContext(
         ctx,
@@ -167,8 +176,23 @@ export async function dispatchResearchRun(ctx: WorkspaceRequestContext, bookId: 
         async (db) => {
             const brief = await requireBrief(db, ctx, bookId, id);
             await ResearchBriefRepository.lock(db, id);
-            const live = (await ResearchRunRepository.listForBrief(db, ctx.workspaceId, id, 1)).find(isLive);
-            if (live) throw new ConflictError('This brief is already being researched.', { reason: 'RUN_IN_PROGRESS', runId: live.id });
+            const latest = (await ResearchRunRepository.listForBrief(db, ctx.workspaceId, id, 1))[0];
+            if (latest && isLive(latest)) throw new ConflictError('This brief is already being researched.', { reason: 'RUN_IN_PROGRESS', runId: latest.id });
+            if (latest && (latest.status === 'QUEUED' || latest.status === 'RUNNING')) {
+                // A stale claim (it reads FAILED CLAIM_EXPIRED) is ended in the database before
+                // another run starts, so its job, if it is still queued or still running, can
+                // neither claim it nor save over it: two runs of one brief never spend at once.
+                const now = new Date();
+                await ResearchRunRepository.finish(db, ctx.workspaceId, latest.id, {
+                    status: 'FAILED',
+                    outcome: 'CLAIM_EXPIRED',
+                    metrics: { ...((latest.metrics ?? {}) as Record<string, unknown>), errorCode: 'CLAIM_EXPIRED' } as Prisma.InputJsonValue,
+                    spentMicroUsd: latest.spentMicroUsd,
+                    progress: { ...EMPTY_PROGRESS, ...((latest.progress ?? {}) as Record<string, unknown>), phase: 'finished' } as Prisma.InputJsonValue,
+                    finishedAt: now,
+                    ...(latest.startedAt ? {} : { startedAt: now }),
+                });
+            }
             const book = await readBookText(db, ctx, bookId);
             assertBriefLeavesNoBookText({ question: brief.question, purpose: brief.purpose, urls: decodeSourceUrls(brief.sourceUrls) }, book.index);
             const created = await ResearchRunRepository.create(db, ctx.workspaceId, {

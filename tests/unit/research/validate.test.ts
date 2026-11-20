@@ -5,6 +5,7 @@
 import { parseFindingsOutput, parseFitOutput } from '@/lib/research/schema';
 import { quoteFound, type ResearchSourceDoc } from '@/lib/research/sources';
 import { validateFindings, validateFit, writesProse, type FindingDraft, type FitElement } from '@/lib/research/validate';
+import { sanitiseFindingForStorage } from '@/lib/research/storage';
 
 const PAGE: ResearchSourceDoc = {
     ref: 'web.1',
@@ -41,6 +42,17 @@ describe('citation span verification', () => {
         const r = validateFindings(parseFindingsOutput({ findings: [finding(over)] }), [PAGE], 6);
         expect(r.findings).toHaveLength(0);
         expect(r.refusals).toEqual({ [code]: 1 });
+    });
+
+    it('refuses a quote that would be stored altered or empty: the stored span is itself a span of the source', () => {
+        const markup = { ...PAGE, text: `${PAGE.text} <span class="a"></span><span class="b"></span><i class="c"></i>` };
+        const r = validateFindings(parseFindingsOutput({ findings: [finding({ citations: [{ ref: 'web.1', quote: '<span class="a"></span><span class="b"></span><i class="c"></i>' }] })] }), [markup], 6);
+        expect(r.findings).toHaveLength(0);
+        expect(r.refusals).toEqual({ QUOTE_NOT_IN_SOURCE: 1 });
+        // …and every finding it does keep can be stored (the run's save never throws on one).
+        const kept = validateFindings(parseFindingsOutput({ findings: [finding()] }), [markup], 6);
+        expect(() => kept.findings.map((f) => sanitiseFindingForStorage(f, null))).not.toThrow();
+        expect(kept.findings).toHaveLength(1);
     });
 
     it('refuses a quote that carries an instruction to the model, even when the page holds it', () => {

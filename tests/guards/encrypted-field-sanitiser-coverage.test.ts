@@ -86,6 +86,7 @@ const COVERAGE: Readonly<Record<string, Classification>> = {
     'ResearchProposal.newName': { repository: 'ResearchProposalRepository', writeMethods: ['create'], sanitiser: 'sanitiseResearchProposalForStorage' },
     'ResearchProposal.newSummary': { repository: 'ResearchProposalRepository', writeMethods: ['create'], sanitiser: 'sanitiseResearchProposalForStorage' },
     'ResearchProposal.rationale': { repository: 'ResearchProposalRepository', writeMethods: ['create'], sanitiser: 'sanitiseResearchProposalForStorage' },
+    'ResearchEgress.text': { repository: 'ResearchEgressRepository', writeMethods: ['createMany'], sanitiser: 'sanitiseEgressForStorage' },
 };
 
 /** Each repository object and the one file allowed to write its model through Prisma. */
@@ -103,6 +104,7 @@ const REPOSITORIES: Readonly<Record<string, { file: string; model: string }>> = 
     ResearchFindingRepository: { file: 'src/app-layer/repositories/research.repository.ts', model: 'ResearchFinding' },
     ResearchCitationRepository: { file: 'src/app-layer/repositories/research.repository.ts', model: 'ResearchCitation' },
     ResearchProposalRepository: { file: 'src/app-layer/repositories/research.repository.ts', model: 'ResearchProposal' },
+    ResearchEgressRepository: { file: 'src/app-layer/repositories/research.repository.ts', model: 'ResearchEgress' },
 };
 
 /** Wrappers, where each is defined and what it must call; the chain must end at a primitive. */
@@ -119,6 +121,7 @@ const WRAPPERS: Readonly<Record<string, { file: string; calls: readonly string[]
     sanitiseSourceForStorage: { file: 'src/lib/research/storage.ts', calls: ['plainBlock', 'plainLine'] },
     sanitiseFindingForStorage: { file: 'src/lib/research/storage.ts', calls: ['plainBlock', 'plainLine'] },
     sanitiseResearchProposalForStorage: { file: 'src/lib/research/storage.ts', calls: ['normaliseFieldValue', 'plainBlock'] },
+    sanitiseEgressForStorage: { file: 'src/lib/research/storage.ts', calls: ['plainLine'] },
 };
 
 const WRITE_OPS = ['create', 'createMany', 'createManyAndReturn', 'update', 'updateMany', 'updateManyAndReturn', 'upsert'];

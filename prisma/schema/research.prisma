@@ -109,6 +109,7 @@ model ResearchRun {
   requestedBy User?              @relation(fields: [requestedById], references: [id], onDelete: SetNull)
   findings    ResearchFinding[]
   proposals   ResearchProposal[]
+  egress      ResearchEgress[]
 
   @@unique([workspaceId, id])
   /// A brief's runs, newest first.
@@ -116,6 +117,32 @@ model ResearchRun {
   /// A book's runs by status.
   @@index([workspaceId, bookId, status])
   @@index([requestedById])
+}
+
+/// What a run sent OUT (decision D15): every web search query and fetch URL
+/// the gather turn issued, stored as the stream delivered it, in order, with
+/// the tripwire's refusal code when it refused one. Shown on the run's result
+/// page, so the author sees exactly what left. Written once (app_user may not
+/// update or delete it); it goes with its run, book and workspace.
+model ResearchEgress {
+  id          String   @id @default(cuid())
+  workspaceId String
+  bookId      String
+  runId       String
+  /// Its place in the run's order, 0-based, below `RESEARCH_EGRESS_PER_RUN_MAX` (CHECK).
+  position    Int
+  /// `web_search` or `web_fetch` (CHECK).
+  tool        String
+  /// The query or the URL as the model wrote it (encrypted, sanitised).
+  text        String
+  /// The tripwire's refusal code (`QUOTES_BOOK_TEXT`, …) when it stopped the run on this one; NULL otherwise.
+  refusal     String?
+  createdAt   DateTime @default(now())
+
+  run ResearchRun @relation(fields: [workspaceId, runId], references: [workspaceId, id], onDelete: Cascade)
+
+  /// A run's egress in order (and one row a position).
+  @@unique([workspaceId, runId, position])
 }
 
 /// A claim a run found, resting on at least one verified citation (rule 2).

@@ -31,7 +31,7 @@ off: `allowed_callers: ["direct"]`).
 |---|---|---|
 | Anthropic | The research brief (question, purpose, attached URLs) in the gather request; the search queries and fetch URLs the model writes | Under the same retention mode as every model call. |
 | Anthropic's web search provider (a party Anthropic engages to run searches; not named in Anthropic's web search documentation as read 2026-11-20 — to be confirmed against Anthropic's own sub-processor list before launch) | The **search queries** | Queries are written from the research brief and carry **no manuscript or bible text**: the gather request holds the brief and nothing else of the book, the brief is refused if it repeats the book's stored text, and every query is checked against the book's text as it arrives (a quoting query stops the run). See "Honest limits" below. |
-| The publishers of the pages fetched | The **page URLs** (and request metadata) | Anthropic's documentation: "website publishers might retain request data (such as fetched URLs and request metadata) according to their own policies". A URL can only be fetched if it appeared in the conversation (the brief's URLs, or a search result), and every fetch URL passes the same egress check. |
+| The publishers of the pages fetched | The **page URLs** (and request metadata) | Anthropic's documentation: "website publishers might retain request data (such as fetched URLs and request metadata) according to their own policies". A URL can only be fetched if it appeared in the conversation (the brief's URLs, or a search or fetch result), and every fetch URL passes the same egress check, its host included (a host name reaches the resolver and the site as surely as a path does). |
 
 **Attached files** (plain text or Markdown, virus-scanned, stored encrypted)
 are read only by the findings step, as fenced data, and never by the gather
@@ -46,6 +46,17 @@ From Anthropic's documentation, read 2026-11-20:
 - Even in a zero-retention configuration, **website publishers may retain the URLs fetched** and request metadata under their own policies.
 - The search provider's own retention of queries is outside Anthropic's zero-retention terms as documented; this is why queries must carry no author text.
 
+### What a run lists (decision D15)
+
+Every run lists, on its result page, **every search query and fetched URL it
+sent**, in order and exactly as the model wrote it, a query the per-query check
+refused included and marked. Each is stored as the response stream delivers it
+(`ResearchEgress`: encrypted at rest, sanitised, workspace row-level security,
+at most 100 a run, with any more counted and said), shown as plain text (never
+a link), readable by every member who reads the bible, and deleted with its
+run, its book and its workspace. So what left is never a matter of trust: the
+author can read it.
+
 ### Honest limits
 
 Anthropic runs a server tool itself, inside the API call: the product sees a
@@ -53,9 +64,10 @@ query only as the response streams it, and the API offers no hook to approve a
 server tool call before it runs. So the per-query check is a **tripwire**
 (it stops the run and records it), not a gate. The guarantee rests on the
 gather request holding no bible or manuscript text to quote, and on the brief
-itself being refused when it repeats the book. A brief's own words (the
-question and purpose the author writes for this purpose) do reach the search
-provider.
+itself being refused when it repeats the book (decision D15). A brief's own
+words (the question and purpose the author writes for this purpose) do reach
+the search provider, and the run's result page lists every query and URL that
+actually left.
 
 ## Other services
 
@@ -81,5 +93,7 @@ What the Phase 7 privacy page says about research, drafted with 2.6:
   repeats them is refused.
 - Pages are fetched by Anthropic from their publishers, who may keep the
   addresses requested. Attached files go to Anthropic only.
+- Every run lists every search query and page address it sent, exactly as
+  sent, on its result page: the author can see what left.
 - Nothing found reaches the bible until the author accepts it; every accepted
   change records the findings and sources it came from.

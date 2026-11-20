@@ -2,15 +2,18 @@
  * What the research usecases share (Phase 2.6): the brief lookup, the book's
  * stored text the egress check indexes, and the scope a run's fit step reads.
  *
- * The BOOK TEXT INDEX is built from every element of the book — its name, its
- * summary and every stored field value — decrypted inside the workspace's
+ * The BOOK TEXT INDEX is built from all of the book's stored text — its title
+ * and logline, every element's name, custom label, summary and stored field
+ * values, and every relation's note — decrypted inside the workspace's
  * context, held in memory for the request or the run, and never stored or
- * logged. Past `BOOK_INDEX_ELEMENTS_MAX` elements the index is marked
- * incomplete and the egress check refuses every text, rather than vouching for
- * text it never read.
+ * logged. Past `BOOK_INDEX_ELEMENTS_MAX` elements or
+ * `BOOK_INDEX_RELATIONS_MAX` relations the index is marked incomplete and the
+ * egress check refuses every text, rather than vouching for text it never
+ * read.
  */
 import type { WorkspaceRequestContext } from '@/app-layer/types';
 import { BibleElementRepository, BibleFieldRepository, BibleRelationRepository } from '@/app-layer/repositories/bible.repository';
+import { BookRepository } from '@/app-layer/repositories/book.repository';
 import { ResearchBriefRepository } from '@/app-layer/repositories/research.repository';
 import type { PrismaTx } from '@/lib/db/rls-middleware';
 import { NotFoundError, ValidationError } from '@/lib/errors/types';
@@ -23,6 +26,8 @@ import { requireBook } from './bible-common';
 
 /** Elements indexed at most; past it the index is incomplete (fail closed). */
 export const BOOK_INDEX_ELEMENTS_MAX = 2_000;
+/** Relations (their notes) indexed at most; past it the index is incomplete (fail closed). */
+export const BOOK_INDEX_RELATIONS_MAX = 10_000;
 /** Stored fields read per element. */
 export const FIELDS_PER_ELEMENT = 50;
 /** Related elements a run's fit step reads at most. */
@@ -46,6 +51,8 @@ export interface BookTextRead {
 
 /** Read the book's stored text, and index it for the egress check. */
 export async function readBookText(db: PrismaTx, ctx: WorkspaceRequestContext, bookId: string): Promise<BookTextRead> {
+    const book = await BookRepository.find(db, ctx.workspaceId, bookId);
+    if (!book) throw new NotFoundError('Book not found.');
     const rows = await BibleElementRepository.listForExport(db, ctx.workspaceId, bookId, BOOK_INDEX_ELEMENTS_MAX + 1);
     const kept = rows.slice(0, BOOK_INDEX_ELEMENTS_MAX);
     const elements = new Map<string, { id: string; kind: ScopeElementInput['kind']; name: string; summary: string | null; stored: Map<string, FieldValue> }>();
@@ -53,7 +60,11 @@ export async function readBookText(db: PrismaTx, ctx: WorkspaceRequestContext, b
     for (const f of await BibleFieldRepository.listForElements(db, ctx.workspaceId, [...elements.keys()], FIELDS_PER_ELEMENT)) {
         elements.get(f.elementId)?.stored.set(f.key, decodeFieldValue(f.value));
     }
-    const texts: string[] = [];
+    const texts: string[] = [book.title];
+    if (book.logline) texts.push(book.logline);
+    for (const r of kept) if (r.customLabel) texts.push(r.customLabel);
+    const relations = await BibleRelationRepository.listForBook(db, ctx.workspaceId, bookId, BOOK_INDEX_RELATIONS_MAX + 1);
+    for (const r of relations.slice(0, BOOK_INDEX_RELATIONS_MAX)) if (r.note) texts.push(r.note);
     for (const e of elements.values()) {
         texts.push(e.name);
         if (e.summary) texts.push(e.summary);
@@ -63,7 +74,8 @@ export async function readBookText(db: PrismaTx, ctx: WorkspaceRequestContext, b
         }
     }
     const index = buildBookTextIndex(texts);
-    return { index: rows.length > BOOK_INDEX_ELEMENTS_MAX ? { ...index, incomplete: true } : index, elements, names: kept.map((r) => r.name) };
+    const cut = rows.length > BOOK_INDEX_ELEMENTS_MAX || relations.length > BOOK_INDEX_RELATIONS_MAX;
+    return { index: cut ? { ...index, incomplete: true } : index, elements, names: kept.map((r) => r.name) };
 }
 
 /** Refuse a brief whose question, purpose or a URL quotes the book's stored text (D9): 422 BRIEF_QUOTES_BIBLE, naming which part. */

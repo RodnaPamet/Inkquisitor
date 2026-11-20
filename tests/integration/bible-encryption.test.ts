@@ -113,7 +113,12 @@ beforeAll(async () => {
     const fileText = `Field notes say the falcon ${MARK} stays quiet in the dark mews.`;
     const cost = { tokensUsed: 10, costMicroUsd: 1, callIds: [] as string[] };
     const researcher: Researcher = {
-        gather: async () => ({ ok: true, output: { ...cost, stop: 'END_TURN', searches: [], requests: 1, fetches: [{ url: pageUrl, title: `Title ${MARK}`, text: page, retrievedAt: null, errorCode: null }] } }),
+        gather: async (request) => {
+            // The tool uses go through the run's tripwire, as the stream delivers them: each is listed (D15).
+            if (request.inspectToolUse({ tool: 'web_search', input: { query: `falcon ${MARK} hooding` } })) throw new Error('the query was refused');
+            if (request.inspectToolUse({ tool: 'web_fetch', input: { url: pageUrl } })) throw new Error('the URL was refused');
+            return { ok: true, output: { ...cost, stop: 'END_TURN', searches: [], requests: 1, fetches: [{ url: pageUrl, title: `Title ${MARK}`, text: page, retrievedAt: null, errorCode: null }] } };
+        },
         findings: async () => ({
             ok: true,
             ...cost,
@@ -147,6 +152,7 @@ beforeAll(async () => {
     expect(ran).toMatchObject({ outcome: 'OK' });
     expect(await prisma.researchProposal.count({ where: { runId } })).toBe(2);
     expect(await prisma.researchFinding.count({ where: { runId, noFitReason: { not: null } } })).toBe(1);
+    expect(await prisma.researchEgress.count({ where: { runId } })).toBe(2);
     Object.assign(ids, { ResearchBrief: brief.id, Run: runId });
 });
 
@@ -154,7 +160,7 @@ beforeAll(async () => {
 async function rawValues(model: string, field: string): Promise<string[]> {
     const byElement = model === 'BibleField' || model === 'BibleEntryVersion';
     const bySession = model === 'Question' || model === 'Answer' || model === 'EnrichmentProposal';
-    const byRun = model === 'ResearchFinding' || model === 'ResearchCitation' || model === 'ResearchProposal';
+    const byRun = model === 'ResearchFinding' || model === 'ResearchCitation' || model === 'ResearchProposal' || model === 'ResearchEgress';
     const byBrief = model === 'ResearchSource';
     const where = byElement ? `"elementId" = $1` : bySession ? `"sessionId" = $1` : byRun ? `"runId" = $1` : byBrief ? `"briefId" = $1` : `"id" = $1`;
     const id = byElement ? ids.BibleElement : bySession ? ids.Session : byRun ? ids.Run : byBrief ? ids.ResearchBrief : ids[model];
@@ -199,6 +205,7 @@ it('the manifest covers the bible, interview and research author text the briefs
             'ResearchProposal.newName',
             'ResearchProposal.newSummary',
             'ResearchProposal.rationale',
+            'ResearchEgress.text',
         ].sort(),
     );
 });

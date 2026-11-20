@@ -73,6 +73,7 @@ const LIST_QUERY_INDEXES: readonly ListQueryIndex[] = [
     { model: 'ResearchFinding', fields: ['workspaceId', 'runId', 'position'], justification: 'a run’s findings in order' },
     { model: 'ResearchProposal', fields: ['workspaceId', 'runId', 'createdAt'], justification: 'a run’s proposals in the order they were made' },
     { model: 'ResearchProposal', fields: ['elementId', 'fieldKey'], justification: 'the other pending research proposals for one field (superseded on an acceptance)' },
+    { model: 'ResearchEgress', fields: ['workspaceId', 'runId', 'position'], justification: 'a run’s queries and fetch URLs in order (decision D15, the run’s result page)' },
     { model: 'WorkspaceMembership', fields: ['userId'], justification: 'a person’s workspaces' },
     { model: 'WorkspaceMembership', fields: ['workspaceId', 'userId'], justification: 'a workspace’s members' },
     { model: 'UserSession', fields: ['userId', 'revokedAt'], justification: 'a person’s live sessions' },

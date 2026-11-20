@@ -23,7 +23,8 @@
  *   2. the gather request: it carries the brief and NOTHING ELSE of the book
  *      (no bible text, no manuscript), so the model writing the queries holds
  *      no stored text to quote. This is the guarantee D9 rests on.
- *   3. every web_search query and web_fetch URL the model issues, as the
+ *   3. every web_search query and web_fetch URL (its host as well as its path,
+ *      query and fragment) the model issues, as the
  *      stream completes it: a refusal stops the run (`QUERY_REFUSED`). The
  *      provider runs a server tool itself, so the query may already have left
  *      by the time it is read here: this is a TRIPWIRE that records and stops,
@@ -52,16 +53,38 @@ export interface BookTextIndex {
 
 const isContent = (w: string): boolean => w.length >= 3 && !STOP_WORDS.has(w);
 
-/** The words of a text as the check compares them (a URL's path and query decoded and split at punctuation). */
-export function egressWords(text: string): string[] {
-    let decoded = text;
-    try {
-        decoded = decodeURIComponent(text.replace(/\+/g, ' '));
-    } catch {
-        decoded = text;
+/** Percent-decoding rounds at most (a double-encoded `%2520` takes two). */
+export const PERCENT_DECODE_ROUNDS = 4;
+
+const PERCENT_RUN = /(?:%[0-9A-Fa-f]{2})+/g;
+
+/**
+ * Every `%XX` run decoded on its own, round after round until nothing changes:
+ * a malformed escape elsewhere in the text (`%zz`, a lone `%E2`) must not stop
+ * the rest from being decoded, or one stray `%` would hide a quotation spelt
+ * with `%20` between its words. A run that is not UTF-8 reads as a space.
+ */
+export function percentDecoded(text: string): string {
+    let current = text.replace(/\+/g, ' ');
+    for (let round = 0; round < PERCENT_DECODE_ROUNDS; round++) {
+        const next = current.replace(PERCENT_RUN, (run) => {
+            try {
+                return decodeURIComponent(run);
+            } catch {
+                return ' ';
+            }
+        });
+        if (next === current) break;
+        current = next;
     }
+    return current;
+}
+
+/** The words of a text as the check compares them (a URL's host, path and query decoded and split at punctuation). */
+export function egressWords(text: string): string[] {
+    const decoded = percentDecoded(text);
     // Apostrophes made one and a possessive read as its name (2.5's grounding form), so a curly quote cannot hide a quotation.
-    return words(groundingForm(normaliseText(decoded.replace(/[_\-./?=&#:%]+/g, ' '))));
+    return words(groundingForm(normaliseText(decoded.replace(/[_\-./?=&#:%@]+/g, ' '))));
 }
 
 function shinglesOf(ws: readonly string[], into: Set<string>): void {
@@ -92,18 +115,21 @@ export function buildBookTextIndex(texts: readonly string[]): BookTextIndex {
 }
 
 /**
- * The part of an outgoing text the check reads: for a web address, its path,
- * query and fragment (where a quotation could ride; the host is only where the
- * page lives); anything else whole.
+ * The forms of an outgoing text the check reads: the text as written, and for
+ * a web address also as the URL parser reads it (its host, path, query and
+ * fragment, dot segments resolved). The HOST is read too: a host name is sent
+ * to the resolver and to the site, so a subdomain spelt from the book's text
+ * (`the-butler-poisoned-lady-ashworth.example.com`) carries it out as surely
+ * as a path does.
  */
-function checkedPart(text: string): string {
+function checkedForms(text: string): string[] {
     const trimmed = text.trim();
-    if (!/^https?:\/\//i.test(trimmed)) return text;
+    if (!/^https?:\/\//i.test(trimmed)) return [text];
     try {
         const u = new URL(trimmed);
-        return `${u.pathname} ${u.search} ${u.hash}`;
+        return [text, `${u.hostname} ${u.pathname} ${u.search} ${u.hash}`];
     } catch {
-        return text;
+        return [text];
     }
 }
 
@@ -111,9 +137,11 @@ function checkedPart(text: string): string {
 export function outgoingTextRefusal(text: string, index: BookTextIndex): EgressRefusal | null {
     if (index.incomplete) return 'INDEX_INCOMPLETE';
     if (scanEgress(text).verdict !== 'clean') return 'CARRIES_SECRET';
-    const own = new Set<string>();
-    shinglesOf(egressWords(checkedPart(text)), own);
-    for (const s of own) if (index.shingles.has(s)) return 'QUOTES_BOOK_TEXT';
+    for (const form of checkedForms(text)) {
+        const own = new Set<string>();
+        shinglesOf(egressWords(form), own);
+        for (const s of own) if (index.shingles.has(s)) return 'QUOTES_BOOK_TEXT';
+    }
     return null;
 }
 

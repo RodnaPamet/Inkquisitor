@@ -1,7 +1,8 @@
 /**
  * What the Research page reads (Phase 2.6): the book's briefs with their
- * latest run, and one run's review — its findings with their quoted sources,
- * its proposals beside the current state of what each targets. `bible.view`
+ * latest run, and one run's review — every query and fetch URL it sent (D15),
+ * its findings with their quoted sources, its proposals beside the current
+ * state of what each targets. `bible.view`
  * reads (every member reads the bible and its research); what the viewer may
  * do is the page's `canEdit`, decided on the server.
  *
@@ -15,6 +16,7 @@ import { assertPermission } from '@/app-layer/policies/permission.policy';
 import { BibleElementRepository, BibleFieldRepository, BibleVersionRepository } from '@/app-layer/repositories/bible.repository';
 import {
     ResearchBriefRepository,
+    ResearchEgressRepository,
     ResearchFindingRepository,
     ResearchProposalRepository,
     ResearchRunRepository,
@@ -30,7 +32,7 @@ import type { FieldDef } from '@/lib/bible/template-schema';
 import { getFieldDef } from '@/lib/bible/templates';
 import { decodeResearchValue, decodeSourceUrls } from '@/lib/research/storage';
 import type { ProposalStatus } from '@/lib/enrichment/vocabulary';
-import { EMPTY_PROGRESS, effectiveRunState, type ResearchOutcome, type ResearchRunStatus, type RunProgress } from '@/lib/research/vocabulary';
+import { EMPTY_PROGRESS, effectiveRunState, RESEARCH_EGRESS_PER_RUN_MAX, runHasResults, type EgressTool, type ResearchOutcome, type ResearchRunStatus, type RunProgress } from '@/lib/research/vocabulary';
 import { requireBook } from './bible-common';
 import { listElements } from './bible-elements';
 import { getBook } from './books';
@@ -63,6 +65,9 @@ export interface RunView {
         fitRefusals: Record<string, number>;
         reviewRequired: boolean;
         errorCode: string | null;
+        /** D15: queries and URLs listed on the run, and those past the list's bound. */
+        egressListed: number;
+        egressUnlisted: number;
     };
 }
 
@@ -122,8 +127,19 @@ export interface ResearchNewElementView {
     findingIds: string[];
 }
 
+/** One query or fetch URL a run sent (decision D15), shown as text. */
+export interface EgressView {
+    position: number;
+    tool: EgressTool;
+    text: string;
+    /** The tripwire's code when it refused this one (and stopped the run), or null. */
+    refusal: string | null;
+}
+
 export interface RunReviewView {
     run: RunView;
+    /** Everything the run sent out, in order (D15), and how many more past the list's bound. */
+    egress: { items: EgressView[]; unlisted: number };
     findings: FindingView[];
     fields: ResearchFieldProposalView[];
     newElements: ResearchNewElementView[];
@@ -157,6 +173,8 @@ export function runView(run: ResearchRunRow): RunView {
             fitRefusals: asRecord(m.fitRefusals),
             reviewRequired: m.reviewRequired === true,
             errorCode: typeof m.errorCode === 'string' ? m.errorCode : null,
+            egressListed: num('egressListed'),
+            egressUnlisted: num('egressUnlisted'),
         },
     };
 }
@@ -274,7 +292,13 @@ export async function getResearchRunReview(ctx: WorkspaceRequestContext, bookId:
                 findingIds,
             });
         }
-        return { run: runView(run), findings, fields, newElements };
+        const egressRows = await ResearchEgressRepository.listForRun(db, ctx.workspaceId, run.id, RESEARCH_EGRESS_PER_RUN_MAX);
+        const view = runView(run);
+        const egress = {
+            items: egressRows.map((e) => ({ position: e.position, tool: (e.tool === 'web_fetch' ? 'web_fetch' : 'web_search') as EgressTool, text: e.text, refusal: e.refusal })),
+            unlisted: view.metrics.egressUnlisted,
+        };
+        return { run: view, egress, findings, fields, newElements };
     });
 }
 
@@ -285,6 +309,6 @@ const SCOPE_PICKER_ELEMENTS = 100;
 export async function loadResearchPage(ctx: WorkspaceRequestContext, bookId: string) {
     const [book, list, elements] = await Promise.all([getBook(ctx, bookId), listResearchBriefs(ctx, bookId), listElements(ctx, bookId, { take: SCOPE_PICKER_ELEMENTS })]);
     const latest = list.briefs[0]?.latestRun ?? null;
-    const initialReview = latest && latest.status !== 'QUEUED' && latest.status !== 'RUNNING' && (latest.metrics.findingsKept > 0 || latest.metrics.proposalsKept > 0) ? await getResearchRunReview(ctx, bookId, latest.id) : null;
+    const initialReview = latest && latest.status !== 'QUEUED' && latest.status !== 'RUNNING' && runHasResults(latest.metrics) ? await getResearchRunReview(ctx, bookId, latest.id) : null;
     return { book, ...list, elements: elements.elements.map((e) => ({ id: e.id, name: e.name, kind: e.kind })), initialReview };
 }

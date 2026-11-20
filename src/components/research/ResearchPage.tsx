@@ -54,7 +54,7 @@ import {
     type RunReviewView,
     type RunView,
 } from '@/lib/research/api-client';
-import { RESEARCH_DEPTHS, type ResearchDepth } from '@/lib/research/vocabulary';
+import { RESEARCH_DEPTHS, runHasResults, type ResearchDepth } from '@/lib/research/vocabulary';
 import { useResearchStream } from './use-research-stream';
 
 export interface ResearchPageProps {
@@ -445,6 +445,46 @@ function NewElementCard({ p, findings, canEdit, busy, kindLabel, onAccept, onRej
     );
 }
 
+/** Code-named refusals the egress list words; any other reads as the generic one. */
+const EGRESS_REFUSALS = ['QUOTES_BOOK_TEXT', 'CARRIES_SECRET', 'INDEX_INCOMPLETE', 'UNREADABLE_TOOL_INPUT', 'TOOL_NOT_PERMITTED'] as const;
+
+/**
+ * Everything a run sent out (decision D15): each search query and fetched
+ * address, in order, as plain text — never a link, so reading the list fetches
+ * nothing — a refused one marked with why the run stopped.
+ */
+function EgressList({ runId, egress }: { runId: string; egress: RunReviewView['egress'] }) {
+    const t = useTranslations('research.egress');
+    const headingId = `egress-${runId}`;
+    return (
+        <section aria-labelledby={headingId} className="space-y-default" data-testid="run-egress">
+            <div className="space-y-1">
+                <h3 id={headingId} className="text-base font-semibold text-content-emphasis">
+                    {t('title')}
+                </h3>
+                <p className="text-sm text-content-muted">{t('description')}</p>
+            </div>
+            {egress.items.length === 0 ? <p className="text-sm text-content-muted">{t('none')}</p> : null}
+            {egress.items.length > 0 ? (
+                <ol className="space-y-tight text-sm text-content-default">
+                    {egress.items.map((e) => (
+                        <li key={e.position} className="break-all" data-testid="run-egress-item" data-refused={e.refusal ? 'true' : 'false'}>
+                            <span className="font-medium">{t(`tool.${e.tool}`)}</span> <span>{e.text}</span>
+                            {e.refusal ? ' ' : null}
+                            {e.refusal ? (
+                                <span className="ml-2 inline-block">
+                                    <StatusBadge variant="warning">{(EGRESS_REFUSALS as readonly string[]).includes(e.refusal) ? t(`refusal.${e.refusal}`) : t('refusal.generic')}</StatusBadge>
+                                </span>
+                            ) : null}
+                        </li>
+                    ))}
+                </ol>
+            ) : null}
+            {egress.unlisted > 0 ? <p className="text-sm text-content-warning">{t('unlisted', { count: egress.unlisted })}</p> : null}
+        </section>
+    );
+}
+
 function RunReview({ review, ids, canEdit, kindLabels, onChanged, workspaceSlug, bookId }: { review: RunReviewView; ids: ResearchIds; canEdit: boolean; kindLabels: ResearchPageProps['kindLabels']; onChanged: () => Promise<void>; workspaceSlug: string; bookId: string }) {
     const t = useTranslations('research');
     const te = useTranslations('enrichment');
@@ -490,6 +530,7 @@ function RunReview({ review, ids, canEdit, kindLabels, onChanged, workspaceSlug,
     };
     return (
         <div className="space-y-section" data-testid="run-review">
+            <EgressList runId={review.run.id} egress={review.egress} />
             {review.findings.length > 0 ? (
                 <section aria-labelledby={`findings-${review.run.id}`} className="space-y-default">
                     <h3 id={`findings-${review.run.id}`} className="text-base font-semibold text-content-emphasis">
@@ -613,7 +654,7 @@ function BriefCard({ brief, ids, canEdit, kindLabels, onChanged, initialReview, 
                     <input ref={fileRef} type="file" accept=".txt,.md,text/plain,text/markdown" className="sr-only" tabIndex={-1} aria-label={t('attach')} onChange={(e) => void attach(e.target.files?.[0])} data-testid={`attach-input-${brief.id}`} />
                 </div>
             ) : null}
-            {run && !live(run) && (run.metrics.findingsKept > 0 || run.metrics.proposalsKept > 0) ? (
+            {run && !live(run) && runHasResults(run.metrics) ? (
                 <Button variant="secondary" size="sm" onClick={() => (reviewOpen ? setReview(null) : void loadReview(run.id))} aria-expanded={reviewOpen} id={`results-brief-${brief.id}`}>
                     {reviewOpen ? t('hideResults') : t('viewResults')}
                 </Button>

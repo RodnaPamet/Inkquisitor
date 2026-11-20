@@ -178,6 +178,7 @@ it('there is something to cover: zero tables is never complete coverage', () => 
             'ResearchCitation',
             'ResearchProposal',
             'ResearchProposalFinding',
+            'ResearchEgress',
             'AiCallLog',
             'AiSpendMonth',
             'AiSpendReservation',

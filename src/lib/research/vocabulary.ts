@@ -43,6 +43,23 @@ export const DEPTH_BUDGETS: Readonly<Record<ResearchDepth, DepthBudget>> = {
     THOROUGH: { searches: 12, fetches: 16, requests: 6, gatherSpendMicroUsd: 2_500_000, findings: 16 },
 };
 
+/**
+ * Queries and fetch URLs a run lists at most (decision D15; the CHECK
+ * `ResearchEgress_shape`). The deepest depth allows 28 tool uses; a model that
+ * keeps asking past its caps is still listed up to here, and the rest are
+ * counted (`egressUnlisted`) and said, never silently dropped.
+ */
+export const RESEARCH_EGRESS_PER_RUN_MAX = 100;
+
+/** A finished run has something to show: findings, proposals, or (D15) the queries and URLs it sent. */
+export function runHasResults(m: { findingsKept: number; proposalsKept: number; egressListed: number; egressUnlisted: number }): boolean {
+    return m.findingsKept > 0 || m.proposalsKept > 0 || m.egressListed > 0 || m.egressUnlisted > 0;
+}
+
+/** The tools whose inputs leave the product, as a run's egress list names them. */
+export const EGRESS_TOOLS = ['web_search', 'web_fetch'] as const;
+export type EgressTool = (typeof EGRESS_TOOLS)[number];
+
 /** Each fetched page's text is cut at this many tokens by the fetch tool itself (`max_content_tokens`). */
 export const FETCH_MAX_CONTENT_TOKENS = 8_000;
 

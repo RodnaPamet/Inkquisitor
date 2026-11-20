@@ -30,6 +30,23 @@ describe('outgoingTextRefusal', () => {
         expect(outgoingTextRefusal(text, BOOK)).toBe('QUOTES_BOOK_TEXT');
     });
 
+    it.each([
+        ['spelt in a subdomain', 'https://queens-gyrfalcons-in-the-old-stone-mews.example.org/'],
+        ['spelt across subdomain labels', 'https://queens.gyrfalcons.in.the.old.example.org/index.html'],
+        ['in a brief URL’s host with an innocent path', 'https://royal-falconer-who-keeps.example.net/about'],
+    ])('refuses the stored text %s: a host is sent to the resolver and the site too', (_label, text) => {
+        expect(outgoingTextRefusal(text, BOOK)).toBe('QUOTES_BOOK_TEXT');
+        expect(toolUseRefusal({ tool: 'web_fetch', input: { url: text } }, BOOK)).toBe('QUOTES_BOOK_TEXT');
+    });
+
+    it.each([
+        ['a stray malformed escape beside %20-spelt words', 'https://example.org/s?q=queen%E2%80%99s%20gyrfalcons%20in%20the%20old&x=%zz'],
+        ['a lone truncated escape in a query', 'queen%27s%20gyrfalcons%20in%20the%20old%E2'],
+        ['a double-encoded quotation', 'https://example.org/s?q=queens%2520gyrfalcons%2520in%2520the%2520old'],
+    ])('refuses %s: one bad escape does not stop the rest being decoded', (_label, text) => {
+        expect(outgoingTextRefusal(text, BOOK)).toBe('QUOTES_BOOK_TEXT');
+    });
+
     it('refuses a secret whatever the book holds (2.1’s egress scanner)', () => {
         expect(outgoingTextRefusal(`falconry ${['AKIA', 'IOSFODNN7EXAMPLE'].join('')}`, BOOK)).toBe('CARRIES_SECRET');
     });

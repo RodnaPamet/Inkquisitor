@@ -47,6 +47,14 @@ test('brief → run (progress) → cited finding → proposal → accept writes 
     await expect(brief.getByTestId('run-summary')).toHaveAttribute('data-outcome', 'OK', { timeout: 90_000 });
     await expect(brief.getByTestId('run-outcome')).toContainText('rests on a passage quoted from its source');
 
+    // What the run sent out (D15): its search and its fetched page, listed as text.
+    const egress = brief.getByTestId('run-egress');
+    await expect(egress).toBeVisible({ timeout: 20_000 });
+    await expect(egress.getByTestId('run-egress-item')).toHaveCount(2);
+    await expect(egress.getByTestId('run-egress-item').first()).toContainText('Search:');
+    await expect(egress.getByTestId('run-egress-item').nth(1)).toContainText('Fetched: https://research.stub.example/');
+    await expect(egress.getByRole('link')).toHaveCount(0);
+
     // The finding, its quote and its source; the proposal, as a diff.
     const finding = brief.getByTestId('research-finding').first();
     await expect(finding).toBeVisible({ timeout: 20_000 });

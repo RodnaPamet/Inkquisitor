@@ -5,7 +5,8 @@
  * handed; it reads and writes no table.
  *
  *   1. GATHER   the server-tool turn, its data the brief alone (D9), its every
- *               query and URL through the egress tripwire. The pages it
+ *               query and URL through the egress tripwire, and each told to
+ *               `onEgress` as the stream delivers it (D15: the run lists them). The pages it
  *               fetched as text become sources `web.N` (deduplicated by URL,
  *               cut at `SOURCE_TEXT_MAX_CHARS`); the author's attached files
  *               are `file.N`. A gather that fails ends the run with its named
@@ -34,7 +35,7 @@ import type { GatherOutput, Researcher, StepCost } from './researcher';
 import { parseFindingsOutput, parseFitOutput } from './schema';
 import { SOURCES_PER_RUN_MAX, sourceTextOf, webUrlOf, type ResearchSourceDoc } from './sources';
 import { validateFindings, validateFit, type FindingDraft, type FitDraft, type FitElement } from './validate';
-import { DEPTH_BUDGETS, FETCH_MAX_CONTENT_TOKENS, type FindingRefusal, type FitRefusal, type ResearchDepth, type ResearchOutcome, type RunProgress } from './vocabulary';
+import { DEPTH_BUDGETS, FETCH_MAX_CONTENT_TOKENS, type EgressTool, type FindingRefusal, type FitRefusal, type ResearchDepth, type ResearchOutcome, type RunProgress } from './vocabulary';
 
 export interface ScopeElementInput {
     readonly elementId: string;
@@ -75,6 +76,9 @@ export interface ResearchMetrics {
     reviewRequired: boolean;
     guardRuleIds: string[];
     errorCode?: string;
+    /** D15: queries and URLs listed on the run, and those past the list's bound (counted, said). Set by the run's usecase. */
+    egressListed?: number;
+    egressUnlisted?: number;
 }
 
 export interface ResearchStepsResult {
@@ -87,6 +91,16 @@ export interface ResearchStepsResult {
 }
 
 export type ProgressObserver = (progress: RunProgress) => void;
+
+/** One query or fetch URL the gather turn sent, as the tripwire judged it (decision D15: every one is listed). */
+export interface EgressSeen {
+    readonly tool: EgressTool;
+    /** The query or URL as the model wrote it (an unreadable input as it came). */
+    readonly input: unknown;
+    /** The tripwire's refusal code, or null. */
+    readonly refusal: string | null;
+}
+export type EgressObserver = (seen: EgressSeen) => void;
 
 /** The gather turn's web tools for a depth (the caps a test pins). */
 export function webToolsForDepth(depth: ResearchDepth) {
@@ -193,7 +207,13 @@ function charge(m: ResearchMetrics, cost: StepCost): void {
 }
 
 /** Run the three steps. Never throws for a model condition: every one is a named outcome. */
-export async function runResearchSteps(input: ResearchRunInput, researcher: Researcher, observe: ProgressObserver = () => {}, signal?: AbortSignal): Promise<ResearchStepsResult> {
+export async function runResearchSteps(
+    input: ResearchRunInput,
+    researcher: Researcher,
+    observe: ProgressObserver = () => {},
+    signal?: AbortSignal,
+    onEgress: EgressObserver = () => {},
+): Promise<ResearchStepsResult> {
     const metrics = emptyMetrics();
     const none = new Map<string, string>();
     const progress = (p: Partial<RunProgress> & Pick<RunProgress, 'phase'>) =>
@@ -216,7 +236,19 @@ export async function runResearchSteps(input: ResearchRunInput, researcher: Rese
             tools: plan.tools,
             maxRequests: plan.maxRequests,
             budgetMicroUsd: plan.budgetMicroUsd,
-            inspectToolUse: (use) => toolUseRefusal(use, input.bookIndex),
+            inspectToolUse: (use) => {
+                const refusal = toolUseRefusal(use, input.bookIndex);
+                if (use.tool === 'web_search' || use.tool === 'web_fetch') {
+                    const raw = use.input as { query?: unknown; url?: unknown } | null;
+                    const text = use.tool === 'web_search' ? raw?.query : raw?.url;
+                    try {
+                        onEgress({ tool: use.tool, input: typeof text === 'string' ? text : use.input, refusal });
+                    } catch {
+                        // Told, never asked: a failing observer changes nothing about the run.
+                    }
+                }
+                return refusal;
+            },
             bookId: input.bookId,
         },
         {

@@ -18,7 +18,8 @@
  */
 import { prisma } from '@/lib/db';
 import { runWithoutRls } from '@/lib/db/rls-middleware';
-import { createBook } from '@/app-layer/usecases/books';
+import { createBook, updateBook } from '@/app-layer/usecases/books';
+import { addRelation } from '@/app-layer/usecases/bible-relations';
 import { createElement, updateElementFields } from '@/app-layer/usecases/bible-elements';
 import { purgeDeletedBooks } from '@/app-layer/usecases/book-purge';
 import { deleteBook } from '@/app-layer/usecases/books';
@@ -163,6 +164,19 @@ describe('a full run', () => {
         expect(calls[0].costMicroUsd).toBeGreaterThanOrEqual(10_000);
         expect((await prisma.researchRun.findUniqueOrThrow({ where: { id: runId } })).spentMicroUsd).toBe(calls.reduce((n, c) => n + c.costMicroUsd, 0));
 
+        // D15: every query and fetch URL the run sent is listed on its result, in order.
+        expect(review.egress).toEqual({
+            items: [
+                { position: 0, tool: 'web_search', text: 'medieval falconry hawk training', refusal: null },
+                { position: 1, tool: 'web_fetch', text: PAGE.url, refusal: null },
+            ],
+            unlisted: 0,
+        });
+        expect(review.run.metrics.egressListed).toBe(2);
+        const rawEgress = await prisma.$queryRaw<Array<{ text: string }>>`SELECT "text" FROM "ResearchEgress" WHERE "runId" = ${runId}`;
+        expect(rawEgress).toHaveLength(2);
+        for (const r of rawEgress) expect(r.text.startsWith('v2:')).toBe(true);
+
         // Encrypted at rest: the raw columns are envelopes, never the text.
         const raw = await prisma.$queryRaw<Array<{ claim: string; quotedSpan: string; question: string; rationale: string }>>`
             SELECT f."claim", c."quotedSpan", b."question", p."rationale"
@@ -261,6 +275,35 @@ describe('queries never carry the book’s text (D9)', () => {
         expect(await prisma.researchFinding.count({ where: { workspaceId: ctx.workspaceId } })).toBe(0);
         const call = await prisma.aiCallLog.findFirstOrThrow({ where: { workspaceId: ctx.workspaceId } });
         expect(call).toMatchObject({ outcome: 'REFUSED_GUARD', errorCode: 'TOOL_USE_REFUSED' });
+        // D15: the refused query is listed too, marked: the author sees exactly what left.
+        const runs = await prisma.researchRun.findMany({ where: { briefId: brief.id }, take: 1 });
+        const review = await getResearchRunReview(ctx, bookId, runs[0].id);
+        expect(review.egress.items).toEqual([{ position: 0, tool: 'web_search', text: 'keeps the queen’s gyrfalcons in the old stone mews', refusal: 'QUOTES_BOOK_TEXT' }]);
+    });
+
+    it('the brief gate reads ALL the book’s stored text: its title and logline, and every relation’s note', async () => {
+        const { ctx, bookId, elementId } = await setup();
+        await updateBook(ctx, bookId, { title: 'The Falconer of Hollow Mere Abbey', logline: 'A disgraced falconer must train a wild merlin before the winter hunt.' });
+        const other = await createElement(ctx, bookId, { kind: 'CHARACTER', name: 'Brother Aldo' });
+        await addRelation(ctx, bookId, { fromElementId: elementId, toElementId: other.id, type: 'related_to', note: 'He secretly sold the abbey’s hawks to the smugglers of Rye.' });
+        for (const question of [
+            'Was a falconer of Hollow Mere Abbey a real office?',
+            'How would one train a wild merlin before the winter hunt?',
+            'Who sold the abbey’s hawks to the smugglers of Rye in history?',
+        ]) {
+            expect((await refusal(createResearchBrief(ctx, bookId, { question, purpose: 'Background.', depth: 'QUICK' }))).details).toMatchObject({ reason: 'BRIEF_QUOTES_BIBLE', part: 'question' });
+        }
+        // A host spelt from the book's text is refused as surely as a path.
+        expect(
+            (await refusal(createResearchBrief(ctx, bookId, { question: 'How were merlins trained?', purpose: 'Background.', urls: ['https://sold-the-abbeys-hawks-to-the-smugglers.example.org/'], depth: 'QUICK' }))).details,
+        ).toMatchObject({ reason: 'BRIEF_QUOTES_BIBLE', part: 'url.1' });
+        expect(await prisma.researchBrief.count({ where: { workspaceId: ctx.workspaceId } })).toBe(0);
+    });
+
+    it('a brief whose question or purpose sanitises to nothing is a 400, not a 500', async () => {
+        const { ctx, bookId } = await setup();
+        expect(await refusal(createResearchBrief(ctx, bookId, { question: '<b></b>', purpose: 'Background.', depth: 'QUICK' }))).toMatchObject({ status: 400, details: { reason: 'BRIEF_EMPTY', part: 'question' } });
+        expect(await refusal(createResearchBrief(ctx, bookId, { question: 'How were merlins trained?', purpose: '   ', depth: 'QUICK' }))).toMatchObject({ status: 400, details: { reason: 'BRIEF_EMPTY', part: 'purpose' } });
     });
 });
 
@@ -319,6 +362,21 @@ describe('isolation, retention and refusals', () => {
             return tx.$queryRaw<Array<{ n: number }>>`SELECT count(*)::int AS n FROM "ResearchFinding" WHERE "runId" = ${runId}`;
         });
         expect(leak[0].n).toBe(0);
+        const egressLeak = await prisma.$transaction(async (tx) => {
+            await tx.$executeRaw`SET LOCAL ROLE app_user`;
+            await tx.$executeRaw`SELECT set_config('app.workspace_id', ${other.workspaceId}, true)`;
+            return tx.$queryRaw<Array<{ n: number }>>`SELECT count(*)::int AS n FROM "ResearchEgress" WHERE "runId" = ${runId}`;
+        });
+        expect(egressLeak[0].n).toBe(0);
+        expect(await prisma.researchEgress.count({ where: { runId } })).toBeGreaterThan(0);
+        // What left is a fact: the workspace's own role may not rewrite or delete it.
+        await expect(
+            prisma.$transaction(async (tx) => {
+                await tx.$executeRaw`SET LOCAL ROLE app_user`;
+                await tx.$executeRaw`SELECT set_config('app.workspace_id', ${ctx.workspaceId}, true)`;
+                await tx.$executeRaw`UPDATE "ResearchEgress" SET "refusal" = NULL WHERE "runId" = ${runId}`;
+            }),
+        ).rejects.toThrow(/permission denied/);
 
         await deleteBook(ctx, bookId);
         await prisma.book.update({ where: { id: bookId }, data: { deletedAt: new Date(Date.now() - 31 * 86_400_000) } });
@@ -330,6 +388,7 @@ describe('isolation, retention and refusals', () => {
             prisma.researchCitation.count({ where: { runId } }),
             prisma.researchProposal.count({ where: { bookId } }),
             prisma.researchSource.count({ where: { bookId } }),
+            prisma.researchEgress.count({ where: { runId } }),
         ]))
             expect(n).toBe(0);
     });
@@ -344,8 +403,11 @@ describe('isolation, retention and refusals', () => {
         await addMember(owner.workspaceId, reader.id, 'READER');
         const readerCtx = { ...workspaceCtx(owner, 'READER'), userId: reader.id };
         expect((await refusal(dispatchResearchRun(readerCtx, bookId, brief.id, { gate: MOUNTED_GATE, enqueue: async () => undefined }))).status).toBe(403);
-        // A reader reads.
+        // A reader reads, the run's egress list included (D15).
         expect((await listResearchBriefs(readerCtx, bookId)).briefs).toHaveLength(1);
+        const seeded = await seedResearchRun(ctx, bookId, elementId, 'How were hawks hooded in medieval falconry?');
+        const readerReview = await getResearchRunReview(readerCtx, bookId, seeded.runId);
+        expect(readerReview.egress.items.map((e) => e.tool)).toEqual(['web_search', 'web_fetch']);
     });
 
     it('a requester who may no longer edit ends the run REFUSED; a run that is not QUEUED is left alone', async () => {
@@ -365,5 +427,27 @@ describe('isolation, retention and refusals', () => {
         // The run whose job never reached the queue is ended, never left QUEUED.
         const runs = await prisma.researchRun.findMany({ where: { briefId: brief.id }, orderBy: { createdAt: 'desc' }, take: 1 });
         expect(runs[0]).toMatchObject({ status: 'FAILED', outcome: 'INTERNAL' });
+    });
+
+    it('a stale run is ended in the database before another starts, and a stale queued job never starts late', async () => {
+        const { ctx, bookId, elementId } = await setup();
+        const brief = await createResearchBrief(ctx, bookId, { question: 'How did medieval falconers train their hawks?', purpose: 'Methods.', scopeElementIds: [elementId], depth: 'QUICK' });
+        const stale = new Date(Date.now() - 31 * 60_000);
+        // A job lost (or stuck behind a long queue) for over the stale bound: the page reads it FAILED CLAIM_EXPIRED.
+        const first = await dispatchResearchRun(ctx, bookId, brief.id, { gate: MOUNTED_GATE, enqueue: async () => undefined });
+        await prisma.researchRun.update({ where: { id: first.runId }, data: { createdAt: stale } });
+        // Run again: the stale row is ended in the database, so its job can no longer claim it.
+        const second = await dispatchResearchRun(ctx, bookId, brief.id, { gate: MOUNTED_GATE, enqueue: async () => undefined });
+        expect(await prisma.researchRun.findUniqueOrThrow({ where: { id: first.runId } })).toMatchObject({ status: 'FAILED', outcome: 'CLAIM_EXPIRED' });
+        const fake = fakeAnthropic([]);
+        expect(await executeResearchRun({ workspaceId: ctx.workspaceId, runId: first.runId }, { gate: MOUNTED_GATE, researcher: (c) => defaultResearcher(c, { fetch: fake.fetch }) })).toEqual({ ran: false, outcome: null });
+        // A queued job that waited past the bound with nobody dispatching again: ended as it reads, nothing sent.
+        await prisma.researchRun.update({ where: { id: second.runId }, data: { createdAt: stale } });
+        expect(await executeResearchRun({ workspaceId: ctx.workspaceId, runId: second.runId }, { gate: MOUNTED_GATE, researcher: (c) => defaultResearcher(c, { fetch: fake.fetch }) })).toEqual({
+            ran: true,
+            outcome: 'CLAIM_EXPIRED',
+        });
+        expect(fake.requests).toHaveLength(0);
+        expect(await prisma.researchRun.findUniqueOrThrow({ where: { id: second.runId } })).toMatchObject({ status: 'FAILED', outcome: 'CLAIM_EXPIRED' });
     });
 });

@@ -1045,6 +1045,24 @@
             "REQUESTER_NOT_PERMITTED": "The person who started this run may no longer edit the bible."
         },
         "guardFlag": "A source carried text that reads like an instruction to the model. It was treated as data; read these findings with care.",
+        "egress": {
+            "title": "What this run sent out",
+            "description": "Every search query and page address this run sent, in order, exactly as written. Searches go to Anthropic and its search provider; addresses go to the sites that hold the pages.",
+            "none": "This run sent no query and fetched no page.",
+            "tool": {
+                "web_search": "Search:",
+                "web_fetch": "Fetched:"
+            },
+            "refusal": {
+                "QUOTES_BOOK_TEXT": "Stopped the run: it repeated text from your book",
+                "CARRIES_SECRET": "Stopped the run: it looked like a password or key",
+                "INDEX_INCOMPLETE": "Stopped the run: your book is too large to check against",
+                "UNREADABLE_TOOL_INPUT": "Stopped the run: it could not be read",
+                "TOOL_NOT_PERMITTED": "Stopped the run: not a search or a page fetch",
+                "generic": "Stopped the run"
+            },
+            "unlisted": "Not listed: {count} more sent by this run (the list keeps the first 100)."
+        },
         "findings": {
             "title": "Findings",
             "sources": "Sources",
@@ -1070,6 +1088,7 @@
         "errors": {
             "generic": "That did not work. Try again.",
             "BRIEF_QUOTES_BIBLE": "The brief repeats text from your book. Queries never carry bible text: rephrase it in your own words.",
+            "BRIEF_EMPTY": "Write the question and what it is for in words.",
             "SCOPE_ELEMENT_NOT_IN_BOOK": "One of the chosen entries is no longer in this book.",
             "URL_INVALID": "Each URL must start with http:// or https://.",
             "RUN_IN_PROGRESS": "This brief is already being researched.",

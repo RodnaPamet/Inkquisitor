@@ -260,7 +260,7 @@ src/app/w/[workspaceSlug]/books/[bookId]/interviews/[sessionId]/review → the r
 Phase 2.6 (the research agent, D9) added:
 
 ```
-prisma/schema/research.prisma → ResearchBrief, ResearchSource, ResearchRun, ResearchFinding, ResearchCitation, ResearchProposal(+Finding)
+prisma/schema/research.prisma → ResearchBrief, ResearchSource, ResearchRun, ResearchFinding, ResearchCitation, ResearchProposal(+Finding), ResearchEgress (D15)
 src/lib/ai/server-tool-loop.ts → runServerToolLoop: the web tools' pause_turn loop (one AiCallLog row a request, the tripwire)
 src/lib/research/            → the pure core: vocabulary (depth budgets, outcomes), query-egress (THE egress check), sources
                                (quoteFound), prompt (GATHER / FINDINGS / FIT), schema, validate, run (runResearchSteps), researcher,
@@ -816,11 +816,15 @@ closed beta with an explicit operator flag (D5, amended 2026-11-19).
   `runServerToolLoop`), FINDINGS and FIT (`callStructured`). QUERY EGRESS
   (`src/lib/research/query-egress.ts`, the header is the contract): the brief
   is refused when it quotes the book's stored text (`BRIEF_QUOTES_BIBLE`, a
-  4-word shingle with 2 content words), the gather request carries the brief
-  and NOTHING ELSE of the book, and each query and fetch URL is checked as the
-  stream completes it — a TRIPWIRE (the provider runs a server tool before we
-  see it), never described as a gate. Never add bible, manuscript or answer
-  text to the gather request. Fetched pages and files are untrusted data
+  4-word shingle with 2 content words, against the book's title, logline,
+  element names, labels, summaries, field values and relation notes), the
+  gather request carries the brief and NOTHING ELSE of the book, and each
+  query and fetch URL (its host too) is checked as the stream completes it — a
+  TRIPWIRE (the provider runs a server tool before we see it), never described
+  as a gate. Never add bible, manuscript or answer text to the gather request.
+  Every query and URL a run sent is stored as the stream delivers it
+  (`ResearchEgress`, encrypted, at most 100 a run, refused ones marked) and
+  listed on the run's result page as plain text (D15). Fetched pages and files are untrusted data
   (fenced, guard-scanned) and never stored whole: a finding stores only a
   quoted span `quoteFound` verified in the text the findings call was shown
   (search results are encrypted by the provider, so only FETCHED pages can be

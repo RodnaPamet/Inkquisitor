@@ -37,7 +37,7 @@ function run(over: Partial<RunView> = {}): RunView {
         spentMicroUsd: 42_000,
         createdAt: '2026-11-20T10:00:00.000Z',
         finishedAt: '2026-11-20T10:01:00.000Z',
-        metrics: { searches: 2, fetches: 3, sourcesRead: 3, findingsDrafted: 2, findingsKept: 1, proposalsKept: 1, findingRefusals: {}, fitRefusals: {}, reviewRequired: false, errorCode: null },
+        metrics: { searches: 2, fetches: 3, sourcesRead: 3, findingsDrafted: 2, findingsKept: 1, proposalsKept: 1, findingRefusals: {}, fitRefusals: {}, reviewRequired: false, errorCode: null, egressListed: 2, egressUnlisted: 0 },
         ...over,
     };
 }
@@ -60,6 +60,13 @@ function brief(over: Partial<BriefView> = {}): BriefView {
 
 const REVIEW: RunReviewView = {
     run: run(),
+    egress: {
+        items: [
+            { position: 0, tool: 'web_search', text: 'medieval falconry manning a hawk', refusal: null },
+            { position: 1, tool: 'web_fetch', text: 'https://falconry.example.org/manning', refusal: null },
+        ],
+        unlisted: 0,
+    },
     findings: [
         {
             id: 'f-1',
@@ -162,7 +169,7 @@ describe('the research page', () => {
 
     it('zero is never complete: a run that kept nothing says why', () => {
         mockFetch({});
-        renderPage({ briefs: [brief({ latestRun: run({ outcome: 'NO_SOURCES', metrics: { ...run().metrics, findingsKept: 0, proposalsKept: 0 } }) })], initialReview: null });
+        renderPage({ briefs: [brief({ latestRun: run({ outcome: 'NO_SOURCES', metrics: { ...run().metrics, findingsKept: 0, proposalsKept: 0, egressListed: 0 } }) })], initialReview: null });
         expect(screen.getByTestId('run-outcome')).toHaveTextContent('Nothing was found to read');
         expect(screen.queryByRole('button', { name: 'Show results' })).toBeNull();
     });
@@ -175,9 +182,42 @@ describe('the research page', () => {
         expect(requests.find((r) => r.method === 'POST')!.body).toEqual({ baseVersion: 2 });
     });
 
+    it('lists every query and address the run sent, as text and never as a link; a refused one is marked (D15)', async () => {
+        mockFetch({});
+        const refused: RunReviewView = {
+            ...REVIEW,
+            run: run({ outcome: 'QUERY_REFUSED', status: 'FAILED', metrics: { ...run().metrics, findingsKept: 0, proposalsKept: 0, egressListed: 3, egressUnlisted: 4 } }),
+            egress: {
+                items: [
+                    ...REVIEW.egress.items,
+                    { position: 2, tool: 'web_search', text: 'javascript:alert(1) the queen’s gyrfalcons in the old mews', refusal: 'QUOTES_BOOK_TEXT' },
+                ],
+                unlisted: 4,
+            },
+            findings: [],
+            fields: [],
+        };
+        const { container } = renderPage({ briefs: [brief({ status: 'FAILED', latestRun: refused.run })], initialReview: refused });
+        const list = screen.getByTestId('run-egress');
+        expect(within(list).getByText('What this run sent out')).toBeInTheDocument();
+        const items = within(list).getAllByTestId('run-egress-item');
+        expect(items.map((li) => li.textContent)).toEqual([
+            'Search: medieval falconry manning a hawk',
+            'Fetched: https://falconry.example.org/manning',
+            'Search: javascript:alert(1) the queen’s gyrfalcons in the old mews Stopped the run: it repeated text from your book',
+        ]);
+        expect(items[2]).toHaveAttribute('data-refused', 'true');
+        expect(within(list).queryAllByRole('link')).toHaveLength(0);
+        expect(within(list).getByText('Not listed: 4 more sent by this run (the list keeps the first 100).')).toBeInTheDocument();
+        // A run that kept nothing but sent something still opens its results.
+        expect(screen.getByRole('button', { name: 'Hide results' })).toBeInTheDocument();
+        expect(await axe(container)).toHaveNoViolations();
+    });
+
     it('a reader reads everything and decides nothing', () => {
         mockFetch({});
         renderPage({ canEdit: false });
+        expect(within(screen.getByTestId('run-egress')).getAllByTestId('run-egress-item')).toHaveLength(2);
         expect(screen.queryByRole('button', { name: 'Save brief' })).toBeNull();
         expect(screen.queryByRole('button', { name: 'Run again' })).toBeNull();
         expect(screen.queryByRole('button', { name: /^Accept/ })).toBeNull();

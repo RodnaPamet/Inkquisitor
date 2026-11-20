@@ -21,7 +21,9 @@
  *               through the tripwire), findings, fit. Progress — a phase and
  *               counts, never text — is written to the run as it goes, for the
  *               progress stream.
- *   4. PERSIST  one transaction: if the run is still RUNNING, every kept
+ *   4. PERSIST  one transaction: every query and fetch URL the gather sent
+ *               (D15; each was also written as the stream delivered it), then,
+ *               if the run is still RUNNING, every kept
  *               finding with its citations (sanitised again, encrypted), every
  *               proposal that still fits the bible as it stands NOW (an ADD into
  *               a field still empty, an UPDATE of a value still unchanged, a
@@ -45,6 +47,7 @@ import { WorkspaceRepository } from '@/app-layer/repositories/workspace.reposito
 import {
     ResearchBriefRepository,
     ResearchCitationRepository,
+    ResearchEgressRepository,
     ResearchFindingRepository,
     ResearchProposalRepository,
     ResearchRunRepository,
@@ -58,10 +61,10 @@ import { getPermissionsForRole } from '@/lib/permissions';
 import { defaultResearcher } from '@/lib/research/model-seam';
 import { researchGate, type ResearchGateVerdict } from '@/lib/research/record-gate';
 import type { Researcher } from '@/lib/research/researcher';
-import { runResearchSteps, type ResearchMetrics, type ResearchStepsResult } from '@/lib/research/run';
+import { runResearchSteps, type EgressSeen, type ResearchMetrics, type ResearchStepsResult } from '@/lib/research/run';
 import { outgoingTextRefusal } from '@/lib/research/query-egress';
-import { decodeSourceUrls, sanitiseFindingForStorage, sanitiseResearchProposalForStorage } from '@/lib/research/storage';
-import { EMPTY_PROGRESS, statusOfOutcome, type ResearchOutcome, type RunProgress } from '@/lib/research/vocabulary';
+import { decodeSourceUrls, sanitiseEgressForStorage, sanitiseFindingForStorage, sanitiseResearchProposalForStorage } from '@/lib/research/storage';
+import { EMPTY_PROGRESS, effectiveRunState, RESEARCH_EGRESS_PER_RUN_MAX, statusOfOutcome, type EgressTool, type ResearchOutcome, type RunProgress } from '@/lib/research/vocabulary';
 import { SOURCES_PER_BRIEF_MAX } from '@/app-layer/schemas/research';
 import { bookHoldsElementName } from './enrichment-names';
 import { deploymentPackRecordMode } from './interview-packs';
@@ -156,6 +159,13 @@ export async function executeResearchRun(payload: { workspaceId: string; runId: 
     const run = claimed.run;
     if (!run) return { ran: false, outcome: null };
     const ref = { id: run.id, briefId: run.briefId, bookId: run.bookId };
+    // A job that waited past the stale bound finds a run the page already reads as
+    // FAILED CLAIM_EXPIRED (and the author may have dispatched again): it is ended
+    // as it reads, never started late.
+    if (effectiveRunState(run).outcome === 'CLAIM_EXPIRED') {
+        await finish({ ...scope, userId: claimed.ctx?.userId }, ref, 'CLAIM_EXPIRED', { errorCode: 'CLAIM_EXPIRED' });
+        return { ran: true, outcome: 'CLAIM_EXPIRED' };
+    }
     const ctx = claimed.ctx;
     if (!ctx || !ctx.permissions.bible.edit) {
         await finish({ ...scope, userId: ctx?.userId }, ref, 'REQUESTER_NOT_PERMITTED', emptyMetrics());
@@ -210,6 +220,37 @@ export async function executeResearchRun(payload: { workspaceId: string; runId: 
             .then(() => runInWorkspaceContext(ctx, (db) => ResearchRunRepository.setProgress(db, ctx.workspaceId, run.id, p as unknown as Prisma.InputJsonValue)))
             .catch(() => undefined);
     };
+    // D15: every query and fetch URL is written as the stream delivers it (each in
+    // its own short transaction, one at a time), and the whole list once more
+    // before the run ends, whatever ends it — so the result page lists exactly
+    // what left, refused ones marked, up to RESEARCH_EGRESS_PER_RUN_MAX.
+    const egress: EgressRow[] = [];
+    let egressUnlisted = 0;
+    let egressPending: Promise<unknown> = Promise.resolve();
+    const onEgress = (seen: EgressSeen) => {
+        if (egress.length >= RESEARCH_EGRESS_PER_RUN_MAX) {
+            egressUnlisted += 1;
+            return;
+        }
+        const row: EgressRow = {
+            bookId: run.bookId,
+            runId: run.id,
+            position: egress.length,
+            tool: seen.tool,
+            text: sanitiseEgressForStorage(seen.input),
+            refusal: seen.refusal === null ? null : REFUSAL_CODE.test(seen.refusal) ? seen.refusal : 'REFUSED',
+        };
+        egress.push(row);
+        egressPending = egressPending
+            .then(() => runInWorkspaceContext(ctx, (db) => ResearchEgressRepository.createMany(db, ctx.workspaceId, [row])))
+            .catch(() => undefined);
+    };
+    const flushEgress = async (db?: PrismaTx): Promise<void> => {
+        await egressPending;
+        if (db) await ResearchEgressRepository.createMany(db, ctx.workspaceId, egress);
+        else await runInWorkspaceContext(ctx, (tx) => ResearchEgressRepository.createMany(tx, ctx.workspaceId, egress));
+    };
+    const egressMetrics = () => ({ egressListed: egress.length, egressUnlisted });
     let result: ResearchStepsResult;
     try {
         result = await runResearchSteps(
@@ -225,11 +266,13 @@ export async function executeResearchRun(payload: { workspaceId: string; runId: 
             (deps.researcher ?? defaultResearcher)(ctx),
             observe,
             deps.signal,
+            onEgress,
         );
     } catch (err) {
         await pending;
         logger.error('research.run_failed', { component: 'research', runId: run.id, errorName: err instanceof Error ? err.name : 'unknown' });
-        await finish(ctx, ref, 'INTERNAL', {});
+        await flushEgress().catch(() => undefined);
+        await finish(ctx, ref, 'INTERNAL', egressMetrics());
         return { ran: true, outcome: 'INTERNAL' };
     }
     await pending;
@@ -237,13 +280,34 @@ export async function executeResearchRun(payload: { workspaceId: string; runId: 
     // 4. Persist, against the bible as it stands now.
     try {
         const seen = new Map(read.elements.map((e) => [e.elementId, e.stored] as const));
-        const outcome = await runInWorkspaceContext(ctx, (db) => persist(db, ctx, ref, result, seen), { timeout: PERSIST_TX_TIMEOUT_MS });
+        const metrics = { ...result.metrics, ...egressMetrics() };
+        const outcome = await runInWorkspaceContext(
+            ctx,
+            async (db) => {
+                await flushEgress(db);
+                return persist(db, ctx, ref, { ...result, metrics }, seen);
+            },
+            { timeout: PERSIST_TX_TIMEOUT_MS },
+        );
         return { ran: true, outcome };
     } catch (err) {
         logger.error('research.persist_failed', { component: 'research', runId: run.id, errorName: err instanceof Error ? err.name : 'unknown' });
-        await finish(ctx, ref, 'INTERNAL', { ...result.metrics, errorCode: 'PERSIST_FAILED' });
+        await flushEgress().catch(() => undefined);
+        await finish(ctx, ref, 'INTERNAL', { ...result.metrics, ...egressMetrics(), errorCode: 'PERSIST_FAILED' });
         return { ran: true, outcome: 'INTERNAL' };
     }
+}
+
+/** A refusal code as the egress row stores it (the CHECK `ResearchEgress_shape`). */
+const REFUSAL_CODE = /^[A-Z_]{1,64}$/;
+
+interface EgressRow {
+    bookId: string;
+    runId: string;
+    position: number;
+    tool: EgressTool;
+    text: string;
+    refusal: string | null;
 }
 
 async function persist(

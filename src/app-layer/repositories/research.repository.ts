@@ -222,6 +222,28 @@ export const ResearchCitationRepository = {
     },
 };
 
+export const ResearchEgressRepository = {
+    /**
+     * Record queries and URLs a run sent; a position already written is left
+     * as it is (the run writes each as the stream delivers it, then writes the
+     * whole list once more before it ends, in case one write was lost).
+     */
+    createMany(db: Db, workspaceId: string, rows: ReadonlyArray<{ bookId: string; runId: string; position: number; tool: string; text: string; refusal: string | null }>) {
+        if (rows.length === 0) return Promise.resolve({ count: 0 });
+        return db.researchEgress.createMany({ data: rows.map((r) => ({ workspaceId, ...r })), skipDuplicates: true });
+    },
+
+    /** A run's egress in order. */
+    listForRun(db: Db, workspaceId: string, runId: string, take: number) {
+        return db.researchEgress.findMany({
+            where: { workspaceId, runId },
+            orderBy: [{ position: 'asc' }],
+            take,
+            select: { position: true, tool: true, text: true, refusal: true },
+        });
+    },
+};
+
 export interface ResearchProposalWrite {
     bookId: string;
     runId: string;
