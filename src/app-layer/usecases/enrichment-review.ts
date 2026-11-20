@@ -53,7 +53,14 @@
  * stands (`slotChangeOf`); a changed slot is 409 SLOT_CHANGED, writing
  * nothing, until the author names a `placement` — two neighbours, or
  * `{ unplaced: true }`. An accepted relation names its two ends
- * (`relationEnds`).
+ * (`relationEnds`). Phase 3.H (D25 as the owner amended it): a FIELD proposal
+ * may name the slot's beat by its proposal (`targetProposalId`) instead of an
+ * element: a further field of the beat a later round of the session asked
+ * about. It is accepted only once the beat is (409 END_NOT_CREATED; a rejected
+ * beat or a deleted element 409 END_GONE), into the element the beat's
+ * acceptance created, under that element's lock and version like any FIELD
+ * proposal, with only "the field is still empty" to hold it (it was proposed
+ * against no version); never in bulk.
  * Neither new kind is offered for bulk acceptance or edited on acceptance: a
  * link is accepted as proposed or rejected, and its fields edited afterwards.
  *
@@ -137,9 +144,17 @@ export interface FieldProposalView {
     kind: 'FIELD';
     roundNumber: number | null;
     status: ProposalStatus;
-    elementId: string;
+    /** The element it changes; null for a slot beat's field whose beat is not (or no longer) an element. */
+    elementId: string | null;
     elementName: string;
     elementKind: BibleElementKind;
+    /**
+     * Phase 3.H (D25 as amended): a further field of the BETWEEN slot's beat an
+     * earlier round proposed, by that beat's proposal. `state`: the beat is
+     * still to decide (accept it first: END_NOT_CREATED), an element now
+     * (`elementId`), or rejected or deleted (END_GONE). Null for any other field.
+     */
+    slotBeat: { proposalId: string; name: string; state: 'PENDING' | 'CREATED' | 'GONE' } | null;
     fieldKey: string;
     /** The field's template (the review's editor and its diff read it). */
     field: FieldDef;
@@ -302,9 +317,16 @@ async function proposalViews(
     sessions: ReadonlyMap<string, SessionSlot>,
 ): Promise<{ fields: FieldProposalView[]; newElements: NewElementProposalView[]; relationFields: RelationFieldProposalView[]; newRelations: NewRelationProposalView[] }> {
     const slotIds = [...sessions.values()].flatMap((s) => [s.slotAfterElementId, s.slotBeforeElementId].filter((x): x is string => x !== null));
-    const elementIds = [...new Set([...proposals.flatMap((p) => [p.elementId, p.newFromElementId, p.newToElementId].filter((x): x is string => x !== null)), ...slotIds])];
+    // Phase 3.H: the beats a slot beat's field proposals name, read by id when they are not on this page.
+    const byId = new Map(proposals.map((p) => [p.id, p] as const));
+    const missingBeats = [...new Set(proposals.flatMap((p) => (p.targetProposalId && !byId.has(p.targetProposalId) ? [p.targetProposalId] : [])))];
+    for (const p of proposals.length > 0 && missingBeats.length > 0 ? await EnrichmentProposalRepository.listByIds(db, ctx.workspaceId, proposals[0].sessionId, missingBeats) : []) byId.set(p.id, p);
+    const beatElementOf = (p: ProposalRow): string | null => (p.targetProposalId ? (byId.get(p.targetProposalId)?.createdElementId ?? null) : null);
+    const elementIds = [
+        ...new Set([...proposals.flatMap((p) => [p.elementId, p.newFromElementId, p.newToElementId, beatElementOf(p)].filter((x): x is string => x !== null)), ...slotIds]),
+    ];
     const elements = new Map((await BibleElementRepository.listByIds(db, ctx.workspaceId, bookId, elementIds)).map((e) => [e.id, e] as const));
-    const fieldElementIds = [...new Set(proposals.flatMap((p) => (p.elementId ? [p.elementId] : [])))].filter((id) => elements.has(id));
+    const fieldElementIds = [...new Set(proposals.flatMap((p) => (p.elementId ? [p.elementId] : p.targetProposalId && beatElementOf(p) ? [beatElementOf(p)!] : [])))].filter((id) => elements.has(id));
     const values = new Map<string, Map<string, FieldValue>>();
     for (const f of await BibleFieldRepository.listForElements(db, ctx.workspaceId, fieldElementIds, FIELDS_PER_ELEMENT)) {
         if (!values.has(f.elementId)) values.set(f.elementId, new Map());
@@ -322,7 +344,6 @@ async function proposalViews(
         relationValues.get(f.relationId)!.set(f.key, decodeFieldValue(f.value));
     }
     const relationVersions = await BibleRelationVersionRepository.latestNumbers(db, ctx.workspaceId, [...relations.keys()]);
-    const byId = new Map(proposals.map((p) => [p.id, p] as const));
     // A new relation's proposed end, when it is not among `proposals` (another page of the review): read by id.
     const missingEnds = [...new Set(proposals.flatMap((p) => [p.newFromProposalId, p.newToProposalId].filter((x): x is string => x !== null && !byId.has(x))))];
     for (const p of proposals.length > 0 && missingEnds.length > 0 ? await EnrichmentProposalRepository.listByIds(db, ctx.workspaceId, proposals[0].sessionId, missingEnds) : []) byId.set(p.id, p);
@@ -417,6 +438,33 @@ async function proposalViews(
             });
             continue;
         }
+        if (p.targetProposalId) {
+            // A further field of a slot's beat (Phase 3.H): shown against the beat, and against its element once created.
+            const beat = byId.get(p.targetProposalId);
+            const def = beat?.newKind ? getFieldDef(beat.newKind, p.fieldKey!) : undefined;
+            if (!beat || !def) continue;
+            const made = beat.createdElementId ? (elements.get(beat.createdElementId) ?? null) : null;
+            const gone = beat.status === 'REJECTED' || beat.status === 'SUPERSEDED' || (beat.createdElementId !== null && made === null);
+            const currentVersion = made ? (versions.get(made.id) ?? 0) : 0;
+            out.fields.push({
+                ...common,
+                kind: 'FIELD',
+                elementId: made?.id ?? null,
+                elementName: made?.name ?? beat.newName ?? '',
+                elementKind: beat.newKind!,
+                slotBeat: { proposalId: beat.id, name: made?.name ?? beat.newName ?? '', state: made ? 'CREATED' : gone ? 'GONE' : 'PENDING' },
+                fieldKey: def.key,
+                field: def,
+                operation: p.operation!,
+                proposedValue: decodeProposedValue(p.proposedValue),
+                currentValue: made ? (values.get(made.id)?.get(def.key) ?? null) : null,
+                // Proposed before its element existed: reviewed against the element as it is now.
+                baseVersion: currentVersion,
+                currentVersion,
+                bulkEligible: false,
+            });
+            continue;
+        }
         const element = elements.get(p.elementId!);
         const def = element ? getFieldDef(element.kind, p.fieldKey!) : undefined;
         if (!element || !def) continue;
@@ -427,6 +475,7 @@ async function proposalViews(
             elementId: element.id,
             elementName: element.name,
             elementKind: element.kind,
+            slotBeat: null,
             fieldKey: def.key,
             field: def,
             operation: p.operation!,
@@ -593,20 +642,37 @@ async function supersedeOthers(db: PrismaTx, ctx: WorkspaceRequestContext, eleme
     return others.length;
 }
 
+/**
+ * The element a FIELD proposal for a slot's beat writes to (Phase 3.H, D25 as
+ * amended): the one the beat's acceptance created. The beat still PENDING is
+ * 409 END_NOT_CREATED; rejected (or superseded), or its element deleted since,
+ * 409 END_GONE — as a new relation's end that is a new element.
+ */
+async function slotBeatElementOf(db: PrismaTx, ctx: WorkspaceRequestContext, bookId: string, sessionId: string, targetProposalId: string): Promise<string> {
+    const [beat] = await EnrichmentProposalRepository.listEnds(db, ctx.workspaceId, sessionId, [targetProposalId]);
+    if (!beat || beat.status === 'REJECTED' || beat.status === 'SUPERSEDED') throw new ConflictError('The new entry this field belongs to was not created.', { reason: 'END_GONE' });
+    if (beat.status === 'PENDING' || !beat.createdElementId) throw new ConflictError('Accept the new entry this field belongs to first.', { reason: 'END_NOT_CREATED', proposalId: beat.id });
+    if (!(await BibleElementRepository.find(db, ctx.workspaceId, bookId, beat.createdElementId))) throw new ConflictError('The new entry this field belongs to has been deleted.', { reason: 'END_GONE' });
+    return beat.createdElementId;
+}
+
 async function acceptField(db: PrismaTx, ctx: WorkspaceRequestContext, bookId: string, sessionId: string, proposalId: string, input: AcceptProposalInput): Promise<DecisionResult> {
     const peek = await EnrichmentProposalRepository.find(db, ctx.workspaceId, sessionId, ProposalIdParam.parse(proposalId));
     if (!peek || peek.bookId !== bookId) throw new NotFoundError('Proposal not found.');
     if (peek.kind !== 'FIELD') throw new ValidationError('This proposal is for a new element.', { reason: 'EDIT_NOT_ALLOWED' });
+    // A field of a slot's beat (Phase 3.H) goes to the element the beat's acceptance created, once it has one.
+    const elementId = peek.targetProposalId ? await slotBeatElementOf(db, ctx, bookId, sessionId, peek.targetProposalId) : peek.elementId!;
     // The element's lock first, then the proposal read under it (a concurrent save of the element queues).
-    await BibleElementRepository.lock(db, peek.elementId!);
+    await BibleElementRepository.lock(db, elementId);
     const p = await requirePending(db, ctx, bookId, sessionId, proposalId);
-    const element = await requireElement(db, ctx, bookId, p.elementId!);
+    const element = await requireElement(db, ctx, bookId, elementId);
     if (input.baseVersion === undefined) throw new ValidationError('An acceptance names the version it was reviewed against.', { reason: 'BASE_VERSION_REQUIRED' });
     const currentVersion = await BibleVersionRepository.latestNumber(db, ctx.workspaceId, element.id);
     if (currentVersion !== input.baseVersion) {
         throw new ConflictError('This element was saved by someone else since your review began.', { reason: 'VERSION_CONFLICT', currentVersion, baseVersion: input.baseVersion });
     }
-    if (p.baseVersion !== currentVersion && !input.reviewedCurrent) {
+    // A slot beat's field was proposed before its element existed (no base): only "the field is still empty" holds it.
+    if (p.baseVersion !== null && p.baseVersion !== currentVersion && !input.reviewedCurrent) {
         throw new ConflictError('The element changed since this was proposed; review its current value first.', { reason: 'PROPOSAL_OUTDATED', currentVersion, proposedAgainst: p.baseVersion });
     }
     const op = p.operation!;
@@ -636,14 +702,31 @@ async function acceptField(db: PrismaTx, ctx: WorkspaceRequestContext, bookId: s
     });
     const status: ProposalStatus = edited ? 'EDITED_ACCEPTED' : 'ACCEPTED';
     await decideOrConflict(db, ctx, p.id, { status, decidedById: ctx.userId, versionId: version.id });
-    const superseded = await supersedeOthers(db, ctx, element.id, key, p.id);
+    let superseded = await supersedeOthers(db, ctx, element.id, key, p.id);
+    if (p.targetProposalId) {
+        const others = await EnrichmentProposalRepository.pendingForSlotBeatField(db, ctx.workspaceId, p.targetProposalId, key, p.id, 100);
+        for (const o of others) await EnrichmentProposalRepository.decide(db, ctx.workspaceId, o.id, { status: 'SUPERSEDED', decidedById: ctx.userId });
+        superseded += others.length;
+    }
     await logEvent(
         ctx,
         {
             action: 'ENRICHMENT_PROPOSAL_ACCEPTED',
             entityType: 'EnrichmentProposal',
             entityId: p.id,
-            details: { bookId, sessionId, elementId: element.id, fieldKey: key, operation: op, edited, flags: p.flags, versionNumber: version.versionNumber, citedAnswerCount: answerIds.length, superseded },
+            details: {
+                bookId,
+                sessionId,
+                elementId: element.id,
+                fieldKey: key,
+                operation: op,
+                edited,
+                flags: p.flags,
+                versionNumber: version.versionNumber,
+                citedAnswerCount: answerIds.length,
+                superseded,
+                ...(p.targetProposalId ? { slotBeatProposalId: p.targetProposalId } : {}),
+            },
         },
         { db },
     );
@@ -903,7 +986,8 @@ export async function bulkAcceptProposals(ctx: WorkspaceRequestContext, bookId: 
         const currentValues = new Map<string, Map<string, FieldValue>>();
         for (const p of rows) {
             // A flagged proposal (D14) is decided one by one, never in bulk.
-            if (p.kind !== 'FIELD' || p.operation !== 'ADD' || p.status !== 'PENDING' || p.citations.length === 0 || p.flags.length > 0) {
+            // A slot beat's field (Phase 3.H) waits for its beat and is decided one by one.
+            if (p.kind !== 'FIELD' || p.elementId === null || p.operation !== 'ADD' || p.status !== 'PENDING' || p.citations.length === 0 || p.flags.length > 0) {
                 ineligible.push(p.id);
                 continue;
             }

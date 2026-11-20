@@ -66,7 +66,10 @@
  * earlier round: `slot.taken`, Phase 3.H); every operation on the slot's fields that passes the rules
  * above becomes one of that new element's first field values (it cites what
  * they cite), and with no such new element it is refused
- * `PENDING_WITHOUT_ELEMENT`. A NEW RELATION passes when, in this order:
+ * `PENDING_WITHOUT_ELEMENT`. Once the slot holds its beat (`slot.taken`; the
+ * session goes on with it, D25 as amended), an ADD that passes is a FIELD
+ * proposal for that beat (`toSlotBeat`) and anything else is refused
+ * `SLOT_BEAT_ADD_ONLY`. A NEW RELATION passes when, in this order:
  *
  *   ends       each end is one of the session's relation ends (a selection's
  *              elements and its relations' ends; a slot's neighbours) or
@@ -171,7 +174,11 @@ export interface ValidationContext {
     relationEnds?: readonly RelationEnd[];
     /** Phase 3.3: the relations the book holds between them. */
     existingRelations?: readonly ExistingRelation[];
-    /** Phase 3.3: a BETWEEN session's slot, its kind. */
+    /**
+     * Phase 3.3: a BETWEEN session's slot, its kind. `taken` (Phase 3.H): it
+     * already holds its beat, from an earlier round, so no new element fills it
+     * again and the slot element's ADDs are field proposals for that beat.
+     */
     slot?: { kind: BibleKind; taken?: boolean } | null;
 }
 
@@ -185,6 +192,12 @@ export interface FieldProposalDraft {
     citedAnswerIds: string[];
     /** What the author is warned of (D14): `POSSIBLE_INSTRUCTION` when the value addresses the product. */
     flags: ProposalFlag[];
+    /**
+     * Phase 3.H (D25 as amended): an ADD to the BETWEEN slot's beat an earlier
+     * round proposed (its `elementId` is `PENDING_SUBJECT_ID`): stored naming
+     * the beat's proposal, and accepted only once the beat is.
+     */
+    toSlotBeat?: true;
 }
 
 export interface NewElementDraft {
@@ -697,8 +710,15 @@ export function validateReconcile(parsed: ParsedReconcile, ctx: ValidationContex
         result.proposals.push(draft);
     });
     // The slot's operations become the new element's first values, citing what they cite; with none to carry them, refused.
+    // Once the slot holds its beat from an earlier round (Phase 3.H, D25 as amended), each ADD is a field proposal for
+    // that beat, waiting for it; anything else is refused (the beat's held values are not the author's yet).
     const slot = slotDraft as NewElementDraft | null;
     for (const op of pendingOps) {
+        if (ctx.slot?.taken && !slot) {
+            if (op.operation !== 'ADD' || op.value === null) result.refusals.push({ code: 'SLOT_BEAT_ADD_ONLY', target: { elementId: op.elementId, fieldKey: op.fieldKey } });
+            else result.proposals.push({ ...op, toSlotBeat: true });
+            continue;
+        }
         if (!slot || op.operation !== 'ADD' || op.value === null) {
             result.refusals.push({ code: 'PENDING_WITHOUT_ELEMENT', target: { elementId: op.elementId, fieldKey: op.fieldKey } });
             continue;

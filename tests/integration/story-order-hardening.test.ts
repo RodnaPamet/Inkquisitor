@@ -7,7 +7,8 @@
  *                      where it goes, or accepts it unplaced (D25, owner: "refuse
  *                      and ask"); the review shows the change and the act's beats
  *   one beat a slot    a later round proposes no second beat for a gap that has
- *                      one, and the session asks nothing more about it (#53 item 1)
+ *                      one, and the session goes on with that beat (#53 item 1;
+ *                      D25 as amended: slot-beat-follow-up.test.ts has the flow)
  *   a link's ends      an accepted link names the ends it was created between
  *   one free order     the rank alone is the story order: an act change keeps
  *                      the beat's place unless neighbours are named, and an
@@ -182,7 +183,7 @@ describe('a changed slot: refuse and ask (D25)', () => {
 });
 
 describe('one beat a slot, across rounds (#53 item 1)', () => {
-    it('a round reconciled after another proposed the gap’s beat proposes no second one, and the session asks nothing more about the gap', async () => {
+    it('a round reconciled after another proposed the gap’s beat proposes no second one, and the session goes on with that beat', async () => {
         const { ctx, bookId } = await book();
         const first = await beat(ctx, bookId, 'The ferry sinks');
         const second = await beat(ctx, bookId, 'The trial at Saltmere');
@@ -204,10 +205,16 @@ describe('one beat a slot, across rounds (#53 item 1)', () => {
         expect(rerun.status).toBe('DONE');
         expect(await slotBeats()).toHaveLength(1);
 
-        // The gap has its beat: nothing more is asked about it (the session has ended, or its next round asks nothing of the gap).
+        // The gap has its beat, and the session goes on with it (D25 as amended): round 1's rerun proposed its answers
+        // as further fields of that beat rather than a second one, and nothing the beat holds is asked again.
+        const beatId = (await slotBeats())[0].id;
+        const further = await prisma.enrichmentProposal.findMany({ where: { sessionId: view.session.id, kind: 'FIELD' } });
+        expect(further.every((f) => f.targetProposalId === beatId && f.elementId === null && f.operation === 'ADD')).toBe(true);
+        const held = new Set((await getSessionReview(ctx, bookId, view.session.id)).newElements.find((n) => n.id === beatId)!.fields.map((f) => f.field.key));
+        expect(held.size).toBeGreaterThan(0);
         const after = await nextRound(ctx, bookId, view.session.id, deps).catch((err: unknown) => err);
         if (after instanceof AppError) expect(after.details).toMatchObject({ reason: 'INTERVIEW_ENDED' });
-        else expect(((after as View).round?.questions ?? []).filter((q) => q.subjectId === PENDING_SUBJECT_ID)).toEqual([]);
+        else for (const q of (after as View).round?.questions ?? []) expect(q.targetsFieldKeys.some((k) => held.has(k))).toBe(false);
     });
 });
 

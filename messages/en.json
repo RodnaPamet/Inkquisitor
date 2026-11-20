@@ -980,6 +980,8 @@
         "relationNote": "Note",
         "relationWaits": "Accept the new entry “{name}” first; this link joins it.",
         "relationEndGone": "An entry this link joins was not created, so it cannot be accepted. Reject it.",
+        "beatFieldWaits": "Accept the new entry “{name}” first; this field belongs to it.",
+        "beatFieldGone": "The new entry this field belongs to was not created, so it cannot be accepted. Reject it.",
         "acceptedRelation": "Accepted. The relation is now in the bible.",
         "acceptRelationAria": "Accept the relation {from} {label} {to}",
         "rejectRelationAria": "Reject the relation {from} {label} {to}",

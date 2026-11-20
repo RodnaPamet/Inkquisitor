@@ -44,7 +44,7 @@ import { getFieldDef, getRelationType, getTemplate, relationFieldDefs } from '@/
 import { plainBlock } from '@/lib/bible/text';
 import type { AskedQuestion } from '@/lib/interview/dedupe';
 import { computeFrontier, emptyFrontierReason, refsCheck, type AlreadyAnsweredCheck, type AnswerFact, type BlockedField, type FieldRef, type FrontierResult } from '@/lib/interview/frontier';
-import { slotTakenBy } from './story-slot';
+import { slotBeat } from './story-slot';
 import { PENDING_SUBJECT_ID, relationSubjectName, subjectIdOf, type RelationSubject } from '@/lib/interview/subjects';
 import type { RoundPlan } from '@/lib/interview/plan';
 import type { PromptAnswer } from '@/lib/interview/prompt';
@@ -210,29 +210,40 @@ async function relationSubjects(db: PrismaTx, ctx: WorkspaceRequestContext, sess
  * A BETWEEN session's element not yet created (Phase 3.3), as a subject, and
  * its two neighbours as the prompt's related elements. The slot's act is
  * answered by the slot itself (`checks`): the element joins the lane it was
- * asked about. When a neighbour has gone, there is no slot to ask about; once
- * the slot has its beat (proposed and pending, or accepted: `slotTakenBy`,
- * Phase 3.H), there is no gap left to ask about either.
+ * asked about. When a neighbour has gone, there is no slot to ask about.
+ *
+ * Once the slot holds its beat (proposed and pending, or accepted: `slotBeat`,
+ * Phase 3.H), the session GOES ON WITH IT (decision D25 as the owner amended
+ * it, 2026-11-20): the subject is still the beat not yet created, so the scope
+ * the session started with holds, but it carries the beat's name and what the
+ * beat already holds — its proposal's fields, and once accepted its element's
+ * — as stored values, so none of them is asked again (rule 5) and the later
+ * rounds ask about the rest (cause, effect, stakes and so on).
  */
 async function pendingSubject(db: PrismaTx, ctx: WorkspaceRequestContext, session: SessionRow) {
     if (session.scope !== 'BETWEEN' || !session.slotKind || !session.slotAfterElementId || !session.slotBeforeElementId) return null;
-    if (await slotTakenBy(db, ctx, session)) return null;
     const ends = await BibleElementRepository.listByIds(db, ctx.workspaceId, session.bookId, [session.slotAfterElementId, session.slotBeforeElementId]);
     const after = ends.find((e) => e.id === session.slotAfterElementId);
     const before = ends.find((e) => e.id === session.slotBeforeElementId);
     if (!after || !before) return null;
     const kind = session.slotKind as BibleKind;
+    const beat = await slotBeat(db, ctx, session);
     const stored = await storedTextOf(db, ctx, [after.id, before.id]);
     // The neighbours' context: their summary, or failing that what happens in them.
     const contextOf = (e: typeof after) => e.summary ?? stored.get(e.id)?.get('what_happens') ?? null;
+    const beatText = new Map<string, string>();
+    for (const [key, value] of beat?.fields ?? []) {
+        const text = fieldText(value);
+        if (text.length > 0) beatText.set(key, text);
+    }
     const element: RoundElement = {
         elementId: PENDING_SUBJECT_ID,
         kind,
-        name: `${after.name} → … → ${before.name}`,
+        name: beat && beat.name !== '' ? beat.name : `${after.name} → … → ${before.name}`,
         customLabel: null,
         fields: getTemplate(kind).fields,
-        storedText: new Map(),
-        pending: { kind, afterElementId: after.id, beforeElementId: before.id, afterName: after.name, beforeName: before.name, act: session.slotAct },
+        storedText: beatText,
+        pending: { kind, afterElementId: after.id, beforeElementId: before.id, afterName: after.name, beforeName: before.name, act: session.slotAct, ...(beat ? { proposedName: beat.name } : {}) },
     };
     const checks: AlreadyAnsweredCheck[] = session.slotAct && getFieldDef(kind, 'act') ? [refsCheck('between-slot', [{ elementId: PENDING_SUBJECT_ID, fieldKey: 'act' }])] : [];
     const related = [after, before].map((e) => ({ kind: e.kind as BibleKind, name: e.name, summary: contextOf(e) }));
@@ -340,9 +351,16 @@ export function frontierOf(state: InterviewState, depth: number): FrontierResult
     });
 }
 
-/** Stored fields within the depth that this session may still challenge, in frontier order. */
+/**
+ * Stored fields within the depth that this session may still challenge, in
+ * frontier order. Never a field of the slot's beat not yet created (Phase 3.H):
+ * what its proposal holds is waiting for the author, not stored, and a
+ * challenge would ask for an UPDATE of a value nobody has accepted.
+ */
 export function challengeableOf(frontier: FrontierResult, depth: number): Array<FieldRef & { level: number }> {
-    return frontier.answered.filter((a) => a.by === 'bible-values' && a.level <= depth).map((a) => ({ elementId: a.elementId, fieldKey: a.fieldKey, level: a.level }));
+    return frontier.answered
+        .filter((a) => a.by === 'bible-values' && a.level <= depth && a.elementId !== PENDING_SUBJECT_ID)
+        .map((a) => ({ elementId: a.elementId, fieldKey: a.fieldKey, level: a.level }));
 }
 
 /** Why the session ended, in ids and keys only (never a value): the session's `stopDetail`. */

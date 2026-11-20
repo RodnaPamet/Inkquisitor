@@ -14,7 +14,8 @@ import { STUB_BASE_URL } from './stub-server';
  *   - on the plot board, "What happens between these?" in the gap between two
  *     neighbouring beats: the beat the stub proposes is a ghost card, and once
  *     accepted from the list it sits between the two in story order, with its
- *     two causal links.
+ *     two causal links; the session goes on with the beat (Phase 3.H), so a
+ *     second round's answer about it is accepted into it on the review page.
  */
 test.use({ baseURL: STUB_BASE_URL });
 
@@ -39,15 +40,14 @@ async function canvasReady(page: Page) {
     await expect(page.locator('[data-story-canvas] .tlui-toolbar')).toBeVisible({ timeout: 20_000 });
 }
 
-async function answerAll(page: Page, words: string) {
+async function answerAll(page: Page, words: string, round = 1) {
     const main = page.getByRole('main');
-    const cards = main.locator('[data-testid="round-questions"][data-round="1"]').getByTestId('question-card');
+    const cards = main.locator(`[data-testid="round-questions"][data-round="${round}"]`).getByTestId('question-card');
     await expect(cards.first()).toBeVisible({ timeout: 20_000 });
     for (const card of await cards.all()) await answerCard(card, page, words);
     await main.locator('#round-finish').click();
-    // The round closed and was reconciled (the next round may stream in after it, or, once a gap's beat is proposed,
-    // the session completes: a gap holds one beat, Phase 3.H).
-    await expect(main.getByText(/bible changes? (was|were) proposed from this round|Round 2|Everything this interview can reach/).first()).toBeVisible({ timeout: 30_000 });
+    // The round closed and was reconciled (the next round may stream in after it).
+    await expect(main.getByText(new RegExp(`bible changes? (was|were) proposed from this round|Round ${round + 1}`)).first()).toBeVisible({ timeout: 30_000 });
 }
 
 async function answerCard(card: Locator, page: Page, words: string) {
@@ -146,6 +146,11 @@ test('plot board: "What happens between these?" proposes a beat that, once accep
     await page.getByRole('dialog').locator('#interview-start').click();
     await expect(page).toHaveURL(/\/interviews\//);
     await answerAll(page, 'Mara cuts the ferry rope and the crossing drifts toward the mayor.');
+    // The session goes on with the beat it proposed (Phase 3.H, D25 as amended): round 2 asks about the beat's own
+    // remaining fields, and its answers become field proposals for that beat, waiting for it.
+    await answerAll(page, 'The mayor needs the ferry gone before the inquiry sits.', 2);
+    // The interview page's own address names the session (read once its rounds have run, past any redirect).
+    const sessionId = new URL(page.url()).pathname.split('/interviews/')[1].split('/')[0];
 
     await page.goto(`/w/${at.slug}/books/${at.bookId}/maps/plot`);
     await canvasReady(page);
@@ -172,4 +177,14 @@ test('plot board: "What happens between these?" proposes a beat that, once accep
     const y = async (id: string) => (await page.locator(`[data-story-node="${id}"]`).boundingBox())!.y;
     await expect(page.locator(`[data-story-node="${made}"]`)).toBeVisible({ timeout: 10_000 });
     await expect.poll(async () => (await y(first)) < (await y(made)) && (await y(made)) < (await y(second)), { timeout: 10_000 }).toBe(true);
+
+    // The follow-up's field proposal for the beat, now that the beat exists, is accepted on the review page into it.
+    await page.goto(`/w/${at.slug}/books/${at.bookId}/interviews/${sessionId}/review`);
+    const field = page.getByRole('main').getByTestId('field-proposal').filter({ hasText: 'The mayor needs the ferry gone' }).first();
+    await expect(field).toBeVisible({ timeout: 15_000 });
+    await expect(field.getByTestId('proposal-waits')).toHaveCount(0);
+    await field.getByRole('button', { name: /^Accept the change to / }).click();
+    await expect(field.getByTestId('proposal-status')).toHaveText('Accepted', { timeout: 10_000 });
+    const beat2 = ((await (await page.request.get(`/api/w/${at.slug}/books/${at.bookId}/elements/${made}`)).json()) as { element: { fields: Array<{ key: string; value: unknown }> } }).element;
+    expect(beat2.fields.some((f) => typeof f.value === 'string' && f.value.includes('The mayor needs the ferry gone'))).toBe(true);
 });

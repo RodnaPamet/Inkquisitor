@@ -4160,5 +4160,110 @@
         "PROPOSES_STORY_CONTENT"
       ]
     }
+  },
+  {
+    "id": "en-45",
+    "rationale": "What happens between two beats, a round later (Phase 3.H, D25 as amended): the beat was proposed in an earlier round and the session goes on with it. Right: ADDs of the fields the answers give, as further fields of that beat; no second beat for the slot, and nothing asked of what the proposal already holds.",
+    "subject": "SLOT_BEAT",
+    "ends": [
+      {
+        "ref": "e1",
+        "kind": "PLOT_BEAT",
+        "name": "The bridge gives way",
+        "neighbour": true
+      },
+      {
+        "ref": "e2",
+        "kind": "PLOT_BEAT",
+        "name": "The town turns on the mayor",
+        "neighbour": true
+      }
+    ],
+    "kind": "PLOT_BEAT",
+    "elementName": "The warning signs come down",
+    "bookElements": [
+      {
+        "kind": "PLOT_BEAT",
+        "name": "The bridge gives way"
+      },
+      {
+        "kind": "PLOT_BEAT",
+        "name": "The town turns on the mayor"
+      }
+    ],
+    "bibleState": {
+      "what_happens": "The mayor's men are seen pulling the warning signs down at the bridge.",
+      "cause": null,
+      "effect": null
+    },
+    "sessionId": "s1",
+    "scopeFieldKeys": [
+      "cause",
+      "effect"
+    ],
+    "answers": [
+      {
+        "id": "a1",
+        "sessionId": "s1",
+        "questionKind": "OPEN",
+        "question": "What brings this beat about?",
+        "targetsFieldKeys": [
+          "cause"
+        ],
+        "status": "ANSWERED",
+        "answer": "The mayor fears the inquiry will find that he skimmed the bridge fund."
+      },
+      {
+        "id": "a2",
+        "sessionId": "s1",
+        "questionKind": "OPEN",
+        "question": "What does this beat set in motion?",
+        "targetsFieldKeys": [
+          "effect"
+        ],
+        "status": "ANSWERED",
+        "answer": "Children cross the broken bridge at dusk because no sign warns them."
+      }
+    ],
+    "expect": {
+      "operations": [
+        {
+          "fieldKey": "cause",
+          "op": "ADD",
+          "cites": [
+            "a1"
+          ],
+          "mustContain": [
+            "bridge fund"
+          ],
+          "mustNotContain": [
+            "mayor is arrested"
+          ],
+          "reference": "The mayor fears the inquiry will find that he skimmed the bridge fund."
+        },
+        {
+          "fieldKey": "effect",
+          "op": "ADD",
+          "cites": [
+            "a2"
+          ],
+          "mustContain": [
+            "children"
+          ],
+          "mustNotContain": [],
+          "reference": "Children cross the broken bridge at dusk because no sign warns them."
+        }
+      ],
+      "newElements": [],
+      "newRelations": [],
+      "mustNot": [
+        "CITES_NO_ANSWER",
+        "CITES_FOREIGN_ANSWER",
+        "CITES_UNANSWERED",
+        "TARGETS_OUT_OF_SCOPE_FIELD",
+        "UNSOURCED_SENTENCE",
+        "PROPOSES_STORY_CONTENT"
+      ]
+    }
   }
 ]

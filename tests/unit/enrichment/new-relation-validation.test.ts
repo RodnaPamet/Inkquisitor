@@ -6,6 +6,7 @@
  *
  *   en-43  a selection: an answer about Wren states a link to Tomas (loves)
  *   en-44  a slot: the beat between two beats and its two causal links
+ *   en-45  the same slot a round later, its beat proposed: further fields of that beat
  */
 import { allReconcileCases, type ReconcileEvalCase } from '@/lib/enrichment/evals/eval-set';
 import { referenceOutput, roundInputOf } from '@/lib/enrichment/evals/evaluation';
@@ -148,5 +149,41 @@ describe('a slot’s new element and its links (en-44)', () => {
         const missing = reference(c);
         missing.newRelations[0] = { ...missing.newRelations[0], toElementId: 'new.2' };
         expect(codes(missing, input)).toEqual(['RELATION_END_OUT_OF_SCOPE']);
+    });
+});
+
+describe('the slot’s beat a round later: the session goes on with it (en-45; Phase 3.H, D25 as amended)', () => {
+    const c = byId('en-45');
+    const input = roundInputOf(c);
+
+    it('the reference is accepted: each ADD is a field proposal for the beat already proposed, and no new element', () => {
+        const r = validateOutput(reference(c), input);
+        expect(r.refusals).toEqual([]);
+        expect(r.proposals.map((p) => p.kind)).toEqual(['FIELD', 'FIELD']);
+        for (const p of r.proposals) expect(p).toMatchObject({ kind: 'FIELD', elementId: 'pending-element', operation: 'ADD', toSlotBeat: true });
+        expect(r.proposals.map((p) => (p.kind === 'FIELD' ? p.fieldKey : ''))).toEqual(['cause', 'effect']);
+    });
+
+    it('a second beat for the slot is refused SLOT_TAKEN, and the fields still go to the beat proposed first', () => {
+        const out = reference(c);
+        out.newElements = [{ kind: 'PLOT_BEAT', name: 'The mayor fears the inquiry', summary: null, fillsSlot: true, cites: ['a1'] }];
+        const r = validateOutput(out, input);
+        expect(r.refusals.map((x) => x.code)).toEqual(['SLOT_TAKEN']);
+        expect(r.proposals.every((p) => p.kind === 'FIELD' && p.toSlotBeat === true)).toBe(true);
+    });
+
+    it('only ever adds: an ADD into what the beat’s proposal holds, an UPDATE or a REMOVE of it is refused', () => {
+        const scoped: ReconcileRoundInput = { ...input, elements: input.elements.map((e) => ({ ...e, scopeKeys: ['what_happens', ...e.scopeKeys] })) };
+        const add = reference(c);
+        add.operations.unshift({ elementId: 'pending-element', fieldKey: 'what_happens', op: 'ADD', value: 'The mayor fears the inquiry.', cites: ['a1'] });
+        expect(codes(add, scoped)).toEqual(['ADD_INTO_FILLED_FIELD']);
+        const update = reference(c);
+        update.operations.unshift({ elementId: 'pending-element', fieldKey: 'what_happens', op: 'UPDATE', value: "The mayor's men are seen pulling the warning signs down at the bridge, because the mayor fears the inquiry.", cites: ['a1'] });
+        expect(codes(update, scoped)).toEqual(['SLOT_BEAT_ADD_ONLY']);
+    });
+
+    it('without the beat (the slot free again: a rejected beat), the same ADDs need a new element to carry them', () => {
+        const free: ReconcileRoundInput = { ...input, slot: { kind: 'PLOT_BEAT' } };
+        expect(codes(reference(c), free)).toEqual(['PENDING_WITHOUT_ELEMENT', 'PENDING_WITHOUT_ELEMENT']);
     });
 });

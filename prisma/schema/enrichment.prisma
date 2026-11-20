@@ -107,6 +107,12 @@ model EnrichmentProposal {
   newToElementId    String?
   newFromProposalId String?
   newToProposalId   String?
+  /// FIELD (Phase 3.H, D25 as amended): the BETWEEN slot's beat not yet
+  /// created, by its NEW_ELEMENT proposal of the same session (a trigger holds
+  /// it there; no foreign key, as for a new relation's proposed ends). Such a
+  /// proposal has no `elementId` and no `baseVersion`, and only ADDs (CHECK);
+  /// it is accepted after the beat, into the element the beat's acceptance created.
+  targetProposalId  String?
   /// What the author is warned of, from a closed list (CHECK; `PROPOSAL_FLAGS`):
   /// POSSIBLE_INSTRUCTION when the text addresses the product itself (owner
   /// decision D14). A flagged proposal is shown as such and never bulk-accepted.
@@ -149,6 +155,8 @@ model EnrichmentProposal {
   @@index([relationId, fieldKey])
   @@index([newFromElementId])
   @@index([newToElementId])
+  /// Phase 3.H: the pending proposals for one field of a slot's beat (superseded on an acceptance).
+  @@index([targetProposalId, fieldKey])
   @@index([decidedById])
 }
 

@@ -39,7 +39,7 @@ export interface RoundElementInput {
     /** Phase 3.3: a relation subject. */
     relation?: RelationSubject;
     /** Phase 3.3: the BETWEEN slot's element not yet created, between two neighbours. */
-    pending?: { afterName: string; beforeName: string };
+    pending?: { afterName: string; beforeName: string; proposedName?: string };
 }
 
 export interface RoundAnswerInput {
@@ -67,7 +67,7 @@ export interface ReconcileRoundInput {
     relationEnds?: readonly RelationEnd[];
     existingRelations?: readonly ExistingRelation[];
     /** Phase 3.3: a BETWEEN session's slot. */
-    slot?: { kind: BibleKind; taken?: boolean } | null;
+    slot?: { kind: BibleKind; taken?: boolean; beatProposalId?: string } | null;
 }
 
 /** An answer as text: the choice, the number and the words, joined; null unless ANSWERED. */

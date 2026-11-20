@@ -1218,9 +1218,18 @@ closed beta with an explicit operator flag (D5, amended 2026-11-19).
   (`change`: NEIGHBOUR_GONE, NEIGHBOUR_UNPLACED, NEIGHBOUR_MOVED, GAP_FILLED) and
   the author names `placement: { after, before }` or `{ unplaced: true }`; the
   view's `slot.changed` and `slot.choices` drive `SlotPlacement`, which replaces
-  Accept. A gap holds one beat (`slotTakenBy`: pending, or accepted and still
-  there): reconcile refuses a second (`SLOT_TAKEN`) and the session stops asking
-  about it. An accepted link returns `relationEnds`, which the map list draws
+  Accept. A gap holds one beat (`slotBeat` / `slotTakenBy`: pending, or accepted and
+  still there): reconcile refuses a second (`SLOT_TAKEN`), and the session GOES
+  ON WITH IT (D25 as amended): later rounds ask about the beat's own fields, the
+  subject still the beat not yet created (`aboutPending`, its name the beat's),
+  what its proposal fills (and, once accepted, what its element holds) counted
+  as stored (rule 5) and never challenged; reconcile proposes those fields as
+  ADD-only FIELD proposals naming the beat's proposal (`targetProposalId`, no
+  element, no base version; anything but ADD refused `SLOT_BEAT_ADD_ONLY`),
+  accepted only after the beat (409 END_NOT_CREATED; a rejected beat or a
+  deleted element 409 END_GONE), each writing one version of the created
+  element naming its answers, never in bulk. The session ends when its frontier
+  is empty. An accepted link returns `relationEnds`, which the map list draws
   from. Display text is cut with `truncateGraphemes` (`src/lib/text/truncate.ts`),
   never a UTF-16 slice.
 - **Sanitising author text.** Every author-text write sanitises at the

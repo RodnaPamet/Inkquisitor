@@ -12,17 +12,21 @@
  *                        SLOT_INVALID naming the problem otherwise);
  *   slotChangeOf         how it changed since (D25, "refuse and ask");
  *   slotLaneChoices      where a changed slot's beat may go instead;
- *   slotTakenBy          whether the session's slot already has its beat
- *                        (#53 item 1: one beat per slot, across rounds).
+ *   slotBeat             the beat the session's slot holds, if any (#53 item
+ *                        1: one beat per slot, across rounds), and what it
+ *                        already holds (the session goes on with it, D25);
+ *   slotTakenBy          whether it holds one.
  */
 import type { BibleElementKind } from '@prisma/client';
 import type { WorkspaceRequestContext } from '@/app-layer/types';
-import { BibleElementRepository } from '@/app-layer/repositories/bible.repository';
+import { BibleElementRepository, BibleFieldRepository } from '@/app-layer/repositories/bible.repository';
 import { EnrichmentProposalRepository } from '@/app-layer/repositories/enrichment.repository';
 import type { PrismaTx } from '@/lib/db/rls-middleware';
 import { NotFoundError, ValidationError } from '@/lib/errors/types';
 import type { BibleKind } from '@/lib/bible/kinds';
 import { compareRanks } from '@/lib/bible/story-order';
+import { decodeFieldValue, type FieldValue } from '@/lib/bible/field-values';
+import { decodeNewElementFields } from '@/lib/enrichment/storage';
 import { actsOf, readPlacedOrder } from './bible-order';
 
 /** The kind a BETWEEN session's element not yet created takes: a plot beat (the plot board's slots). */
@@ -111,19 +115,55 @@ export async function slotLaneChoices(
 }
 
 /**
- * Whether a BETWEEN session's slot already has its beat (Phase 3.H, issue #53
- * item 1, decision D25): a beat proposed for it and still PENDING, or accepted
- * with its element still in the book. A slot holds ONE beat. Once it has one,
- * the session asks nothing more about the gap (there is no gap: what happens
- * between the two is that beat, and a session started on the beat asks against
- * its stored fields, rule 5), and reconcile refuses a second beat for it
+ * The beat a BETWEEN session's slot holds (Phase 3.H, issue #53 item 1;
+ * decision D25 as the owner amended it, 2026-11-20): a beat proposed for it
+ * and still PENDING, or accepted with its element still in the book; null when
+ * it holds none. A slot holds ONE beat: reconcile refuses a second
  * (`SLOT_TAKEN`) rather than storing a duplicate the author would have to
  * reject. A rejected beat, or one whose element was deleted, frees the slot.
+ *
+ * The session GOES ON WITH ITS BEAT: later rounds ask about the beat's own
+ * fields, the subject still the beat not yet created, so what it already
+ * holds is `fields` — its proposal's first field values, and once it is
+ * accepted its element's stored values over them (rule 5: never ask what the
+ * bible, or the proposal waiting for the author, already answers). `name` is
+ * the element's once created, the proposal's before.
  */
-export async function slotTakenBy(db: PrismaTx, ctx: WorkspaceRequestContext, session: { id: string; bookId: string }): Promise<boolean> {
+export interface SlotBeat {
+    proposalId: string;
+    status: 'PENDING' | 'ACCEPTED' | 'EDITED_ACCEPTED';
+    /** The element its acceptance created, while it is still in the book; null before. */
+    createdElementId: string | null;
+    name: string;
+    fields: Map<string, FieldValue>;
+}
+
+/** Stored fields read for an accepted beat's element (a template declares a few dozen at most). */
+const BEAT_FIELDS_MAX = 50;
+
+export async function slotBeat(db: PrismaTx, ctx: WorkspaceRequestContext, session: { id: string; bookId: string }): Promise<SlotBeat | null> {
     const holders = await EnrichmentProposalRepository.slotHolders(db, ctx.workspaceId, session.id, 20);
-    if (holders.some((h) => h.status === 'PENDING')) return true;
+    const pending = holders.find((h) => h.status === 'PENDING');
     const created = holders.flatMap((h) => (h.createdElementId ? [h.createdElementId] : []));
-    if (created.length === 0) return false;
-    return (await BibleElementRepository.listByIds(db, ctx.workspaceId, session.bookId, created)).length > 0;
+    const live = created.length > 0 ? await BibleElementRepository.listByIds(db, ctx.workspaceId, session.bookId, created) : [];
+    const accepted = holders.find((h) => h.createdElementId !== null && live.some((e) => e.id === h.createdElementId));
+    const holder = accepted ?? pending;
+    if (!holder) return null;
+    const fields = decodeNewElementFields(holder.proposedValue);
+    const element = accepted ? live.find((e) => e.id === accepted.createdElementId)! : null;
+    if (element) {
+        for (const f of await BibleFieldRepository.listForElements(db, ctx.workspaceId, [element.id], BEAT_FIELDS_MAX)) fields.set(f.key, decodeFieldValue(f.value));
+    }
+    return {
+        proposalId: holder.id,
+        status: holder.status as SlotBeat['status'],
+        createdElementId: element?.id ?? null,
+        name: element?.name ?? holder.newName ?? '',
+        fields,
+    };
+}
+
+/** Whether a BETWEEN session's slot already holds its beat (`slotBeat`). */
+export async function slotTakenBy(db: PrismaTx, ctx: WorkspaceRequestContext, session: { id: string; bookId: string }): Promise<boolean> {
+    return (await slotBeat(db, ctx, session)) !== null;
 }

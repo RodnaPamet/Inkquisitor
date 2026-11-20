@@ -34,6 +34,7 @@ function field(over: Partial<FieldProposalView> & { fieldKey: string }): FieldPr
         elementId: 'e1',
         elementName: 'Wren',
         elementKind: 'CHARACTER',
+        slotBeat: null,
         field: getFieldDef('CHARACTER', over.fieldKey)!,
         operation: 'ADD',
         proposedValue: 'To win back the council seat.',
@@ -343,5 +344,39 @@ describe('relation proposals (Phase 3.3, D24)', () => {
         fireEvent.click(screen.getByRole('radio', { name: 'At the start of the act' }));
         fireEvent.click(screen.getByRole('button', { name: 'Accept here' }));
         await waitFor(() => expect(requests.find((r) => r.method === 'POST')?.body).toEqual({ placement: { after: null, before: 'b2' } }));
+    });
+});
+
+// Last in the file: an acceptance leaves a toast in the shared toaster.
+describe('a field of a slot’s beat (Phase 3.H, D25 as amended)', () => {
+    it('a field of a slot’s beat waits for the beat: no Accept until it exists, then accepted against its element (Phase 3.H)', async () => {
+        const beat = { ...newElement, id: 'p-beat', newKind: 'PLOT_BEAT' as const, name: 'The lamp goes out' };
+        const cause = getFieldDef('PLOT_BEAT', 'cause')!;
+        const waiting = field({ fieldKey: 'cause', id: 'p-cause', elementId: null, elementName: 'The lamp goes out', elementKind: 'PLOT_BEAT', field: cause, slotBeat: { proposalId: 'p-beat', name: 'The lamp goes out', state: 'PENDING' }, baseVersion: 0, currentVersion: 0, bulkEligible: false });
+        mockFetch({});
+        const { unmount } = renderReview(review({ fields: [waiting], newElements: [beat] }));
+        const card = document.getElementById('proposal-p-cause')!;
+        expect(within(card).getByTestId('proposal-waits')).toHaveTextContent('Accept the new entry “The lamp goes out” first');
+        expect(within(card).queryByRole('button', { name: /^Accept/ })).toBeNull();
+        expect(within(card).queryByRole('button', { name: 'Edit, then accept' })).toBeNull();
+        expect(within(card).getByRole('link', { name: 'The lamp goes out' })).toHaveAttribute('href', '#proposal-p-beat');
+        unmount();
+
+        const gone = { ...waiting, slotBeat: { ...waiting.slotBeat!, state: 'GONE' as const } };
+        renderReview(review({ fields: [gone], newElements: [] }));
+        expect(within(document.getElementById('proposal-p-cause')!).getByTestId('proposal-waits')).toHaveTextContent('was not created');
+        expect(within(document.getElementById('proposal-p-cause')!).getByRole('button', { name: /^Reject/ })).toBeInTheDocument();
+    });
+
+    it('a field of a slot’s beat once the beat exists is accepted like any field, against the element’s version', async () => {
+        const cause = getFieldDef('PLOT_BEAT', 'cause')!;
+        const created = field({ fieldKey: 'cause', id: 'p-cause', elementId: 'e9', elementName: 'The lamp goes out', elementKind: 'PLOT_BEAT', field: cause, slotBeat: { proposalId: 'p-beat', name: 'The lamp goes out', state: 'CREATED' }, baseVersion: 2, currentVersion: 2, bulkEligible: false });
+        const { requests } = mockFetch({ [`POST ${API}/proposals/p-cause/accept`]: { json: { decision: {} } }, [`GET ${API}/proposals`]: { json: { review: review({ fields: [created] }) } } });
+        renderReview(review({ fields: [created] }));
+        const card = document.getElementById('proposal-p-cause')!;
+        expect(within(card).queryByTestId('proposal-waits')).toBeNull();
+        fireEvent.click(within(card).getByRole('button', { name: `Accept the change to ${cause.label} of The lamp goes out` }));
+        await waitFor(() => expect(requests.some((r) => r.method === 'POST')).toBe(true));
+        expect(requests.find((r) => r.method === 'POST')!.body).toEqual({ baseVersion: 2 });
     });
 });

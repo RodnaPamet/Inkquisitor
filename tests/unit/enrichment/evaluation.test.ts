@@ -27,8 +27,8 @@ describe('the sets', () => {
     const { enrichment, adversarial } = reconcileEvalSets();
     const ops = enrichment.flatMap((c) => c.expect.operations);
 
-    it('enrichment: forty-four cases (2.5’s forty and 3.3’s four), and the roadmap’s forty answer/field pairs exceeded', () => {
-        expect(enrichment).toHaveLength(44);
+    it('enrichment: forty-five cases (2.5’s forty, 3.3’s four and 3.H’s one), and the roadmap’s forty answer/field pairs exceeded', () => {
+        expect(enrichment).toHaveLength(45);
         expect(ops.length).toBeGreaterThanOrEqual(40);
         for (const op of ['ADD', 'UPDATE', 'REMOVE', 'NO_CHANGE']) expect([op, ops.filter((o) => o.op === op).length >= 8]).toEqual([op, true]);
         expect(new Set(enrichment.map((c) => c.kind)).size).toBeGreaterThanOrEqual(10);
@@ -50,6 +50,9 @@ describe('the sets', () => {
         expect(enrichment.some((c) => (c.expect.newRelations?.length ?? 0) > 0 && c.subject === undefined)).toBe(true);
         const slot = enrichment.filter((c) => c.subject === 'SLOT');
         expect(slot.some((c) => c.expect.newElements.some((n) => n.fillsSlot) && (c.expect.newRelations?.length ?? 0) >= 2)).toBe(true);
+        // Phase 3.H (D25 as amended): the slot a round later, its beat proposed: further fields of that beat, no new element.
+        const beat = enrichment.filter((c) => c.subject === 'SLOT_BEAT');
+        expect(beat.some((c) => c.expect.newElements.length === 0 && c.expect.operations.some((o) => o.op === 'ADD'))).toBe(true);
         expect(adversarial.filter((c) => c.subject === 'RELATION' || (c.ends?.length ?? 0) > 0).length).toBeGreaterThanOrEqual(2);
         expect(all.filter((c) => c.subject === 'RELATION' || c.subject === 'SLOT' || (c.ends?.length ?? 0) > 0).length).toBeGreaterThanOrEqual(6);
     });

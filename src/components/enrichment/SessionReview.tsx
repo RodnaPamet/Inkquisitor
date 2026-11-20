@@ -119,7 +119,14 @@ function FieldProposalCard({ p, answers, canEdit, actions, scaleOf, workspaceSlu
     const subject =
         p.kind === 'RELATION_FIELD'
             ? { href: APP_ROUTES.bibleElement(workspaceSlug, bookId, p.relation.from.id), name: t('relationAria', { from: p.relation.from.name, label: p.relation.label, to: p.relation.to.name }), testId: 'relation-field-proposal' }
-            : { href: APP_ROUTES.bibleElement(workspaceSlug, bookId, p.elementId), name: p.elementName, testId: 'field-proposal' };
+            : {
+                  // A slot beat's field (Phase 3.H) links to its beat: the element once created, the beat's proposal before.
+                  href: p.elementId !== null ? APP_ROUTES.bibleElement(workspaceSlug, bookId, p.elementId) : `#proposal-${p.slotBeat?.proposalId ?? p.id}`,
+                  name: p.elementName,
+                  testId: 'field-proposal',
+              };
+    // A slot beat's field waits for its beat (the server holds the same rule: END_NOT_CREATED, END_GONE).
+    const waitsFor = p.kind === 'FIELD' && p.slotBeat !== null && p.slotBeat.state !== 'CREATED' ? p.slotBeat : null;
     const [editing, setEditing] = useState(false);
     const [draft, setDraft] = useState<FieldValue | null>(p.proposedValue);
     const pending = p.status === 'PENDING';
@@ -151,6 +158,11 @@ function FieldProposalCard({ p, answers, canEdit, actions, scaleOf, workspaceSlu
                 </div>
             </div>
             {pending ? <ProposalFlags id={p.id} flags={p.flags} /> : null}
+            {pending && waitsFor ? (
+                <p className="rounded-md border border-border-default bg-bg-subtle p-3 text-sm text-content-default" data-testid="proposal-waits">
+                    {waitsFor.state === 'PENDING' ? t('beatFieldWaits', { name: waitsFor.name }) : t('beatFieldGone')}
+                </p>
+            ) : null}
             {pending && changed ? (
                 <p className="rounded-md border border-border-default bg-bg-subtle p-3 text-sm text-content-default" data-testid="proposal-changed">
                     {t('changedSince', { base: p.baseVersion, current: p.currentVersion })}
@@ -188,6 +200,7 @@ function FieldProposalCard({ p, answers, canEdit, actions, scaleOf, workspaceSlu
                         </>
                     ) : (
                         <>
+                            {waitsFor ? null : (
                             <Button
                                 variant="primary"
                                 icon={<Check className="size-4" aria-hidden="true" />}
@@ -198,7 +211,8 @@ function FieldProposalCard({ p, answers, canEdit, actions, scaleOf, workspaceSlu
                             >
                                 {t('accept')}
                             </Button>
-                            {p.operation !== 'REMOVE' ? (
+                            )}
+                            {p.operation !== 'REMOVE' && !waitsFor ? (
                                 <Button
                                     variant="secondary"
                                     icon={<Pencil className="size-4" aria-hidden="true" />}
