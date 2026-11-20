@@ -122,6 +122,58 @@ Apache License, Version 2.0
   dependency of this project. The project is distributed under the Apache
   License, Version 2.0: https://www.apache.org/licenses/LICENSE-2.0
 
+BSD 3-Clause License
+
+  Snowball (the English stemming algorithm, "Porter2", and its test data)
+  https://snowballstem.org
+  https://github.com/snowballstem/snowball (commit
+  06e1f74f7cf61ea8913c6269480b8d392c33dbae)
+  https://github.com/snowballstem/snowball-data (commit
+  019921c3a41c2b70063ee3feb215a00c8e594597)
+
+  Word search's English stemmer (Phase 3.4, decision D21,
+  src/lib/search/porter2.ts) is an implementation of the Snowball English
+  stemming algorithm, written for Inkquisitor from the algorithm's
+  definition, algorithms/english.sbl, at the commit above; no Snowball code
+  is linked or copied. Its test (tests/unit/search/porter2.test.ts) uses
+  Snowball's English vocabulary and expected stems, english/voc.txt and
+  english/output.txt of snowball-data at the commit above, copied unmodified
+  to tests/fixtures/snowball/english/ beside the licence
+  (tests/fixtures/snowball/COPYING). The project is distributed under the
+  BSD 3-Clause License:
+
+    Copyright (c) 2001, Dr Martin Porter
+    Copyright (c) 2004,2005, Richard Boulton
+    Copyright (c) 2013, Yoshiki Shibukawa
+    Copyright (c) 2006-2025, Olly Betts
+    All rights reserved.
+
+    Redistribution and use in source and binary forms, with or without
+    modification, are permitted provided that the following conditions
+    are met:
+
+      1. Redistributions of source code must retain the above copyright
+         notice, this list of conditions and the following disclaimer.
+      2. Redistributions in binary form must reproduce the above copyright
+         notice, this list of conditions and the following disclaimer in
+         the documentation and/or other materials provided with the
+         distribution.
+      3. Neither the name of the Snowball project nor the names of its
+         contributors may be used to endorse or promote products derived
+         from this software without specific prior written permission.
+
+    THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+    "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+    LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A
+    PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+    OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+    SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+    LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+    DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+    THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+    (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+    OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
 PostgreSQL License
 
   pgvector/pgvector (v0.8.7, commit f37c13f68b57d2c3472b2214fbcff699d6d34876)

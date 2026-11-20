@@ -24,6 +24,8 @@
  * `<DeleteBookModal>` (export first, then a typed confirmation), for the
  * workspace's OWNER only (`canDeleteBook`, `books.delete`).
  *
+ * Word search (Phase 3.4): `<BookSearch>` above the kinds, for every viewer.
+ *
  * Interviews (Phase 2.4): "Grill me" on the whole book (the header) and on a
  * kind's card (every entry of that kind; a kind with no entry has nothing to
  * ask about and offers none) open the interview setup sheet, for editors
@@ -35,6 +37,7 @@ import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import { FileDown, FileText, Flame, MessagesSquare, Plus, Search, Trash2, Upload, Waypoints } from 'lucide-react';
 import { InterviewLauncher } from '@/components/interview/InterviewLauncher';
+import { BookSearch } from '@/components/search/BookSearch';
 import { buttonVariants } from '@/components/ui/button-variants';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Button } from '@/components/ui/button';
@@ -156,6 +159,9 @@ export function BookBoard({ workspaceSlug, book, kinds, board, canEdit, canDelet
                 ),
             }}
         >
+            <Card className="p-5">
+                <BookSearch workspaceSlug={workspaceSlug} bookId={book.id} kindLabels={Object.fromEntries(kinds.map((k) => [k.kind, k.label]))} />
+            </Card>
             <div className="grid grid-cols-1 gap-default md:grid-cols-2 xl:grid-cols-3" role="list" aria-label={t('kindsAria')}>
                 {kinds.map((k) => {
                     const entry = byKind.get(k.kind) ?? { kind: k.kind, entryCount: 0, filledFieldCount: 0, entries: [], nextCursor: null };

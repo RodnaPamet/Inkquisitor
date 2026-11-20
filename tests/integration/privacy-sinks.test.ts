@@ -6,8 +6,9 @@
  * relation's note, a concept note, an interview answer, the reconcile step's
  * proposals, a rephrase, a research brief, an attached file, a fetched page
  * and its findings, a model answer that fails validation, and an unexpected
- * error whose message carries it, and a model-call rate-limit refusal of a
- * request about it — through the product's own usecases, the
+ * error whose message carries it, a model-call rate-limit refusal of a
+ * request about it, and a word search for it (Phase 3.4: the query, and the
+ * snippets that quote it back, refused and answered) — through the product's own usecases, the
  * model layer (over the fake Messages API) and the request wrapper. Then every
  * sink is read: every log line the logger was handed (as the redacting
  * formatter would write it, and as it was handed), every span an in-memory
@@ -38,6 +39,7 @@ import { AsyncLocalStorageContextManager } from '@opentelemetry/context-async-ho
 import { InMemorySpanExporter, SimpleSpanProcessor, TracerProvider } from '@opentelemetry/sdk-trace';
 import { prisma } from '@/lib/db';
 import { saveStoryMap } from '@/app-layer/usecases/story-maps';
+import { searchBook } from '@/app-layer/usecases/book-search';
 import { pinoInstance } from '@/lib/observability/logger';
 import { redactLogObject } from '@/lib/observability/redaction';
 import { _resetSentryForTests, initSentry } from '@/lib/observability/sentry';
@@ -144,6 +146,15 @@ it('a marker planted in every author-text path reaches no log line, span, Sentry
     );
     const refusedLayer = await wrapped(() => saveStoryMap(ctx, bookId, 'plot', { expectedVersion: 1, nodes: [], edges: [], freeform: [{ id: 'shape:x', typeName: 'shape', type: 'story-node', props: { text: marked('refused') } }] }));
     expect(refusedLayer.status).toBe(400);
+
+    // Word search (Phase 3.4): the query is author text and so are the snippets it answers with — through the
+    // request wrapper, answered and refused (a query past its word bound echoes nothing back).
+    const searched = await wrapped(() => searchBook(ctx, bookId, { q: `${MARKER} keeper` }));
+    expect(searched.status).toBe(200);
+    expect(await searched.text()).toContain(MARKER);
+    const refusedSearch = await wrapped(() => searchBook(ctx, bookId, { q: `${MARKER} a b c d e f g h i j k l` }));
+    expect(refusedSearch.status).toBe(400);
+    expect((await refusedSearch.text()).toLowerCase()).not.toContain(MARKER.toLowerCase());
 
     // An unexpected error carrying author text, through the wrapper: logged, traced and reported, its message withheld.
     const failed = await withApiErrorHandling(async () => {
