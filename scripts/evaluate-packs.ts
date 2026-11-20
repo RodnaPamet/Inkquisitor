@@ -10,7 +10,13 @@
  *       Re-run after editing a pack, its evals.json, the situations or the
  *       question prompt: the mount gate refuses a record that no longer matches.
  *
- *   npm run packs:evaluate -- --generator model --out evals-out [--packs a,b] [--coverage]
+ *   npm run packs:evaluate -- --reconcile [--no-packs]
+ *       also the reconcile step's evaluation sets (Phase 2.5): with the
+ *       structural (reference) reconciler, its record is written beside the
+ *       sets (src/lib/enrichment/evals/evaluation-record.json). Re-run after
+ *       editing the sets, the reconcile prompt or its output schema.
+ *
+ *   npm run packs:evaluate -- --generator model --out evals-out [--packs a,b] [--coverage] [--reconcile]
  *       a REAL model, through the product's own wired generator and 2.1's
  *       `callStructured` (guard, fence, ledger and spend ceiling all apply),
  *       in a throwaway workspace provisioned for the run. Needs
@@ -41,6 +47,9 @@ import {
     type EvalArgs,
 } from '../src/lib/interview/evals/run-evaluations';
 import type { QuestionGenerator } from '../src/lib/interview/generator';
+import type { Reconciler } from '../src/lib/enrichment/reconciler';
+import { REFERENCE_RECONCILER_ID, referenceReconciler } from '../src/lib/enrichment/evals/evaluation';
+import { meteredReconciler, reconcilerWithinRunMonth, RECONCILE_RECORD_RELATIVE, runReconcileEvaluation } from '../src/lib/interview/evals/run-evaluations';
 
 function out(line: string): void {
     process.stdout.write(line + '\n');
@@ -52,7 +61,7 @@ function fail(message: string, code: number): never {
 }
 
 /** The wired model generator in a throwaway workspace, and what it closes. */
-async function modelGenerator(): Promise<{ generator: QuestionGenerator; id: string; close: () => Promise<void> }> {
+async function modelGenerator(): Promise<{ generator: QuestionGenerator; reconciler: Reconciler; id: string; reconcilerId: string; close: () => Promise<void> }> {
     if (!process.env.ANTHROPIC_API_KEY?.trim()) fail('ANTHROPIC_API_KEY is not set: a model run never falls back to the structural generator', 2);
     if (!process.env.DATABASE_URL) fail('a model run needs DATABASE_URL (a migrated database: the call ledger and the spend ceiling live there)', 2);
     const budget = (() => {
@@ -62,14 +71,17 @@ async function modelGenerator(): Promise<{ generator: QuestionGenerator; id: str
             return fail(err instanceof Error ? err.message : String(err), 2);
         }
     })();
-    const [{ provisionAccountWithWorkspace }, { defaultQuestionGenerator }, { getPermissionsForRole }, { modelForTier }, { QUESTION_PROMPT }, { prisma }] = await Promise.all([
-        import('../src/app-layer/usecases/sign-up'),
-        import('../src/lib/interview/model-seam'),
-        import('../src/lib/permissions'),
-        import('../src/lib/ai/tiers'),
-        import('../src/lib/interview/prompt'),
-        import('../src/lib/db'),
-    ]);
+    const [{ provisionAccountWithWorkspace }, { defaultQuestionGenerator }, { getPermissionsForRole }, { modelForTier }, { QUESTION_PROMPT }, { prisma }, { defaultReconciler }, { RECONCILE_PROMPT }] =
+        await Promise.all([
+            import('../src/app-layer/usecases/sign-up'),
+            import('../src/lib/interview/model-seam'),
+            import('../src/lib/permissions'),
+            import('../src/lib/ai/tiers'),
+            import('../src/lib/interview/prompt'),
+            import('../src/lib/db'),
+            import('../src/lib/enrichment/model-seam'),
+            import('../src/lib/enrichment/prompt'),
+        ]);
     const requestId = randomUUID();
     const account = await provisionAccountWithWorkspace({
         email: `pack-evals-${randomBytes(6).toString('hex')}@example.invalid`,
@@ -79,19 +91,21 @@ async function modelGenerator(): Promise<{ generator: QuestionGenerator; id: str
         workspaceName: 'Pack evaluations',
         requestId,
     });
-    const generator = defaultQuestionGenerator({
+    const ctx = {
         requestId,
         userId: account.userId,
         workspaceId: account.workspaceId,
         workspaceSlug: account.workspaceSlug,
-        role: 'OWNER',
+        role: 'OWNER' as const,
         permissions: getPermissionsForRole('OWNER'),
-    });
+    };
+    const generator = defaultQuestionGenerator(ctx);
+    const reconciler = defaultReconciler(ctx);
     const unavailable = generator.unavailableReason();
     if (unavailable) fail(`no model call can be made (${unavailable})`, 2);
     const id = modelForTier(QUESTION_PROMPT.tier);
     out(`packs:evaluate: model ${id}, budget $${budget} (the run's workspace ceiling)`);
-    return { generator, id, close: () => prisma.$disconnect() };
+    return { generator, reconciler, id, reconcilerId: modelForTier(RECONCILE_PROMPT.tier), close: () => prisma.$disconnect() };
 }
 
 async function main(): Promise<void> {
@@ -120,8 +134,19 @@ async function main(): Promise<void> {
     try {
         const results = await runPackEvaluations({ registry, names, generator, who, outRoot });
         const coverage = args.coverage ? await runCoverage(registry, generator, args.out ? path.resolve(args.out) : path.resolve('evals-out')) : null;
-        for (const line of summaryLines(results, coverage, model ? spent : null)) out(line);
-        const ok = results.every((r) => r.passed) && results.length === names.length && (!coverage || coverage.status === 'NOT_ASSESSED' || coverage.passed === coverage.sessions.length);
+        let reconcile = null;
+        if (args.reconcile) {
+            const reconciler = meteredReconciler(model ? reconcilerWithinRunMonth(model.reconciler, new Date()) : referenceReconciler(), spent);
+            const rWho = model ? { kind: 'model' as const, id: model.reconcilerId } : { kind: 'structural' as const, id: REFERENCE_RECONCILER_ID };
+            const file = args.out ? path.join(path.resolve(args.out), 'reconcile', 'evaluation-record.json') : path.resolve(RECONCILE_RECORD_RELATIVE);
+            reconcile = await runReconcileEvaluation(reconciler, rWho, file);
+        }
+        for (const line of summaryLines(results, coverage, model ? spent : null, reconcile)) out(line);
+        const ok =
+            results.every((r) => r.passed) &&
+            results.length === names.length &&
+            (!coverage || coverage.status === 'NOT_ASSESSED' || coverage.passed === coverage.sessions.length) &&
+            (!reconcile || reconcile.passed);
         process.exitCode = ok ? 0 : 1;
     } finally {
         await model?.close();

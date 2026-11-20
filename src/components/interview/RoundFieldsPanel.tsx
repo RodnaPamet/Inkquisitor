@@ -6,10 +6,14 @@
  * proposals arrive with enrichment (2.5) — so an answered field reads "pending
  * enrichment", with the answer beside it, read-only.
  *
+ * Once a round closes its answers are reconciled into proposed changes (2.5):
+ * `reviewHref` links to the interview's review, where the author accepts them.
+ *
  * Before the round is committed it lists the fields the round PLANNED (the
  * stream's `planned` event: ids and keys), all waiting; once committed, the
  * round's own questions decide each field's state.
  */
+import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import { Card } from '@/components/ui/card';
 import { StatusBadge } from '@/components/ui/status-badge';
@@ -59,7 +63,18 @@ export function panelRows(questions: readonly QuestionView[] | null, planned: re
     return [...rows.values()];
 }
 
-export function RoundFieldsPanel({ questions, planned, naming }: { questions: readonly QuestionView[] | null; planned: readonly PlannedField[]; naming: FieldNaming }) {
+export function RoundFieldsPanel({
+    questions,
+    planned,
+    naming,
+    reviewHref = null,
+}: {
+    questions: readonly QuestionView[] | null;
+    planned: readonly PlannedField[];
+    naming: FieldNaming;
+    /** The interview's review of proposed changes (Phase 2.5): where pending enrichment goes once a round closes. */
+    reviewHref?: string | null;
+}) {
     const t = useTranslations('interview.panel');
     const rows = panelRows(questions, planned);
     return (
@@ -90,6 +105,11 @@ export function RoundFieldsPanel({ questions, planned, naming }: { questions: re
                     ))}
                 </ul>
             )}
+            {reviewHref ? (
+                <Link href={reviewHref} className="inline-block text-sm font-medium text-content-emphasis hover:underline" id="review-proposals">
+                    {t('review')}
+                </Link>
+            ) : null}
         </Card>
     );
 }

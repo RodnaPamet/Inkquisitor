@@ -399,6 +399,8 @@ export const BibleVersionRepository = {
             source: BibleVersionSource;
             restoredFromVersion: number | null;
             authorId: string;
+            /** The answers an INTERVIEW version is drawn from (Phase 2.5); empty for every other source (CHECK). */
+            sourceAnswerIds?: string[];
         },
     ) {
         return db.bibleEntryVersion.create({ data: { ...data, workspaceId }, select: VERSION_META_SELECT });

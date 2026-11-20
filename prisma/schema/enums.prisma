@@ -137,6 +137,47 @@ enum AnswerStatus {
   DECIDE_LATER
 }
 
+/// What a reconcile step proposes for one field (Phase 2.5; the mem0
+/// reconciliation pattern, Apache-2.0): ADD a value to an empty field, UPDATE
+/// a filled one, REMOVE a filled one's value. NO_CHANGE is the fourth answer
+/// a reconcile step may give, and it is never stored: it writes nothing.
+enum EnrichmentOperation {
+  ADD
+  UPDATE
+  REMOVE
+}
+
+/// A proposal changes one FIELD of an element, or names a NEW_ELEMENT an
+/// answer mentions that the bible lacks (created only when the author accepts).
+enum EnrichmentProposalKind {
+  FIELD
+  NEW_ELEMENT
+}
+
+/// Where a proposal stands. PENDING awaits the author; ACCEPTED and
+/// EDITED_ACCEPTED wrote a version (the latter with the author's edit);
+/// REJECTED wrote nothing; SUPERSEDED was overtaken by another proposal for
+/// the same field that the author accepted.
+enum EnrichmentProposalStatus {
+  PENDING
+  ACCEPTED
+  EDITED_ACCEPTED
+  REJECTED
+  SUPERSEDED
+}
+
+/// A round's reconcile run (Phase 2.5): RUNNING while its model call is out (a
+/// claim: one at a time per round); DONE once its proposals are stored (none
+/// is a valid answer); FAILED when the call failed (re-runnable); REFUSED when
+/// it was not run at all (no model call can be made, or the reconcile prompt
+/// has no evaluation record this deployment accepts: D11).
+enum ReconcileRunStatus {
+  RUNNING
+  DONE
+  FAILED
+  REFUSED
+}
+
 /// How a model call ended (Phase 2.1); one per `AiCallLog` row. Mirrored by
 /// `AI_CALL_OUTCOMES` in src/lib/ai/errors.ts.
 enum AiCallOutcome {

@@ -11,7 +11,8 @@ import { SETUP_OPTIONS_TIMEOUT_MS, STUB_BASE_URL } from './stub-server';
  *     board, the element page's Fields and History tabs, the create and
  *     delete dialogs, and the recently-deleted page;
  *   - and on the interview pages and dialogs (Phase 2.4): the setup sheet, a
- *     session with a round open, the stop dialog and a book's interviews —
+ *     session with a round open, the stop dialog and a book's interviews, and
+ *     the review of an interview's proposed changes (Phase 2.5) —
  *     against the stubbed-model server, so a round really opens;
  *   - an author can create, edit, relate and restore with the KEYBOARD ONLY:
  *     after the page is opened, every step is a key press — focus moves by
@@ -185,6 +186,47 @@ test.describe('the interview pages (Phase 2.4, the stubbed-model server)', () =>
         await page.goto(`/w/${slug}/books/${bookId}/interviews`);
         await expect(main.getByTestId('interviews-table')).toContainText('Mara');
         await expectNoAxeViolations(page, 'interviews list');
+    });
+
+    /** An interview whose first round is answered and closed through the API, so the close reconciles it (Phase 2.5). */
+    async function reconciledInterview(page: Page) {
+        const { slug, bookId, elementId } = await bookWithCharacter(page);
+        const api = page.request;
+        const base = `/api/w/${slug}/books/${bookId}/interviews`;
+        const started = (await (await api.post(base, { data: { scope: 'ELEMENT', elementId, depth: 2, detail: 3 } })).json()) as {
+            interview: { session: { id: string }; round: { number: number; questions: Array<{ id: string; kind: string; options: string[] | null }> } };
+        };
+        const { session, round } = started.interview;
+        for (const q of round.questions) {
+            const data = q.kind === 'CHOICE' || q.kind === 'EITHER_OR' ? { choice: q.options![0] } : q.kind === 'SCALE' ? { scale: 3 } : { text: 'She keeps the ledger of every crossing.' };
+            expect((await api.post(`${base}/${session.id}/questions/${q.id}/answer`, { data })).ok()).toBe(true);
+        }
+        const closed = (await (await api.post(`${base}/${session.id}/rounds/${round.number}/close`, { data: {} })).json()) as { reconcile: { status: string } | null };
+        expect(closed.reconcile?.status).toBe('DONE');
+        return { slug, bookId, sessionId: session.id };
+    }
+
+    test('axe finds no WCAG 2.1 AA violation on the review of proposed changes, nor while one is edited (Phase 2.5)', async ({ page }) => {
+        test.setTimeout(120_000);
+        const { slug, bookId, sessionId } = await reconciledInterview(page);
+        const main = page.getByRole('main');
+        await page.goto(`/w/${slug}/books/${bookId}/interviews/${sessionId}/review`);
+        await expect(main.getByTestId('field-proposal').first()).toBeVisible({ timeout: 20_000 });
+        await expectNoAxeViolations(page, 'review of proposed changes');
+        await main.getByTestId('field-proposal').first().getByRole('button', { name: 'Edit, then accept' }).click();
+        await expectNoAxeViolations(page, 'review, a proposal being edited');
+    });
+
+    test('accept a proposed change with the keyboard alone (Phase 2.5)', async ({ page }) => {
+        test.setTimeout(120_000);
+        const { slug, bookId, sessionId } = await reconciledInterview(page);
+        const main = page.getByRole('main');
+        await page.goto(`/w/${slug}/books/${bookId}/interviews/${sessionId}/review`);
+        const first = main.getByTestId('field-proposal').first();
+        await expect(first).toBeVisible({ timeout: 20_000 });
+        await tabTo(page, first.getByRole('button', { name: /^Accept the change/ }));
+        await page.keyboard.press('Enter');
+        await expect(first.getByTestId('proposal-status')).toHaveText('Accepted', { timeout: 10_000 });
     });
 
     test('start an interview, answer and finish a round with the keyboard alone', async ({ page }) => {

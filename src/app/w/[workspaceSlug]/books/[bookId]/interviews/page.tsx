@@ -20,7 +20,7 @@ export async function generateMetadata(): Promise<Metadata> {
 export default async function InterviewsPage({ params }: { params: Promise<{ workspaceSlug: string; bookId: string }> }) {
     const { workspaceSlug, bookId } = await params;
     const { ctx } = await getWorkspacePageCtx(workspaceSlug);
-    const { book, sessions, truncated } = await orNotFound(loadInterviewsPage(ctx, bookId));
+    const { book, sessions, truncated, pendingBySession } = await orNotFound(loadInterviewsPage(ctx, bookId));
     return (
         <InterviewsList
             workspaceSlug={ctx.workspaceSlug}
@@ -28,6 +28,7 @@ export default async function InterviewsPage({ params }: { params: Promise<{ wor
             sessions={sessions}
             truncated={truncated}
             kindLabels={kindLabels()}
+            pendingBySession={pendingBySession}
         />
     );
 }

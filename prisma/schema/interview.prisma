@@ -89,11 +89,14 @@ model InterviewSession {
   /// Set when the session is COMPLETED or STOPPED.
   endedAt          DateTime?
 
-  book          Book             @relation(fields: [workspaceId, bookId], references: [workspaceId, id], onDelete: Cascade)
-  targetElement BibleElement?    @relation(fields: [bookId, targetElementId], references: [bookId, id], onDelete: Cascade)
-  createdBy     User?            @relation(fields: [createdById], references: [id], onDelete: SetNull)
-  rounds        InterviewRound[]
-  questions     Question[]
+  book                Book                 @relation(fields: [workspaceId, bookId], references: [workspaceId, id], onDelete: Cascade)
+  targetElement       BibleElement?        @relation(fields: [bookId, targetElementId], references: [bookId, id], onDelete: Cascade)
+  createdBy           User?                @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  rounds              InterviewRound[]
+  questions           Question[]
+  /// Phase 2.5: the rounds' reconcile runs and the proposed bible changes.
+  reconcileRuns       ReconcileRun[]
+  enrichmentProposals EnrichmentProposal[]
 
   @@unique([workspaceId, id])
   @@unique([workspaceId, bookId, id])
@@ -123,8 +126,11 @@ model InterviewRound {
   openedAt      DateTime?
   closedAt      DateTime?
 
-  session   InterviewSession @relation(fields: [workspaceId, sessionId], references: [workspaceId, id], onDelete: Cascade)
-  questions Question[]
+  session             InterviewSession     @relation(fields: [workspaceId, sessionId], references: [workspaceId, id], onDelete: Cascade)
+  questions           Question[]
+  /// Phase 2.5: the round's reconcile run, once it closed, and its proposals.
+  reconcileRun        ReconcileRun?
+  enrichmentProposals EnrichmentProposal[]
 
   @@unique([sessionId, number])
   @@unique([sessionId, id])
@@ -218,10 +224,14 @@ model Answer {
   answeredById           String?
   createdAt              DateTime     @default(now())
 
-  question   Question @relation(fields: [workspaceId, sessionId, questionId], references: [workspaceId, sessionId, id], onDelete: Cascade)
-  answeredBy User?    @relation(fields: [answeredById], references: [id], onDelete: SetNull)
+  question   Question             @relation(fields: [workspaceId, sessionId, questionId], references: [workspaceId, sessionId, id], onDelete: Cascade)
+  answeredBy User?                @relation(fields: [answeredById], references: [id], onDelete: SetNull)
+  /// Phase 2.5: the proposals drawn from this answer.
+  citations  EnrichmentCitation[]
 
   @@unique([questionId, revision])
+  /// An answer by id within its session: what a citation's foreign key names (Phase 2.5).
+  @@unique([workspaceId, sessionId, id])
   @@index([workspaceId, sessionId, questionId])
   @@index([answeredById])
 }

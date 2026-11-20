@@ -235,6 +235,13 @@ export interface VersionMeta {
     /** The author's words, sanitised here; or the product's own (a restore). */
     changeSummary?: string | null;
     restoredFromVersion?: number | null;
+    /**
+     * The answers an INTERVIEW version is drawn from (Phase 2.5, rule 1):
+     * required, and non-empty, exactly when `source` is INTERVIEW (the
+     * database's CHECK `BibleEntryVersion_interview_names_answers` holds the
+     * same). Written with the version, never after.
+     */
+    sourceAnswerIds?: readonly string[];
 }
 
 /**
@@ -256,6 +263,10 @@ export async function recordVersion(db: PrismaTx, ctx: WorkspaceRequestContext, 
         },
         fields: [...values].map(([key, value]) => ({ key, value, order: getFieldDef(element.kind, key)?.order ?? 0 })),
     });
+    const sourceAnswerIds = [...new Set(meta.sourceAnswerIds ?? [])];
+    if ((meta.source === 'INTERVIEW') !== (sourceAnswerIds.length > 0)) {
+        throw new ValidationError('An interview version names the answers it is drawn from, and only an interview version does.', { reason: 'VERSION_SOURCE_ANSWERS' });
+    }
     const versionNumber = (await BibleVersionRepository.latestNumber(db, ctx.workspaceId, elementId)) + 1;
     return BibleVersionRepository.create(db, ctx.workspaceId, {
         bookId,
@@ -266,5 +277,6 @@ export async function recordVersion(db: PrismaTx, ctx: WorkspaceRequestContext, 
         source: meta.source,
         restoredFromVersion: meta.restoredFromVersion ?? null,
         authorId: ctx.userId,
+        sourceAnswerIds,
     });
 }

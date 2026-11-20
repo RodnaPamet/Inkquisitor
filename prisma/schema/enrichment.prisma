@@ -1,0 +1,141 @@
+// ─────────────────────────────────────────────────────────────────
+//  Enrichment (Phase 2.5): an interview's answers become proposed bible
+//  changes the author reviews.
+//
+//  When a round closes, its RECONCILE RUN asks the model, once, what the
+//  round's answers change: for each field the round targeted, ADD, UPDATE,
+//  REMOVE or NO CHANGE (the mem0 reconciliation pattern, Apache-2.0), with the
+//  proposed value and the ids of the answers it is drawn from; and any new
+//  element an answer names that the bible lacks. Code validates every
+//  proposal (`src/lib/enrichment/validate.ts`) and stores only what passes;
+//  NO CHANGE and every refusal are counted on the run, never stored as rows.
+//
+//  NOTHING HERE CHANGES THE BIBLE. A proposal waits for the author (rule 1);
+//  accepting one writes one BibleEntryVersion with source INTERVIEW naming the
+//  answers (`BibleEntryVersion.sourceAnswerIds`), through the bible's own
+//  versioned save; rejecting one writes nothing.
+//
+//  EVERY MODEL HERE IS WORKSPACE-SCOPED (FORCE RLS, `workspace_isolation`,
+//  `superuser_bypass`, reached through `runInWorkspaceContext`), and the
+//  workspace travels in every foreign key. A citation names an answer by
+//  (workspaceId, sessionId, answerId), so the database itself refuses a
+//  citation of another session's answer; a trigger refuses one of an answer
+//  that is not ANSWERED, and a deferred constraint trigger refuses a proposal
+//  that cites nothing (rule 2).
+//
+//  AUTHOR TEXT IS ENCRYPTED AT REST: a proposal's value, and a new element's
+//  name and summary (`src/lib/security/encrypted-fields.ts`), sanitised at the
+//  usecase layer before they are stored (`sanitiseProposalForStorage`).
+//
+//  A PROPOSAL IS FIXED once stored: a trigger lets only its decision columns
+//  change, once, from PENDING (and `decidedById` clear when that person is
+//  deleted). What the model proposed is never rewritten.
+// ─────────────────────────────────────────────────────────────────
+
+/// One closed round's reconcile step.
+model ReconcileRun {
+  id            String             @id @default(cuid())
+  workspaceId   String
+  bookId        String
+  sessionId     String
+  roundId       String
+  status        ReconcileRunStatus @default(RUNNING)
+  /// How it ended, a code from the closed list (CHECK; `RECONCILE_OUTCOMES`): OK,
+  /// NOTHING_TO_RECONCILE, a failure (GUARD_REFUSED, TIMEOUT, …) or a refusal
+  /// (AI_UNAVAILABLE, RECONCILE_NOT_EVALUATED). NULL while RUNNING.
+  outcome       String?
+  /// Counts and codes only: operations by kind, refusals by code, proposals
+  /// stored, tokens, cost, the AiCallLog id. Never text.
+  metrics       Json?
+  /// The reconcile prompt's version (rule 9).
+  promptVersion String
+  /// Times the run was claimed (a FAILED or REFUSED run may be run again).
+  attempts      Int                @default(1)
+  startedAt     DateTime           @default(now())
+  finishedAt    DateTime?
+
+  session InterviewSession @relation(fields: [workspaceId, sessionId], references: [workspaceId, id], onDelete: Cascade)
+  round   InterviewRound   @relation(fields: [sessionId, roundId], references: [sessionId, id], onDelete: Cascade)
+
+  /// One run per round (and the round's foreign key).
+  @@unique([sessionId, roundId])
+  /// A session's runs.
+  @@index([workspaceId, sessionId])
+}
+
+/// A proposed bible change, waiting for the author.
+model EnrichmentProposal {
+  id               String                   @id @default(cuid())
+  workspaceId      String
+  bookId           String
+  sessionId        String
+  roundId          String
+  kind             EnrichmentProposalKind
+  /// FIELD: the element whose field it changes (in the session's scope; a
+  /// trigger holds it to the proposal's book). NULL for NEW_ELEMENT (CHECK).
+  elementId        String?
+  /// FIELD: the template key it changes (in the round's scope).
+  fieldKey         String?
+  /// FIELD: ADD, UPDATE or REMOVE.
+  operation        EnrichmentOperation?
+  /// FIELD: the proposed value, JSON-encoded by the field's type, sanitised
+  /// (encrypted). NULL exactly for REMOVE (CHECK).
+  proposedValue    String?
+  /// FIELD: the element's latest version when the proposal was made; an
+  /// acceptance over a newer one shows the author the change first (1.H).
+  baseVersion      Int?
+  /// NEW_ELEMENT: the kind of the element proposed.
+  newKind          BibleElementKind?
+  /// NEW_ELEMENT: its name, as an answer gave it (encrypted).
+  newName          String?
+  /// NEW_ELEMENT: a short summary drawn from the answers, or NULL (encrypted).
+  newSummary       String?
+  /// What the author is warned of, from a closed list (CHECK; `PROPOSAL_FLAGS`):
+  /// POSSIBLE_INSTRUCTION when the text addresses the product itself (owner
+  /// decision D14). A flagged proposal is shown as such and never bulk-accepted.
+  /// Fixed at insert, like the rest of the proposal.
+  flags            String[]                 @default([])
+  status           EnrichmentProposalStatus @default(PENDING)
+  /// Who decided it; NULL while PENDING, and once that person is deleted.
+  decidedById      String?
+  decidedAt        DateTime?
+  /// The BibleEntryVersion an acceptance of a FIELD proposal wrote (no
+  /// foreign key: a version outlives its element; the table is append-only).
+  versionId        String?
+  /// The element an accepted NEW_ELEMENT proposal created (no foreign key:
+  /// the record of the decision outlives the element).
+  createdElementId String?
+  createdAt        DateTime                 @default(now())
+
+  session   InterviewSession     @relation(fields: [workspaceId, bookId, sessionId], references: [workspaceId, bookId, id], onDelete: Cascade)
+  round     InterviewRound       @relation(fields: [sessionId, roundId], references: [sessionId, id], onDelete: Cascade)
+  element   BibleElement?        @relation(fields: [elementId], references: [id], onDelete: Cascade)
+  decidedBy User?                @relation(fields: [decidedById], references: [id], onDelete: SetNull)
+  citations EnrichmentCitation[]
+
+  @@unique([workspaceId, sessionId, id])
+  /// A session's proposals, in the order they were made (the review page).
+  @@index([workspaceId, sessionId, createdAt])
+  /// A book's proposals by status (the board's "to review").
+  @@index([workspaceId, bookId, status])
+  /// A round's proposals.
+  @@index([sessionId, roundId])
+  /// The pending proposals for one field (superseded on an acceptance).
+  @@index([elementId, fieldKey])
+  @@index([decidedById])
+}
+
+/// An answer a proposal is drawn from (rule 2). Inserted with its proposal,
+/// never changed.
+model EnrichmentCitation {
+  workspaceId String
+  sessionId   String
+  proposalId  String
+  answerId    String
+
+  proposal EnrichmentProposal @relation(fields: [workspaceId, sessionId, proposalId], references: [workspaceId, sessionId, id], onDelete: Cascade)
+  answer   Answer             @relation(fields: [workspaceId, sessionId, answerId], references: [workspaceId, sessionId, id], onDelete: Cascade)
+
+  @@id([proposalId, answerId])
+  @@index([workspaceId, sessionId, answerId])
+}

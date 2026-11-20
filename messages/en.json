@@ -603,7 +603,8 @@
         "meta": {
             "list": "Interviews",
             "session": "Interview",
-            "new": "New interview"
+            "new": "New interview",
+            "review": "Review proposed changes"
         },
         "launch": {
             "enrich": "Enrich",
@@ -766,7 +767,8 @@
             "backToBook": "Back to the book",
             "notStarted": "This interview could not start.",
             "badSetup": "This link does not describe an interview. Start one from the book.",
-            "unsavedHold": "An answer could not be saved, so nothing else was done. Try saving it again first."
+            "unsavedHold": "An answer could not be saved, so nothing else was done. Try saving it again first.",
+            "reconciled": "{count, plural, =0 {No bible changes were proposed from this round.} one {One bible change was proposed from this round: review it.} other {# bible changes were proposed from this round: review them.}}"
         },
         "card": {
             "question": "Question {number}",
@@ -808,7 +810,8 @@
             "pending": "Pending enrichment",
             "skipped": "Skipped",
             "deferred": "Decide later",
-            "challenge": "Being tested"
+            "challenge": "Being tested",
+            "review": "Review proposed changes"
         },
         "list": {
             "title": "Interviews",
@@ -823,7 +826,9 @@
             "emptyHelp": "Enrich an entry, or use Grill me on the book, to start one.",
             "truncated": "Showing the {count} most recent interviews.",
             "open": "Open",
-            "resume": "Resume"
+            "resume": "Resume",
+            "colProposals": "To review",
+            "toReview": "{count, plural, one {# change} other {# changes}}"
         },
         "errors": {
             "AI_UNAVAILABLE": "AI questions are not available on this server right now.",
@@ -853,6 +858,97 @@
             "packPersona": "the {name} interviewer",
             "ANSWERED_IN_BIBLE": "Your bible now answers this, so it is not asked again. Skip it, or answer it as it is.",
             "PACK_CHANGED": "A question pack this interview was started with has changed since, so it cannot be asked differently. Your answers are kept."
+        }
+    },
+    "enrichment": {
+        "title": "Proposed changes",
+        "breadcrumbReview": "Proposed changes",
+        "description": "Each change is drawn from your answers and cites them. Nothing reaches the bible until you accept it.",
+        "readOnly": "You can read these proposals; only an editor can accept or reject them.",
+        "truncated": "Showing the first {count} proposals of this interview.",
+        "backToInterview": "Back to the interview",
+        "fieldsTitle": "Field changes",
+        "newElementsTitle": "New entries",
+        "newElementsHelp": "Characters, places and other things your answers named that the bible does not have yet. Accepting one creates the entry.",
+        "emptyTitle": "Nothing to review",
+        "empty": "No changes have been proposed from this interview yet. A round is reconciled when it closes.",
+        "runsTitle": "Rounds",
+        "roundLabel": "Round {number}",
+        "runRetry": "Try again",
+        "runRetried": "Round {number} was reconciled again.",
+        "guardFlag": "An answer of this round looked like an instruction to the model. It was treated as story text only; check its proposals closely.",
+        "op": {
+            "ADD": "Add",
+            "UPDATE": "Update",
+            "REMOVE": "Remove"
+        },
+        "status": {
+            "PENDING": "Waiting for you",
+            "ACCEPTED": "Accepted",
+            "EDITED_ACCEPTED": "Accepted with your edit",
+            "REJECTED": "Rejected",
+            "SUPERSEDED": "Overtaken"
+        },
+        "runStatus": {
+            "RUNNING": "Reconciling…",
+            "OK": "Reconciled",
+            "NOTHING_TO_RECONCILE": "Nothing answered to reconcile",
+            "GUARD_REFUSED": "Not reconciled: the safety check refused it",
+            "TIMEOUT": "Not reconciled: the model took too long",
+            "ABORTED": "Not reconciled: it was cancelled",
+            "PROVIDER_FAILURE": "Not reconciled: the model service failed",
+            "INVALID_OUTPUT": "Not reconciled: the model’s answer could not be used",
+            "KILL_SWITCH": "Not reconciled: AI features are switched off",
+            "WORKSPACE_CEILING": "Not reconciled: this month’s AI budget is spent",
+            "PROMPT_INVALID": "Not reconciled: an internal error",
+            "CLAIM_EXPIRED": "Not reconciled: it was interrupted",
+            "AI_UNAVAILABLE": "Not reconciled: AI is not available on this server",
+            "RECONCILE_NOT_EVALUATED": "Not reconciled: this step has not passed its evaluation on this server yet"
+        },
+        "removeExplained": "Remove the stored value: your answers take it back and give nothing in its place.",
+        "changedSince": "This entry changed since the proposal was made (version {base} then, {current} now). The comparison shows its value now; accept only if the change still fits.",
+        "flag": {
+            "POSSIBLE_INSTRUCTION": {
+                "label": "Possible instruction",
+                "explained": "This text reads like an instruction to Inkquisitor (to change fields, the bible or the prompt) rather than a fact about your story. It may have been copied from an answer. Accept it only if it really belongs in your bible; it is never accepted together with other changes."
+            }
+        },
+        "citesTitle": "Drawn from",
+        "answerMissing": "That answer is no longer available.",
+        "notAnswered": "(not answered)",
+        "accept": "Accept",
+        "acceptAria": "Accept the change to {field} of {element}",
+        "edit": "Edit, then accept",
+        "editing": "Your version",
+        "saveAccept": "Accept my version",
+        "cancelEdit": "Cancel",
+        "reject": "Reject",
+        "rejectAria": "Reject the change to {field} of {element}",
+        "bulkAccept": "Accept all {count} additions to empty fields",
+        "bulkHelp": "Only additions to fields that are still empty, and not marked as a possible instruction, can be accepted together; review every other change on its own.",
+        "accepted": "Accepted. The bible has a new version.",
+        "acceptedNew": "Accepted. {name} is now in the bible.",
+        "bulkAccepted": "{count, plural, one {# change accepted.} other {# changes accepted.}}",
+        "rejected": "Rejected. Nothing was changed.",
+        "nameLabel": "Name",
+        "summaryLabel": "Summary",
+        "openElement": "Open the entry",
+        "kindLabel": "Kind: {kind}",
+        "errors": {
+            "VERSION_CONFLICT": "Someone saved this entry while you were reviewing. Reload to see its current value.",
+            "PROPOSAL_OUTDATED": "This entry changed since the proposal was made. Reload, compare it with the entry as it is now, and decide again.",
+            "PROPOSAL_STALE": "The field no longer holds what this change was proposed for, so it cannot be applied.",
+            "PROPOSAL_DECIDED": "This proposal has already been decided.",
+            "EDIT_NOT_ALLOWED": "That edit cannot be made here. To clear the field, reject the proposal.",
+            "EDIT_CHANGES_NOTHING": "That would not change the entry.",
+            "FIELD_VALUES_REFUSED": "That value does not fit the field.",
+            "BULK_INELIGIBLE": "Some of these changes can no longer be accepted together. Reload and review them one by one.",
+            "ELEMENT_EXISTS": "The bible already has an entry of that name.",
+            "CITATIONS_GONE": "The answers this change cites are gone; reject it.",
+            "RECONCILE_DONE": "This round has already been reconciled.",
+            "RECONCILE_RUNNING": "This round is being reconciled now.",
+            "AI_UNAVAILABLE": "AI is not available on this server right now.",
+            "generic": "That did not work. Try again."
         }
     }
 }

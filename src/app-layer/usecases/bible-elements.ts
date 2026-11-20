@@ -67,6 +67,7 @@ import {
     requiredLine,
     slugConflict,
     writeFieldValues,
+    type VersionMeta,
 } from './bible-common';
 
 // ─── Views ──────────────────────────────────────────────────────────
@@ -302,6 +303,60 @@ export async function getElement(ctx: WorkspaceRequestContext, bookId: string, e
 
 // ─── Writes ─────────────────────────────────────────────────────────
 
+/** What `createElementInTx` creates: already sanitised by its caller (name, summary, label), the fields as the API takes them. */
+export interface ElementCreateData {
+    kind: BibleElementKind;
+    name: string;
+    /** A slug the author chose (refused 409 when taken), or none to derive one from the name. */
+    slug?: string | null;
+    status?: ElementWrite['status'];
+    summary: string | null;
+    customLabel: string | null;
+    fields: readonly { key: string; value: unknown }[];
+}
+
+/**
+ * THE CREATE PATH (Phase 1.1), in the caller's transaction: the slug (derived,
+ * or the author's, refused when taken), the element, its fields, and its
+ * first version under the element's lock, audited. Shared by `createElement`
+ * and the acceptance of a proposed new element (Phase 2.5, whose version is
+ * INTERVIEW and names the answers). Throws a unique violation when a derived
+ * slug is lost to a concurrent create: the caller retries in a fresh
+ * transaction (`DERIVED_SLUG_ATTEMPTS`).
+ */
+export async function createElementInTx(db: PrismaTx, ctx: WorkspaceRequestContext, bookId: string, data: ElementCreateData, meta: VersionMeta) {
+    await requireBook(db, ctx, bookId);
+    let slug: string;
+    if (data.slug) {
+        if (await BibleElementRepository.slugTaken(db, ctx.workspaceId, bookId, data.slug)) throw slugConflict();
+        slug = data.slug;
+    } else {
+        slug = await freeSlug(db, ctx, bookId, slugify(data.name) || data.kind.toLowerCase().replace(/_/g, '-'));
+    }
+    const element = await BibleElementRepository.create(db, ctx.workspaceId, bookId, {
+        kind: data.kind,
+        name: data.name,
+        slug,
+        status: data.status,
+        summary: optionalBlock(data.summary, ELEMENT_SUMMARY_MAX, 'Summary') ?? null,
+        customLabel: data.customLabel,
+    });
+    await BibleElementRepository.lock(db, element.id);
+    const changed = await writeFieldValues(db, ctx, element, data.fields);
+    const version = await recordVersion(db, ctx, bookId, element.id, meta);
+    await logEvent(
+        ctx,
+        {
+            action: 'BIBLE_ELEMENT_CREATED',
+            entityType: 'BibleElement',
+            entityId: element.id,
+            details: { bookId, kind: data.kind, fieldCount: changed.length, versionNumber: version.versionNumber, source: meta.source },
+        },
+        { db },
+    );
+    return { element, version };
+}
+
 export async function createElement(ctx: WorkspaceRequestContext, bookId: string, input: unknown): Promise<ElementView> {
     await assertPermission(ctx, 'bible.edit');
     const parsed = ElementCreateInput.parse(input);
@@ -315,34 +370,12 @@ export async function createElement(ctx: WorkspaceRequestContext, bookId: string
     for (let attempt = 1; ; attempt++) {
         try {
             return await runInWorkspaceContext(ctx, async (db) => {
-                await requireBook(db, ctx, bookId);
-                let slug: string;
-                if (parsed.slug) {
-                    if (await BibleElementRepository.slugTaken(db, ctx.workspaceId, bookId, parsed.slug)) throw slugConflict();
-                    slug = parsed.slug;
-                } else {
-                    slug = await freeSlug(db, ctx, bookId, slugify(name) || parsed.kind.toLowerCase().replace(/_/g, '-'));
-                }
-                const element = await BibleElementRepository.create(db, ctx.workspaceId, bookId, {
-                    kind: parsed.kind,
-                    name,
-                    slug,
-                    status: parsed.status,
-                    summary,
-                    customLabel,
-                });
-                await BibleElementRepository.lock(db, element.id);
-                const changed = await writeFieldValues(db, ctx, element, entries);
-                const version = await recordVersion(db, ctx, bookId, element.id, { source: 'MANUAL', changeSummary: parsed.changeSummary ?? null });
-                await logEvent(
+                const { element } = await createElementInTx(
+                    db,
                     ctx,
-                    {
-                        action: 'BIBLE_ELEMENT_CREATED',
-                        entityType: 'BibleElement',
-                        entityId: element.id,
-                        details: { bookId, kind: parsed.kind, fieldCount: changed.length, versionNumber: version.versionNumber },
-                    },
-                    { db },
+                    bookId,
+                    { kind: parsed.kind, name, slug: parsed.slug, status: parsed.status, summary, customLabel, fields: entries },
+                    { source: 'MANUAL', changeSummary: parsed.changeSummary ?? null },
                 );
                 return elementView(db, ctx, bookId, element.id);
             });

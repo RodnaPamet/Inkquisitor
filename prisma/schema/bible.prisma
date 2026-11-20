@@ -88,12 +88,14 @@ model BibleElement {
   createdAt   DateTime           @default(now())
   updatedAt   DateTime           @updatedAt
 
-  book          Book               @relation(fields: [workspaceId, bookId], references: [workspaceId, id], onDelete: Cascade)
-  fields        BibleField[]
-  relationsFrom BibleRelation[]    @relation("BibleRelationFrom")
-  relationsTo   BibleRelation[]    @relation("BibleRelationTo")
-  interviews    InterviewSession[]
-  questions     Question[]
+  book                Book                 @relation(fields: [workspaceId, bookId], references: [workspaceId, id], onDelete: Cascade)
+  fields              BibleField[]
+  relationsFrom       BibleRelation[]      @relation("BibleRelationFrom")
+  relationsTo         BibleRelation[]      @relation("BibleRelationTo")
+  interviews          InterviewSession[]
+  questions           Question[]
+  /// Phase 2.5: proposed changes to this element's fields.
+  enrichmentProposals EnrichmentProposal[]
 
   @@unique([bookId, slug])
   @@unique([bookId, id])
@@ -168,6 +170,12 @@ model BibleEntryVersion {
   source              BibleVersionSource
   /// The version this one restored, when it is a restore.
   restoredFromVersion Int?
+  /// The answers an INTERVIEW version is drawn from (Phase 2.5, rule 1): the
+  /// ids of the cited answers of the proposal(s) the author accepted. Set at
+  /// insert and never changed (the table is append-only); non-empty exactly
+  /// when `source` is INTERVIEW (CHECK). Ids only: an answer deleted later
+  /// leaves its id here, as the history it was.
+  sourceAnswerIds     String[]           @default([])
   /// Who saved it; NULL once that person is deleted.
   authorId            String?
   createdAt           DateTime           @default(now())

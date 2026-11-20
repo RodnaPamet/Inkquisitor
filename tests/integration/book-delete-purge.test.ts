@@ -121,6 +121,7 @@ describe('a deleted book', () => {
                 'POST interviews/route.ts': { scope: 'ELEMENT', elementId: seeded.characterId },
                 'POST interviews/stream/route.ts': { scope: 'ELEMENT', elementId: seeded.characterId },
                 'POST interviews/[sessionId]/questions/[questionId]/answer/route.ts': { text: 'After deletion.' },
+                'POST interviews/[sessionId]/proposals/bulk-accept/route.ts': { items: [{ proposalId: 'after-deletion', baseVersion: 1 }] },
             };
             const body = ['GET', 'DELETE'].includes(method) ? undefined : tail === 'import/bundle/route.ts' ? 'PK\u0005\u0006' : JSON.stringify(valid[`${method} ${tail}`] ?? {});
             return handler(

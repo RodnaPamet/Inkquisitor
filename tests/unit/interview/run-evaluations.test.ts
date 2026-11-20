@@ -15,14 +15,15 @@ const packs = getPacks();
 
 describe('the command line', () => {
     it('defaults to the structural generator over every pack, beside the packs', () => {
-        expect(parseEvalArgs([])).toEqual({ generator: 'structural', packs: 'all', coverage: false, out: null });
+        expect(parseEvalArgs([])).toEqual({ generator: 'structural', packs: 'all', coverage: false, reconcile: false, out: null });
     });
 
     it('reads every option, in both spellings', () => {
-        expect(parseEvalArgs(['--generator', 'model', '--out', 'evals-out', '--packs', 'craft-plot, persona-socratic', '--coverage'])).toEqual({
+        expect(parseEvalArgs(['--generator', 'model', '--out', 'evals-out', '--packs', 'craft-plot, persona-socratic', '--coverage', '--reconcile'])).toEqual({
             generator: 'model',
             packs: ['craft-plot', 'persona-socratic'],
             coverage: true,
+            reconcile: true,
             out: 'evals-out',
         });
         expect(parseEvalArgs(['--generator=model', '--out=x', '--no-packs'])).toMatchObject({ generator: 'model', packs: [], out: 'x' });

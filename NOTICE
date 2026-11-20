@@ -94,6 +94,19 @@ Apache License, Version 2.0
   The project is distributed under the Apache License, Version 2.0:
   https://www.apache.org/licenses/LICENSE-2.0
 
+  mem0ai/mem0 (the memory reconciliation pattern)
+  https://github.com/mem0ai/mem0
+
+  The reconcile step of enrichment (Phase 2.5, src/lib/enrichment/): new
+  information is reconciled into a stored entry as one operation per
+  entry — ADD, UPDATE, DELETE or NOOP in mem0, here ADD, UPDATE, REMOVE or
+  NO_CHANGE per bible field — each tied to the source it is drawn from.
+  Re-implemented for Inkquisitor (vocabulary.ts, schema.ts, validate.ts,
+  prompt.ts); no mem0 code, prompt or text is copied, imported or
+  redistributed, and it is not a dependency of this project. The project is
+  distributed under the Apache License, Version 2.0:
+  https://www.apache.org/licenses/LICENSE-2.0
+
   pipelock (AI guard rule taxonomy)
   https://github.com/luckyPipewrench/pipelock
 
