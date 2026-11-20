@@ -24,8 +24,8 @@ import { RateLimitedError } from '@/lib/errors/types';
 import { checkRateLimit, type RateLimitConfig } from './rate-limit';
 import { isRateLimitBypassed } from './rate-limit-middleware';
 
-/** Model calls a workspace may start a minute: a busy author's rounds and rephrases, with room to spare. */
-export const MODEL_CALLS_LIMIT: RateLimitConfig = { maxAttempts: 40, windowMs: 60_000 };
+/** Model calls a workspace may start a minute (D17, 2026-11-20): a busy author's rounds, rephrases and research, with room to spare. */
+export const MODEL_CALLS_LIMIT: RateLimitConfig = { maxAttempts: 100, windowMs: 60_000 };
 
 /** Charge `calls` model calls to the workspace's minute, or refuse 429 before anything is written. */
 export function chargeModelCalls(workspaceId: string, calls: number, config: RateLimitConfig = MODEL_CALLS_LIMIT, bypass: () => boolean = isRateLimitBypassed): void {

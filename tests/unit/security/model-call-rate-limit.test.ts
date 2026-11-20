@@ -5,7 +5,7 @@
  * where the other tiers are off.
  */
 import { clearAllRateLimits } from '@/lib/security/rate-limit';
-import { chargeModelCalls } from '@/lib/security/model-call-rate-limit';
+import { chargeModelCalls, MODEL_CALLS_LIMIT } from '@/lib/security/model-call-rate-limit';
 import { RateLimitedError } from '@/lib/errors/types';
 
 const on = () => false;
@@ -33,4 +33,11 @@ it('counts calls, not requests: two rounds of three personas fit a budget of fiv
 
 it('is off where the rate-limit tiers are off', () => {
     for (let i = 0; i < 10; i++) chargeModelCalls('ws-c', 3, LIMIT, () => true);
+});
+
+it('the default budget is 100 model calls a minute per workspace (D17): the 100th call fits, the 101st is refused', () => {
+    expect(MODEL_CALLS_LIMIT).toEqual({ maxAttempts: 100, windowMs: 60_000 });
+    for (let i = 0; i < 33; i++) chargeModelCalls('ws-d', 3, MODEL_CALLS_LIMIT, on);
+    chargeModelCalls('ws-d', 1, MODEL_CALLS_LIMIT, on);
+    expect(() => chargeModelCalls('ws-d', 1, MODEL_CALLS_LIMIT, on)).toThrow(RateLimitedError);
 });
