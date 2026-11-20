@@ -155,6 +155,48 @@ function codePointOrRaw(cp: number, raw: string): string {
 }
 
 /**
+ * A `<` that can never close is text, not markup (issue #45, item 4).
+ *
+ * An HTML tokenizer reads `<` before a letter, `/`, `!` or `?` as the start
+ * of a tag, comment or declaration, and one that reaches the end of the input
+ * unclosed is DROPPED — with everything after it. So plain text such as
+ * `if a<b then c` used to be stored as `if a`: the sanitiser threw away the
+ * author's words, not markup. Here every `<` that cannot be closed is handed
+ * to the parser as `&lt;`, so it stays text:
+ *
+ *   - a tag, a closing tag, a bogus comment or a processing instruction
+ *     closes at a `>`, so a `<` with no `>` anywhere after it cannot close;
+ *   - a comment (`<!--`) closes only at `-->`, so one with no `-->` after it
+ *     cannot close (a lone `>` does not end it).
+ *
+ * Nothing that DOES close is touched: `<b>`, `</p>`, `<!-- x -->` and
+ * `<img onerror=…>` are still markup and still stripped, so the guarantee
+ * stands that what is returned forms no element under an HTML parser (a `<`
+ * left as text has no `>` after it, and a tokenizer drops an unclosed tag at
+ * the end of input rather than making an element of it). One linear pass: the
+ * last `>` and the last `-->` are found once.
+ *
+ * What is still read as markup is what a browser would read as markup:
+ * `a<b and b>c` holds a complete `<b and b>`, and is `ac`. Writing `a < b`
+ * (a space after `<`) keeps it text, as in HTML.
+ */
+function escapeUnclosedMarkup(s: string): string {
+    if (!s.includes('<')) return s;
+    const lastClose = s.lastIndexOf('>');
+    const lastCommentClose = s.lastIndexOf('-->');
+    let out = '';
+    let from = 0;
+    for (let i = s.indexOf('<'); i !== -1; i = s.indexOf('<', i + 1)) {
+        // `<!-->` and `<!--->` close themselves, so a `-->` from i + 2 on counts.
+        const closes = s.startsWith('<!--', i) ? lastCommentClose >= i + 2 : i < lastClose;
+        if (closes) continue;
+        out += `${s.slice(from, i)}&lt;`;
+        from = i + 1;
+    }
+    return out + s.slice(from);
+}
+
+/**
  * Strip all HTML from a field that has NO formatting (title, label,
  * single-line description, comment body).
  *
@@ -165,35 +207,56 @@ function codePointOrRaw(cp: number, raw: string): string {
  * sanitiser exists to remove. So an attacker only has to pre-encode their
  * payload to defeat it.
  *
- * The fix DECODES FIRST, then strips, looping until the value stabilises so
- * that (a) `&lt;script&gt;` and even multi-level `&amp;lt;script&amp;gt;`
- * materialise into real tags and get removed, exactly like a raw
- * `<script>`, and (b) the final value, once decoded, can no longer form any
- * strippable tag (at the fixed point `sanitizeHtml(decode(x)) === x`, so
- * `decode(x)` is tag-free). Innocuous entities (`&amp;`, `&quot;`, `&#39;`)
- * still resolve to their readable characters.
+ * The fix strips, then decodes, and LOOPS until the text stabilises: each
+ * pass parses the value as HTML (removing what is markup), takes its text and
+ * decodes one layer of entities, and the next pass parses THAT. So
+ * `&lt;script&gt;` and even multi-level `&amp;lt;script&amp;gt;` materialise
+ * into real tags on a later pass and are removed exactly like a raw
+ * `<script>`, and the fixed point is text that a parse leaves unchanged: it
+ * forms no markup. Innocuous entities (`&amp;`, `&quot;`, `&#39;`) still
+ * resolve to their readable characters.
+ *
+ * The FIRST pass parses before it decodes (Phase 3.H). Decoding first turned
+ * the text of a value that also holds real markup into markup of its own: a
+ * rich-text `<p>if a&lt;b then c</p><p>…` decoded to `<p>if a<b then c<p>…`,
+ * where `<b then c<p>` is one tag and the words went with it. Parsing first,
+ * real markup goes and `&lt;b` becomes the text `<b`, which a later pass keeps
+ * (`escapeUnclosedMarkup`: nothing after it closes it).
+ *
+ * The cost of decoding to a fixed point, kept on purpose: an entity written
+ * as text (`&amp;lt;`, meant literally) is read as what it encodes (`<`). A
+ * single decode would leave the stored value changing under a second
+ * sanitise, so an exported value would not import back as itself, and would
+ * let a pre-encoded tag through one layer down.
  */
 export function sanitizePlainText(input: string | null | undefined): string {
     if (input == null) return '';
     if (typeof input !== 'string') return '';
 
-    const strip = (s: string) =>
-        sanitizeHtml(decodeHtmlEntities(s), { allowedTags: [], allowedAttributes: {} });
+    /**
+     * One pass: what is markup goes, and the text is decoded one layer by OUR
+     * decoder (the parser decodes nothing: `decodeEntities: false`), so an
+     * encoded control character (`&#0;`) is the character, which the callers'
+     * `stripControlChars` removes, not the parser's replacement character.
+     */
+    const strip = (s: string) => sanitizeHtml(escapeUnclosedMarkup(s), { allowedTags: [], allowedAttributes: {}, parser: { decodeEntities: false } });
+    const pass = (s: string) => decodeHtmlEntities(strip(s));
 
-    let current = input;
-    let next = strip(current);
+    let current = pass(input);
+    let next = pass(current);
     // Peel one encoding layer per pass until stable. The bound is a backstop
     // against a pathological input; a handful of layers resolves any real one.
     for (let i = 0; next !== current && i < 8; i++) {
         current = next;
-        next = strip(current);
+        next = pass(current);
     }
     if (next !== current) {
         // Did not converge — return the sanitiser's (entity-encoded, tag-free)
         // form, which is always safe, over a possibly-unsafe decode.
-        return next;
+        return strip(current);
     }
-    // Fixed point: `current` is tag-free even after decoding, so the decoded
-    // form is both safe AND the readable literal text.
-    return decodeHtmlEntities(current);
+    // Fixed point: a parse of `current` leaves it as it is, so it forms no
+    // markup, and it is the readable literal text.
+    return current;
 }
+

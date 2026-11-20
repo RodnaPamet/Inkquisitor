@@ -198,7 +198,8 @@ describe('edits', () => {
         const before = serializeEditorCanvas(editor).rows.nodes;
         await act(async () => {
             editor.markHistoryStoppingPoint('arrange');
-            expect(runAutoLayout(editor, 'TB')).toBe(3);
+            // jsdom has no Worker: the layout falls back to the main thread.
+            expect(await runAutoLayout(editor, 'TB')).toEqual({ moved: 3, thread: 'main' });
         });
         expect(serializeEditorCanvas(editor).rows.nodes).not.toEqual(before);
         await act(async () => {

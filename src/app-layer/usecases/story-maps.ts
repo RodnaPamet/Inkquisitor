@@ -63,7 +63,7 @@ import { VersionNumberParam } from '@/app-layer/schemas/bible';
 import { decodeFieldValue } from '@/lib/bible/field-values';
 import { getFieldDef, getRelationType, getTemplate } from '@/lib/bible/templates';
 import { assertFreeformIdsFree, parseStoredFreeform, sanitiseFreeformForStorage } from '@/lib/canvas/freeform';
-import { MAX_MAP_EDGES, MAX_MAP_NODES, SNAPSHOT_LIST_MAX } from '@/lib/canvas/limits';
+import { MAX_MAP_EDGES, MAX_MAP_NODES, SNAPSHOT_PAGE_SIZE } from '@/lib/canvas/limits';
 import { deriveLaneLayout, participantsByEvent, type ActOption, type LaneNodeInput } from '@/lib/canvas/lanes';
 import { MAP_ELEMENT_KINDS, STORY_MAP_KINDS, mapKindFromSlug, mapLayoutMode, mapTakesKind, type StoryMapKindValue } from '@/lib/canvas/map-kinds';
 import { parseMapState, serialiseMapState, type MapEdgeRow, type MapNodeRow, type MapState } from '@/lib/canvas/map-state';
@@ -538,21 +538,35 @@ async function requireMap(db: PrismaTx, ctx: WorkspaceRequestContext, bookId: st
     return map;
 }
 
-export async function listMapSnapshots(
-    ctx: WorkspaceRequestContext,
-    bookId: string,
-    kindSlug: string,
-): Promise<{ snapshots: MapSnapshotMetaView[]; truncated: boolean }> {
+/** One page of a map's history: `nextBefore` reads the page after it (null on the last). */
+export interface MapSnapshotPage {
+    snapshots: MapSnapshotMetaView[];
+    /** True when older snapshots exist than this page holds. */
+    truncated: boolean;
+    /** The `before` that reads the next, older page; null when this page is the last. */
+    nextBefore: number | null;
+}
+
+/**
+ * A page of the map's history, newest first: at most `SNAPSHOT_PAGE_SIZE`
+ * rows below `before` (a version; absent for the newest page). Every version
+ * stays reachable however many saves a map has, and a read never grows with
+ * them (3.H: restore after 200 saves).
+ */
+export async function listMapSnapshots(ctx: WorkspaceRequestContext, bookId: string, kindSlug: string, beforeParam?: unknown): Promise<MapSnapshotPage> {
     await assertPermission(ctx, 'bible.view');
     const kind = kindOf(kindSlug);
+    const before = beforeParam === undefined || beforeParam === null || beforeParam === '' ? undefined : VersionNumberParam.parse(beforeParam);
     return runInWorkspaceContext(ctx, async (db) => {
         await requireBook(db, ctx, bookId);
         const map = await StoryMapRepository.find(db, ctx.workspaceId, bookId, kind);
         // A map nobody has saved has no history: an empty list, not a 404.
-        if (!map) return { snapshots: [], truncated: false };
-        const rows = await MapSnapshotRepository.list(db, ctx.workspaceId, map.id, SNAPSHOT_LIST_MAX + 1);
+        if (!map) return { snapshots: [], truncated: false, nextBefore: null };
+        const rows = await MapSnapshotRepository.list(db, ctx.workspaceId, map.id, SNAPSHOT_PAGE_SIZE + 1, before);
+        const page = rows.slice(0, SNAPSHOT_PAGE_SIZE);
+        const truncated = rows.length > SNAPSHOT_PAGE_SIZE;
         return {
-            snapshots: rows.slice(0, SNAPSHOT_LIST_MAX).map((r) => ({
+            snapshots: page.map((r) => ({
                 version: r.version,
                 nodeCount: r.nodeCount,
                 edgeCount: r.edgeCount,
@@ -561,7 +575,8 @@ export async function listMapSnapshots(
                 createdAt: r.createdAt.toISOString(),
                 createdByName: r.createdBy?.name ?? null,
             })),
-            truncated: rows.length > SNAPSHOT_LIST_MAX,
+            truncated,
+            nextBefore: truncated ? page[page.length - 1].version : null,
         };
     });
 }

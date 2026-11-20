@@ -36,5 +36,9 @@ export const NODE_DEFAULT_H = 88;
 /** A lane key: an opaque key, never text (the migration's CHECK repeats it). */
 export const LANE_KEY = /^[A-Za-z0-9._:-]{1,128}$/;
 
-/** Snapshots the history lists at most, newest first. */
-export const SNAPSHOT_LIST_MAX = 200;
+/**
+ * Snapshots one page of the history holds, newest first (3.H). The history is
+ * read a page at a time (`before`, a version): every version stays reachable
+ * however many saves a map has, and no read grows with them.
+ */
+export const SNAPSHOT_PAGE_SIZE = 50;

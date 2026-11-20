@@ -12,19 +12,23 @@ import type {
     MapNodeView,
     MapRestoreResult,
     MapSnapshotMetaView,
+    MapSnapshotPage,
     MapSnapshotView,
     StoryMapSaveResult,
     StoryMapView,
 } from '@/app-layer/usecases/story-maps';
 import type { MapEdgeRow, MapNodeRow } from './map-state';
 
-export type { MapRelationView, MapNodeView, MapRestoreResult, MapSnapshotMetaView, MapSnapshotView, StoryMapSaveResult, StoryMapView };
+export type { MapRelationView, MapNodeView, MapRestoreResult, MapSnapshotMetaView, MapSnapshotPage, MapSnapshotView, StoryMapSaveResult, StoryMapView };
 
 const enc = encodeURIComponent;
 
 export const MAP_API = {
     map: (slug: string, bookId: string, kind: string) => `/api/w/${enc(slug)}/books/${enc(bookId)}/maps/${enc(kind)}`,
     snapshots: (slug: string, bookId: string, kind: string) => `${MAP_API.map(slug, bookId, kind)}/snapshots`,
+    /** A page of the history: the newest, or the one below `before` (3.H). */
+    snapshotPage: (slug: string, bookId: string, kind: string, before: number | null) =>
+        before === null ? MAP_API.snapshots(slug, bookId, kind) : `${MAP_API.snapshots(slug, bookId, kind)}?before=${before}`,
     snapshot: (slug: string, bookId: string, kind: string, version: number) => `${MAP_API.snapshots(slug, bookId, kind)}/${version}`,
     restore: (slug: string, bookId: string, kind: string, version: number) => `${MAP_API.snapshot(slug, bookId, kind, version)}/restore`,
 } as const;

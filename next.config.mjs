@@ -32,6 +32,15 @@ import createNextIntlPlugin from 'next-intl/plugin';
  * request config at src/i18n.ts. The locale lives in a cookie, not the URL,
  * so there is no i18n routing.
  *
+ * THE LAYOUT WORKER IS ONE CHUNK (Phase 3.H). The story map lays itself out
+ * in a Web Worker (`src/lib/canvas/auto-layout-worker.ts`, named
+ * `LAYOUT_WORKER_CHUNK` by its constructor), and a worker's script runs under
+ * the policy its OWN response carries — the static assets' `default-src
+ * 'none'` above — so it may load no other script. Next's client chunking
+ * splits modules a worker shares with the page (dagre, which the main thread
+ * keeps as the fallback) into a chunk the worker would `importScripts`; the
+ * worker's chunk is therefore left out of that splitting, whole.
+ * `scripts/check-build.js` fails a build where it is not.
  */
 
 /** The static assets' headers; `headers()` below. */
@@ -48,9 +57,21 @@ const STATIC_ASSET_HEADERS = [
         : []),
 ];
 
+/** The layout worker's chunk name: its constructor's `name` (src/lib/canvas/auto-layout-worker-factory.ts). */
+const LAYOUT_WORKER_CHUNK = 'story-map-layout';
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
     poweredByHeader: false,
+    webpack(config, { isServer }) {
+        const split = config.optimization?.splitChunks;
+        if (!isServer && split && typeof split === 'object') {
+            const chunks = split.chunks;
+            const before = (chunk) => (typeof chunks === 'function' ? chunks(chunk) : chunks === 'all' ? true : chunks === 'initial' ? chunk.canBeInitial() : !chunk.canBeInitial());
+            split.chunks = (chunk) => chunk.name !== LAYOUT_WORKER_CHUNK && before(chunk);
+        }
+        return config;
+    },
     async headers() {
         return [
             // Exactly the paths src/proxy.ts's matcher skips: something INSIDE

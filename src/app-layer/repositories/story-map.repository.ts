@@ -151,10 +151,10 @@ export const MapSnapshotRepository = {
         });
     },
 
-    /** A map's snapshots, newest first, without their contents. */
-    list(db: Db, workspaceId: string, mapId: string, take: number) {
+    /** A map's snapshots, newest first, without their contents; below `beforeVersion` when given (a page of the history). */
+    list(db: Db, workspaceId: string, mapId: string, take: number, beforeVersion?: number) {
         return db.mapSnapshot.findMany({
-            where: { workspaceId, mapId },
+            where: { workspaceId, mapId, ...(beforeVersion !== undefined ? { version: { lt: beforeVersion } } : {}) },
             select: {
                 version: true,
                 nodeCount: true,

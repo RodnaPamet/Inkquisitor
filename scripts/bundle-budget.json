@@ -1,0 +1,86 @@
+{
+  "note": "Per-route first-load JS + CSS, gzipped (scripts/check-build.js, rule 5). Rewritten only by `node scripts/check-build.js --no-build --record-budget`; see \"Raising a budget\" there.",
+  "headroom": 0.1,
+  "routes": {
+    "/(app)/dev/kitchen-sink/page": {
+      "recorded": 636965,
+      "budget": 701440
+    },
+    "/_global-error/page": {
+      "recorded": 304979,
+      "budget": 335872
+    },
+    "/_not-found/page": {
+      "recorded": 304979,
+      "budget": 335872
+    },
+    "/login/page": {
+      "recorded": 319965,
+      "budget": 352256
+    },
+    "/no-workspace/page": {
+      "recorded": 314619,
+      "budget": 346112
+    },
+    "/page": {
+      "recorded": 304979,
+      "budget": 335872
+    },
+    "/signout/page": {
+      "recorded": 314771,
+      "budget": 347136
+    },
+    "/signup/page": {
+      "recorded": 320365,
+      "budget": 353280
+    },
+    "/w/[workspaceSlug]/books/[bookId]/elements/[elementId]/page": {
+      "recorded": 484303,
+      "budget": 533504
+    },
+    "/w/[workspaceSlug]/books/[bookId]/interviews/[sessionId]/page": {
+      "recorded": 484329,
+      "budget": 533504
+    },
+    "/w/[workspaceSlug]/books/[bookId]/interviews/[sessionId]/review/page": {
+      "recorded": 498947,
+      "budget": 548864
+    },
+    "/w/[workspaceSlug]/books/[bookId]/interviews/new/page": {
+      "recorded": 484329,
+      "budget": 533504
+    },
+    "/w/[workspaceSlug]/books/[bookId]/interviews/page": {
+      "recorded": 467065,
+      "budget": 514048
+    },
+    "/w/[workspaceSlug]/books/[bookId]/maps/[kind]/page": {
+      "recorded": 473260,
+      "budget": 521216
+    },
+    "/w/[workspaceSlug]/books/[bookId]/page": {
+      "recorded": 458144,
+      "budget": 504832
+    },
+    "/w/[workspaceSlug]/books/[bookId]/research/page": {
+      "recorded": 484758,
+      "budget": 533504
+    },
+    "/w/[workspaceSlug]/books/page": {
+      "recorded": 420794,
+      "budget": 463872
+    },
+    "/w/[workspaceSlug]/deleted-books/page": {
+      "recorded": 414889,
+      "budget": 456704
+    },
+    "/w/[workspaceSlug]/page": {
+      "recorded": 314332,
+      "budget": 346112
+    },
+    "/w/[workspaceSlug]/settings/page": {
+      "recorded": 319633,
+      "budget": 352256
+    }
+  }
+}

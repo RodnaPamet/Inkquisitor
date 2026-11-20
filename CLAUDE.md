@@ -353,6 +353,16 @@ src/components/search/BookSearch.tsx → the board's search box and highlighted 
 tests/fixtures/snowball/     → Snowball's English voc.txt / output.txt (BSD-3), golden-pin.json
 ```
 
+Phase 3.H (hardening the canvas) added:
+
+```
+src/lib/canvas/auto-layout-off-thread.ts, auto-layout-worker.ts, auto-layout-worker-factory.ts → dagre in a Web Worker (main-thread fallback)
+src/components/canvas/StoryMapListView.tsx → the map as a list: every canvas action by keyboard and screen reader
+prisma/migrations/…_canvas_hardening → a snapshot names the map's current version; one cascade-marker setting
+scripts/bundle-budget.json   → per-route first-load budget (gzipped JS + CSS), held by scripts/check-build.js
+tests/helpers/random-graph.ts → seeded random maps for the round-trip property tests
+```
+
 ## Rules every change obeys
 
 These are `docs/ROADMAP.md` section 3, restated. The roadmap is authoritative
@@ -1099,6 +1109,47 @@ closed beta with an explicit operator flag (D5, amended 2026-11-19).
   tldraw, outside the canvas boundary) is the record, and what is accepted there
   is added to that map through its own save. The relations pack and the reconcile
   prompt follow D11; after editing either, re-run their records.
+- **Hardening the canvas (Phase 3.H).** THE ROUND TRIP is a property:
+  seeded random graphs (`tests/helpers/random-graph.ts`, mulberry32, no
+  dependency) through rows → tldraw → rows, the canonical state and each
+  derived layout, in pure code and through a live store. AT THE BOUNDS (500
+  nodes, 1,500 edges) work is counted, never timed: the serializer's duplicate
+  check is linear, an edge's binding is found by its id
+  (`bindingIdForRelation`, which `drawRelationEdge` now gives every binding),
+  never by a scan of the store, and a save or view sends the same number of
+  statements at 500 nodes as at 50 (`canvas-hardening.test.ts`). ARRANGE runs
+  dagre in a Web Worker (`layoutOffMainThread`; the main thread only when no
+  worker can run): the worker is a chunk of its own, made per job and
+  terminated, carries ids and numbers only, and loads no other script — its
+  response has the static assets' `default-src 'none'`, so `next.config.mjs`
+  keeps its chunk (`story-map-layout`) out of Next's splitting and
+  `check-build.js` refuses an `importScripts` in it or the worker in any first
+  load. THE BUNDLE BUDGET: every route's first-load JS and CSS, gzipped, is
+  held to `scripts/bundle-budget.json` (recorded size + `BUDGET_HEADROOM`, 10 %);
+  a route over it, without one, or a budget for a gone route fails Build. To
+  raise one deliberately: build, `node scripts/check-build.js --no-build
+  --record-budget`, commit the file and say in the pull request what grew and
+  why; never widen the headroom. THE LIST VIEW (`StoryMapListView`, the map
+  page's Canvas / List toggle) is every canvas action as named buttons —
+  open, remove from map, earlier / later, relate (two choices, then the type
+  picker), question or remove a relation, grill a selection — acting through
+  the same editor and handlers, so it saves through the same autosave and
+  version lock; a new canvas action gets its list equivalent and joins the
+  keyboard E2E (`tests/e2e/canvas-hardening.spec.ts`). HISTORY is read a page
+  at a time (`SNAPSHOT_PAGE_SIZE`, `?before=<version>`, `nextBefore`), so every
+  version stays reachable; a restore with unsaved canvas edits says so and
+  saves them first (`beforeRestore`). A snapshot must name the map's CURRENT
+  version (trigger `map_snapshot_names_current_version`, every role: write the
+  version, then its snapshot); a bible deletion's once-per-transaction marker
+  is ONE setting (`inkquisitor.map_cascade`), never one named per map. Stored
+  rich text is proved renderable before it is restored (`restoreFreeform`);
+  one that is not keeps its words as plain text. `sanitizePlainText` keeps a
+  `<` that never closes (`if a<b then c` stays whole) and parses before it
+  decodes; what a browser would read as markup is still stripped, and the
+  result is idempotent (an exported value imports back as itself). The D1
+  guard also refuses the watermark reached without its class name (its
+  `SEE-LICENSE` suffix, its `data-debug` / `data-mobile` attributes, a class
+  substring selector, a link to tldraw, the word in a stylesheet).
 - **Word search (Phase 3.4; D21).** OPTION A, DECRYPT AND SCAN: `searchBook`
   reads one book through `runInWorkspaceContext` (the encryption extension
   decrypts it), turns every source into plain text, and ranks it in memory

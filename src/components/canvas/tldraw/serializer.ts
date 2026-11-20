@@ -222,10 +222,15 @@ export function tldrawToRows(graph: TldrawGraph): GraphRows {
         sourceElementId: elementByShapeId.get(String(b.fromId)) ?? '',
         targetElementId: elementByShapeId.get(String(b.toId)) ?? '',
     }));
+    // An edge is a duplicate when ANOTHER edge draws its relation: a relation
+    // drawn more than once. Counted once for the graph (3.H: 1,500 edges in
+    // linear work; a set of the other edges built per edge was quadratic).
+    const drawCount = new Map<string, number>();
+    for (const e of resolved) drawCount.set(e.relationId, (drawCount.get(e.relationId) ?? 0) + 1);
+    const drawnTwice = new Set([...drawCount].filter(([, n]) => n > 1).map(([id]) => id));
     resolved.forEach((edge, i) => {
         const b = graph.bindings[i];
-        // The graph's OTHER edges, so an edge is not a duplicate of itself.
-        const others = new Set(resolved.filter((_, j) => j !== i).map((e) => e.relationId));
+        const others = drawnTwice;
         // The relation's own ends are what the binding was created with.
         const relation = { relationId: b.props.relationId, sourceElementId: b.props.sourceElementId, targetElementId: b.props.targetElementId };
         const refusals = validateEdge(edge, elementIds, others, relation);

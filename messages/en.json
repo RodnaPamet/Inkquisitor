@@ -1253,7 +1253,6 @@
             "loading": "Loading the history…",
             "loadError": "The history could not be loaded.",
             "empty": "No saves yet.",
-            "truncated": "Older saves are not listed.",
             "version": "Version {version}",
             "current": "Current",
             "counts": "{nodes, plural, one {# node} other {# nodes}} · {edges, plural, one {# edge} other {# edges}}",
@@ -1267,7 +1266,10 @@
             "restoreFailed": "That version could not be restored.",
             "confirmTitle": "Restore version {version}?",
             "confirmBody": "The map becomes what it was at that save, as a new save of its own. Nothing in the history is lost.",
-            "cancel": "Cancel"
+            "cancel": "Cancel",
+            "older": "Show older saves",
+            "confirmBodyPending": "Your unsaved changes on the canvas are saved first, as a version of their own. Then the map becomes what it was at that save, as a new save. Nothing in the history is lost.",
+            "restoreUnsavedFailed": "Your unsaved changes could not be saved, so nothing was restored. Save or reload the map first."
         },
         "diff": {
             "title": "Version {version} against the map now",
@@ -1384,6 +1386,43 @@
             "previewFailed": "The map could not draw these proposals. They are all listed here, and you can still decide each one.",
             "loadFailed": "The proposals waiting for you could not be read. Reload the page to try again.",
             "truncated": "Showing the first {count} proposals."
+        },
+        "view": {
+            "label": "Show the map as",
+            "canvas": "Canvas",
+            "list": "List"
+        },
+        "list": {
+            "elements": "{count, plural, =0 {No elements on this map} one {# element on this map} other {# elements on this map}}",
+            "noElements": "Add an element with the picker in the toolbar.",
+            "emptyGroup": "Nothing here yet.",
+            "justAdded": "Just added",
+            "pickElement": "Select {name} to be grilled",
+            "open": "Open {name}",
+            "position": "{position} of {of}",
+            "earlier": "Earlier: {name}",
+            "earlierShort": "Earlier",
+            "later": "Later: {name}",
+            "laterShort": "Later",
+            "removeNode": "Remove from map: {name}",
+            "removeNodeShort": "Remove from map",
+            "relations": "{count, plural, =0 {No relations on this map} one {# relation on this map} other {# relations on this map}}",
+            "noRelations": "Relate two elements below, or draw an arrow on the canvas.",
+            "relation": "{a} {label} {b}",
+            "pickRelation": "Select the relation {relation} to be grilled",
+            "question": "Question this relation: {relation}",
+            "removeEdge": "Remove relation: {relation}",
+            "removeEdgeShort": "Remove relation",
+            "actions": "Relate and question",
+            "relateGroup": "Relate two elements",
+            "relateFrom": "From…",
+            "relateTo": "To…",
+            "relateSearch": "Search this map…",
+            "relateNone": "No element on this map matches.",
+            "relateSame": "Choose two different elements.",
+            "relate": "Relate",
+            "pickFirst": "Select elements or relations first.",
+            "grillSelected": "{count, plural, =0 {Grill the selected} other {Grill the selected (#)}}"
         }
     },
     "search": {
