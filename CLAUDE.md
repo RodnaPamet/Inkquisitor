@@ -353,7 +353,7 @@ src/components/search/BookSearch.tsx → the board's search box and highlighted 
 tests/fixtures/snowball/     → Snowball's English voc.txt / output.txt (BSD-3), golden-pin.json
 ```
 
-Phase 3.H (hardening the canvas) added:
+Phase 3.H (hardening the canvas, story order and canvas interviews) added:
 
 ```
 src/lib/canvas/auto-layout-off-thread.ts, auto-layout-worker.ts, auto-layout-worker-factory.ts → dagre in a Web Worker (main-thread fallback)
@@ -361,6 +361,8 @@ src/components/canvas/StoryMapListView.tsx → the map as a list: every canvas a
 prisma/migrations/…_canvas_hardening → a snapshot names the map's current version; one cascade-marker setting
 scripts/bundle-budget.json   → per-route first-load budget (gzipped JS + CSS), held by scripts/check-build.js
 tests/helpers/random-graph.ts → seeded random maps for the round-trip property tests
+src/app-layer/usecases/story-slot.ts → a BETWEEN slot: how it changed, where its beat may go, the beat it holds (D25)
+src/lib/text/truncate.ts     → truncateGraphemes: display text cut between grapheme clusters
 ```
 
 ## Rules every change obeys
