@@ -30,10 +30,11 @@
     "prepare": "husky",
     "secret-scan": "bash scripts/detect-secrets.sh",
     "packs:evaluate": "tsx scripts/evaluate-packs.ts",
+    "redteam:injection": "tsx scripts/injection-redteam.ts",
     "docs:build": "npm --prefix site ci --no-audit --no-fund && npm --prefix site run build"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "1.8.0",
+    "@anthropic-ai/sdk": "1.11.0",
     "@aws-sdk/client-s3": "^3.1171.0",
     "@aws-sdk/s3-request-presigner": "^3.1171.0",
     "@opentelemetry/api": "^1.10.0",

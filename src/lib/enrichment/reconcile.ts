@@ -112,7 +112,13 @@ export function reconcileRequestFor(input: ReconcileRoundInput): ReconcileReques
 
 /** The answers as the validator reads them. */
 export function answerFactsOf(input: ReconcileRoundInput): ReconcileAnswerFact[] {
-    return input.answers.map((a) => ({ answerId: a.answerId, status: a.status, text: answerAsText(a), scale: a.status === 'ANSWERED' ? a.scale : null }));
+    return input.answers.map((a) => ({
+        answerId: a.answerId,
+        status: a.status,
+        text: answerAsText(a),
+        scale: a.status === 'ANSWERED' ? a.scale : null,
+        about: { elementId: a.elementId, fieldKeys: a.targetsFieldKeys },
+    }));
 }
 
 /** Validate a raw output against the round. Pure: the evaluation replays recorded outputs through it. */

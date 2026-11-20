@@ -103,6 +103,7 @@ import {
 } from '@/lib/bible/bundle-format';
 import type { BibleKind } from '@/lib/bible/kinds';
 import { SLUG_PATTERN, slugify } from '@/lib/bible/slug';
+import { coerceImportedFieldValue } from '@/lib/bible/field-coercion';
 import { getRelationType, getTemplate, isSymmetric, relationAllowed } from '@/lib/bible/templates';
 import { plainBlock } from '@/lib/bible/text';
 import { runInWorkspaceContext, type PrismaTx } from '@/lib/db/rls-middleware';
@@ -271,7 +272,20 @@ function prepareElement(path: string, fm: BundleElementFrontmatter, knownKeys: R
     const summary = attempt('summary', () => optionalBlock(fm.summary, ELEMENT_SUMMARY_MAX, 'Summary') ?? null);
     const customLabel = attempt('customLabel', () => customLabelFor(fm.kind, fm.customLabel));
 
-    const given = fm.fields ?? {};
+    // A field whose template type changed since the bundle was written: a
+    // lossless coercion, or FIELD_TYPE_CHANGED naming it (issue #27, item 8;
+    // `src/lib/bible/field-coercion.ts`). A value in the current shape is untouched.
+    const given: Record<string, unknown> = { ...(fm.fields ?? {}) };
+    for (const def of getTemplate(fm.kind).fields) {
+        if (!Object.hasOwn(given, def.key)) continue;
+        const c = coerceImportedFieldValue(def, given[def.key]);
+        if (c.ok) given[def.key] = c.value;
+        else {
+            problems.add({ path, reason: c.reason, key: `fields.${def.key}` });
+            ok = false;
+            delete given[def.key];
+        }
+    }
     const templateKeys = getTemplate(fm.kind).fields.map((f) => f.key);
     const fields: FieldEntry[] = [
         ...templateKeys
@@ -530,6 +544,9 @@ export async function importBibleBundle(
             ctx,
             async (db) => {
                 await BookRepository.lockForImport(db, bookId);
+                // The bundle may create and rename elements: the names lock
+                // before any element's (its order; issue #39 item 5).
+                await BibleElementRepository.lockNames(db, bookId);
                 const book = await requireBook(db, ctx, bookId);
                 const bundleSlugs = new Set(bundle.elements.map((e) => e.slug));
                 const targets = new Set(bundle.elements.flatMap((e) => e.relations.map((r) => r.to)));
@@ -714,6 +731,7 @@ export async function importConceptNote(ctx: WorkspaceRequestContext, bookId: st
         try {
             return await runInWorkspaceContext(ctx, async (db) => {
                 await requireBook(db, ctx, bookId);
+                await BibleElementRepository.lockNames(db, bookId);
                 let slug: string;
                 if (parsed.slug) {
                     if (await BibleElementRepository.slugTaken(db, ctx.workspaceId, bookId, parsed.slug)) throw slugConflict();

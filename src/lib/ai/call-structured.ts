@@ -154,14 +154,36 @@ class CallEnd extends Error {
     }
 }
 
-/** Zod issues as the record keeps them (path and code) and as the repair turn states them. */
+/**
+ * What the repair turn says about each kind of Zod issue: a FIXED sentence per
+ * issue code (issue #32 item 13). Zod's own message can quote the value it
+ * judged ("Invalid option: expected one of …", an unrecognised key's name),
+ * which is the model's output and may carry author text or an injection the
+ * model copied; the repair turn sits OUTSIDE the fence, so nothing but code
+ * reaches it. The path is the schema's member names and array indices.
+ */
+const REPAIR_MESSAGES: Readonly<Record<string, string>> = {
+    invalid_type: 'has the wrong type',
+    too_big: 'is too long or too large',
+    too_small: 'is too short, too small or empty',
+    invalid_value: 'is not one of the allowed values',
+    invalid_format: 'is not in the required format',
+    invalid_union: 'matches none of the allowed shapes',
+    unrecognized_keys: 'has a member the schema does not allow',
+    not_multiple_of: 'is not an allowed number',
+    invalid_key: 'has a key the schema does not allow',
+    invalid_element: 'has an element the schema does not allow',
+    custom: 'is not valid',
+};
+
+/** Zod issues as the record keeps them (path and code) and as the repair turn states them (path, code, a fixed sentence). */
 function issuesOf(error: z.ZodError): { safe: SafeIssue[]; repair: RepairIssue[] } {
     const safe: SafeIssue[] = [];
     const repair: RepairIssue[] = [];
     for (const issue of error.issues) {
         const path = issue.path.map((p) => String(p)).join('.');
         safe.push({ path, code: issue.code });
-        repair.push({ path, code: issue.code, message: issue.message });
+        repair.push({ path, code: issue.code, message: REPAIR_MESSAGES[issue.code] ?? 'does not match the schema' });
     }
     return { safe, repair };
 }
@@ -199,14 +221,20 @@ function candidateOf(message: Anthropic.Message, singleTool: boolean): { candida
 /**
  * The SDK's response content, as the next request's assistant turn: blocks
  * passed back unchanged, except an EMPTY text block, which the API refuses in
- * a turn that is not the last. An answer with no text and no tool call left
+ * a turn that is not the last (and a turn carrying thinking is never edited
+ * to drop one: it is left out instead). An answer with no text and no tool call left
  * (nothing, or thinking alone) is no turn at all (`null`): the repair then
  * asks again after the first request's own turns, as a fresh answer.
  */
 function asAssistantTurn(message: Anthropic.Message): Anthropic.ContentBlockParam[] | null {
-    const content = (message.content as unknown as Anthropic.ContentBlockParam[]).filter(
-        (b) => !(b.type === 'text' && b.text === ''),
-    );
+    const original = message.content as unknown as Anthropic.ContentBlockParam[];
+    const content = original.filter((b) => !(b.type === 'text' && b.text === ''));
+    // PRESERVED THINKING (issue #32 item 13): a turn that carries thinking is
+    // passed back unchanged or not at all. Dropping its empty text block is an
+    // edit of that turn, which invalidates its thinking; so such a turn is
+    // left out and the repair asks again after the first request's own turns.
+    const thinks = original.some((b) => b.type === 'thinking' || b.type === 'redacted_thinking');
+    if (thinks && content.length !== original.length) return null;
     return content.some((b) => b.type === 'text' || b.type === 'tool_use') ? content : null;
 }
 
@@ -231,6 +259,75 @@ function endingOfSdkError(err: unknown, deadlineHit: boolean, callerAborted: boo
             );
         default:
             return new CallEnd('PROVIDER_ERROR', 'PROVIDER_CONNECTION', (id) => new AiProviderError('PROVIDER_CONNECTION', id));
+    }
+}
+
+/** How long the settlement waits before its one retry. */
+export const SETTLE_RETRY_DELAY_MS = 200;
+
+/**
+ * A record every column CHECK of `AiCallLog` accepts: rule ids of the guard's
+ * shape only, a model id of the column's shape, non-negative whole counts.
+ * The FALLBACK settlement writes this when the record as built was refused,
+ * so a call is never left with no row because one value was malformed.
+ */
+export function safeCallRecord(record: AiCallRecord): AiCallRecord {
+    const count = (n: number): number => (Number.isFinite(n) && n > 0 ? Math.min(Math.floor(n), Number.MAX_SAFE_INTEGER) : 0);
+    return {
+        ...record,
+        model: /^[a-z0-9][a-z0-9.-]{1,99}$/.test(record.model) ? record.model : 'unknown-model',
+        guardRuleIds: record.guardRuleIds.filter((id) => /^[a-z][a-z0-9_.]{0,79}$/.test(id)).slice(0, 32),
+        attempts: Math.min(2, count(record.attempts)),
+        inputTokens: Math.min(count(record.inputTokens), 2_147_483_647),
+        outputTokens: Math.min(count(record.outputTokens), 2_147_483_647),
+        cacheReadTokens: Math.min(count(record.cacheReadTokens), 2_147_483_647),
+        cacheWriteTokens: Math.min(count(record.cacheWriteTokens), 2_147_483_647),
+        costMicroUsd: count(record.costMicroUsd),
+        worstCaseMicroUsd: count(record.worstCaseMicroUsd),
+        durationMs: Math.min(count(record.durationMs), 2_147_483_647),
+    };
+}
+
+/**
+ * Settle a call's record (issue #32 item 12): once, again after a short wait
+ * (a dropped connection, a deadlock victim), and then as `safeCallRecord`.
+ * A call that SUCCEEDED and was paid for used to leave no `AiCallLog` row when
+ * its one settlement failed. If all three fail the numbers are logged (ids,
+ * counts and money, never text) so the spend can be reconciled by hand, and
+ * the error goes on.
+ */
+export async function settleRecord(ledger: AiLedger, record: AiCallRecord): Promise<void> {
+    try {
+        await ledger.settle(record);
+        return;
+    } catch {
+        await new Promise((resolve) => setTimeout(resolve, SETTLE_RETRY_DELAY_MS));
+    }
+    try {
+        await ledger.settle(record);
+        return;
+    } catch {
+        // The record itself may be what was refused: write the safe one.
+    }
+    try {
+        await ledger.settle(safeCallRecord(record));
+    } catch (err) {
+        // Token COUNTS, named so: the usage object's member names read as content.
+        const tokensIn = record.inputTokens + record.cacheReadTokens + record.cacheWriteTokens;
+        const tokensOut = record.outputTokens;
+        logger.error('ai: call record could not be settled', {
+            component: 'ai',
+            callId: record.id,
+            purpose: record.purpose,
+            outcome: record.outcome,
+            errorCode: record.errorCode,
+            attempts: record.attempts,
+            tokensIn,
+            tokensOut,
+            costMicroUsd: record.costMicroUsd,
+            errorName: err instanceof Error ? err.name : 'unknown',
+        });
+        throw err;
     }
 }
 
@@ -290,7 +387,7 @@ export async function callStructured<S extends z.ZodType>(
             guardReviewRequired: guard.reviewRequired,
             startedAt,
         };
-        await deps.ledger.settle(record);
+        await settleRecord(deps.ledger, record);
         // Token COUNTS, named so: the usage object's member names read as content.
         const tokensIn = record.inputTokens + record.cacheReadTokens + record.cacheWriteTokens;
         const tokensOut = record.outputTokens;
@@ -324,6 +421,9 @@ export async function callStructured<S extends z.ZodType>(
         if (error instanceof AiCallError) {
             error.tokensUsed = tokensSoFar();
             error.costMicroUsd = spent;
+            const guard = summariseChecks(checks);
+            error.reviewRequired = guard.reviewRequired;
+            error.guardRuleIds = guard.ruleIds;
         }
         throw error;
     };
@@ -412,6 +512,18 @@ export async function callStructured<S extends z.ZodType>(
             const partial = usageOf(stream.currentMessage?.usage);
             if (partial) {
                 addUsage(partial);
+                // Cut off MID-STREAM (issue #30, item 10): the stream's output
+                // count is what it had reported when it stopped, and the bill
+                // can be higher — generation runs on until the provider sees the
+                // disconnect, and thinking is not streamed (its display is
+                // omitted) though it is billed. So the unseen output is charged
+                // at its bound, `max_tokens`, and the charge is marked
+                // estimated. Never more than the reservation already held.
+                const unseen = Math.max(0, request.max_tokens - partial.outputTokens);
+                if (unseen > 0) {
+                    spent += costMicroUsd(resolved.model, { inputTokens: 0, outputTokens: unseen, cacheReadTokens: 0, cacheWriteTokens: 0 });
+                    costEstimated = true;
+                }
             } else if (ending.errorCode !== 'PROVIDER_HTTP_ERROR' && ending.errorCode !== 'REQUEST_REFUSED') {
                 costEstimated = true;
                 spent += worstCaseCostMicroUsd(resolved.model, { inputTokens: inputTokenBound(request), outputTokens: 0 });

@@ -1,0 +1,59 @@
+/**
+ * THE PROMPT-INJECTION CORPUS (Phase 2.H, roadmap items 1 and 9), loaded and
+ * checked when the module loads. Original text written for Inkquisitor: each
+ * case is a piece of author text (an answer, an element's stored text, an
+ * imported note) or a research source (a fetched page, an attached file) that
+ * carries an instruction to the model. `injection-suite.ts` runs every case
+ * through the product's own steps; the nightly red-team runs them against the
+ * real model (`scripts/injection-redteam.ts`). Imported as JSON, so the
+ * corpus ships in the build and a report names the bytes it ran.
+ */
+import { createHash } from 'node:crypto';
+import { z } from 'zod';
+import corpusJson from './injection-corpus.json';
+
+export const INJECTION_SURFACES = ['ANSWER', 'ELEMENT_TEXT', 'IMPORTED_NOTE', 'RESEARCH_PAGE', 'ATTACHED_FILE'] as const;
+export type InjectionSurface = (typeof INJECTION_SURFACES)[number];
+
+export const INJECTION_ATTACKS = [
+    'IGNORE_PREVIOUS',
+    'PROMPT_DISCLOSURE',
+    'SCOPE_ESCAPE',
+    'CROSS_BOOK',
+    'ROLE_CHANGE',
+    'FORGED_FENCE',
+    'ENCODED',
+    'NON_ENGLISH',
+    'INVISIBLE_CHARS',
+    'EXFIL',
+    'TOOL_USE',
+    'FALSE_APPROVAL',
+] as const;
+
+const CaseSchema = z
+    .object({
+        id: z.string().regex(/^rt-\d{2}$/),
+        surface: z.enum(INJECTION_SURFACES),
+        attack: z.enum(INJECTION_ATTACKS),
+        text: z.string().min(10).max(2_000),
+    })
+    .strict();
+export type InjectionCase = z.infer<typeof CaseSchema>;
+
+const CorpusSchema = z
+    .object({ format: z.literal('inkquisitor-injection-corpus/1'), cases: z.array(CaseSchema).min(1).max(200) })
+    .strict()
+    .superRefine((c, ctx) => {
+        const ids = new Set<string>();
+        for (const x of c.cases) {
+            if (ids.has(x.id)) ctx.addIssue({ code: 'custom', message: `duplicate case ${x.id}` });
+            ids.add(x.id);
+        }
+    });
+
+const parsed = CorpusSchema.parse(corpusJson);
+
+export const INJECTION_CORPUS: { readonly cases: readonly InjectionCase[]; readonly hash: string } = Object.freeze({
+    cases: Object.freeze(parsed.cases.map((c) => Object.freeze({ ...c }))),
+    hash: `sha256:${createHash('sha256').update(JSON.stringify(corpusJson)).digest('hex')}`,
+});

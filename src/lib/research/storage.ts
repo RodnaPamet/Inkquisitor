@@ -72,7 +72,7 @@ export interface StoredFindingText {
     claim: string;
     summary: string;
     noFitReason: string | null;
-    citations: Array<{ kind: 'URL' | 'UPLOAD'; url: string | null; sourceId: string | null; title: string | null; quotedSpan: string; retrievedAt: Date | null }>;
+    citations: Array<{ kind: 'URL' | 'UPLOAD'; url: string | null; sourceId: string | null; title: string | null; quotedSpan: string; retrievedAt: Date | null; sourceSha256: string | null }>;
 }
 
 /** A verified finding as stored (sanitised again: belt and braces over `validate.ts`). */
@@ -90,6 +90,7 @@ export function sanitiseFindingForStorage(f: FindingDraft, noFitReason: string |
                 title: c.title ? plainLine(c.title).slice(0, TITLE_MAX) || null : null,
                 quotedSpan: required(plainBlock(bounded(c.quotedSpan, QUOTE_MAX_CHARS)), QUOTE_MAX_CHARS, 'quote'),
                 retrievedAt: retrieved && !Number.isNaN(retrieved.getTime()) ? retrieved : null,
+                sourceSha256: c.kind === 'URL' && c.sourceSha256 !== null && /^[0-9a-f]{64}$/.test(c.sourceSha256) ? c.sourceSha256 : null,
             };
         }),
     };

@@ -96,6 +96,14 @@ export abstract class AiCallError extends AppError {
      * spend too — a call that failed after its repair cost two attempts.
      */
     public costMicroUsd = 0;
+    /**
+     * The guard's verdict on what the call scanned before it ended this way
+     * (issue #32 item 11): whether anything was flagged, and the rule ids.
+     * Set as the call throws, so a feature records a failed call's flag as it
+     * records a successful one's (the `AiCallLog` row holds them too).
+     */
+    public reviewRequired = false;
+    public guardRuleIds: readonly string[] = [];
     protected constructor(
         message: string,
         code: string,

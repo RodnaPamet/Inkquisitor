@@ -4,7 +4,8 @@
  * in-memory ledger. No network.
  */
 import { definePrompt } from '@/lib/ai/prompt';
-import { runServerToolLoop, serverTurnWorstCase, webToolDefinitions, type ServerToolLoopInput } from '@/lib/ai/server-tool-loop';
+import { NON_TEXT_FETCH_TOKENS_BOUND, runServerToolLoop, serverTurnWorstCase, webToolDefinitions, type ServerToolLoopInput } from '@/lib/ai/server-tool-loop';
+import { worstCaseCostMicroUsd } from '@/lib/ai/pricing';
 import { WEB_SEARCH_MICRO_USD_PER_REQUEST } from '@/lib/ai/pricing';
 import { AiSpendCeilingError, AiToolUseRefusedError, AiUnavailableError } from '@/lib/ai/errors';
 import { fakeAnthropic, setFakeApiKey, type FakeTurn } from '../../helpers/fake-anthropic';
@@ -53,6 +54,17 @@ it('the tripwire cuts the turn on a refused tool use: REFUSED_GUARD TOOL_USE_REF
     expect(ledger.records[0].costMicroUsd).toBeGreaterThanOrEqual(WEB_SEARCH_MICRO_USD_PER_REQUEST);
 });
 
+it('a turn cut off mid-stream is charged its unseen output at the bound, marked estimated, within its reservation (issue #30, item 10)', async () => {
+    const { api, ledger, promise } = run([{ kind: 'events', events: gatherEvents({ query: 'the secret of the book', pages: [PAGE] }) }], { inspectToolUse: (u) => (u.tool === 'web_search' ? 'QUOTES_BOOK_TEXT' : null) });
+    await promise.catch(() => undefined);
+    const record = ledger.records[0];
+    expect(record.costEstimated).toBe(true);
+    const maxTokens = (api.requests[0] as { max_tokens: number }).max_tokens;
+    // 1,500 input tokens reported at message_start, the search fee, and the output up to max_tokens.
+    expect(record.costMicroUsd).toBe(1_500 * 2 + maxTokens * 10 + WEB_SEARCH_MICRO_USD_PER_REQUEST);
+    expect(record.costMicroUsd).toBeLessThanOrEqual(record.worstCaseMicroUsd);
+});
+
 it('continues a pause_turn with the model’s own turn passed back; stops at the request cap', async () => {
     const pause = (id: string): FakeTurn => ({ kind: 'events', events: gatherEvents({ query: `q ${id}`, pages: [PAGE], fetchUrls: [], stop: 'pause_turn', idBase: id }) });
     const { api, ledger, promise } = run([pause('a'), pause('b'), pause('c')], { maxRequests: 2 });
@@ -84,4 +96,36 @@ it('the kill switch refuses before anything is sent', async () => {
     const { api, promise } = run([], {}, memoryLedger(), { AI_DISABLED: '1' });
     await expect(promise).rejects.toBeInstanceOf(AiUnavailableError);
     expect(api.requests).toHaveLength(0);
+});
+
+describe('a fetched PDF (issue #41 item 1)', () => {
+    it('stops the turn at the PDF’s result: no continuation re-reads it, the text pages before it are kept, the request is settled as a refused tool use', async () => {
+        const pdfTurn: FakeTurn = { kind: 'events', events: gatherEvents({ query: 'falconry', pages: [PAGE], pdfUrls: ['https://reports.example.org/hawks.pdf'], stop: 'pause_turn' }) };
+        const { api, ledger, promise } = run([pdfTurn, pdfTurn, pdfTurn]);
+        const r = await promise;
+        expect(r.stop).toBe('NON_TEXT_FETCH');
+        expect(api.requests).toHaveLength(1);
+        expect(r.fetches.map((f) => f.url)).toEqual([PAGE.url]);
+        expect(ledger.records).toHaveLength(1);
+        expect(ledger.records[0]).toMatchObject({ outcome: 'REFUSED_GUARD', errorCode: 'TOOL_USE_REFUSED' });
+    });
+
+    it('the PDF stop is a stream cut off mid-way like any other: its unseen output is charged at the bound, marked estimated (issue #30 item 10)', async () => {
+        const pdfTurn: FakeTurn = { kind: 'events', events: gatherEvents({ query: 'falconry', pages: [PAGE], pdfUrls: ['https://reports.example.org/hawks.pdf'], stop: 'pause_turn' }) };
+        const { api, ledger, promise } = run([pdfTurn]);
+        await promise;
+        const record = ledger.records[0];
+        expect(record.costEstimated).toBe(true);
+        const maxTokens = (api.requests[0] as { max_tokens: number }).max_tokens;
+        // Input reported at message_start, the search and fetch seen, and the output up to max_tokens.
+        expect(record.costMicroUsd).toBeGreaterThanOrEqual(maxTokens * 10 + WEB_SEARCH_MICRO_USD_PER_REQUEST);
+        expect(record.costMicroUsd).toBeLessThanOrEqual(record.worstCaseMicroUsd);
+    });
+
+    it('reserves one context window of input on top while a fetch remains, and none once fetches are spent', () => {
+        const request = { model: 'claude-sonnet-5-5', max_tokens: 2_000, messages: [] };
+        const withFetch = serverTurnWorstCase('claude-sonnet-5-5', request, { searches: 0, fetches: 1, maxContentTokens: 0 });
+        const without = serverTurnWorstCase('claude-sonnet-5-5', request, { searches: 0, fetches: 0, maxContentTokens: 0 });
+        expect(withFetch - without).toBe(worstCaseCostMicroUsd('claude-sonnet-5-5', { inputTokens: NON_TEXT_FETCH_TOKENS_BOUND, outputTokens: 0 }));
+    });
 });

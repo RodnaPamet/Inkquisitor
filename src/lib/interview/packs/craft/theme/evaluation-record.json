@@ -9,11 +9,12 @@
     "hash": "sha256:2f424ff0ff64dc15dc8a97cc8f85466f2f655d75395cd93be5545e6039174a3c"
   },
   "promptVersion": "question-generation.2.3.0",
+  "promptHash": "sha256:7a9fad9b14690582fe4e9b20cd32f82bbe8f1d9a4c2b21804da0973f1facaafe",
   "generator": {
     "kind": "structural",
     "id": "structural-generator.1"
   },
-  "ranAt": "2026-11-19T23:18:40.376Z",
+  "ranAt": "2026-11-20T13:26:31.333Z",
   "answers": [
     {
       "caseId": "theme-01",

@@ -20,17 +20,35 @@
  * mounts no pack and reads no dial; the mode is read only by the run, never on
  * the bible's write path.
  *
- * The record is checked once per process (a full replay of 54 cases), lazily.
+ * The record is checked once per process and content (a full replay of 54 cases), lazily.
  */
 import type { PackRecordMode } from '@/lib/interview/pack-records-config';
 import committedRecord from './evals/evaluation-record.json';
-import { checkReconcileRecord, type ReconcileRecordCheck } from './evals/evaluation';
+import { createHash } from 'node:crypto';
+import { checkReconcileRecord, reconcilePromptHash, type ReconcileRecordCheck } from './evals/evaluation';
+import { processSharedMap } from '@/lib/process-shared-cache';
 
 export type ReconcileGateVerdict =
     | { mounted: true; recordKind: 'structural' | 'model' }
     | { mounted: false; reason: 'STRUCTURAL_RECORD_REFUSED' | 'NO_PASSING_RECORD'; detail: string };
 
-const verdicts = new Map<string, Promise<ReconcileGateVerdict>>();
+/**
+ * Shared by every module graph of the process (issue #36, item 7): the
+ * start-up report's check is the one the close route reads. Keyed by CONTENT —
+ * the mode, the reconcile prompt's hash and the record's — never by the mode
+ * alone: the map outlives a module graph (it is on `globalThis`), so a graph
+ * reloaded with another record or prompt (`next dev` after a re-run of the
+ * evaluation) must not be served the verdict on the one before.
+ */
+const verdicts = processSharedMap<Promise<ReconcileGateVerdict>>('reconcile-gate-verdicts');
+
+let committedKeyMemo: string | null = null;
+function recordKeyOf(record: unknown): string {
+    if (record === committedRecord && committedKeyMemo) return committedKeyMemo;
+    const key = createHash('sha256').update(JSON.stringify(record) ?? 'undefined', 'utf8').digest('hex');
+    if (record === committedRecord) committedKeyMemo = key;
+    return key;
+}
 
 /** The verdict on a record under a mode. Pure but for the replay. */
 export async function gateVerdict(record: unknown, mode: PackRecordMode): Promise<ReconcileGateVerdict> {
@@ -48,10 +66,11 @@ export async function gateVerdict(record: unknown, mode: PackRecordMode): Promis
  */
 export function reconcileGate(mode: PackRecordMode, record: unknown = committedRecord): Promise<ReconcileGateVerdict> {
     if (record !== committedRecord) return gateVerdict(record, mode);
-    let v = verdicts.get(mode);
+    const key = `${mode}\u0000${reconcilePromptHash()}\u0000${recordKeyOf(record)}`;
+    let v = verdicts.get(key);
     if (!v) {
         v = gateVerdict(record, mode);
-        verdicts.set(mode, v);
+        verdicts.set(key, v);
     }
     return v;
 }

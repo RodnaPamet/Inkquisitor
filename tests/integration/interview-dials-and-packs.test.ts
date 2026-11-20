@@ -203,18 +203,27 @@ describe('pack pins', () => {
         ).rejects.toThrow(/PACK_PINS_IMMUTABLE/);
     });
 
-    it('a session from before pinning (2.2, NULL pins) is never pinned later: it pauses PACK_NOT_PINNED, every time, and the database refuses a late pin', async () => {
+    it('a session from before pinning (2.2, NULL pins) is never pinned later: it ENDS once (PACK_NOT_PINNED), a retry meets an ended interview and writes nothing (issue #36, item 2), and the database refuses a late pin', async () => {
         const el = await character('Before Pinning');
         const view = await startInterview(ctx, bookId, { scope: 'ELEMENT', elementId: el, depth: 3, detail: 3 }, { generator: fakeGenerator(), embedder });
         await answerAndClose(view);
         // A 2.2 row: no pins. Only a superuser with triggers off can make one now.
         await prisma.$transaction([prisma.$executeRaw`SET LOCAL session_replication_role = replica`, prisma.$executeRaw`UPDATE "InterviewSession" SET "packPins" = NULL WHERE "id" = ${view.session.id}`]);
+        const gen = fakeGenerator();
+        const ended = await nextRound(ctx, bookId, view.session.id, { generator: gen, embedder });
+        expect(ended.session).toMatchObject({ status: 'STOPPED', stopReason: 'PACK_CHANGED', stopDetail: { problem: 'PACK_NOT_PINNED' }, packs: null });
+        expect(gen.calls).toHaveLength(0);
+        const snapshot = async () => ({
+            session: await prisma.interviewSession.findUniqueOrThrow({ where: { id: view.session.id }, select: { status: true, stopReason: true, updatedAt: true, endedAt: true } }),
+            audit: await prisma.auditLog.count({ where: { workspaceId: owner.workspaceId, entityId: view.session.id } }),
+        });
+        const before = await snapshot();
         for (let i = 0; i < 2; i++) {
-            const gen = fakeGenerator();
-            const paused = await nextRound(ctx, bookId, view.session.id, { generator: gen, embedder });
-            expect(paused.session).toMatchObject({ status: 'PAUSED', stopReason: 'PACK_CHANGED', stopDetail: { problem: 'PACK_NOT_PINNED' }, packs: null });
-            expect(gen.calls).toHaveLength(0);
+            const r = await refusal(nextRound(ctx, bookId, view.session.id, { generator: gen, embedder }));
+            expect(r).toMatchObject({ status: 409, details: { reason: 'INTERVIEW_ENDED' } });
         }
+        expect(await snapshot()).toEqual(before);
+        expect(gen.calls).toHaveLength(0);
         expect(await prisma.interviewRound.count({ where: { sessionId: view.session.id } })).toBe(1);
         await expect(prisma.$executeRaw`UPDATE "InterviewSession" SET "packPins" = '[]'::jsonb WHERE "id" = ${view.session.id}`).rejects.toThrow(/PACK_PINS_IMMUTABLE/);
     });
@@ -240,6 +249,12 @@ describe('pack pins', () => {
         const paused = await nextRound(ctx, bookId, view.session.id, { generator: gen, embedder, packs: changed });
         expect(paused.session).toMatchObject({ status: 'PAUSED', stopReason: 'PACK_CHANGED', stopDetail: { problem: 'PACK_CHANGED', packs: ['persona-socratic'] } });
         expect(gen.calls).toHaveLength(0);
+        // Asked again while the file is still changed: already paused for exactly this, nothing written (issue #36, item 2).
+        const auditBefore = await prisma.auditLog.count({ where: { workspaceId: owner.workspaceId, entityId: view.session.id } });
+        const updatedBefore = (await prisma.interviewSession.findUniqueOrThrow({ where: { id: view.session.id }, select: { updatedAt: true } })).updatedAt;
+        await nextRound(ctx, bookId, view.session.id, { generator: gen, embedder, packs: changed });
+        expect(await prisma.auditLog.count({ where: { workspaceId: owner.workspaceId, entityId: view.session.id } })).toBe(auditBefore);
+        expect((await prisma.interviewSession.findUniqueOrThrow({ where: { id: view.session.id }, select: { updatedAt: true } })).updatedAt).toEqual(updatedBefore);
         expect(await prisma.interviewRound.count({ where: { sessionId: view.session.id } })).toBe(1);
 
         const resumed = await nextRound(ctx, bookId, view.session.id, { generator: fakeGenerator(), embedder });

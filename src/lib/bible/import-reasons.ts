@@ -55,6 +55,8 @@ export const IMPORT_REASONS = [
     'DUPLICATE_RELATION',
     // A value
     'EMPTY',
+    // A field whose template type changed since the bundle was written, with no lossless coercion (issue #27, item 8).
+    'FIELD_TYPE_CHANGED',
     'TOO_LONG',
     'CUSTOM_LABEL_REQUIRED',
     'CUSTOM_LABEL_NOT_ALLOWED',

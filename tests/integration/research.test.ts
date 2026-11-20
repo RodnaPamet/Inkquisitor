@@ -16,6 +16,7 @@
  *   encryption at rest, row-level security, the purge cascade, the D11 gate,
  *   a requester who may no longer edit, a run that is not QUEUED left alone
  */
+import { createHash } from 'node:crypto';
 import { prisma } from '@/lib/db';
 import { runWithoutRls } from '@/lib/db/rls-middleware';
 import { createBook, updateBook } from '@/app-layer/usecases/books';
@@ -162,7 +163,7 @@ describe('a full run', () => {
         ]);
         // The search fee is in the gather call's cost: $10 per 1,000 searches.
         expect(calls[0].costMicroUsd).toBeGreaterThanOrEqual(10_000);
-        expect((await prisma.researchRun.findUniqueOrThrow({ where: { id: runId } })).spentMicroUsd).toBe(calls.reduce((n, c) => n + c.costMicroUsd, 0));
+        expect(Number((await prisma.researchRun.findUniqueOrThrow({ where: { id: runId } })).spentMicroUsd)).toBe(calls.reduce((n, c) => n + Number(c.costMicroUsd), 0));
 
         // D15: every query and fetch URL the run sent is listed on its result, in order.
         expect(review.egress).toEqual({
@@ -185,6 +186,13 @@ describe('a full run', () => {
             JOIN "ResearchProposal" p ON p."runId" = r."id"
             WHERE r."id" = ${runId} LIMIT 1`;
         for (const v of Object.values(raw[0])) expect(v.startsWith('v2:')).toBe(true);
+
+        // Source integrity (Phase 2.H, #41 item 3): the page's citation holds the hash of the text it was verified in; the file's none.
+        const hashes = await prisma.researchCitation.findMany({ where: { runId }, select: { kind: true, sourceSha256: true }, orderBy: { kind: 'asc' }, take: 10 });
+        expect(hashes).toEqual([
+            { kind: 'URL', sourceSha256: createHash('sha256').update(PAGE.text, 'utf8').digest('hex') },
+            { kind: 'UPLOAD', sourceSha256: null },
+        ]);
 
         // The audit trail holds counts and codes, never text.
         const audit = await prisma.auditLog.findFirstOrThrow({ where: { workspaceId: ctx.workspaceId, action: 'RESEARCH_RUN_FINISHED', entityId: runId } });

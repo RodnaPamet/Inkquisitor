@@ -46,6 +46,25 @@ From Anthropic's documentation, read 2026-11-20:
 - Even in a zero-retention configuration, **website publishers may retain the URLs fetched** and request metadata under their own policies.
 - The search provider's own retention of queries is outside Anthropic's zero-retention terms as documented; this is why queries must carry no author text.
 
+### Zero-retention settings, as configured (Phase 2.H)
+
+Zero data retention is an arrangement Anthropic makes for an organisation;
+no request member asks for it. What the product can configure, it does, and
+each setting is held by code and a test:
+
+| Setting | Where | What it does |
+|---|---|---|
+| A declared retention mode | `AI_RETENTION_MODE` (`zdr` or `standard-beta`), `src/lib/ai/config.ts` | Production refuses to start holding a key with neither. `standard-beta` (the closed beta only, decision D5 as amended) logs a WARN at every start of the web tier and the worker. `zdr` is the launch gate. |
+| Only ZDR-eligible models under `zdr` | `ZDR_ELIGIBLE`, `src/lib/ai/model-capabilities.ts` | With `AI_RETENTION_MODE=zdr`, a tier override (`AI_MODEL_FAST` / `_BALANCED` / `_DEEP`) naming a Fable model (a Covered Model, 30-day retention required) or a model the capability table has no row for refuses to start. The three defaults are eligible. |
+| Messages calls only | the middleware in `src/lib/ai/client.ts` | No Batches, Files, message threads, containers, MCP servers, context management, `metadata` or beta header ever leaves: the surfaces zero retention does not cover are refused, not merely unused. |
+| Web tools without dynamic filtering | `SERVER_TOOL_SHAPES`, `src/lib/ai/client.ts` | `allowed_callers: ["direct"]` on both web tools; a definition without it is refused. |
+| No author text in an output schema | `jsonSchemaFor` and the feature schemas | Schemas are code; Anthropic caches a compiled schema for up to 24 hours outside zero retention. |
+| Prompt caching of the static system prompt only | `src/lib/ai/prompt.ts` | The default five-minute ephemeral cache, on the system block, which holds no author text. |
+| The SDK's own telemetry | `clientForRun` | Pinned to `metadata_only`, with no propagation. |
+
+Kept as it is (decision D5): the closed beta may run under standard retention
+with the operator's explicit `standard-beta` flag.
+
 ### What a run lists (decision D15)
 
 Every run lists, on its result page, **every search query and fetched URL it

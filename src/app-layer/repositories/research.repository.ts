@@ -216,7 +216,7 @@ export const ResearchCitationRepository = {
     create(
         db: Db,
         workspaceId: string,
-        data: { runId: string; findingId: string; kind: 'URL' | 'UPLOAD'; url: string | null; sourceId: string | null; title: string | null; quotedSpan: string; retrievedAt: Date | null },
+        data: { runId: string; findingId: string; kind: 'URL' | 'UPLOAD'; url: string | null; sourceId: string | null; title: string | null; quotedSpan: string; retrievedAt: Date | null; sourceSha256: string | null },
     ) {
         return db.researchCitation.create({ data: { workspaceId, ...data }, select: { id: true } });
     },

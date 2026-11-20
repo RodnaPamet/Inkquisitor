@@ -167,7 +167,9 @@ export type VectorStoreRefusal =
     | 'BATCH_TOO_LARGE'
     | 'INVALID_QUERY'
     | 'MIXED_REVISIONS'
-    | 'EMPTY_REBUILD_SOURCE';
+    | 'EMPTY_REBUILD_SOURCE'
+    /** A write in a transaction whose isolation is not READ COMMITTED (issue #23, item 3). */
+    | 'UNSUPPORTED_ISOLATION';
 
 export class VectorStoreError extends Error {
     constructor(

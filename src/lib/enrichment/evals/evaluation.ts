@@ -62,6 +62,8 @@ import type { BibleKind } from '@/lib/bible/kinds';
 import { getFieldDef } from '@/lib/bible/templates';
 import { normaliseText, words } from '@/lib/interview/text';
 import { RECONCILE_PROMPT, RECONCILE_PROMPT_VERSION } from '../prompt';
+import { ReconcileOutputSchema } from '../schema';
+import { promptContentHash } from '@/lib/ai/prompt-hash';
 import { runReconcileStep, type ReconcileRoundInput, type RoundAnswerInput } from '../reconcile';
 import type { ReconcileCallResult, Reconciler } from '../reconciler';
 import { addressesTheProduct, nameKey, paragraphsToHtml, valueAsText, type ProposalDraft } from '../validate';
@@ -83,11 +85,18 @@ export const RECONCILE_EVAL_PASS_RATE = 1;
 
 const SHA256 = z.string().regex(/^sha256:[0-9a-f]{64}$/);
 
+/** The reconcile prompt's content hash (its template and output schema). */
+export function reconcilePromptHash(): string {
+    return promptContentHash(RECONCILE_PROMPT, ReconcileOutputSchema);
+}
+
 export const ReconcileRecordSchema = z
     .object({
         format: z.literal(RECONCILE_RECORD_FORMAT),
         sets: z.object({ enrichment: z.object({ hash: SHA256 }).strict(), adversarial: z.object({ hash: SHA256 }).strict() }).strict(),
         promptVersion: z.string().min(1).max(64),
+        /** The reconcile prompt's content hash under that version (`promptContentHash`, Phase 2.H item 7). */
+        promptHash: SHA256,
         generator: z.object({ kind: z.enum(RECORD_KINDS), id: z.string().min(1).max(128) }).strict(),
         ranAt: z.iso.datetime(),
         answers: z
@@ -301,6 +310,7 @@ export type RecordRefusal =
     | 'MALFORMED'
     | 'SET_MISMATCH'
     | 'PROMPT_VERSION_MISMATCH'
+    | 'PROMPT_HASH_MISMATCH'
     | 'UNKNOWN_ANSWER'
     | 'DUPLICATE_ANSWER'
     | 'UNANSWERED_CASE'
@@ -346,6 +356,9 @@ export async function checkReconcileRecord(raw: unknown): Promise<ReconcileRecor
     }
     if (record.promptVersion !== RECONCILE_PROMPT_VERSION) {
         return { ok: false, reason: 'PROMPT_VERSION_MISMATCH', detail: `recorded under ${record.promptVersion}, the prompt is ${RECONCILE_PROMPT_VERSION}` };
+    }
+    if (record.promptHash !== reconcilePromptHash()) {
+        return { ok: false, reason: 'PROMPT_HASH_MISMATCH', detail: 'the reconcile prompt or its output schema changed since the record was made; re-run the reconcile evaluation' };
     }
     const cases = allReconcileCases();
     const byCase = new Map<string, unknown>();
@@ -409,6 +422,7 @@ export async function evaluateReconcile(reconciler: Reconciler, who: { kind: Rec
             format: RECONCILE_RECORD_FORMAT,
             sets: { enrichment: { hash: sets.hashes.enrichment }, adversarial: { hash: sets.hashes.adversarial } },
             promptVersion: RECONCILE_PROMPT_VERSION,
+            promptHash: reconcilePromptHash(),
             generator: who,
             ranAt: ranAt.toISOString(),
             answers,

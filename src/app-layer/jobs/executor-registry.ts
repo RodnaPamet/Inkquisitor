@@ -143,6 +143,22 @@ function registerDefaultExecutors(): void {
         });
     });
 
+    // Phase 2.H: call records past their retention, deleted (issue #30 item 4).
+    executorRegistry.register('ai-call-log-retention', async () => {
+        const startedAt = new Date().toISOString();
+        const startMs = performance.now();
+        return runJob('ai-call-log-retention', async () => {
+            const { purgeExpiredAiCallLogs } = await import('@/app-layer/usecases/ai-call-retention');
+            const r = await purgeExpiredAiCallLogs();
+            return {
+                ...emptyResult('ai-call-log-retention', startedAt, startMs),
+                success: true,
+                itemsActioned: r.deleted,
+                details: { days: r.days, more: r.more },
+            };
+        });
+    });
+
     // Phase 2.6: one research run, named by id (decision D9).
     executorRegistry.register('research-run', async (payload) => {
         const startedAt = new Date().toISOString();

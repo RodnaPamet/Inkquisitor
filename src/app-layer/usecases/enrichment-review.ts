@@ -253,6 +253,35 @@ export async function getSessionReview(ctx: WorkspaceRequestContext, bookId: str
     });
 }
 
+/**
+ * The rounds of a session whose reconcile run did not run to its end — FAILED
+ * (or past its claim, `CLAIM_EXPIRED`) or REFUSED — by number, ascending
+ * (`bible.view`; nothing decrypted). The interview page names them so the
+ * author knows their answers are waiting (issue #39 item 6); the review page
+ * re-runs them.
+ */
+/** A round whose reconcile did not run to its end, and its outcome (the page words a TOKEN_BUDGET refusal apart: running it again cannot help). */
+export interface ReconcileAttention {
+    roundNumber: number;
+    outcome: string | null;
+}
+
+export async function reconcileRoundsNeedingAttention(ctx: WorkspaceRequestContext, bookId: string, sessionId: string): Promise<ReconcileAttention[]> {
+    await assertPermission(ctx, 'bible.view');
+    return runInWorkspaceContext(ctx, async (db) => {
+        await requireBook(db, ctx, bookId);
+        const rounds = await InterviewRoundRepository.listForSession(db, ctx.workspaceId, sessionId, REVIEW_ROUNDS_READ);
+        const numberOf = new Map(rounds.map((r) => [r.id, r.number] as const));
+        const out = new Map<number, string | null>();
+        for (const r of await ReconcileRunRepository.listForSession(db, ctx.workspaceId, sessionId, REVIEW_ROUNDS_READ)) {
+            const state = effectiveRunState(r);
+            const n = numberOf.get(r.roundId);
+            if (n !== undefined && (state.status === 'FAILED' || state.status === 'REFUSED')) out.set(n, state.outcome ?? null);
+        }
+        return [...out.entries()].sort(([a], [b]) => a - b).map(([roundNumber, outcome]) => ({ roundNumber, outcome }));
+    });
+}
+
 /** The book's interviews with proposals still waiting, and how many each holds (`bible.view`; nothing decrypted). */
 export async function listPendingReviews(ctx: WorkspaceRequestContext, bookId: string): Promise<Array<{ sessionId: string; pending: number }>> {
     await assertPermission(ctx, 'bible.view');

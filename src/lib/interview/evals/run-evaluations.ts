@@ -39,6 +39,19 @@
  *                            researcher is the deterministic one; the model
  *                            run makes the findings and fit calls over each
  *                            case's fake web (no live search).
+ *   --rephrase               also run the rephrase prompt's set (Phase 2.H:
+ *                            ten questions asked differently) and write its
+ *                            record: beside the set
+ *                            (src/lib/interview/evals/) for a structural run,
+ *                            DIR/rephrase/ under --out. The model run is the
+ *                            product's wired question generator.
+ *   --judge                  also run the judge over the ungraded behaviours of
+ *                            the pack records this run wrote (Phase 2.H,
+ *                            `src/lib/evals/judge.ts`): the model judge on a
+ *                            model run, the structural one otherwise; its
+ *                            report is `judge-report.json` under --out (or
+ *                            evals-out). A report, never a gate: no pass bar
+ *                            is set yet.
  *   --out DIR                where records go: DIR/<pack dir>/evaluation-record.json
  *
  * Every figure in a record is recomputed by the mount gate when it is read;
@@ -49,10 +62,12 @@ import * as path from 'node:path';
 import { spendPeriod } from '@/lib/ai/call-record';
 import { GenerationStop, type QuestionGenerator } from '../generator';
 import { PACK_RECORD_FILE, type PackRegistry } from '../packs';
-import { checkPackRecord, evaluatePack, type RecordKind } from '../pack-evaluation';
+import { checkPackRecord, evalCasesOf, evaluatePack, type RecordKind } from '../pack-evaluation';
+import { judgeItemsOfPackRecord, judgeReport, type Judge, type JudgeReport } from '@/lib/evals/judge';
 import { loadCoverageEval, runCoverageEvaluation, type CoverageReport } from './coverage';
 import type { Reconciler } from '@/lib/enrichment/reconciler';
 import { checkReconcileRecord, evaluateReconcile, type ReconcileRecordKind } from '@/lib/enrichment/evals/evaluation';
+import { checkRephraseRecord, evaluateRephrase, type RephraseRecordKind } from './rephrase-evaluation';
 
 /** The most a model run may be given to spend, in US dollars: a run asking for more is refused. */
 export const EVAL_RUN_BUDGET_MAX_USD = 25;
@@ -66,12 +81,16 @@ export interface EvalArgs {
     reconcile: boolean;
     /** Also run the research agent's evaluation (Phase 2.6). */
     research: boolean;
+    /** Also run the rephrase prompt's evaluation (Phase 2.H). */
+    rephrase: boolean;
+    /** Also judge the ungraded behaviours of the pack records written (Phase 2.H). */
+    judge: boolean;
     out: string | null;
 }
 
 /** Parse the command line. Throws a plain message on anything it does not understand. */
 export function parseEvalArgs(argv: readonly string[]): EvalArgs {
-    const args: EvalArgs = { generator: 'structural', packs: 'all', coverage: false, reconcile: false, research: false, out: null };
+    const args: EvalArgs = { generator: 'structural', packs: 'all', coverage: false, reconcile: false, research: false, rephrase: false, judge: false, out: null };
     for (let i = 0; i < argv.length; i++) {
         const a = argv[i];
         const value = (): string => {
@@ -82,6 +101,8 @@ export function parseEvalArgs(argv: readonly string[]): EvalArgs {
         if (a === '--coverage') args.coverage = true;
         else if (a === '--reconcile') args.reconcile = true;
         else if (a === '--research') args.research = true;
+        else if (a === '--rephrase') args.rephrase = true;
+        else if (a === '--judge') args.judge = true;
         else if (a === '--no-packs') args.packs = [];
         else if (a.startsWith('--generator')) {
             const v = value();
@@ -263,6 +284,50 @@ export async function runReconcileEvaluation(
     };
 }
 
+/** Where a structural rephrase record is written (beside its set), relative to the repository. */
+export const REPHRASE_RECORD_RELATIVE = path.join('src', 'lib', 'interview', 'evals', 'rephrase-evaluation-record.json');
+
+/** The rephrase prompt's set (2.H) through `generator`, its record written to `file` and checked as the gate checks it. */
+export async function runRephraseEvaluation(
+    registry: PackRegistry,
+    generator: QuestionGenerator,
+    who: { kind: RephraseRecordKind; id: string },
+    file: string,
+    now: () => Date = () => new Date(),
+): Promise<ReconcileRunResult> {
+    const { record, grades } = await evaluateRephrase(registry, generator, who, now());
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, JSON.stringify(record, null, 2) + '\n');
+    const check = await checkRephraseRecord(record, registry);
+    return {
+        passed: check.ok,
+        cases: grades.length,
+        failedCases: grades.filter((g) => !g.passed).map((g) => g.caseId),
+        ungraded: grades.reduce((n, g) => n + g.ungraded.length, 0),
+        file,
+        refusal: check.ok ? null : `${check.reason}: ${check.detail}`,
+    };
+}
+
+/**
+ * The judge over the pack records a run wrote (the files `results` names):
+ * every question each case worded, once per behaviour the case lists as
+ * ungraded. The report goes to `<out>/judge-report.json`; it gates nothing.
+ */
+export async function runJudge(registry: PackRegistry, results: readonly PackRunResult[], judge: Judge, out: string): Promise<JudgeReport> {
+    const judged = [];
+    for (const r of results) {
+        if (!r.file) continue;
+        const record = JSON.parse(fs.readFileSync(r.file, 'utf8')) as { answers: Array<{ caseId: string; outputs: unknown[] }> };
+        const ungraded = new Map(evalCasesOf(registry, r.name).map((c) => [c.id, { behaviours: [...c.mustNot, ...(c.tone ? ['TONE'] : [])], tone: c.tone ?? undefined }]));
+        judged.push(...(await judge.judge(judgeItemsOfPackRecord(record, ungraded))));
+    }
+    const report = judgeReport(judged, judge.basis);
+    fs.mkdirSync(out, { recursive: true });
+    fs.writeFileSync(path.join(out, 'judge-report.json'), JSON.stringify(report, null, 2) + '\n');
+    return report;
+}
+
 /** The question-coverage set (2.2) through `generator`, written to `<out>/coverage-report.json`. */
 export async function runCoverage(registry: PackRegistry, generator: QuestionGenerator, out: string): Promise<CoverageReport> {
     const report = await runCoverageEvaluation(loadCoverageEval(), generator, { packs: registry });
@@ -286,7 +351,7 @@ export function summaryLines(
         lines.push(
             coverage.status === 'NOT_ASSESSED'
                 ? 'Coverage: not assessed (no sessions).'
-                : `Coverage: ${coverage.passed}/${coverage.sessions.length} sessions pass; ${(coverage.coverage * 100).toFixed(1)}% of must-cover keys reached by the generator.`,
+                : `Coverage: ${coverage.passed}/${coverage.sessions.length} sessions pass; ${coverage.coverage === null ? 'must-cover keys not assessed (no session names one)' : `${(coverage.coverage * 100).toFixed(1)}% of must-cover keys reached by the generator`}.`,
         );
     }
     if (reconcile) {

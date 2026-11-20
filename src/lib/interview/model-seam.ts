@@ -89,7 +89,8 @@ type Schema = typeof GeneratedQuestionsSchema;
 export type StructuredCaller = (input: Omit<StructuredCallInput<Schema>, 'requestedById'>) => Promise<StructuredCallResult<z.infer<Schema>>>;
 
 function failed(kind: GenerationFailureKind, err: AiCallError): GenerationResult {
-    return { output: null, tokensUsed: err.tokensUsed, failure: { kind, errorCode: err.reason }, callId: err.callId, costMicroUsd: err.costMicroUsd };
+    // The guard's flag travels with a failure as with an answer (issue #32 item 11).
+    return { output: null, tokensUsed: err.tokensUsed, failure: { kind, errorCode: err.reason }, callId: err.callId, costMicroUsd: err.costMicroUsd, reviewRequired: err.reviewRequired, guardRuleIds: err.guardRuleIds };
 }
 
 /** 2.1's error → the engine's failure or stop (the table in the header). Rethrows what is neither. */

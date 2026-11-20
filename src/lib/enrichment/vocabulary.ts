@@ -56,6 +56,7 @@ export type ReconcileRunStatus = (typeof RECONCILE_RUN_STATUSES)[number];
  *   CLAIM_EXPIRED             FAILED: the process running it died; the next request found the claim stale
  *   AI_UNAVAILABLE            REFUSED: no model call can be made under this deployment's configuration
  *   RECONCILE_NOT_EVALUATED   REFUSED: the reconcile prompt has no evaluation record this deployment accepts (D11)
+ *   TOKEN_BUDGET              REFUSED: the session's token budget cannot take the call (2.H item 2); nothing was sent
  *
  * A FAILED or REFUSED run may be run again; nothing is ever proposed from a
  * failed call (design 10.2: no partial output).
@@ -74,11 +75,12 @@ export const RECONCILE_OUTCOMES = [
     'AI_UNAVAILABLE',
     'RECONCILE_NOT_EVALUATED',
     'CLAIM_EXPIRED',
+    'TOKEN_BUDGET',
 ] as const;
 export type ReconcileOutcome = (typeof RECONCILE_OUTCOMES)[number];
 
 export const DONE_OUTCOMES: readonly ReconcileOutcome[] = ['OK', 'NOTHING_TO_RECONCILE'];
-export const REFUSED_OUTCOMES: readonly ReconcileOutcome[] = ['AI_UNAVAILABLE', 'RECONCILE_NOT_EVALUATED'];
+export const REFUSED_OUTCOMES: readonly ReconcileOutcome[] = ['AI_UNAVAILABLE', 'RECONCILE_NOT_EVALUATED', 'TOKEN_BUDGET'];
 
 /**
  * A RUNNING run older than this is a claim whose process died (the balanced
@@ -122,6 +124,8 @@ export function statusOfOutcome(outcome: ReconcileOutcome): Exclude<ReconcileRun
  *                              (another session's, another round's, an old revision, made up)
  *   CITES_UNANSWERED           an answer the author skipped or left for later
  *   REMOVE_CARRIES_VALUE       a REMOVE with a value
+ *   REMOVE_NOT_ADDRESSED       a REMOVE citing no answer to a question about the field it
+ *                              empties (Phase 2.H, issue #39 item 2)
  *   VALUE_MISSING              an ADD or UPDATE with no value (or one that sanitises to nothing)
  *   VALUE_INVALID              a value of the wrong type or past the field's bounds
  *   CHANGES_NOTHING            an UPDATE to the value the field already holds
@@ -147,6 +151,7 @@ export const REFUSAL_CODES = [
     'CITES_FOREIGN_ANSWER',
     'CITES_UNANSWERED',
     'REMOVE_CARRIES_VALUE',
+    'REMOVE_NOT_ADDRESSED',
     'VALUE_MISSING',
     'VALUE_INVALID',
     'CHANGES_NOTHING',

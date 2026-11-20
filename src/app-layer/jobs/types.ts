@@ -64,10 +64,17 @@ export interface ResearchRunPayload {
     runId: string;
 }
 
+/**
+ * Phase 2.H: the daily call-log retention (`usecases/ai-call-retention.ts`)
+ * deletes `AiCallLog` rows past `AI_CALL_LOG_RETENTION_DAYS`. No payload.
+ */
+export type AiCallLogRetentionPayload = Record<string, never>;
+
 export interface JobPayloadMap {
     heartbeat: HeartbeatPayload;
     'book-purge': BookPurgePayload;
     'research-run': ResearchRunPayload;
+    'ai-call-log-retention': AiCallLogRetentionPayload;
 }
 
 export type JobName = keyof JobPayloadMap;
@@ -105,6 +112,13 @@ export const JOB_DEFAULTS: Record<JobName, JobDefaults> = {
         backoff: { type: 'fixed', delay: 0 },
         removeOnComplete: 100,
         removeOnFail: 200,
+    },
+    'ai-call-log-retention': {
+        // Idempotent: a failed run is retried; what it left is due tomorrow.
+        attempts: 3,
+        backoff: { type: 'exponential', delay: 60_000 },
+        removeOnComplete: 30,
+        removeOnFail: 100,
     },
 };
 

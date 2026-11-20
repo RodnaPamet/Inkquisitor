@@ -19,14 +19,15 @@
  */
 import { randomBytes } from 'node:crypto';
 import { Prisma } from '@prisma/client';
-import { getVectorRepository, VectorStoreError, type VectorRecord } from '@/app-layer/repositories/vector.repository';
+import { createVectorRepository, getVectorRepository, VectorStoreError, type VectorRecord } from '@/app-layer/repositories/vector.repository';
+import { createPgvectorStore } from '@/app-layer/repositories/vector/pgvector-store';
 import { deleteBook } from '@/app-layer/usecases/books';
 import { purgeDeletedBooks } from '@/app-layer/usecases/book-purge';
 import { vectorContentHash } from '@/lib/ai/embeddings/content-hash';
 import { prisma } from '@/lib/db';
-import { runInWorkspaceContext } from '@/lib/db/rls-middleware';
+import { bindWorkspaceInTransaction, runInWorkspaceContext } from '@/lib/db/rls-middleware';
 import { seedBible, type SeededBible } from '../helpers/bible';
-import { inWorkspace, queryFor, recordFor, stub } from '../helpers/vectors';
+import { FIXTURE_HASH_SCOPE, inWorkspace, queryFor, recordFor, stub } from '../helpers/vectors';
 import { createAccount, workspaceCtx } from '../helpers/workspaces';
 
 afterAll(() => prisma.$disconnect());
@@ -134,7 +135,7 @@ describe('upsert and search through the seam', () => {
             sourceId: ids.want,
             chunkIndex: 0,
             bookId: aBible.bookId,
-            contentHash: vectorContentHash(texts.want),
+            contentHash: vectorContentHash(FIXTURE_HASH_SCOPE, texts.want),
             score: hits[0].score,
         });
     });
@@ -160,7 +161,7 @@ describe('upsert and search through the seam', () => {
                 chunkIndex: 0,
                 embeddingRevision: REV,
                 bookId: aBible.bookId,
-                contentHash: vectorContentHash(texts.want),
+                contentHash: vectorContentHash(FIXTURE_HASH_SCOPE, texts.want),
                 dimensions: stub.dimensions,
             },
         ]);
@@ -234,6 +235,76 @@ describe('one revision, one dimension count, under concurrency', () => {
         // Not wedged: the revision holds one count and still answers.
         const hits = await inA((db) => repo.search(db, a.workspaceId, { embeddingRevision: rev, embedding: [1, 0], k: 5 }));
         expect(hits).toHaveLength(1);
+    });
+});
+
+describe('the first-write lock and its isolation level (issue #23, item 3)', () => {
+    const raw = (rev: string, sourceId: string): VectorRecord => ({
+        sourceModel: 'FixtureNote',
+        sourceId,
+        chunkIndex: 0,
+        embeddingRevision: rev,
+        bookId: null,
+        contentHash: 'e'.repeat(64),
+        embedding: [1, 0],
+    });
+
+    it('a write in a REPEATABLE READ transaction is refused by name: its snapshot could not see a first writer’s rows', async () => {
+        const rev = `iso-${randomBytes(4).toString('hex')}`;
+        const attempt = prisma.$transaction(
+            async (tx) => {
+                await bindWorkspaceInTransaction(tx, { workspaceId: a.workspaceId, requestId: 'iso-test' });
+                return repo.upsert(tx, a.workspaceId, [raw(rev, uid('iso'))]);
+            },
+            { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead },
+        );
+        expect(await refusal(attempt)).toBe('UNSUPPORTED_ISOLATION');
+        // Reads are not refused under it.
+        const read = prisma.$transaction(
+            async (tx) => {
+                await bindWorkspaceInTransaction(tx, { workspaceId: a.workspaceId, requestId: 'iso-test' });
+                return repo.search(tx, a.workspaceId, { embeddingRevision: rev, embedding: [1, 0], k: 1 });
+            },
+            { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead },
+        );
+        await expect(read).resolves.toEqual([]);
+    });
+
+    it('two transactions making the first writes of two revisions in opposite orders both commit (no 40P01)', async () => {
+        const x = `ordx-${randomBytes(4).toString('hex')}`;
+        const y = `ordy-${randomBytes(4).toString('hex')}`;
+        let firstWrote!: () => void;
+        const wrote = new Promise<void>((resolve) => {
+            firstWrote = resolve;
+        });
+        const results = await Promise.allSettled([
+            inA(async (db) => {
+                await repo.upsert(db, a.workspaceId, [raw(x, uid('o1'))]);
+                firstWrote();
+                // The other transaction now makes its first write of `y`, then of `x`.
+                await new Promise((resolve) => setTimeout(resolve, 300));
+                return repo.upsert(db, a.workspaceId, [raw(y, uid('o2'))]);
+            }),
+            (async () => {
+                await wrote;
+                return inA(async (db) => {
+                    await repo.upsert(db, a.workspaceId, [raw(y, uid('o3'))]);
+                    return repo.upsert(db, a.workspaceId, [raw(x, uid('o4'))]);
+                });
+            })(),
+        ]);
+        expect(results.map((r) => r.status)).toEqual(['fulfilled', 'fulfilled']);
+    });
+});
+
+describe('the readiness probe looks where the statements look (issue #23, item 5)', () => {
+    it('a search_path without the embedding table is refused as a missing table, not left to fail in raw SQL', async () => {
+        const fresh = createVectorRepository(createPgvectorStore());
+        const attempt = inA(async (db) => {
+            await db.$executeRaw`SET LOCAL search_path TO pg_catalog`;
+            return fresh.search(db, a.workspaceId, { embeddingRevision: REV, embedding: [1, 0, 0, 0], k: 1 });
+        });
+        expect(await refusal(attempt)).toBe('PGVECTOR_NOT_INSTALLED');
     });
 });
 

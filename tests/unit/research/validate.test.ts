@@ -74,7 +74,7 @@ const F1: FindingDraft = {
     claim: 'Medieval falconers began training by manning the bird on the fist for many hours.',
     summary: 'A hood made of leather kept the falcon calm in the dark.',
     confidence: 'HIGH',
-    citations: [{ sourceRef: 'web.1', kind: 'URL', url: PAGE.url, sourceId: null, title: PAGE.title, quotedSpan: QUOTE, retrievedAt: null }],
+    citations: [{ sourceRef: 'web.1', kind: 'URL', url: PAGE.url, sourceId: null, title: PAGE.title, quotedSpan: QUOTE, retrievedAt: null, sourceSha256: null }],
 };
 const SCOPE: FitElement = { elementId: 'el-1', kind: 'CHARACTER', name: 'Wren', role: 'scope', stored: new Map([['role', 'A royal falconer.']]) };
 const RELATED: FitElement = { elementId: 'el-2', kind: 'FACTION', name: 'The Mews Guild', role: 'related', stored: new Map([['purpose', 'Keeps the hawks.']]) };

@@ -11,7 +11,7 @@
  * `STREAM_MAX_MS` (the page opens it again). It reads; it never stops a run.
  */
 import { sseComment } from '@/lib/interview/stream-events';
-import { HEARTBEAT_INTERVAL_MS, refusalCodeOf } from '@/lib/interview/stream-response';
+import { HEARTBEAT_INTERVAL_MS, refusalCodeOf, takeStreamSlot } from '@/lib/interview/stream-response';
 import type { RunView } from '@/app-layer/usecases/research-pages';
 import { researchSseData, type ResearchStreamEvent } from './stream-events';
 
@@ -21,10 +21,22 @@ export const STREAM_MAX_MS = 10 * 60_000;
 const encoder = new TextEncoder();
 const terminal = (r: RunView) => r.status !== 'QUEUED' && r.status !== 'RUNNING';
 
-export async function researchStreamResponse(req: Request, read: () => Promise<RunView>, opts: { pollMs?: number; maxMs?: number } = {}): Promise<Response> {
+export async function researchStreamResponse(
+    req: Request,
+    read: () => Promise<RunView>,
+    opts: { workspaceId: string; pollMs?: number; maxMs?: number },
+): Promise<Response> {
     const pollMs = opts.pollMs ?? POLL_MS;
     const maxMs = opts.maxMs ?? STREAM_MAX_MS;
-    const first = await read();
+    // The workspace's stream slot (2.H item 4), held until the stream ends however it ends.
+    const lease = takeStreamSlot(opts.workspaceId);
+    let first: RunView;
+    try {
+        first = await read();
+    } catch (err) {
+        lease.release();
+        throw err;
+    }
     let closed = false;
     let controller: ReadableStreamDefaultController<Uint8Array> | null = null;
     let heartbeat: ReturnType<typeof setInterval> | null = null;
@@ -44,6 +56,7 @@ export async function researchStreamResponse(req: Request, read: () => Promise<R
         heartbeat = null;
         timer = null;
         req.signal.removeEventListener('abort', cleanup);
+        lease.release();
         if (closed) return;
         closed = true;
         try {

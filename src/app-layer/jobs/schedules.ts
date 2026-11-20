@@ -42,4 +42,13 @@ export const SCHEDULED_JOBS: readonly ScheduleDefinition[] = [
         description: 'Delete for good every book deleted more than 30 days ago, with its elements, history and vectors (Phase 1.H).',
         defaultPayload: {},
     },
+    {
+        // Daily, off the hour (03:41 UTC), after the book purge. A record
+        // becomes due after AI_CALL_LOG_RETENTION_DAYS days; a day's lateness
+        // is the most it waits.
+        name: 'ai-call-log-retention',
+        pattern: '41 3 * * *',
+        description: 'Delete model-call records (AiCallLog: numbers and names, no text) past their retention (Phase 2.H).',
+        defaultPayload: {},
+    },
 ];

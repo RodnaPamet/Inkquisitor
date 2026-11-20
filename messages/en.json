@@ -563,7 +563,8 @@
                 "ITEM_TOO_LONG": "A list item is too long.",
                 "NOT_AN_OPTION": "This value is not one of the field's choices.",
                 "NOT_A_WHOLE_NUMBER": "This field takes a whole number.",
-                "OUT_OF_RANGE": "This number is outside the field's scale of 1 to 5."
+                "OUT_OF_RANGE": "This number is outside the field's scale of 1 to 5.",
+                "FIELD_TYPE_CHANGED": "This field changed type since the bundle was made, and its value cannot be carried over without losing something. Fix the value in the file, or enter it again after importing."
             },
             "exportTooLarge": "This bible is too large to export as one file.",
             "exportFailed": "The export could not be downloaded. Try again."
@@ -769,7 +770,10 @@
             "notStarted": "This interview could not start.",
             "badSetup": "This link does not describe an interview. Start one from the book.",
             "unsavedHold": "An answer could not be saved, so nothing else was done. Try saving it again first.",
-            "reconciled": "{count, plural, =0 {No bible changes were proposed from this round.} one {One bible change was proposed from this round: review it.} other {# bible changes were proposed from this round: review them.}}"
+            "reconciled": "{count, plural, =0 {No bible changes were proposed from this round.} one {One bible change was proposed from this round: review it.} other {# bible changes were proposed from this round: review them.}}",
+            "reconcileNotRun": "{count, plural, one {The answers of round {rounds} were not turned into proposed bible changes: the step failed or was refused, and they are waiting.} other {The answers of rounds {rounds} were not turned into proposed bible changes: the step failed or was refused, and they are waiting.}}",
+            "reconcileNotRunLink": "Open the review page to run it again.",
+            "reconcileBudgetSpent": "{count, plural, one {The answers of round {rounds} were not turned into proposed bible changes: this interview has used its share of the AI budget, so running the step again cannot help. Your answers are kept; copy what you need into the bible yourself.} other {The answers of rounds {rounds} were not turned into proposed bible changes: this interview has used its share of the AI budget, so running the step again cannot help. Your answers are kept; copy what you need into the bible yourself.}}"
         },
         "card": {
             "question": "Question {number}",
@@ -858,7 +862,9 @@
             "packCraft": "{kind} questions",
             "packPersona": "the {name} interviewer",
             "ANSWERED_IN_BIBLE": "Your bible now answers this, so it is not asked again. Skip it, or answer it as it is.",
-            "PACK_CHANGED": "A question pack this interview was started with has changed since, so it cannot be asked differently. Your answers are kept."
+            "PACK_CHANGED": "A question pack this interview was started with has changed since, so it cannot be asked differently. Your answers are kept.",
+            "STREAM_CAPACITY": "Too many interviews are generating at once in this workspace. Wait for one to finish, then try again.",
+            "MODEL_RATE_LIMITED": "Too many AI requests in this workspace just now. Wait a minute, then try again."
         }
     },
     "enrichment": {
@@ -904,7 +910,8 @@
             "PROMPT_INVALID": "Not reconciled: an internal error",
             "CLAIM_EXPIRED": "Not reconciled: it was interrupted",
             "AI_UNAVAILABLE": "Not reconciled: AI is not available on this server",
-            "RECONCILE_NOT_EVALUATED": "Not reconciled: this step has not passed its evaluation on this server yet"
+            "RECONCILE_NOT_EVALUATED": "Not reconciled: this step has not passed its evaluation on this server yet",
+            "TOKEN_BUDGET": "Not reconciled: this interview has used its share of the AI budget. Your answers are kept; copy what you need into the bible yourself."
         },
         "removeExplained": "Remove the stored value: your answers take it back and give nothing in its place.",
         "changedSince": "This entry changed since the proposal was made (version {base} then, {current} now). The comparison shows its value now; accept only if the change still fits.",
@@ -1108,7 +1115,9 @@
             "EDIT_NOT_ALLOWED": "That edit cannot be made here.",
             "EDIT_CHANGES_NOTHING": "That would change nothing.",
             "ELEMENT_EXISTS": "The book already has an entry of that name.",
-            "FINDING_KEPT": "This finding is already kept as a research note."
+            "FINDING_KEPT": "This finding is already kept as a research note.",
+            "STREAM_CAPACITY": "Too many live views are open in this workspace. Close one, then reload this page.",
+            "MODEL_RATE_LIMITED": "Too many AI requests in this workspace just now. Wait a minute, then run the brief again."
         }
     }
 }

@@ -28,6 +28,8 @@ import { embeddingConfigProblems } from './ai/embeddings/config';
 import { aiConfigProblems, aiConfigWarnings } from './ai/config';
 import { isLoopbackUrl } from './ai/model-stub';
 import { packRecordModeOf } from './interview/pack-records-config';
+import { retentionConfigProblems } from './ai/call-log-retention';
+import { cosineThresholdsConfigProblems } from './interview/dedupe-thresholds';
 
 export { MIN_AUTH_SECRET_LENGTH };
 
@@ -111,6 +113,11 @@ export function productionConfigProblems(e: EnvRecord): string[] {
     // SDK headers; a well-formed ceiling and kill switch.
     // src/lib/ai/config.ts is the one reading.
     problems.push(...aiConfigProblems(e));
+    // The call log's retention (Phase 2.H): a whole number of days, at least the database's floor.
+    problems.push(...retentionConfigProblems(e.AI_CALL_LOG_RETENTION_DAYS));
+    // Deduplication's per-revision cosine thresholds (Phase 2.H): what the parse
+    // refuses would otherwise throw in every round's generation.
+    problems.push(...cosineThresholdsConfigProblems(e.DEDUPE_COSINE_THRESHOLDS));
 
     // ── Interview packs (D11, D13): production mounts a pack only on a real
     // model's evaluation record. The loopback-only model stub is the one

@@ -19,12 +19,16 @@
  *                     answers this run was given (`CITES_FOREIGN_ANSWER`: another
  *                     session's, another round's, an older revision or an id
  *                     made up), each ANSWERED (`CITES_UNANSWERED`).
- *   4  typed value    REMOVE carries none; ADD and UPDATE carry one that
+ *   4  typed value    REMOVE carries none, and cites an answer to a question
+ *                     about the field it empties (`REMOVE_NOT_ADDRESSED`,
+ *                     issue #39 item 2); ADD and UPDATE carry one that
  *                     `normaliseFieldValue` accepts for the field's type and
  *                     bounds (sanitised there), that is not empty, and (UPDATE)
  *                     that differs from the stored value.
- *   5  no injection   no markup or script scheme, no URL that a clean cited
- *                     answer did not give, nothing the 2.1 guard's injection
+ *   5  no injection   no markup or script scheme, no URL or bare domain that a
+ *                     clean cited answer did not give (`addressesIn`), no six
+ *                     words of the reconcile prompt or its fence's tag
+ *                     (`disclosesInstructions`, Phase 2.H), nothing the 2.1 guard's injection
  *                     scanner flags, no citation of an answer by its id in the
  *                     text (`citesAnswerInText`) (`COPIES_INJECTED_TEXT`).
  *      possible       a sentence that addresses the product itself (an action
@@ -38,7 +42,9 @@
  *                     choice's option and a scale's number is supported by the
  *                     cited answers and, for an UPDATE, the stored value
  *                     (`groundSentence`, design 4.5: 70 % of its content words
- *                     and every capitalised word occur in them). One
+ *                     and every capitalised word occur in them), keeping the
+ *                     polarity of the clause it is drawn from (`polarityKept`:
+ *                     a dropped or added "not", issue #39 item 1). One
  *                     unsupported sentence refuses the whole proposal
  *                     (`UNSOURCED_SENTENCE`).
  *
@@ -59,6 +65,10 @@ import { normaliseFieldValue, sameFieldValue, type FieldValue } from '@/lib/bibl
 import { escapeHtml } from '@/lib/bible/snapshot-text';
 import { plainBlock, plainLine } from '@/lib/bible/text';
 import { normalizeForScan, scanInjection } from '@/lib/ai/guard';
+import { addressesIn, sourceGivesAddress } from '@/lib/text/url-mentions';
+import { polarityKept } from '@/lib/text/negation';
+import { disclosesInstructions, promptRuns } from '@/lib/text/prompt-disclosure';
+import { RECONCILE_PROMPT } from './prompt';
 import { groundSentence, normaliseText, sentences, stem, words } from '@/lib/interview/text';
 import { PROPOSABLE_KINDS, type NewElementOutput, type ParsedReconcile, type ReconcileOperation } from './schema';
 import type { ProposalFlag, RefusalCode, StoredOp } from './vocabulary';
@@ -86,6 +96,13 @@ export interface ReconcileAnswerFact {
     text: string | null;
     /** A SCALE answer's number. */
     scale: number | null;
+    /**
+     * What the answered question asked about: its element and the fields it
+     * targeted (a REMOVE must cite an answer about the field it empties,
+     * issue #39 item 2). Absent for a caller that has no questions (the
+     * research run's findings).
+     */
+    about?: { elementId: string; fieldKeys: readonly string[] };
 }
 
 export interface ValidationContext {
@@ -234,7 +251,6 @@ export function addressesTheProduct(text: string): boolean {
 }
 
 const MARKUP = /<\s*[A-Za-z!/?]/;
-const URL_LIKE = /\b(?:https?:\/\/|www\.)[^\s<>"']+/gi;
 const SCRIPT_SCHEME = /\b(?:javascript|data|vbscript)\s*:/i;
 
 /**
@@ -262,12 +278,18 @@ export function citesAnswerInText(text: string, answerIds: readonly string[] = [
  * (`IN_WORLD_TEXT`). A sentence that only addresses the product is not here:
  * it is flagged (`possibleInstruction`, D14).
  */
+/** The reconcile prompt's word runs: a value holding six words of them discloses the instructions (Phase 2.H). */
+const RECONCILE_RUNS = promptRuns([RECONCILE_PROMPT]);
+
 export function copiesInjectedText(parts: readonly string[], cited: readonly ReconcileAnswerFact[], answerIds: readonly string[] = []): boolean {
+    // The model's own instructions, recited (Phase 2.H: "no system-prompt disclosure").
+    if (disclosesInstructions(parts, RECONCILE_RUNS)) return true;
     const cleanSources = cited.filter((a) => a.text !== null && scanInjection(a.text).verdict === 'clean').map((a) => a.text as string);
     for (const part of parts) {
         if (MARKUP.test(part) || SCRIPT_SCHEME.test(part)) return true;
-        for (const m of part.matchAll(URL_LIKE)) {
-            if (!cleanSources.some((s) => s.includes(m[0]))) return true;
+        // A URL, or a bare domain (issue #39 item 4), no clean cited answer gives verbatim.
+        for (const address of addressesIn(part)) {
+            if (!sourceGivesAddress(address, cleanSources)) return true;
         }
         if (scanInjection(part).verdict !== 'clean') return true;
         if (citesAnswerInText(part, answerIds)) return true;
@@ -298,10 +320,16 @@ export function groundingForm(text: string): string {
 }
 
 /** Rule 6 for one piece of text: every sentence supported by the sources. */
-function groundedText(text: string, sources: readonly string[]): boolean {
+function groundedText(text: string, sources: readonly string[], prior: readonly string[] = []): boolean {
     const parts = sentences(groundingForm(text));
     const folded = sources.map(groundingForm);
-    return parts.length > 0 && parts.every((s) => groundSentence(s, folded).supported);
+    const foldedPrior = prior.map(groundingForm);
+    const all = foldedPrior.length === 0 ? folded : [...folded, ...foldedPrior];
+    // Lexical support (from the answers and, for an UPDATE, the value it
+    // replaces), and the polarity of its source kept (issue #39 item 1: a
+    // dropped or added "not" grounds lexically), the answers taking precedence
+    // over the replaced value (`polarityKept`'s `prior`).
+    return parts.length > 0 && parts.every((s) => groundSentence(s, all).supported && polarityKept(s, folded, foldedPrior));
 }
 
 /**
@@ -331,15 +359,16 @@ function readValue(def: FieldDef, raw: ReconcileOperation['value']): Verdict<{ p
 
 /** Rule 6 for a field value. */
 function groundedValue(def: FieldDef, value: FieldValue, parts: readonly string[], cited: readonly ReconcileAnswerFact[], stored: FieldValue | null): boolean {
-    const sources = cited.map((a) => a.text ?? '').filter((t) => t !== '');
-    if (stored !== null) sources.push(valueAsText(def, stored));
+    const answers = cited.map((a) => a.text ?? '').filter((t) => t !== '');
+    // An UPDATE may draw on the value it replaces; the answers stay the evidence (`groundedText`).
+    const prior = stored !== null ? [valueAsText(def, stored)] : [];
     if (def.type === 'scale') {
         // A number is supported by a SCALE answer that gave it, or by the
         // number written as a word in a cited answer.
-        return cited.some((a) => a.scale === value) || sources.some((s) => words(normaliseText(s)).includes(String(value)));
+        return cited.some((a) => a.scale === value) || [...answers, ...prior].some((s) => words(normaliseText(s)).includes(String(value)));
     }
-    if (def.type === 'list') return parts.every((item) => item.trim() === '' || groundedText(item, sources));
-    return parts.every((p) => groundedText(p, sources));
+    if (def.type === 'list') return parts.every((item) => item.trim() === '' || groundedText(item, answers, prior));
+    return parts.every((p) => groundedText(p, answers, prior));
 }
 
 /** One field operation through rules 2–6 (rule 1 and duplicates are the caller's). */
@@ -355,6 +384,11 @@ export function validateFieldOperation(op: ReconcileOperation, element: Reconcil
 
     if (op.op === 'REMOVE') {
         if (op.value !== null && !(Array.isArray(op.value) && op.value.length === 0) && op.value !== '') return refuse('REMOVE_CARRIES_VALUE');
+        // Emptying a field needs an answer to a question ABOUT that field
+        // (issue #39 item 2): any answered answer used to do, and only the
+        // author's accept stood between a stray citation and a lost value.
+        const addressed = cites.value.facts.some((a) => a.about !== undefined && a.about.elementId === element.elementId && a.about.fieldKeys.includes(op.fieldKey));
+        if (!addressed) return refuse('REMOVE_NOT_ADDRESSED');
         return { ok: true, value: { kind: 'FIELD', elementId: element.elementId, fieldKey: op.fieldKey, operation: 'REMOVE', value: null, citedAnswerIds: cites.value.ids, flags: [] } };
     }
 

@@ -52,6 +52,6 @@ export const interviewApi = {
             method: 'POST',
             body: skipUnanswered ? { skipUnanswered: true } : {},
         }),
-    stop: (ids: InterviewIds) => bibleFetch<{ interview: InterviewView }>(INTERVIEW_API.stop(ids.slug, ids.bookId, ids.sessionId), { method: 'POST' }),
+    stop: (ids: InterviewIds) => bibleFetch<{ interview: InterviewView; reconcile?: ReconcileRunView[] }>(INTERVIEW_API.stop(ids.slug, ids.bookId, ids.sessionId), { method: 'POST' }),
     get: (ids: InterviewIds) => bibleFetch<{ interview: InterviewView }>(INTERVIEW_API.interview(ids.slug, ids.bookId, ids.sessionId)),
 };

@@ -48,14 +48,15 @@
 import { z } from 'zod';
 import type { BibleKind } from '@/lib/bible/kinds';
 import { getTemplate } from '@/lib/bible/templates';
-import { DROP_REASONS } from './candidates';
 import type { AskedQuestion } from './dedupe';
 import type { Dials } from './dials';
 import { computeFrontier, type AnswerFact } from './frontier';
 import type { GenerationResult, QuestionGenerator } from './generator';
 import type { PackFile, PackPriorAnswer, PackRegistry, Situation } from './packs';
 import { planRound } from './plan';
-import { QUESTION_PROMPT_VERSION, type PromptAnswer } from './prompt';
+import { QUESTION_PROMPT, QUESTION_PROMPT_VERSION, roundGuidanceFingerprint, type PromptAnswer } from './prompt';
+import { DROP_REASONS, GeneratedQuestionsSchema } from './candidates';
+import { combinedPromptHash, promptContentHash } from '@/lib/ai/prompt-hash';
 import { structuralGenerator, STRUCTURAL_GENERATOR_ID } from './evals/structural-generator';
 import { produceRound, type RoundElement, type RoundOutput } from './round';
 import { isPersonaKey, type PersonaKey } from './vocabulary';
@@ -80,6 +81,17 @@ const CASE_ID = z.string().regex(/^[a-z_-]+-\d{2}$/);
 const OUTPUTS_PER_CASE_MAX = 2;
 const CASES_MAX = 15;
 
+let questionPromptHashMemo: string | null = null;
+/**
+ * The question prompt's content hash: its static template and output schema,
+ * and the guidance every call adds to its system prompt (`roundGuidanceFingerprint`:
+ * a dial's sentence is prompt text too); computed once.
+ */
+export function questionPromptHash(): string {
+    questionPromptHashMemo ??= combinedPromptHash([promptContentHash(QUESTION_PROMPT, GeneratedQuestionsSchema), `guidance:${roundGuidanceFingerprint()}`]);
+    return questionPromptHashMemo;
+}
+
 export const PackEvaluationRecordSchema = z
     .object({
         format: z.literal(PACK_RECORD_FORMAT),
@@ -87,6 +99,8 @@ export const PackEvaluationRecordSchema = z
         set: z.object({ hash: SHA256 }).strict(),
         /** The question prompt's version the outputs were produced under (rule 9). */
         promptVersion: z.string().min(1).max(64),
+        /** The question prompt's content hash under that version (`promptContentHash`, Phase 2.H item 7). */
+        promptHash: SHA256,
         generator: z
             .object({
                 kind: z.enum(RECORD_KINDS),
@@ -357,6 +371,7 @@ export async function evaluatePack(
             pack: { name: file.name, version: file.version, contentHash: file.contentHash },
             set: { hash: file.setHash },
             promptVersion: QUESTION_PROMPT_VERSION,
+            promptHash: questionPromptHash(),
             generator: { kind: who.kind, id: who.id },
             ranAt: ranAt.toISOString(),
             answers,
@@ -371,6 +386,8 @@ export type RecordRefusal =
     | 'HASH_MISMATCH'
     | 'SET_MISMATCH'
     | 'PROMPT_VERSION_MISMATCH'
+    /** The question prompt's text or output schema changed under the same version (Phase 2.H item 7). */
+    | 'PROMPT_HASH_MISMATCH'
     | 'UNKNOWN_ANSWER'
     | 'DUPLICATE_ANSWER'
     | 'UNANSWERED_CASE'
@@ -400,6 +417,9 @@ export async function checkPackRecord(raw: unknown, file: PackFile, registry: Pa
     if (record.set.hash !== file.setHash) return { ok: false, reason: 'SET_MISMATCH', detail: 'the record answered a different evaluation set; re-run npm run packs:evaluate' };
     if (record.promptVersion !== QUESTION_PROMPT_VERSION) {
         return { ok: false, reason: 'PROMPT_VERSION_MISMATCH', detail: `recorded under ${record.promptVersion}, the prompt is ${QUESTION_PROMPT_VERSION}` };
+    }
+    if (record.promptHash !== questionPromptHash()) {
+        return { ok: false, reason: 'PROMPT_HASH_MISMATCH', detail: 'the question prompt changed since the record was made (its version did not); re-run npm run packs:evaluate' };
     }
     const cases = evalCasesOf(registry, file.name);
     const byCase = new Map<string, unknown[]>();

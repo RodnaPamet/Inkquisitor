@@ -101,22 +101,28 @@ describe('the content hash is keyed, so a short text is not recovered by hashing
     });
 
     it('is 64 hex characters, deterministic, and NOT the plain SHA-256 of the text', () => {
-        const h = vectorContentHash('yes');
+        const h = vectorContentHash('ws-1', 'yes');
         expect(h).toMatch(/^[0-9a-f]{64}$/);
-        expect(vectorContentHash('yes')).toBe(h);
+        expect(vectorContentHash('ws-1', 'yes')).toBe(h);
         expect(h).not.toBe(createHash('sha256').update('yes').digest('hex'));
-        expect(vectorContentHash('no')).not.toBe(h);
+        expect(vectorContentHash('ws-1', 'no')).not.toBe(h);
     });
 
     it('normalises Unicode first: two spellings of one string are one hash', () => {
-        expect(vectorContentHash('café')).toBe(vectorContentHash('café'));
+        expect(vectorContentHash('ws-1', 'café')).toBe(vectorContentHash('ws-1', 'café'));
+    });
+
+    it('is keyed per workspace: equal text in two workspaces files different hashes (issue #32 item 2)', () => {
+        expect(vectorContentHash('ws-1', 'yes')).not.toBe(vectorContentHash('ws-2', 'yes'));
+        expect(vectorContentHash('ws-2', 'yes')).toBe(vectorContentHash('ws-2', 'yes'));
+        expect(() => vectorContentHash('', 'yes')).toThrow(/workspace id/);
     });
 
     it('depends on the deployment key', () => {
-        const before = vectorContentHash('yes');
+        const before = vectorContentHash('ws-1', 'yes');
         process.env.DATA_ENCRYPTION_KEY = 'another-deployment-key-'.repeat(3);
         _resetKeyCache();
-        expect(vectorContentHash('yes')).not.toBe(before);
+        expect(vectorContentHash('ws-1', 'yes')).not.toBe(before);
     });
 });
 

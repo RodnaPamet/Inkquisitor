@@ -24,6 +24,8 @@ import { periodStartOf, spendPeriod, type AiLedger } from '@/lib/ai/call-record'
 import { aiDisabled, aiUnavailableReason, monthlyCeilingMicroUsd, type AiEnvRecord } from '@/lib/ai/config';
 import type { AiUnavailableReason } from '@/lib/ai/errors';
 import { env } from '@/env';
+import { logger } from '@/lib/observability/logger';
+import { recordReservationsReleased } from '@/lib/ai/ledger-metrics';
 import {
     callStructured as callStructuredCore,
     type StructuredCallDeps,
@@ -42,10 +44,25 @@ import {
 export function workspaceAiLedger(ctx: Pick<WorkspaceRequestContext, 'workspaceId' | 'requestId' | 'userId'>): AiLedger {
     return {
         async reserve(request) {
-            const now = new Date();
             const periodStart = periodStartOf(request.startedAt);
             return runInWorkspaceContext(ctx, async (db) => {
                 await AiCallRepository.lockSpend(db, ctx.workspaceId);
+                // The database's clock decides expiry (issue #30, item 9), and an
+                // expired, unsettled reservation is released, charged nothing (D17),
+                // logged and counted so the spend it may have lost is visible.
+                const now = await AiCallRepository.dbNow(db);
+                const released = await AiCallRepository.releaseExpired(db, ctx.workspaceId, now);
+                if (released.length > 0) {
+                    const reservedMicroUsd = released.reduce((sum, r) => sum + r.amountMicroUsd, 0);
+                    logger.warn('ai.reservation_released', {
+                        component: 'ai',
+                        workspaceId: ctx.workspaceId,
+                        reservationIds: released.map((r) => r.id),
+                        count: released.length,
+                        reservedMicroUsd,
+                    });
+                    recordReservationsReleased(released.length, reservedMicroUsd);
+                }
                 const held = await AiCallRepository.reserve(db, ctx.workspaceId, {
                     callId: request.callId,
                     periodStart,

@@ -16,15 +16,22 @@
  * The text is NFC-normalised first, so two spellings of one string that the
  * author cannot tell apart are one hash.
  *
+ * PER WORKSPACE (Phase 2.H, issue #32 item 2): the key is the purpose's
+ * subkey for the vector's own workspace (`workspaceSubkey`), so equal text in
+ * two workspaces files different hashes. The purpose label moved to `/2` with
+ * it: a vector filed under `/1` reads as stale and is rewritten by its next
+ * upsert (the hash is idempotence, never a lookup), and a rebuild refiles
+ * every vector.
+ *
  * @module lib/ai/embeddings/content-hash
  */
 import { createHmac } from 'node:crypto';
 
-import { deriveSubkey } from '@/lib/security/encryption';
+import { workspaceSubkey } from '@/lib/security/encryption';
 
-const PURPOSE = 'inkquisitor-vector-content-hash/1';
+const PURPOSE = 'inkquisitor-vector-content-hash/2';
 
 /** 64 lower-case hex characters: the store's and the table's `contentHash` format. */
-export function vectorContentHash(text: string): string {
-    return createHmac('sha256', deriveSubkey(PURPOSE)).update(text.normalize('NFC'), 'utf8').digest('hex');
+export function vectorContentHash(workspaceId: string, text: string): string {
+    return createHmac('sha256', workspaceSubkey(PURPOSE, workspaceId)).update(text.normalize('NFC'), 'utf8').digest('hex');
 }

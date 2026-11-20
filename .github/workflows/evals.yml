@@ -4,7 +4,10 @@
 # src/lib/enrichment/evals/evaluation-record.json like a pack's) and the
 # research agent (Phase 2.6, input `research`: evals-out/research/, committed
 # over src/lib/research/evals/evaluation-record.json; its findings and fit
-# calls run over each case's fixed fake web, so no live web search is made).
+# calls run over each case's fixed fake web, so no live web search is made)
+# and "Ask me this differently" (Phase 2.H, input `rephrase`:
+# evals-out/rephrase/, committed over
+# src/lib/interview/evals/rephrase-evaluation-record.json).
 #
 # Owner decisions of 2026-11-19: production mounts an interview pack only on a
 # REAL MODEL's evaluation record (D11), and real-model evaluations run here, in
@@ -63,6 +66,11 @@ on:
         type: boolean
       research:
         description: "Also run the research agent's evaluation sets (ten briefs and five adversarial pages over a fake web, Phase 2.6)"
+        required: false
+        default: false
+        type: boolean
+      rephrase:
+        description: "Also run the rephrase prompt's evaluation set (ten questions asked differently, Phase 2.H)"
         required: false
         default: false
         type: boolean
@@ -162,14 +170,18 @@ jobs:
           COVERAGE: ${{ inputs.coverage }}
           RECONCILE: ${{ inputs.reconcile }}
           RESEARCH: ${{ inputs.research }}
+          REPHRASE: ${{ inputs.rephrase }}
         run: |
           set -uo pipefail
           extra=""
           if [ "$COVERAGE" = "true" ]; then extra="--coverage"; fi
           if [ "$RECONCILE" = "true" ]; then extra="$extra --reconcile"; fi
           if [ "$RESEARCH" = "true" ]; then extra="$extra --research"; fi
+          if [ "$REPHRASE" = "true" ]; then extra="$extra --rephrase"; fi
           # shellcheck disable=SC2086
-          npm run packs:evaluate -- --generator model --out evals-out $PACK_ARGS $extra | tee evals-summary.md
+          # --judge: the model judge over the ungraded behaviours of the pack
+          # records written (Phase 2.H): a report beside them, never a gate.
+          npm run packs:evaluate -- --generator model --out evals-out --judge $PACK_ARGS $extra | tee evals-summary.md
           status=${PIPESTATUS[0]}
           tee -a "$GITHUB_STEP_SUMMARY" < evals-summary.md > /dev/null || true
           exit "$status"
@@ -182,6 +194,7 @@ jobs:
           path: |
             evals-out/**/evaluation-record.json
             evals-out/coverage-report.json
+            evals-out/judge-report.json
             evals-summary.md
           if-no-files-found: warn
           retention-days: 30

@@ -73,8 +73,8 @@ export function defaultQuestionEmbedder(): QuestionEmbedder | null {
     return embedderFrom(choice.provider);
 }
 
-export function questionRecord(questionId: string, bookId: string, text: string, vector: readonly number[], revision: string): VectorRecord {
-    return { sourceModel: QUESTION_SOURCE_MODEL, sourceId: questionId, chunkIndex: 0, embeddingRevision: revision, bookId, contentHash: vectorContentHash(text), embedding: vector };
+export function questionRecord(workspaceId: string, questionId: string, bookId: string, text: string, vector: readonly number[], revision: string): VectorRecord {
+    return { sourceModel: QUESTION_SOURCE_MODEL, sourceId: questionId, chunkIndex: 0, embeddingRevision: revision, bookId, contentHash: vectorContentHash(workspaceId, text), embedding: vector };
 }
 
 /** File questions' vectors (after the round's questions committed; the store refuses one whose question is gone). */
@@ -139,7 +139,7 @@ export async function rebuildQuestionEmbeddings(ctx: WorkspaceRequestContext, de
             yield page.map((q, i) => {
                 const v = vectors[i];
                 if (!v) throw new Error('QUESTION_EMBEDDING_FAILED: the rebuild stopped; nothing was deleted');
-                return questionRecord(q.id, q.bookId, q.text, v, embedder!.revision);
+                return questionRecord(ctx.workspaceId, q.id, q.bookId, q.text, v, embedder!.revision);
             });
             after = page[page.length - 1].id;
         }

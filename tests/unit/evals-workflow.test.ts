@@ -42,9 +42,9 @@ describe('.github/workflows/evals.yml', () => {
         expect(Object.keys(wf.jobs)).toEqual(['evals']);
     });
 
-    it('runs only when a person dispatches it, with packs, coverage, reconcile, research and budget inputs', () => {
+    it('runs only when a person dispatches it, with packs, coverage, reconcile, research, rephrase and budget inputs', () => {
         expect(Object.keys(wf.on)).toEqual(['workflow_dispatch']);
-        expect(Object.keys(wf.on.workflow_dispatch.inputs ?? {})).toEqual(['packs', 'coverage', 'reconcile', 'research', 'budget_usd']);
+        expect(Object.keys(wf.on.workflow_dispatch.inputs ?? {})).toEqual(['packs', 'coverage', 'reconcile', 'research', 'rephrase', 'budget_usd']);
         expect(wf.on.workflow_dispatch.inputs!.research.type).toBe('boolean');
         expect(wf.on.workflow_dispatch.inputs!.coverage.type).toBe('boolean');
         expect(wf.on.workflow_dispatch.inputs!.reconcile.type).toBe('boolean');
@@ -56,6 +56,20 @@ describe('.github/workflows/evals.yml', () => {
         expect(run.run).toMatch(/if \[ "\$RECONCILE" = "true" \]; then extra="\$extra --reconcile"; fi/);
         const upload = job.steps.find((s) => s.uses?.startsWith('actions/upload-artifact@'))!;
         expect(String(upload.with!.path)).toContain('evals-out/**/evaluation-record.json');
+    });
+
+    it('runs the rephrase set (Phase 2.H) on the same model path, its record uploaded with the others', () => {
+        expect(wf.on.workflow_dispatch.inputs!.rephrase.type).toBe('boolean');
+        const run = job.steps.find((s) => s.run?.includes('packs:evaluate'))!;
+        expect(run.env).toMatchObject({ REPHRASE: '${{ inputs.rephrase }}' });
+        expect(run.run).toMatch(/if \[ "\$REPHRASE" = "true" \]; then extra="\$extra --rephrase"; fi/);
+    });
+
+    it('runs the judge over the ungraded behaviours on every model run, its report uploaded (Phase 2.H)', () => {
+        const run = job.steps.find((s) => s.run?.includes('packs:evaluate'))!;
+        expect(run.run).toMatch(/npm run packs:evaluate -- --generator model --out evals-out --judge /);
+        const upload = job.steps.find((s) => s.uses?.startsWith('actions/upload-artifact@'))!;
+        expect(String(upload.with!.path)).toContain('evals-out/judge-report.json');
     });
 
     it('runs the research sets (Phase 2.6) on the same model path, its record uploaded with the others', () => {

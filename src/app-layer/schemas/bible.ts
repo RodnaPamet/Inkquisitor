@@ -11,7 +11,7 @@
  * runs in the usecase.
  */
 import { z } from 'zod';
-import { BIBLE_ELEMENT_STATUSES, BIBLE_KINDS, BOOK_STAGES, IDENTIFIER_MAX, IDENTIFIER_PATTERN } from '@/lib/bible/kinds';
+import { BIBLE_ELEMENT_STATUSES, BIBLE_KINDS, BOOK_STAGES, ELEMENT_NAME_MAX, IDENTIFIER_MAX, IDENTIFIER_PATTERN } from '@/lib/bible/kinds';
 import { SLUG_MAX, SLUG_PATTERN } from '@/lib/bible/slug';
 import { LIST_ITEMS_MAX, RAW_INPUT_FACTOR, rawListItemMax, rawStringMax } from '@/lib/bible/field-values';
 
@@ -19,7 +19,7 @@ export const BOOK_TITLE_MAX = 200;
 export const BOOK_LOGLINE_MAX = 2_000;
 export const BOOK_LABEL_MAX = 80;
 export const BOOK_TARGET_LENGTH_MAX = 5_000_000;
-export const ELEMENT_NAME_MAX = 120;
+export { ELEMENT_NAME_MAX };
 export const ELEMENT_SUMMARY_MAX = 5_000;
 export const CUSTOM_LABEL_MAX = 60;
 export const CHANGE_SUMMARY_MAX = 500;

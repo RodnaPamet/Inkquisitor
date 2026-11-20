@@ -124,6 +124,13 @@ export type RlsBypassReason =
      * workspace's context.
      */
     | 'book-purge-discovery'
+    /**
+     * The daily call-log retention (Phase 2.H): deletes `AiCallLog` rows past
+     * the retention, in every workspace. The append-only trigger admits that
+     * delete only for a role other than app_user, and only for a row older
+     * than its own floor.
+     */
+    | 'ai-call-log-retention'
     /** Tests exercising the bypass path or seeding rows. */
     | 'test';
 
@@ -133,6 +140,7 @@ const KNOWN_REASONS: ReadonlySet<RlsBypassReason> = new Set<RlsBypassReason>([
     'workspace-creation',
     'audit-verification',
     'book-purge-discovery',
+    'ai-call-log-retention',
     'test',
 ]);
 

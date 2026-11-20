@@ -54,12 +54,12 @@ model AiCallLog {
   cacheReadTokens     Int
   cacheWriteTokens    Int
   /// What the call cost, micro-US-dollars, rounded up (src/lib/ai/pricing.ts).
-  costMicroUsd        Int
+  costMicroUsd        BigInt
   /// True when the provider never reported usage for a request that left
   /// (an abort or a timeout mid-stream) and the input's worst case was charged.
   costEstimated       Boolean
   /// The worst case the spend ceiling was asked about.
-  worstCaseMicroUsd   Int
+  worstCaseMicroUsd   BigInt
   durationMs          Int
   outcome             AiCallOutcome
   /// Why a call that did not end OK ended as it did (`AI_ERROR_CODES`).
@@ -85,6 +85,8 @@ model AiCallLog {
   @@index([workspaceId, bookId])
   /// A person's calls, and the clearing of the link when they are deleted.
   @@index([requestedById])
+  /// The retention job's scan across workspaces, oldest first (Phase 2.H).
+  @@index([startedAt])
 }
 
 /// A workspace's settled model spend in one UTC calendar month.
@@ -106,7 +108,7 @@ model AiSpendReservation {
   id             String   @id
   workspaceId    String
   periodStart    DateTime @db.Date
-  amountMicroUsd Int
+  amountMicroUsd BigInt
   /// Past this instant the reservation is no longer counted (its process died).
   expiresAt      DateTime
   createdAt      DateTime @default(now())

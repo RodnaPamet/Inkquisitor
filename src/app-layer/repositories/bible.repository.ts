@@ -82,6 +82,21 @@ export const BibleElementRepository = {
     },
 
     /**
+     * Serialise every write that can give a book an element NAME — a create
+     * (`createElementInTx`, the imports), a rename — with every check that
+     * the book does not hold a name yet (`bookHoldsElementName`), until the
+     * transaction ends (issues #39 item 5, #41 item 5). Names are compared by
+     * `nameKey` (case, look-alikes, a leading article), which the database
+     * cannot compute, so the guarantee is this lock rather than a unique
+     * index: a check made under it reads every name a concurrent writer
+     * committed before it. LOCK ORDER: take it BEFORE any element's `lock`
+     * (a create locks only the element it has just inserted).
+     */
+    async lockNames(db: Db, bookId: string) {
+        await db.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${'bible-element-names:' + bookId}))`;
+    },
+
+    /**
      * One page of a book's elements, by name then id (keyset: `after` is the
      * last row of the previous page), optionally of some kinds and whose name
      * contains `q` (case-insensitive, literally: `%`, `_` and backslash are escaped). `take` bounds it; ask one more than you

@@ -36,12 +36,13 @@ import {
     type ValidationElement,
 } from './candidates';
 import { kindsAllowed, type Dials } from './dials';
-import { dedupe, dedupeTokens, exactKey, questionDedupeKey, type AskedQuestion, type DedupeTextContext, type DuplicateSignal, type EmbeddingNeighbour } from './dedupe';
+import { dedupe, dedupeTokens, exactKey, questionDedupeKey, type AskedQuestion, type CosineThresholds, type DedupeTextContext, type DuplicateSignal, type EmbeddingNeighbour } from './dedupe';
 import { refKey, type FieldRef } from './frontier';
 import { GenerationStop, type GenerationFailureKind, type GenerationResult, type QuestionGenerator } from './generator';
 import type { CraftPack, PackRegistry } from './packs';
 import type { RoundPlan } from './plan';
-import { buildGenerationRequest, type PromptAnswer, type PromptElement } from './prompt';
+import { buildGenerationRequest, QUESTION_PROMPT, type PromptAnswer, type PromptElement } from './prompt';
+import { disclosesInstructions, promptRuns } from '@/lib/text/prompt-disclosure';
 import { sanitiseQuestionForStorage } from './storage';
 import type { PersonaKey, QuestionOrigin } from './vocabulary';
 
@@ -73,6 +74,8 @@ export interface RoundInput {
     /** Exact-repeat keys (`exactKey`) already known to the caller; `findExactRepeats` adds the book's own. */
     askedKeys?: ReadonlySet<string>;
     packs: Pick<PackRegistry, 'craft' | 'personas'>;
+    /** The cosine thresholds of the embedder's revision (`cosineThresholdsFor`, issue #32 item 1); default: uncalibrated. */
+    cosineThresholds?: CosineThresholds;
 }
 
 export interface RoundDeps {
@@ -191,6 +194,19 @@ export const TOKENS_PER_CALL_REPORT_MAX = 1_000_000;
 
 function reportedTokens(value: unknown): number {
     return typeof value === 'number' && Number.isFinite(value) && value > 0 ? Math.min(Math.floor(value), TOKENS_PER_CALL_REPORT_MAX) : 0;
+}
+
+/** The engine instructions' word runs (the static part of every round's system prompt). */
+const QUESTION_RUNS = promptRuns([QUESTION_PROMPT]);
+
+/**
+ * Does a validated candidate recite the engine's instructions, or its fence's
+ * tag, in anything the author would see (Phase 2.H, "no system-prompt
+ * disclosure")? Such a candidate is dropped `DISCLOSES_INSTRUCTIONS`.
+ */
+function disclosesCandidate(c: Candidate): boolean {
+    const recommendation = typeof c.recommendedAnswer === 'string' ? c.recommendedAnswer : null;
+    return disclosesInstructions([c.text, ...(c.options ?? []), c.rationale, recommendation, c.scaleLabels?.low, c.scaleLabels?.high], QUESTION_RUNS);
 }
 
 /** Fold one call's record (id, cost, guard verdict) into the round's metrics. */
@@ -437,6 +453,11 @@ export async function produceRound(input: RoundInput, deps: RoundDeps): Promise<
                 bump(metrics.preventedBehaviours, DROP_REASONS[verdict.reason]);
                 continue;
             }
+            if (disclosesCandidate(verdict.candidate)) {
+                bump(metrics.dropped, 'DISCLOSES_INSTRUCTIONS');
+                bump(metrics.preventedBehaviours, DROP_REASONS.DISCLOSES_INSTRUCTIONS);
+                continue;
+            }
             if (verdict.stripped) bump(metrics.recommendationsStripped, verdict.stripped);
             validated.push(verdict.candidate);
             fromThisCall.push(verdict.candidate);
@@ -478,6 +499,7 @@ export async function produceRound(input: RoundInput, deps: RoundDeps): Promise<
         neighbourTargets: found?.neighbourTargets,
         askedKeys,
         vectors: candidateVectors,
+        cosine: input.cosineThresholds,
     });
     for (const d of deduped.dropped) {
         bump(metrics.dropped, 'DUPLICATE');

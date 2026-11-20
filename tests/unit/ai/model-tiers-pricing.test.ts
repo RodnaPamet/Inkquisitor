@@ -78,6 +78,13 @@ describe('model capabilities', () => {
         expect(CONSERVATIVE_CAPABILITIES).toEqual({ effort: false, structuredOutput: false });
     });
 
+    it('structured output only for the families on the structured-outputs list; the rest take the single-tool path (issue #32, item 14)', () => {
+        const offList = ['claude-opus-4-7', 'claude-opus-4-6', 'claude-sonnet-4-6', 'claude-sonnet-4-5'] as const;
+        for (const f of offList) expect([f, MODEL_CAPABILITIES[f].structuredOutput]).toEqual([f, false]);
+        expect(modelCapabilitiesFor('claude-sonnet-4-5-20250929').structuredOutput).toBe(false);
+        for (const f of MODEL_FAMILIES.filter((x) => !(offList as readonly string[]).includes(x))) expect([f, MODEL_CAPABILITIES[f].structuredOutput]).toEqual([f, true]);
+    });
+
     it('every family has a capability row and a price', () => {
         for (const f of MODEL_FAMILIES) {
             expect(MODEL_CAPABILITIES[f]).toBeDefined();

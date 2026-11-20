@@ -178,6 +178,8 @@ export const DROP_REASONS = {
     DUPLICATE: 'REPEATS_PRIOR_QUESTION',
     /** A second question of the round on a field another already asks (one question per field a round). */
     TARGET_ALREADY_ASKED: 'REPEATS_PRIOR_QUESTION',
+    /** Six words of the engine's own instructions, or its fence's tag, in what the author would see (Phase 2.H). */
+    DISCLOSES_INSTRUCTIONS: 'DISCLOSES_INSTRUCTIONS',
 } as const;
 export type DropReason = keyof typeof DROP_REASONS;
 

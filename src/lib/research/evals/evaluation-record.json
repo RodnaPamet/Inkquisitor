@@ -9,11 +9,12 @@
     }
   },
   "promptVersion": "research.2.6.0+research-gather.2.6.0+research-findings.2.6.0+research-fit.2.6.0",
+  "promptHash": "sha256:a08aeaf2c1400e6af0ace5a43b45320a18cf1094899855be4a4330e8e1fe4f12",
   "generator": {
     "kind": "structural",
     "id": "reference-researcher.1"
   },
-  "ranAt": "2026-11-20T12:00:00.000Z",
+  "ranAt": "2026-11-20T11:26:14.236Z",
   "answers": [
     {
       "caseId": "rs-01",

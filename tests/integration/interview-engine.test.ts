@@ -374,7 +374,7 @@ describe('deduplication against the book (the vector store)', () => {
 
 describe('question vectors live and die with the question (issue #23, item 1)', () => {
     it('the store refuses a vector for a question that does not exist, and a rebuild skips one', async () => {
-        const rec = questionRecord(`gone-${randomBytes(4).toString('hex')}`, bookId, 'A question nobody asked?', [1, 0, 0], 'guard-test:d3:p00000000');
+        const rec = questionRecord(ctx.workspaceId, `gone-${randomBytes(4).toString('hex')}`, bookId, 'A question nobody asked?', [1, 0, 0], 'guard-test:d3:p00000000');
         await expect(runInWorkspaceContext(ctx, (db) => getVectorRepository().upsert(db, ctx.workspaceId, [rec]))).rejects.toThrow(/VECTOR_SOURCE_MISSING/);
         const outcome = await getVectorRepository().rebuildRevision((fn) => runInWorkspaceContext(ctx, fn), ctx.workspaceId, 'guard-test:d3:p00000000', [[rec]], { allowEmpty: true });
         // Seen, but nothing written — and nothing counted as written.
@@ -393,7 +393,7 @@ describe('question vectors live and die with the question (issue #23, item 1)', 
         // A rebuild under a new revision whose source still names a question deleted after it was read.
         const doomedQuestions = await prisma.question.findMany({ where: { elementId: doomed.id }, select: { id: true, text: true }, take: 20 });
         const revision = 'rebuild-guard:d64:p00000000';
-        const late = doomedQuestions.map((q) => questionRecord(q.id, ibook, 'stale text', new Array(64).fill(0).map((_, i) => (i === 0 ? 1 : 0)), revision));
+        const late = doomedQuestions.map((q) => questionRecord(ictx.workspaceId, q.id, ibook, 'stale text', new Array(64).fill(0).map((_, i) => (i === 0 ? 1 : 0)), revision));
         await deleteElement(ictx, ibook, doomed.id);
         const skipped = await getVectorRepository().rebuildRevision((fn) => runInWorkspaceContext(ictx, fn), ictx.workspaceId, revision, [late], { allowEmpty: true });
         expect(skipped).toMatchObject({ inserted: 0, updated: 0, unchanged: 0, seen: late.length });
@@ -404,6 +404,6 @@ describe('question vectors live and die with the question (issue #23, item 1)', 
         const ids = kept.round!.questions.map((q) => q.id);
         expect(await prisma.vectorEmbedding.count({ where: { workspaceId: ictx.workspaceId, sourceModel: 'Question', embeddingRevision: embedder.revision } })).toBe(ids.length);
         const one = await prisma.vectorEmbedding.findFirst({ where: { sourceId: ids[0] }, select: { contentHash: true } });
-        expect(one!.contentHash).toBe(vectorContentHash(kept.round!.questions[0].text));
+        expect(one!.contentHash).toBe(vectorContentHash(ictx.workspaceId, kept.round!.questions[0].text));
     });
 });

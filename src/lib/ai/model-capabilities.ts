@@ -20,10 +20,14 @@
  *                     row from the 4.5 Opus and the 4.6 generation on.
  *   structuredOutput  `output_config.format` with a JSON schema is accepted:
  *                     the API's structured-output feature, `callStructured`'s
- *                     primary path. Every family below is on the Claude API's
+ *                     primary path. TRUE only for a family on the Claude API's
  *                     structured-outputs model list (read 2026-11-19 from
  *                     platform.claude.com/docs/en/build-with-claude/structured-outputs).
- *                     A model with no row takes the tool path instead.
+ *                     Opus 4.6 / 4.7 and Sonnet 4.5 / 4.6 are NOT on it
+ *                     (issue #32, item 14): their rows say false, so a
+ *                     deployment overriding a tier to one of them takes the
+ *                     single-tool path every model accepts, never a 400.
+ *                     A model with no row takes the tool path too.
  *
  * `thinking` is not a column: no request this layer builds sends it. Every
  * model from the 4.6 generation on thinks adaptively when the parameter is
@@ -72,6 +76,10 @@ export type ModelFamily = (typeof MODEL_FAMILIES)[number];
 
 const FULL: ModelCapabilities = { effort: true, structuredOutput: true };
 const NO_EFFORT: ModelCapabilities = { effort: false, structuredOutput: true };
+/** Effort, but not on the structured-outputs list: the single-tool path. */
+const EFFORT_TOOL_PATH: ModelCapabilities = { effort: true, structuredOutput: false };
+/** Neither: the conservative request. */
+const TOOL_PATH: ModelCapabilities = { effort: false, structuredOutput: false };
 
 /** One row per family. A `Record`, so a family added to the list without a row fails `tsc`. */
 export const MODEL_CAPABILITIES: Readonly<Record<ModelFamily, ModelCapabilities>> = {
@@ -81,13 +89,13 @@ export const MODEL_CAPABILITIES: Readonly<Record<ModelFamily, ModelCapabilities>
     'claude-opus-5-5': FULL,
     'claude-opus-5': FULL,
     'claude-opus-4-8': FULL,
-    'claude-opus-4-7': FULL,
-    'claude-opus-4-6': FULL,
+    'claude-opus-4-7': EFFORT_TOOL_PATH,
+    'claude-opus-4-6': EFFORT_TOOL_PATH,
     'claude-opus-4-5': FULL,
     'claude-sonnet-5-5': FULL,
     'claude-sonnet-5': FULL,
-    'claude-sonnet-4-6': FULL,
-    'claude-sonnet-4-5': NO_EFFORT,
+    'claude-sonnet-4-6': EFFORT_TOOL_PATH,
+    'claude-sonnet-4-5': TOOL_PATH,
     'claude-haiku-5-5': FULL,
     'claude-haiku-4-5': NO_EFFORT,
 };
@@ -112,4 +120,39 @@ export function modelFamilyOf(modelId: string): ModelFamily | null {
 export function modelCapabilitiesFor(modelId: string): ModelCapabilities {
     const family = modelFamilyOf(modelId);
     return family === null ? CONSERVATIVE_CAPABILITIES : MODEL_CAPABILITIES[family];
+}
+
+/**
+ * THE MODEL FAMILIES A ZERO-RETENTION ORGANIZATION MAY CALL (issue #30 item 6).
+ *
+ * The Fable family is a Covered Model: it requires 30-day retention, and an
+ * organization with a zero-data-retention arrangement is refused (400
+ * `invalid_request_error`) unless Anthropic has expressly authorized it
+ * (claude-api skill, read 2026-11-20). So under `AI_RETENTION_MODE=zdr` a tier
+ * override must name a family on this list; an unknown model id is not on it
+ * (this table cannot vouch for a model it has no row for). A `Record`, so a
+ * family added without a decision here fails `tsc`.
+ */
+export const ZDR_ELIGIBLE: Readonly<Record<ModelFamily, boolean>> = {
+    'claude-fable-5-2': false,
+    'claude-fable-5-1': false,
+    'claude-fable-5': false,
+    'claude-opus-5-5': true,
+    'claude-opus-5': true,
+    'claude-opus-4-8': true,
+    'claude-opus-4-7': true,
+    'claude-opus-4-6': true,
+    'claude-opus-4-5': true,
+    'claude-sonnet-5-5': true,
+    'claude-sonnet-5': true,
+    'claude-sonnet-4-6': true,
+    'claude-sonnet-4-5': true,
+    'claude-haiku-5-5': true,
+    'claude-haiku-4-5': true,
+};
+
+/** Whether `modelId` may be called under a zero-data-retention arrangement: a known family marked eligible. */
+export function zdrEligible(modelId: string): boolean {
+    const family = modelFamilyOf(modelId);
+    return family !== null && ZDR_ELIGIBLE[family];
 }

@@ -93,8 +93,8 @@ export class ConflictError extends AppError {
 }
 
 export class RateLimitedError extends AppError {
-    constructor(message: string = 'Too many requests') {
-        super(message, 'RATE_LIMITED', 429, true);
+    constructor(message: string = 'Too many requests', details?: unknown) {
+        super(message, 'RATE_LIMITED', 429, true, details);
         this.name = 'RateLimitedError';
     }
 }

@@ -59,7 +59,16 @@ type Schema = typeof ReconcileOutputSchema;
 export type ReconcileCaller = (input: Omit<StructuredCallInput<Schema>, 'requestedById'>) => Promise<StructuredCallResult<z.infer<Schema>>>;
 
 function failed(outcome: ReconcileCallFailure, err: AiCallError): ReconcileCallResult {
-    return { output: null, tokensUsed: err.tokensUsed, failure: { outcome, errorCode: err.reason }, callId: err.callId, costMicroUsd: err.costMicroUsd };
+    return {
+        output: null,
+        tokensUsed: err.tokensUsed,
+        failure: { outcome, errorCode: err.reason },
+        callId: err.callId,
+        costMicroUsd: err.costMicroUsd,
+        // The guard's flag travels with a failure as with an answer (issue #32 item 11).
+        reviewRequired: err.reviewRequired,
+        guardRuleIds: err.guardRuleIds,
+    };
 }
 
 /** 2.1's error → the run's named failure (the table in the header). Rethrows what is neither 2.1's nor the SDK's. */

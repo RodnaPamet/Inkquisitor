@@ -27,10 +27,16 @@
  *
  * The lock is held for two short statements; the row carries the claim across
  * the call. A reservation EXPIRES (`expiresAt`, the call's deadline plus a
- * grace) so a process that dies mid-call stops holding budget; expired rows
- * are deleted lazily on the workspace's next reservation. The cost of such a
- * call, which nobody settled, is not counted: the trade-off for not leaking
- * budget forever.
+ * grace) so a process that dies mid-call stops holding budget. An expired,
+ * unsettled reservation is RELEASED, charged nothing (D17, decided
+ * 2026-11-20): the workspace's next reservation, under the lock, deletes it
+ * (`releaseExpired`), and the caller logs the ids and reserved amounts and
+ * counts them (`ai.reservations.released`), so the spend that may have been
+ * lost is visible. A call that did reach the provider before its process died
+ * goes uncounted; the owner accepts that. A call that outlived its reservation
+ * and settles after all is charged its cost as usual, once. Expiry is judged
+ * by the DATABASE's clock (`dbNow`), one clock for every app server, never a
+ * server's own.
  *
  * The settled spend lives in `AiSpendMonth`, not in a sum over `AiCallLog`:
  * a book's purge deletes its call records by cascade, and must not lower the
@@ -42,8 +48,8 @@ import { periodStartOf } from '@/lib/ai/call-record';
 
 type Db = Prisma.TransactionClient;
 
-/** How long after expiry a reservation row is kept before the lazy sweep deletes it. */
-const EXPIRED_ROW_RETENTION_MS = 24 * 60 * 60 * 1000;
+/** Expired reservations released per sweep at most (the rest wait for the next reservation). */
+const RELEASED_PER_SWEEP = 100;
 
 const TIER: Readonly<Record<AiCallRecord['tier'], AiModelTier>> = { fast: 'FAST', balanced: 'BALANCED', deep: 'DEEP' };
 
@@ -53,6 +59,29 @@ export interface MonthSpend {
 }
 
 export const AiCallRepository = {
+    /** The database's clock: one clock for every app server's expiry decisions (issue #30, item 9). */
+    async dbNow(db: Db): Promise<Date> {
+        const [row] = await db.$queryRaw<Array<{ now: Date }>>`SELECT now() AS now`;
+        return row.now;
+    },
+
+    /**
+     * Under the lock: release (delete, charging nothing) every expired,
+     * unsettled reservation of the workspace, at most `RELEASED_PER_SWEEP` a
+     * sweep (D17; see the header). Returns each released reservation's id and
+     * amount, for the caller's log line and counter.
+     */
+    async releaseExpired(db: Db, workspaceId: string, now: Date): Promise<Array<{ id: string; amountMicroUsd: number }>> {
+        const expired = await db.aiSpendReservation.findMany({
+            where: { workspaceId, expiresAt: { lte: now } },
+            select: { id: true, amountMicroUsd: true },
+            orderBy: { expiresAt: 'asc' },
+            take: RELEASED_PER_SWEEP,
+        });
+        if (expired.length > 0) await db.aiSpendReservation.deleteMany({ where: { workspaceId, id: { in: expired.map((r) => r.id) } } });
+        return expired.map((r) => ({ id: r.id, amountMicroUsd: Number(r.amountMicroUsd) }));
+    },
+
     /** Serialise every check and settlement of one workspace's spend, until the transaction ends. */
     async lockSpend(db: Db, workspaceId: string): Promise<void> {
         await db.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${'ai-spend:' + workspaceId}))`;
@@ -73,7 +102,7 @@ export const AiCallRepository = {
             },
             _sum: { amountMicroUsd: true },
         });
-        return { spentMicroUsd: Number(month?.spentMicroUsd ?? 0), reservedMicroUsd: held._sum.amountMicroUsd ?? 0 };
+        return { spentMicroUsd: Number(month?.spentMicroUsd ?? 0), reservedMicroUsd: Number(held._sum.amountMicroUsd ?? 0) };
     },
 
     /**
@@ -86,9 +115,6 @@ export const AiCallRepository = {
         workspaceId: string,
         input: { callId: string; periodStart: Date; amountMicroUsd: number; ceilingMicroUsd: number; expiresAt: Date; now: Date },
     ): Promise<{ ok: boolean } & MonthSpend> {
-        await db.aiSpendReservation.deleteMany({
-            where: { workspaceId, expiresAt: { lt: new Date(input.now.getTime() - EXPIRED_ROW_RETENTION_MS) } },
-        });
         const spend = await AiCallRepository.monthSpend(db, workspaceId, input.periodStart, input.now, input.callId);
         if (spend.spentMicroUsd + spend.reservedMicroUsd + input.amountMicroUsd > input.ceilingMicroUsd) {
             return { ok: false, ...spend };
@@ -114,6 +140,13 @@ export const AiCallRepository = {
     async settle(db: Db, workspaceId: string, record: AiCallRecord): Promise<void> {
         const periodStart = periodStartOf(record.startedAt);
         await db.aiSpendReservation.deleteMany({ where: { workspaceId, id: record.id } });
+        // IDEMPOTENT: a call already settled is not charged or recorded again.
+        // `settleRecord` retries a settlement that threw, and a transaction can
+        // commit and still throw (the acknowledgement lost with the
+        // connection): the retry must then find the call settled and succeed,
+        // not fail on the record's primary key and turn a paid, recorded
+        // answer into an error. Under the spend lock, so no race.
+        if (await db.aiCallLog.findUnique({ where: { id: record.id }, select: { id: true } })) return;
         if (record.costMicroUsd > 0) {
             await db.aiSpendMonth.upsert({
                 where: { workspaceId_periodStart: { workspaceId, periodStart } },
@@ -151,5 +184,19 @@ export const AiCallRepository = {
                 startedAt: record.startedAt,
             },
         });
+    },
+
+    /**
+     * Delete at most `batch` call records started before `cutoff`, oldest
+     * first, across workspaces (Phase 2.H retention). Runs OUTSIDE row-level
+     * security (`runWithoutRls`, reason `ai-call-log-retention`): the
+     * append-only trigger admits it only there, and only for a row past its
+     * floor. Returns how many went.
+     */
+    async deleteStartedBefore(db: Db, cutoff: Date, batch: number): Promise<number> {
+        return db.$executeRaw`
+            DELETE FROM "AiCallLog" WHERE "id" IN (
+                SELECT "id" FROM "AiCallLog" WHERE "startedAt" < ${cutoff} ORDER BY "startedAt" ASC LIMIT ${batch}
+            )`;
     },
 };

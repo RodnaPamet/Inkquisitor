@@ -1,0 +1,195 @@
+{
+  "format": "inkquisitor-rephrase-evaluation/1",
+  "set": {
+    "hash": "sha256:29ef985abe427cc8eb1b2cb15f071dd8e9add6b4b8d00d8dfcde93cba3d1c21e"
+  },
+  "promptVersion": "question-rephrase.2.4.0",
+  "promptHash": "sha256:65419a93443312bc158ae49fb92360b41b03a77f1dd0c62a289e208e980f9ece",
+  "generator": {
+    "kind": "structural",
+    "id": "structural-rephraser.1"
+  },
+  "ranAt": "2026-11-20T13:26:37.262Z",
+  "answers": [
+    {
+      "caseId": "rp-01",
+      "output": {
+        "questions": [
+          {
+            "elementId": "eval-rp-01",
+            "targetsFieldKeys": [
+              "want"
+            ],
+            "mode": "FRONTIER",
+            "rationale": "Asks for the want from a reader's side.",
+            "kind": "OPEN",
+            "text": "Picture a reader meeting the want for the first time: what do they notice first?"
+          }
+        ],
+        "declined": []
+      }
+    },
+    {
+      "caseId": "rp-02",
+      "output": {
+        "questions": [
+          {
+            "elementId": "eval-rp-02",
+            "targetsFieldKeys": [
+              "speaking_voice"
+            ],
+            "mode": "FRONTIER",
+            "rationale": "Asks for the speaking voice from a reader's side.",
+            "kind": "OPEN",
+            "text": "Picture a reader meeting the speaking voice for the first time: what do they notice first?"
+          }
+        ],
+        "declined": []
+      }
+    },
+    {
+      "caseId": "rp-03",
+      "output": {
+        "questions": [
+          {
+            "elementId": "eval-rp-03",
+            "targetsFieldKeys": [
+              "sensory_signature"
+            ],
+            "mode": "FRONTIER",
+            "rationale": "Asks for the sensory signature from a reader's side.",
+            "kind": "OPEN",
+            "text": "Picture a reader meeting the sensory signature for the first time: what do they notice first?"
+          }
+        ],
+        "declined": []
+      }
+    },
+    {
+      "caseId": "rp-04",
+      "output": {
+        "questions": [
+          {
+            "elementId": "eval-rp-04",
+            "targetsFieldKeys": [
+              "place_type"
+            ],
+            "mode": "FRONTIER",
+            "rationale": "Asks for the place type from a reader's side.",
+            "kind": "OPEN",
+            "text": "Picture a reader meeting the place type for the first time: what do they notice first?"
+          }
+        ],
+        "declined": []
+      }
+    },
+    {
+      "caseId": "rp-05",
+      "output": {
+        "questions": [
+          {
+            "elementId": "eval-rp-05",
+            "targetsFieldKeys": [
+              "significance"
+            ],
+            "mode": "FRONTIER",
+            "rationale": "Asks for the significance from a reader's side.",
+            "kind": "OPEN",
+            "text": "Picture a reader meeting the significance for the first time: what do they notice first?"
+          }
+        ],
+        "declined": []
+      }
+    },
+    {
+      "caseId": "rp-06",
+      "output": {
+        "questions": [
+          {
+            "elementId": "eval-rp-06",
+            "targetsFieldKeys": [
+              "thematic_question"
+            ],
+            "mode": "FRONTIER",
+            "rationale": "Asks for the thematic question from a reader's side.",
+            "kind": "OPEN",
+            "text": "Picture a reader meeting the thematic question for the first time: what do they notice first?"
+          }
+        ],
+        "declined": []
+      }
+    },
+    {
+      "caseId": "rp-07",
+      "output": {
+        "questions": [
+          {
+            "elementId": "eval-rp-07",
+            "targetsFieldKeys": [
+              "driving_goal"
+            ],
+            "mode": "FRONTIER",
+            "rationale": "Asks for the driving goal from a reader's side.",
+            "kind": "OPEN",
+            "text": "Picture a reader meeting the driving goal for the first time: what do they notice first?"
+          }
+        ],
+        "declined": []
+      }
+    },
+    {
+      "caseId": "rp-08",
+      "output": {
+        "questions": [
+          {
+            "elementId": "eval-rp-08",
+            "targetsFieldKeys": [
+              "cost_or_limit"
+            ],
+            "mode": "FRONTIER",
+            "rationale": "Asks for the cost or limit from a reader's side.",
+            "kind": "OPEN",
+            "text": "Picture a reader meeting the cost or limit for the first time: what do they notice first?"
+          }
+        ],
+        "declined": []
+      }
+    },
+    {
+      "caseId": "rp-09",
+      "output": {
+        "questions": [
+          {
+            "elementId": "eval-rp-09",
+            "targetsFieldKeys": [
+              "membership"
+            ],
+            "mode": "FRONTIER",
+            "rationale": "Asks for the membership from a reader's side.",
+            "kind": "OPEN",
+            "text": "Picture a reader meeting the membership for the first time: what do they notice first?"
+          }
+        ],
+        "declined": []
+      }
+    },
+    {
+      "caseId": "rp-10",
+      "output": {
+        "questions": [
+          {
+            "elementId": "eval-rp-10",
+            "targetsFieldKeys": [
+              "stakes"
+            ],
+            "mode": "FRONTIER",
+            "rationale": "Asks for the stakes from a reader's side.",
+            "kind": "OPEN",
+            "text": "Picture a reader meeting the stakes for the first time: what do they notice first?"
+          }
+        ],
+        "declined": []
+      }
+    }
+  ]
+}

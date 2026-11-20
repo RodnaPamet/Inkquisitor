@@ -107,6 +107,11 @@ export async function restoreVersion(
     const { changeSummary, baseVersion } = RestoreInput.parse(input ?? {});
     const restore = () =>
         runInWorkspaceContext(ctx, async (db) => {
+            // A restore can give the element back an old NAME, so it takes the
+            // book's names lock as every rename does, and in its order (before
+            // the element's): a concurrent accept's "the book holds no such
+            // name" check cannot then race it (issues #39 item 5, #41 item 5).
+            await BibleElementRepository.lockNames(db, bookId);
             await BibleElementRepository.lock(db, elementId);
             const element = await requireElement(db, ctx, bookId, elementId);
             await assertBaseVersion(db, ctx, elementId, baseVersion);
