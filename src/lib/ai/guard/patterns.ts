@@ -95,12 +95,19 @@ export const INJECTION_RULES: ReadonlyArray<GuardRule<InjectionCategory>> = [
          * model (issue #39 item 8; enrichment's adv-11): "The instructions
          * above this line no longer apply." No verb of ignoring is said, so
          * the rules above cannot see it.
+         *
+         * The instructions must be named AS the model's: led by a word that
+         * points at them (previous, above, earlier, system, your, …) or
+         * followed by one (above, so far, given to you). A bare "rules" is a
+         * story's as often as not, and a hit refuses the proposal that
+         * restates it: "The old guild rules no longer apply in the free city"
+         * is a world rule, not an attack (found in review).
          */
         id: 'inj.ignore_previous.no_longer_apply',
         category: 'ignore_previous',
         severity: 'high',
         test: has(
-            /\b(?:instruction|instructions|rules?|prompt|prompts|directions?|guidelines?)\b[^.\n]{0,40}\b(?:no longer (?:apply|hold|count|matter)|(?:do not|don['’]t|does not|doesn['’]t) apply|are (?:void|cancell?ed|revoked|suspended|obsolete|lifted)|(?:have|has) been (?:revoked|cancell?ed|lifted|replaced|withdrawn))\b/,
+            /\b(?:(?:previous|prior|above|earlier|preceding|foregoing|system|your)\s+(?:[a-z]+\s+)?(?:instructions?|rules?|prompts?|directions?|guidelines?)|(?:instructions?|rules?|prompts?|directions?|guidelines?)\s+(?:above|before this|so far|given (?:above|earlier|before|to you)))\b[^.\n]{0,40}\b(?:no longer (?:apply|hold|count|matter)|(?:do not|don['’]t|does not|doesn['’]t) apply|are (?:void|cancell?ed|revoked|suspended|obsolete|lifted)|(?:have|has) been (?:revoked|cancell?ed|lifted|replaced|withdrawn))\b/,
         ),
     },
     {
