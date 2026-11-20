@@ -354,7 +354,7 @@ describe('a round whose reconcile failed or was refused is named on the intervie
 
     it('when the page is read, with a link to the review page', () => {
         mockFetch({});
-        mount({ kind: 'existing', interview: interview({ roundStatus: 'CLOSED' }) }, { reconcileAttention: [1, 3] });
+        mount({ kind: 'existing', interview: interview({ roundStatus: 'CLOSED' }) }, { reconcileAttention: [{ roundNumber: 1, outcome: 'PROVIDER_FAILURE' }, { roundNumber: 3, outcome: 'TIMEOUT' }] });
         const notice = screen.getByTestId('reconcile-attention');
         expect(notice).toHaveTextContent('The answers of rounds 1, 3 were not turned into proposed bible changes');
         expect(within(notice).getByRole('link', { name: 'Open the review page to run it again.' })).toHaveAttribute('href', `/w/${SLUG}/books/${BOOK.id}/interviews/sess_1/review`);
@@ -381,6 +381,26 @@ describe('a round whose reconcile failed or was refused is named on the intervie
         expect(await screen.findByTestId('reconcile-attention')).toHaveTextContent('The answers of round 2 were not turned');
     });
 
+    it('a TOKEN_BUDGET refusal is worded apart, with no offer to run it again (running it again cannot help)', async () => {
+        mockFetch({});
+        mount({ kind: 'existing', interview: interview({ roundStatus: 'CLOSED' }) }, { reconcileAttention: [{ roundNumber: 2, outcome: 'TOKEN_BUDGET' }] });
+        expect(screen.queryByTestId('reconcile-attention')).toBeNull();
+        expect(screen.queryByRole('link', { name: 'Open the review page to run it again.' })).toBeNull();
+        expect(screen.getByTestId('reconcile-budget-spent')).toHaveTextContent('The answers of round 2 were not turned into proposed bible changes: this interview has used its share of the AI budget, so running the step again cannot help.');
+    });
+
+    it('a stop whose reconcile was refused TOKEN_BUDGET is worded so, and another round’s failure keeps its own notice', async () => {
+        const q = answered(question(), { text: 'Yes.' });
+        const refused = { ...run('REFUSED', 2), outcome: 'TOKEN_BUDGET', refusalReason: 'TOKEN_BUDGET' };
+        mockFetch({ [`POST ${IAPI}/sess_1/stop`]: { json: { interview: interview({ questions: [q], status: 'STOPPED', stopReason: 'AUTHOR_STOPPED', roundStatus: 'CLOSED' }), reconcile: [refused, run('FAILED', 1)] } } });
+        mount({ kind: 'existing', interview: interview({ questions: [q] }) });
+        fireEvent.click(screen.getByRole('button', { name: 'Stop interview' }));
+        await waitFor(() => expect(document.getElementById('interview-stop-confirm')).not.toBeNull());
+        fireEvent.click(document.getElementById('interview-stop-confirm')!);
+        expect(await screen.findByTestId('reconcile-budget-spent')).toHaveTextContent('The answers of round 2 were not turned');
+        expect(screen.getByTestId('reconcile-attention')).toHaveTextContent('The answers of round 1 were not turned');
+    });
+
     it('a run that succeeded clears its round from the notice', async () => {
         const q = answered(question(), { text: 'Yes.' });
         global.fetch = jest.fn(async (url: RequestInfo | URL) => {
@@ -388,7 +408,7 @@ describe('a round whose reconcile failed or was refused is named on the intervie
             if (u.endsWith('/rounds/1/close')) return { ok: true, status: 200, json: async () => ({ interview: interview({ questions: [q], roundStatus: 'CLOSED', status: 'COMPLETED', stopReason: 'FRONTIER_EMPTY' }), reconcile: run('DONE') }) } as unknown as Response;
             return { ok: true, status: 200, json: async () => ({}) } as unknown as Response;
         }) as unknown as typeof fetch;
-        mount({ kind: 'existing', interview: interview({ questions: [q] }) }, { reconcileAttention: [1] });
+        mount({ kind: 'existing', interview: interview({ questions: [q] }) }, { reconcileAttention: [{ roundNumber: 1, outcome: 'PROVIDER_FAILURE' }] });
         expect(screen.getByTestId('reconcile-attention')).toBeInTheDocument();
         fireEvent.click(screen.getByRole('button', { name: 'Finish round' }));
         await waitFor(() => expect(screen.queryByTestId('reconcile-attention')).toBeNull());

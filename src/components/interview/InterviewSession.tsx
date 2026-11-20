@@ -43,6 +43,7 @@ import { INTERVIEW_API, interviewApi, type InterviewIds, type InterviewView, typ
 import { startRequestBody, type InterviewSetup, type InterviewTarget } from '@/lib/interview/setup';
 import type { DraftQuestion } from '@/lib/interview/stream-events';
 import { isPersonaKey } from '@/lib/interview/vocabulary';
+import type { ReconcileAttention } from '@/app-layer/usecases/enrichment-review';
 import { useInterviewErrorMessage, useStopMessage } from './messages';
 import { QuestionCard, type QuestionCardHandle } from './QuestionCard';
 import { RoundFieldsPanel, type FieldNaming } from './RoundFieldsPanel';
@@ -66,15 +67,16 @@ export interface InterviewSessionProps {
     initial: { kind: 'existing'; interview: InterviewView } | { kind: 'start'; target: InterviewTarget; setup: InterviewSetup };
     /**
      * Rounds whose reconcile failed or was refused when the page was read
-     * (issue #39 item 6): their answers wait, proposing nothing, until the
-     * review page runs them again.
+     * (issue #39 item 6), with the outcome: their answers wait, proposing
+     * nothing, until the review page runs them again — except a TOKEN_BUDGET
+     * refusal, which running again cannot help, and which is worded so.
      */
-    reconcileAttention?: readonly number[];
+    reconcileAttention?: readonly ReconcileAttention[];
 }
 
 export function InterviewSession(props: InterviewSessionProps) {
     const { workspaceSlug, book, canEdit, elements, fieldLabels, kindLabels, initial } = props;
-    const [reconcileAttention, setReconcileAttention] = useState<readonly number[]>(props.reconcileAttention ?? []);
+    const [reconcileAttention, setReconcileAttention] = useState<readonly ReconcileAttention[]>(props.reconcileAttention ?? []);
     const t = useTranslations('interview.session');
     const tStatus = useTranslations('interview.status');
     const tPersona = useTranslations('interview.personas');
@@ -207,17 +209,20 @@ export function InterviewSession(props: InterviewSessionProps) {
     }
 
     /** Keep the list of rounds whose reconcile did not run to its end in step with the runs just made. */
-    function noteReconcileRuns(runs: ReadonlyArray<{ roundNumber: number; status: string }>) {
+    function noteReconcileRuns(runs: ReadonlyArray<{ roundNumber: number; status: string; outcome: string | null }>) {
         if (runs.length === 0) return;
         setReconcileAttention((before) => {
-            const next = new Set(before);
+            const next = new Map(before.map((r) => [r.roundNumber, r.outcome] as const));
             for (const r of runs) {
-                if (r.status === 'FAILED' || r.status === 'REFUSED') next.add(r.roundNumber);
+                if (r.status === 'FAILED' || r.status === 'REFUSED') next.set(r.roundNumber, r.outcome);
                 else next.delete(r.roundNumber);
             }
-            return [...next].sort((a, b) => a - b);
+            return [...next.entries()].sort(([a], [b]) => a - b).map(([roundNumber, outcome]) => ({ roundNumber, outcome }));
         });
     }
+    // A round refused for the session's token budget cannot be helped by running it again.
+    const rerunnableRounds = reconcileAttention.filter((r) => r.outcome !== 'TOKEN_BUDGET').map((r) => r.roundNumber);
+    const budgetSpentRounds = reconcileAttention.filter((r) => r.outcome === 'TOKEN_BUDGET').map((r) => r.roundNumber);
 
     async function finishRound() {
         if (!ids || !round) return;
@@ -359,12 +364,17 @@ export function InterviewSession(props: InterviewSessionProps) {
                     <p className="text-sm text-content-warning">{t('connectionClosed')}</p>
                 ) : null}
                 {notice ? <p className="text-sm text-content-default">{notice}</p> : null}
-                {reconcileAttention.length > 0 && sessionId ? (
+                {rerunnableRounds.length > 0 && sessionId ? (
                     <p className="rounded-lg border border-border-default bg-bg-subtle p-3 text-sm text-content-default" role="status" data-testid="reconcile-attention">
-                        {t('reconcileNotRun', { count: reconcileAttention.length, rounds: reconcileAttention.join(', ') })}{' '}
+                        {t('reconcileNotRun', { count: rerunnableRounds.length, rounds: rerunnableRounds.join(', ') })}{' '}
                         <Link className="text-content-emphasis underline" href={APP_ROUTES.interviewReview(workspaceSlug, book.id, sessionId)}>
                             {t('reconcileNotRunLink')}
                         </Link>
+                    </p>
+                ) : null}
+                {budgetSpentRounds.length > 0 ? (
+                    <p className="rounded-lg border border-border-default bg-bg-subtle p-3 text-sm text-content-default" role="status" data-testid="reconcile-budget-spent">
+                        {t('reconcileBudgetSpent', { count: budgetSpentRounds.length, rounds: budgetSpentRounds.join(', ') })}
                     </p>
                 ) : null}
                 {session && session.status !== 'ACTIVE' && session.stopReason && !streaming ? (

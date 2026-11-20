@@ -174,6 +174,9 @@ describe('cost: reconcile stops at the session budget and at the month', () => {
         expect(calls.n).toBe(0);
         expect(await prisma.answer.count({ where: { sessionId: view.session.id } })).toBeGreaterThan(0);
         plainMessage(en.enrichment.runStatus, 'TOKEN_BUDGET');
+        // The interview page reads the outcome, so it can say running it again cannot help.
+        const { reconcileRoundsNeedingAttention } = await import('@/app-layer/usecases/enrichment-review');
+        expect(await reconcileRoundsNeedingAttention(ctx, bookId, view.session.id)).toEqual([{ roundNumber: 1, outcome: 'TOKEN_BUDGET' }]);
     });
 
     it('a round is not opened unless the budget can also take its reconcile: the session pauses TOKEN_BUDGET before the call', async () => {
