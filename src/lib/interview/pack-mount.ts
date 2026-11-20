@@ -65,7 +65,7 @@
  * history stays readable and the author starts a new session.
  */
 import { craftPackName, personaPackName, type PackFile, type PackRegistry } from './packs';
-import { checkPackRecord, type RecordKind, type RecordRefusal } from './pack-evaluation';
+import { checkPackRecord, questionPromptHash, type RecordKind, type RecordRefusal } from './pack-evaluation';
 import type { BibleKind } from '@/lib/bible/kinds';
 import { createHash } from 'node:crypto';
 import { processSharedMap } from '@/lib/process-shared-cache';
@@ -110,8 +110,8 @@ export async function checkPackMountable(file: PackFile, registry: PackRegistry,
  * The verdicts, shared by every module graph of the process (issue #36, item
  * 7): the start-up warm-up (the instrumentation bundle) fills the map the
  * routes read, so the first `GET interview-packs` replays nothing. Keyed by
- * CONTENT — the mode, the pack, and the hashes of its text, its set and its
- * record — never by the registry object, which each graph loads for itself.
+ * CONTENT — the mode, the question prompt's hash, the pack, and the hashes of
+ * its text, its set and its record — never by the registry object, which each graph loads for itself.
  */
 const cache = processSharedMap<Promise<MountVerdict>>('pack-mount-verdicts');
 
@@ -136,7 +136,8 @@ function recordKeyOf(file: PackFile): string {
 /** One pack's verdict under `mode`, computed once per process, mode and pack content. A replay that throws is a refusal, never a pass. */
 function verdictOf(registry: PackRegistry, name: string, mode: PackRecordMode): Promise<MountVerdict> {
     const file = registry.files[name];
-    const key = file ? `${mode}\u0000${registryKeyOf(registry)}\u0000${name}\u0000${file.contentHash}\u0000${file.setHash}\u0000${recordKeyOf(file)}\u0000${file.scan.rules.length === 0 ? 'scan-ok' : 'scan-refused'}` : `${mode}\u0000${name}\u0000missing`;
+    // The question prompt's hash too: a record is checked against it, and the map outlives a reloaded module graph.
+    const key = file ? `${mode}\u0000${questionPromptHash()}\u0000${registryKeyOf(registry)}\u0000${name}\u0000${file.contentHash}\u0000${file.setHash}\u0000${recordKeyOf(file)}\u0000${file.scan.rules.length === 0 ? 'scan-ok' : 'scan-refused'}` : `${mode}\u0000${name}\u0000missing`;
     let verdict = cache.get(key);
     if (!verdict) {
         verdict = !file
