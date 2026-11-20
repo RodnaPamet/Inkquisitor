@@ -32,7 +32,7 @@ import type { FieldDef } from '@/lib/bible/template-schema';
 import type { BibleKind } from '@/lib/bible/kinds';
 import { definePrompt, type AuthorDataBlock, type PromptTemplate } from '@/lib/ai/prompt';
 import { GeneratedQuestionsSchema, QUESTION_TEXT_MAX } from './candidates';
-import { DEPTH, DETAIL, PAIR_TARGETS_FROM_DETAIL, type Dials } from './dials';
+import { DEPTH, DETAIL, DIAL_MAX, DIAL_MIN, PAIR_TARGETS_FROM_DETAIL, type Dials } from './dials';
 import type { GenerationRequest } from './generator';
 import type { CraftPack, PersonaPack } from './packs';
 import type { AnswerStatus, QuestionKind } from './vocabulary';
@@ -211,6 +211,47 @@ export function roundGuidance(input: PromptInput): string {
         ...input.craftPacks.flatMap((p) => ['', `## Craft pack: ${p.name}`, p.text.trim()]),
         ...(input.persona ? ['', `## Persona pack: ${input.persona.name}`, input.persona.text.trim()] : []),
     ].join('\n');
+}
+
+/**
+ * WHAT A CALL ADDS TO ITS TEMPLATE'S SYSTEM PROMPT, AS CODE WRITES IT (Phase
+ * 2.H item 7). The question and rephrase calls send their template's system
+ * text plus `roundGuidance` (the dials in words, the packs under their
+ * headings) and, for a question call, the detail's output budget. The packs'
+ * own text is pinned by each pack record; the rest is code, and a change to it
+ * (a dial's sentence, a heading) changes what the model is told as surely as a
+ * change to the template does. So every dial setting's guidance, rendered with
+ * a probe pack in place of the real ones, is part of the question and rephrase
+ * prompts' content hashes (`questionPromptHash`, `rephrasePromptHash`): an edit
+ * to it fails `tests/guards/evaluation-records-current.test.ts` until the
+ * records are re-run, as an edit to the template does.
+ */
+export function roundGuidanceFingerprint(): string {
+    const probeCraft = { name: 'probe-craft', text: 'probe craft text' } as unknown as CraftPack;
+    const probePersona = { name: 'probe-persona', text: 'probe persona text' } as unknown as PersonaPack;
+    const lines: string[] = [];
+    for (let depth = DIAL_MIN; depth <= DIAL_MAX; depth++) {
+        for (let detail = DIAL_MIN; detail <= DIAL_MAX; detail++) {
+            for (const offerRecommended of [false, true]) {
+                for (const preferChoice of [false, true]) {
+                    const input: PromptInput = {
+                        bookId: null,
+                        dials: { depth, detail },
+                        offerRecommended,
+                        preferChoice,
+                        personaKey: null,
+                        persona: probePersona,
+                        craftPacks: [probeCraft],
+                        elements: [],
+                        related: [],
+                        sessionAnswers: [],
+                    };
+                    lines.push(JSON.stringify([depth, detail, offerRecommended, preferChoice, maxOutputTokensFor(detail), roundGuidance(input)]));
+                }
+            }
+        }
+    }
+    return createHash('sha256').update(lines.join('\n'), 'utf8').digest('hex');
 }
 
 /** The data blocks of a question call: every piece of author text, labelled (2.1 fences them). */

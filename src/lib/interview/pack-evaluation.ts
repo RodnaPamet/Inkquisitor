@@ -54,9 +54,9 @@ import { computeFrontier, type AnswerFact } from './frontier';
 import type { GenerationResult, QuestionGenerator } from './generator';
 import type { PackFile, PackPriorAnswer, PackRegistry, Situation } from './packs';
 import { planRound } from './plan';
-import { QUESTION_PROMPT, QUESTION_PROMPT_VERSION, type PromptAnswer } from './prompt';
+import { QUESTION_PROMPT, QUESTION_PROMPT_VERSION, roundGuidanceFingerprint, type PromptAnswer } from './prompt';
 import { DROP_REASONS, GeneratedQuestionsSchema } from './candidates';
-import { promptContentHash } from '@/lib/ai/prompt-hash';
+import { combinedPromptHash, promptContentHash } from '@/lib/ai/prompt-hash';
 import { structuralGenerator, STRUCTURAL_GENERATOR_ID } from './evals/structural-generator';
 import { produceRound, type RoundElement, type RoundOutput } from './round';
 import { isPersonaKey, type PersonaKey } from './vocabulary';
@@ -82,9 +82,13 @@ const OUTPUTS_PER_CASE_MAX = 2;
 const CASES_MAX = 15;
 
 let questionPromptHashMemo: string | null = null;
-/** The question prompt's content hash (its static template and output schema); computed once. */
+/**
+ * The question prompt's content hash: its static template and output schema,
+ * and the guidance every call adds to its system prompt (`roundGuidanceFingerprint`:
+ * a dial's sentence is prompt text too); computed once.
+ */
 export function questionPromptHash(): string {
-    questionPromptHashMemo ??= promptContentHash(QUESTION_PROMPT, GeneratedQuestionsSchema);
+    questionPromptHashMemo ??= combinedPromptHash([promptContentHash(QUESTION_PROMPT, GeneratedQuestionsSchema), `guidance:${roundGuidanceFingerprint()}`]);
     return questionPromptHashMemo;
 }
 

@@ -37,7 +37,8 @@ import { canonicalJsonStringify } from '@/lib/audit/canonical-hash';
 import type { BibleKind } from '@/lib/bible/kinds';
 import { BIBLE_KINDS } from '@/lib/bible/kinds';
 import { getTemplate } from '@/lib/bible/templates';
-import { promptContentHash } from '@/lib/ai/prompt-hash';
+import { combinedPromptHash, promptContentHash } from '@/lib/ai/prompt-hash';
+import { roundGuidanceFingerprint } from '../prompt';
 import { GeneratedQuestionsSchema, type GeneratedQuestion } from '../candidates';
 import type { GenerationRequest, GenerationResult, QuestionGenerator } from '../generator';
 import type { PackRegistry } from '../packs';
@@ -84,9 +85,9 @@ export function rephraseEvalSet(): { cases: RephraseEvalCase[]; hash: string } {
     return cachedSet;
 }
 
-/** The rephrase prompt's content hash: its static template and the output schema (`promptContentHash`). */
+/** The rephrase prompt's content hash: its static template, the output schema (`promptContentHash`) and the round guidance every call adds (`roundGuidanceFingerprint`). */
 export function rephrasePromptHash(): string {
-    return promptContentHash(REPHRASE_PROMPT, GeneratedQuestionsSchema);
+    return combinedPromptHash([promptContentHash(REPHRASE_PROMPT, GeneratedQuestionsSchema), `guidance:${roundGuidanceFingerprint()}`]);
 }
 
 export const RephraseRecordSchema = z

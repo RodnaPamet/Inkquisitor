@@ -49,16 +49,35 @@ const NOT_PRODUCT_PROMPTS: Readonly<Record<string, string>> = {
 const recordOf = (rel: string) => (rel ? (JSON.parse(fs.readFileSync(path.join(PACKS_DIR, rel, PACK_RECORD_FILE), 'utf8')) as Record<string, unknown>) : null);
 
 describe('every product prompt is evaluated', () => {
-    it('each exported definePrompt template is named with its evaluation (a new prompt needs a record)', () => {
+    it('each definePrompt template is named with its evaluation (a new prompt needs a record)', () => {
+        // EVERY call of definePrompt, not only an exported `…_PROMPT`: a
+        // template that is unexported or named otherwise is a prompt all the
+        // same. Each call is a named declaration (whatever its name, which must
+        // then be listed below) or a per-call derivation of a declared one
+        // (`definePrompt({ ...QUESTION_PROMPT, … })`, whose base the record pins).
         const declared = new Set<string>();
+        const derivedFrom: string[] = [];
+        const unrecognised: string[] = [];
         for (const rel of repoRelativeFiles()) {
             if (!rel.startsWith('src/') || !/\.tsx?$/.test(rel)) continue;
             const text = fs.readFileSync(rel, 'utf8');
-            for (const m of text.matchAll(/export const (\w+_PROMPT)\b[^=\n]*=\s*definePrompt\(/g)) declared.add(m[1]);
+            for (const m of text.matchAll(/\bdefinePrompt\(/g)) {
+                const at = m.index;
+                if (text.slice(Math.max(0, at - 16), at).endsWith('function ')) continue; // its own definition
+                const line = text.slice(text.lastIndexOf('\n', at) + 1, at);
+                const named = /^\s*(?:export\s+)?const\s+(\w+)\s*(?::\s*[\w<>.,\s]+)?=\s*$/.exec(line);
+                const derived = /^definePrompt\(\{\s*\.\.\.(\w+)\b/.exec(text.slice(at, at + 200));
+                if (derived) derivedFrom.push(derived[1]);
+                else if (named) declared.add(named[1]);
+                else unrecognised.push(`${rel}: a definePrompt call that is neither a named template nor a derivation of one`);
+            }
         }
+        expect(unrecognised).toEqual([]);
         expect(declared.size).toBeGreaterThanOrEqual(6);
         const unaccounted = [...declared].filter((name) => !(name in EVALUATED_PROMPTS) && !(name in NOT_PRODUCT_PROMPTS));
         expect(unaccounted).toEqual([]);
+        // A derivation builds on a declared, evaluated template.
+        expect(derivedFrom.filter((name) => !(name in EVALUATED_PROMPTS))).toEqual([]);
         // And no name is listed for a prompt that no longer exists.
         expect(Object.keys(EVALUATED_PROMPTS).filter((n) => !declared.has(n))).toEqual([]);
     });
