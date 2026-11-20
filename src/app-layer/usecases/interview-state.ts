@@ -48,8 +48,12 @@ import type { AnswerStatus, StopReason } from '@/lib/interview/vocabulary';
 
 /** At most this many elements a kind or book session questions (a larger scope is cut, and says so). */
 export const SCOPE_ELEMENTS_MAX = 60;
-/** Questions of a session read at most (six rounds of at most eight). */
-export const SESSION_QUESTIONS_MAX = 60;
+/**
+ * Questions of a session read at most: six rounds of at most eight and a
+ * challenge, each with up to `REPHRASES_PER_ROUND_MAX` rephrases (Phase 2.4;
+ * tests/unit/interview/session-bounds.test.ts holds the product under it).
+ */
+export const SESSION_QUESTIONS_MAX = 80;
 /** Answer rows of a session read at most (every revision). */
 export const SESSION_ANSWERS_MAX = 2_000;
 /** Earlier sessions' questions about the scope's elements read for deduplication. */
@@ -237,7 +241,7 @@ export interface QuestionView {
     elementId: string;
     targetsFieldKeys: string[];
     mode: 'FRONTIER' | 'CHALLENGE';
-    origin: 'MODEL' | 'PACK_FALLBACK';
+    origin: QuestionRow['origin'];
     personaKey: string | null;
     kind: QuestionRow['kind'];
     text: string;
@@ -247,6 +251,10 @@ export interface QuestionView {
     rationale: string | null;
     challengeQuote: string | null;
     dependsOnQuestionIds: string[];
+    /** The question this one replaced ("Ask me this differently", Phase 2.4). */
+    replacesQuestionId: string | null;
+    /** The guard flagged the call that worded it (Phase 2.4): the UI marks it. */
+    reviewRequired: boolean;
     answer: {
         revision: number;
         status: AnswerStatus;
@@ -274,6 +282,8 @@ export function questionView(q: QuestionRow, a: AnswerRow | undefined): Question
         rationale: q.rationale,
         challengeQuote: q.challengeQuote,
         dependsOnQuestionIds: q.dependsOnQuestionIds,
+        replacesQuestionId: q.replacesQuestionId,
+        reviewRequired: q.reviewRequired,
         answer: a
             ? { revision: a.revision, status: a.status, text: a.text, choice: a.choice, scale: a.scale, acceptedRecommendation: a.acceptedRecommendation }
             : null,
@@ -285,6 +295,8 @@ export interface SessionSummaryView {
     bookId: string;
     scope: SessionRow['scope'];
     targetElementId: string | null;
+    /** The ELEMENT session's element's name, where the request read it (the list, Phase 2.4); else null. */
+    targetElementName: string | null;
     targetKind: SessionRow['targetKind'];
     dials: { depth: number; detail: number };
     personaKeys: string[];
@@ -299,12 +311,13 @@ export interface SessionSummaryView {
     endedAt: string | null;
 }
 
-export function sessionSummaryView(s: SessionRow): SessionSummaryView {
+export function sessionSummaryView(s: SessionRow, targetElementName: string | null = null): SessionSummaryView {
     return {
         id: s.id,
         bookId: s.bookId,
         scope: s.scope,
         targetElementId: s.targetElementId,
+        targetElementName,
         targetKind: s.targetKind,
         dials: { depth: s.depth, detail: s.detail },
         personaKeys: s.personaKeys,
@@ -322,26 +335,58 @@ export function sessionSummaryView(s: SessionRow): SessionSummaryView {
 
 export interface InterviewView {
     session: SessionSummaryView;
-    /** Over every question the session asked; NOT_ASSESSED when it asked none (rule 6). */
+    /** Over every question the session asks (a superseded one is not asked); NOT_ASSESSED when it asked none (rule 6). */
     progress: SessionProgress;
-    /** The round the author is in (OPEN), or the last one; null before the first. */
+    /**
+     * The round the author is in (OPEN), or the last one; null before the
+     * first. Its questions are the ones it ASKS: a question a rephrase
+     * replaced is left out, and its rephrase stands in its place (Phase 2.4).
+     */
     round: { id: string; number: number; status: RoundRow['status']; questions: QuestionView[] } | null;
+    /** A round being generated right now (another request's claim), by number; null when none (Phase 2.4). */
+    generatingRound: number | null;
     scopeTruncated: boolean;
+}
+
+/**
+ * The questions a round asks, in the author's order: every question no
+ * rephrase replaced, a rephrase standing at the position of the question it
+ * replaced (followed back to the round's own question). Pure.
+ */
+export function askedInOrder(questions: readonly QuestionRow[]): QuestionRow[] {
+    const byId = new Map(questions.map((q) => [q.id, q] as const));
+    const rootPosition = (q: QuestionRow): number => {
+        let at = q;
+        for (let hops = 0; at.replacesQuestionId && hops < questions.length; hops++) {
+            const prev = byId.get(at.replacesQuestionId);
+            if (!prev) break;
+            at = prev;
+        }
+        return at.position;
+    };
+    return questions
+        .filter((q) => q.supersededAt === null)
+        .map((q) => ({ q, at: rootPosition(q) }))
+        .sort((a, b) => a.at - b.at || a.q.position - b.q.position)
+        .map((x) => x.q);
 }
 
 export function interviewView(session: SessionRow, state: Pick<InterviewState, 'questions' | 'latest' | 'rounds' | 'scopeTruncated'>): InterviewView {
     const round = [...state.rounds].reverse().find((r) => r.status === 'OPEN' || r.status === 'CLOSED') ?? null;
+    const generating = [...state.rounds].reverse().find((r) => r.status === 'GENERATING') ?? null;
+    const asked = state.questions.filter((q) => q.supersededAt === null);
     return {
         session: sessionSummaryView(session),
-        progress: sessionProgress(state.questions.map((q) => ({ status: state.latest.get(q.id)?.status ?? null }))),
+        progress: sessionProgress(asked.map((q) => ({ status: state.latest.get(q.id)?.status ?? null }))),
         round: round
             ? {
                   id: round.id,
                   number: round.number,
                   status: round.status,
-                  questions: state.questions.filter((q) => q.roundId === round.id).map((q) => questionView(q, state.latest.get(q.id))),
+                  questions: askedInOrder(state.questions.filter((q) => q.roundId === round.id)).map((q) => questionView(q, state.latest.get(q.id))),
               }
             : null,
+        generatingRound: generating ? generating.number : null,
         scopeTruncated: state.scopeTruncated,
     };
 }

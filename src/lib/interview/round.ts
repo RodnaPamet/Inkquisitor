@@ -91,12 +91,46 @@ export interface RoundDeps {
      * candidates and the pack examples that could fill its gaps.
      */
     findExactRepeats?: (probes: ReadonlyArray<{ elementId: string; dedupeKey: string }>) => Promise<ReadonlySet<string>>;
+    /**
+     * Watches the round as it is produced (Phase 2.4: the stream the author
+     * sees). It is told, and never asked: what it does cannot change the round,
+     * and a throw from it is swallowed.
+     */
+    observer?: RoundObserver;
+    /**
+     * The caller gave up (the author closed the stream, Phase 2.4): the call
+     * in flight is aborted, no further call is made, and the round is produced
+     * from what it has (the caller then discards it: `aborted`).
+     */
+    signal?: AbortSignal;
+}
+
+/**
+ * What the round tells its observer, in order: each generation call as it is
+ * made, each call's candidates once they pass validation (a DRAFT: dedupe, the
+ * pack fallback and the persist can still drop or renumber them), then that it
+ * is checking. Nothing here is the round: the persisted round is.
+ */
+export interface RoundObserver {
+    callStarted?(call: { index: number; total: number }): void;
+    candidatesValidated?(candidates: readonly Candidate[], call: { index: number; total: number; reviewRequired: boolean }): void;
+    checking?(): void;
+}
+
+function tell(fn: () => void): void {
+    try {
+        fn();
+    } catch {
+        // An observer cannot change the round, even by failing.
+    }
 }
 
 export interface PlannedQuestion extends Candidate {
     origin: QuestionOrigin;
     /** 1..n within the round. */
     position: number;
+    /** The guard flagged the call that worded it and let the call go on (2.1's "flag and fence"). */
+    reviewRequired: boolean;
 }
 
 export interface RoundMetrics {
@@ -258,10 +292,17 @@ export async function produceRound(input: RoundInput, deps: RoundDeps): Promise<
     // 1–2. One call per persona that holds a share of the plan.
     const shares = input.personaKeys.length === 0 ? [null] : [...input.personaKeys];
     const validated: Candidate[] = [];
+    // Candidates worded by a call the guard flagged (2.1: the call went on, fenced).
+    const flagged = new Set<Candidate>();
+    const working = shares.filter((personaKey) => input.plan.targets.some((t) => t.personaKey === personaKey) || input.plan.challenge?.personaKey === personaKey);
     for (const personaKey of shares) {
         const mine = input.plan.targets.filter((t) => t.personaKey === personaKey);
         const challenge = input.plan.challenge && input.plan.challenge.personaKey === personaKey ? input.plan.challenge : null;
         if (mine.length === 0 && !challenge) continue;
+        // The caller gave up: no further call is made.
+        if (deps.signal?.aborted) break;
+        const call = { index: working.indexOf(personaKey) + 1, total: working.length };
+        tell(() => deps.observer?.callStarted?.(call));
         const inPlay = input.elements.filter((e) => mine.some((t) => t.elementId === e.elementId) || challenge?.elementId === e.elementId);
         const promptElements: PromptElement[] = inPlay.map((e) => ({
             elementId: e.elementId,
@@ -288,8 +329,10 @@ export async function produceRound(input: RoundInput, deps: RoundDeps): Promise<
         });
         metrics.generationCalls++;
         let raw: unknown;
+        let callFlagged = false;
         try {
-            const result = (await deps.generator.generateCandidates(request)) as Partial<GenerationResult> | null;
+            const result = (await deps.generator.generateCandidates(request, deps.signal)) as Partial<GenerationResult> | null;
+            callFlagged = result?.reviewRequired === true;
             metrics.tokensUsed += reportedTokens(result?.tokensUsed);
             recordCall(metrics, result, request.template.costBudgetMicroUsd ?? null);
             if (result?.failure) {
@@ -313,6 +356,7 @@ export async function produceRound(input: RoundInput, deps: RoundDeps): Promise<
         if (parsed.unreadable) metrics.unreadableOutputs++;
         metrics.malformed += parsed.malformed;
         metrics.declined += parsed.declined.length;
+        const fromThisCall: Candidate[] = [];
         for (const q of parsed.questions) {
             metrics.candidates++;
             const verdict = validateCandidate(sanitiseQuestionForStorage(candidateFrom(q, personaKey)), vctx);
@@ -323,8 +367,12 @@ export async function produceRound(input: RoundInput, deps: RoundDeps): Promise<
             }
             if (verdict.stripped) bump(metrics.recommendationsStripped, verdict.stripped);
             validated.push(verdict.candidate);
+            fromThisCall.push(verdict.candidate);
+            if (callFlagged) flagged.add(verdict.candidate);
         }
+        if (fromThisCall.length > 0) tell(() => deps.observer?.candidatesValidated?.(fromThisCall, { ...call, reviewRequired: callFlagged }));
     }
+    tell(() => deps.observer?.checking?.());
     for (let i = 0; i < metrics.malformed; i++) bump(metrics.preventedBehaviours, DROP_REASONS.MALFORMED_ITEM);
 
     // 3–4. Deduplicate, frontier order first.
@@ -411,7 +459,7 @@ export async function produceRound(input: RoundInput, deps: RoundDeps): Promise<
         vectors.forEach((v, i) => v && vectorOf.set(filled[i], v));
     }
     const originOf = new Map(all.map((x) => [x.c, x.origin] as const));
-    const questions: PlannedQuestion[] = final.map((c, i) => ({ ...c, origin: originOf.get(c)!, position: i + 1 }));
+    const questions: PlannedQuestion[] = final.map((c, i) => ({ ...c, origin: originOf.get(c)!, position: i + 1, reviewRequired: flagged.has(c) }));
     const vectors = new Map<number, readonly number[]>();
     final.forEach((c, i) => {
         const v = vectorOf.get(c);

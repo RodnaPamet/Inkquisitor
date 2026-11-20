@@ -76,3 +76,10 @@ test('without the model key (AI not switched off), it names the missing key', as
     expect(code).toBe(1);
     expect(fatal(stderr)).toEqual([expect.stringContaining('ANTHROPIC_API_KEY is required')]);
 });
+
+test('with the stubbed model on a real host (Phase 2.4), it refuses the stub by name', async () => {
+    test.setTimeout(90_000);
+    const { code, stderr } = await startServer({ ANTHROPIC_API_KEY: undefined, AI_RETENTION_MODE: undefined, AI_MODEL_STUB: '1', APP_URL: 'https://inkquisitor.example.test' });
+    expect(code).toBe(1);
+    expect(fatal(stderr)).toEqual([expect.stringContaining('AI_MODEL_STUB=1 answers every model call with canned questions')]);
+});

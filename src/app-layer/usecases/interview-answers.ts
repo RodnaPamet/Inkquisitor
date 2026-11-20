@@ -126,8 +126,8 @@ export function answerValueFor(question: QuestionRow, session: SessionRow, input
     }
 }
 
-/** Under the session's lock: the question, in an open round of an active session. */
-async function requireAnswerable(db: PrismaTx, ctx: WorkspaceRequestContext, bookId: string, sessionId: string, questionId: string) {
+/** Under the session's lock: the question, in an open round of an active session, not replaced by a rephrase. */
+export async function requireAnswerable(db: PrismaTx, ctx: WorkspaceRequestContext, bookId: string, sessionId: string, questionId: string) {
     await requireBook(db, ctx, bookId);
     await InterviewSessionRepository.lock(db, sessionId);
     const session = await requireSession(db, ctx, bookId, sessionId);
@@ -136,6 +136,8 @@ async function requireAnswerable(db: PrismaTx, ctx: WorkspaceRequestContext, boo
     if (session.status !== 'ACTIVE') throw new ConflictError('This interview is not running.', { reason: 'INTERVIEW_NOT_ACTIVE', status: session.status });
     const round = await InterviewRoundRepository.find(db, ctx.workspaceId, sessionId, question.roundId);
     if (round?.status !== 'OPEN') throw new ConflictError('That round is closed; its answers stand.', { reason: 'ROUND_NOT_OPEN' });
+    // Only one of a question and its rephrase is asked (Phase 2.4).
+    if (question.supersededAt !== null) throw new ConflictError('That question was asked differently; answer the new one.', { reason: 'QUESTION_SUPERSEDED' });
     return { session, question };
 }
 

@@ -11,8 +11,9 @@
  *   History tab   `<HistoryPanel>`: a diff between any two versions, and
  *                 restore as a new version
  *   rail          `<RelationsPanel>`
- *   header        save state, a disabled "Enrich" (it arrives with the
- *                 interviews, Phase 2) and delete with the undo toast
+ *   header        save state, "Enrich" (Phase 2.4: opens the interview setup
+ *                 sheet for this element, editors only) and delete with the
+ *                 undo toast
  *
  * What the viewer may do is the server's answer (`canEdit`, from
  * `bible.edit` on the page's context): a reader gets every value as text and
@@ -42,6 +43,7 @@ import type { FieldValue } from '@/lib/bible/field-values';
 import { BIBLE_ELEMENT_STATUSES, type BibleKind } from '@/lib/bible/kinds';
 import type { FieldDef } from '@/lib/bible/template-schema';
 import type { RelationOption } from '@/lib/bible/ui-model';
+import { InterviewLauncher } from '@/components/interview/InterviewLauncher';
 import { useApiErrorMessage } from './error-messages';
 import { FieldEditor } from './FieldEditor';
 import { HistoryPanel } from './HistoryPanel';
@@ -79,6 +81,7 @@ export function ElementPage(props: ElementPageProps) {
     const tDetails = useTranslations('bible.details');
     const tStatus = useTranslations('bible.status');
     const tHistory = useTranslations('bible.history');
+    const tInterview = useTranslations('interview.setup');
     const errorMessage = useApiErrorMessage();
     const router = useRouter();
     const triggerUndo = useToastWithUndo();
@@ -289,9 +292,19 @@ export function ElementPage(props: ElementPageProps) {
             }
             actions={
                 <div className="flex flex-wrap items-center gap-tight">
-                    <Button variant="secondary" icon={<Sparkles className="size-4" aria-hidden="true" />} disabledTooltip={t('enrichSoon')} data-testid="enrich">
-                        {t('enrich')}
-                    </Button>
+                    {canEdit ? (
+                        <InterviewLauncher
+                            workspaceSlug={workspaceSlug}
+                            bookId={book.id}
+                            target={{ scope: 'ELEMENT', elementId: element.id }}
+                            title={tInterview('titleElement', { name: details.name || element.name })}
+                            label={t('enrich')}
+                            icon={<Sparkles className="size-4" aria-hidden="true" />}
+                            disabled={deleting}
+                            data-testid="enrich"
+                            id="element-enrich"
+                        />
+                    ) : null}
                     {canEdit ? (
                         <Button variant="secondary" icon={<Trash2 className="size-4" aria-hidden="true" />} onClick={remove} disabled={deleting} id="element-delete">
                             {t('delete')}

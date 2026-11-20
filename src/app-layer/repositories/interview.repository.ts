@@ -77,6 +77,9 @@ export const QUESTION_SELECT = {
     challengeQuote: true,
     dependsOnQuestionIds: true,
     dedupeKey: true,
+    replacesQuestionId: true,
+    supersededAt: true,
+    reviewRequired: true,
     createdAt: true,
 } as const satisfies Prisma.QuestionSelect;
 
@@ -220,6 +223,10 @@ export interface QuestionWrite {
     challengeQuote: string | null;
     dependsOnQuestionIds: string[];
     dedupeKey: string;
+    /** The question a rephrase replaces (Phase 2.4); absent for a round's own question. */
+    replacesQuestionId?: string | null;
+    /** The guard flagged the call that worded it (Phase 2.4). */
+    reviewRequired?: boolean;
 }
 
 export const QuestionRepository = {
@@ -229,6 +236,21 @@ export const QuestionRepository = {
 
     find(db: Db, workspaceId: string, sessionId: string, questionId: string) {
         return db.question.findFirst({ where: { id: questionId, workspaceId, sessionId }, select: QUESTION_SELECT });
+    },
+
+    /**
+     * Stamp a question replaced by its rephrase (Phase 2.4), once: a question
+     * already superseded is left as it is. Answers how many rows it stamped.
+     */
+    async markSuperseded(db: Db, workspaceId: string, sessionId: string, questionId: string, at: Date): Promise<number> {
+        const res = await db.question.updateMany({ where: { id: questionId, workspaceId, sessionId, supersededAt: null }, data: { supersededAt: at } });
+        return res.count;
+    },
+
+    /** The highest position a round holds (a rephrase is numbered after it), or 0. */
+    async maxPosition(db: Db, workspaceId: string, sessionId: string, roundId: string): Promise<number> {
+        const row = await db.question.findFirst({ where: { workspaceId, sessionId, roundId }, orderBy: { position: 'desc' }, select: { position: true } });
+        return row?.position ?? 0;
     },
 
     /** A round's questions in their order. */

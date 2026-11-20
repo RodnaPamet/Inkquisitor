@@ -4,6 +4,8 @@
  * decision D4). The sidebar, the command palette and the identity pill all
  * read this one table. Client-safe: no imports.
  */
+const bookPath = (workspaceSlug: string, bookId: string) => `/w/${encodeURIComponent(workspaceSlug)}/books/${encodeURIComponent(bookId)}`;
+
 export const APP_ROUTES = {
     books: (workspaceSlug: string) => `/w/${encodeURIComponent(workspaceSlug)}/books`,
     /** A book's home: the board of element kinds. */
@@ -11,6 +13,12 @@ export const APP_ROUTES = {
     /** One bible element of a book. */
     bibleElement: (workspaceSlug: string, bookId: string, elementId: string) =>
         `/w/${encodeURIComponent(workspaceSlug)}/books/${encodeURIComponent(bookId)}/elements/${encodeURIComponent(elementId)}`,
+    /** A book's interviews: resume one, see why each stopped (Phase 2.4). */
+    interviews: (workspaceSlug: string, bookId: string) => `${bookPath(workspaceSlug, bookId)}/interviews`,
+    /** One interview's focused page (Phase 2.4). */
+    interview: (workspaceSlug: string, bookId: string, sessionId: string) => `${bookPath(workspaceSlug, bookId)}/interviews/${encodeURIComponent(sessionId)}`,
+    /** A new interview, started with the setup in the query (`interviewSetupQuery`, `src/lib/interview/setup.ts`). */
+    newInterview: (workspaceSlug: string, bookId: string, query: string) => `${bookPath(workspaceSlug, bookId)}/interviews/new?${query}`,
     /** The workspace's books deleted in the last 30 days (Phase 1.H; the OWNER's). */
     deletedBooks: (workspaceSlug: string) => `/w/${encodeURIComponent(workspaceSlug)}/deleted-books`,
     settings: (workspaceSlug: string) => `/w/${encodeURIComponent(workspaceSlug)}/settings`,

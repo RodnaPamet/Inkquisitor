@@ -52,7 +52,8 @@ import { defaultQuestionGenerator, modelBudgetSignals } from '@/lib/interview/mo
 import { getPacks, type PackRegistry } from '@/lib/interview/packs';
 import { planRound, type RoundPlan } from '@/lib/interview/plan';
 import { QUESTION_PROMPT_VERSION } from '@/lib/interview/prompt';
-import { produceRound, TOKENS_PER_CALL_REPORT_MAX, type PlannedQuestion, type RoundOutput } from '@/lib/interview/round';
+import { produceRound, TOKENS_PER_CALL_REPORT_MAX, type PlannedQuestion, type RoundObserver, type RoundOutput } from '@/lib/interview/round';
+import type { InterviewStreamEvent, PlannedField } from '@/lib/interview/stream-events';
 import { logger } from '@/lib/observability/logger';
 import type { VectorRecord } from '@/app-layer/repositories/vector.repository';
 import { decideStop } from '@/lib/interview/stop';
@@ -61,12 +62,71 @@ import { STATUS_AFTER_STOP, type StopReason } from '@/lib/interview/vocabulary';
 import { challengeableOf, frontierOf, frontierStop, loadInterviewState, nextRoundNumber, stopDetailFor, storedTextOf, type InterviewState } from './interview-state';
 import { defaultQuestionEmbedder, findQuestionNeighbours, questionRecord, upsertQuestionVectors, type QuestionEmbedder } from './question-embeddings';
 
-/** What a usecase may be handed instead of the deployment's own (tests; the evaluation). */
+/**
+ * Where a streamed request (Phase 2.4) is told what happens: the events of
+ * `src/lib/interview/stream-events.ts`, and `ready()` once the work is under
+ * way (the round claimed, or a new session written), after which a failure is
+ * an event rather than the route's JSON error (`stream-response.ts`).
+ */
+export interface InterviewStream {
+    emit(event: InterviewStreamEvent): void;
+    ready(): void;
+}
+
+/** What a usecase may be handed instead of the deployment's own (tests; the evaluation), and a stream's sink. */
 export interface InterviewDeps {
     generator?: QuestionGenerator;
     /** `null`: no embedder (deduplication stays lexical). Omitted: the deployment's. */
     embedder?: QuestionEmbedder | null;
     packs?: PackRegistry;
+    /** A streamed request's sink (Phase 2.4); absent for the JSON routes. */
+    stream?: InterviewStream;
+    /**
+     * Aborted when the client of a streamed request goes away (Phase 2.4): the
+     * model call in flight is cut, no further call is made, and the claimed
+     * round is abandoned (FAILED, its tokens charged; the session stays
+     * resumable). Nothing of the round is written.
+     */
+    signal?: AbortSignal;
+}
+
+/** Tell the stream, if any, that a round was claimed: which fields it targets (keys only), and that the work is under way. */
+export function announceClaim(deps: InterviewDeps, claim: ClaimOutcome): void {
+    if (!deps.stream || claim.kind !== 'claimed') return;
+    const targets: PlannedField[] = claim.plan.targets.map((t) => ({ elementId: t.elementId, fieldKey: t.fieldKey }));
+    if (claim.plan.challenge) targets.push({ elementId: claim.plan.challenge.elementId, fieldKey: claim.plan.challenge.fieldKey });
+    deps.stream.emit({ type: 'planned', roundNumber: claim.roundNumber, targets });
+    deps.stream.ready();
+}
+
+/** The round's observer for a stream: drafts as each call's candidates pass validation. Never changes the round. */
+function streamObserver(stream: InterviewStream | undefined): RoundObserver | undefined {
+    if (!stream) return undefined;
+    let next = 0;
+    return {
+        callStarted: ({ index, total }) => stream.emit({ type: 'thinking', call: index, calls: total }),
+        candidatesValidated: (candidates, { reviewRequired }) => {
+            for (const c of candidates) {
+                next += 1;
+                stream.emit({
+                    type: 'draft',
+                    draftId: `draft-${next}`,
+                    question: {
+                        elementId: c.elementId,
+                        targetsFieldKeys: [...c.targetsFieldKeys],
+                        mode: c.mode,
+                        kind: c.kind,
+                        text: c.text,
+                        options: c.options ? [...c.options] : null,
+                        scaleLabels: c.scaleLabels ? { ...c.scaleLabels } : null,
+                        personaKey: c.personaKey,
+                        reviewRequired,
+                    },
+                });
+            }
+        },
+        checking: () => stream.emit({ type: 'checking' }),
+    };
 }
 
 /** A GENERATING round older than this is a claim whose process died: the next request fails it and goes on. */
@@ -260,6 +320,8 @@ export async function generateClaimedRound(
                 embed: embedder ? (texts) => embedder.embed(texts) : undefined,
                 findNeighbours: embedder ? (vectors) => neighboursOrNone(ctx, session.bookId, embedder.revision, vectors, known) : undefined,
                 findExactRepeats: (probes) => exactRepeatsOrNone(ctx, session.bookId, probes),
+                observer: streamObserver(deps.stream),
+                signal: deps.signal,
             },
         );
     } catch (err) {
@@ -285,6 +347,21 @@ export async function generateClaimedRound(
         });
         if (stopped) return;
         throw err;
+    }
+
+    if (deps.signal?.aborted) {
+        // The author went away mid-round (the stream was cancelled): nothing of
+        // the round is asked. It is abandoned — FAILED, what its calls spent
+        // charged — and the session is left as it stands, so the next round
+        // resumes it. No stop is recorded: nothing about the session stopped.
+        await runInWorkspaceContext(ctx, async (db) => {
+            await InterviewSessionRepository.lock(db, session.id);
+            const round = await InterviewRoundRepository.find(db, ctx.workspaceId, session.id, claim.roundId);
+            if (round?.status === 'GENERATING') await InterviewRoundRepository.update(db, ctx.workspaceId, claim.roundId, { status: 'FAILED', metrics: { ...output.metrics, cancelled: true } as unknown as Prisma.InputJsonValue });
+            if (output.metrics.tokensUsed > 0) await InterviewSessionRepository.addTokens(db, ctx.workspaceId, session.id, output.metrics.tokensUsed);
+        });
+        logger.info('interview.round_cancelled', { component: 'interview', sessionId: session.id, roundNumber: claim.roundNumber, calls: output.metrics.generationCalls });
+        return;
     }
 
     const records = await runInWorkspaceContext(ctx, async (db): Promise<VectorRecord[]> => {
@@ -348,6 +425,7 @@ export async function generateClaimedRound(
                 challengeQuote: q.challengeQuote,
                 dependsOnQuestionIds: dependsOnQuestionIds(planned, state),
                 dedupeKey: questionDedupeKey(dedupeTokens(q, textCtx)),
+                reviewRequired: planned.reviewRequired,
             });
             const vector = output.vectors.get(askable[planned.position - 1].position);
             if (vector && embedder) records.push(questionRecord(created.id, session.bookId, created.text, vector, embedder.revision));

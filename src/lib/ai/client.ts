@@ -84,7 +84,10 @@
  * ── THE TEST SEAM ───────────────────────────────────────────────────────────
  *
  * `fetch` replaces the network for tests (the SDK takes a custom fetch, and the
- * middleware still runs in front of it). No production caller passes it.
+ * middleware still runs in front of it). No production caller passes it. The
+ * stubbed model (`AI_MODEL_STUB=1`, Phase 2.4, `./model-stub.ts`) is the same
+ * seam taken by configuration, for a local test server: refused in a real
+ * production configuration at start-up, and never beside a key.
  */
 import Anthropic, { APIConnectionError, APIError, APIUserAbortError, type Middleware } from '@anthropic-ai/sdk';
 import { transformJSONSchema } from '@anthropic-ai/sdk/lib/transform-json-schema';
@@ -92,7 +95,8 @@ import { z } from 'zod';
 
 import { env } from '@/env';
 import { logger } from '@/lib/observability/logger';
-import { aiUnavailableReason } from './config';
+import { aiUnavailableReason, stubModelActive } from './config';
+import { stubMessagesFetch } from './model-stub';
 import { AiPromptError, AiRequestRefusedError, type AiUnavailableReason } from './errors';
 
 /** The Messages API's origin. Pinned, so the environment cannot move the traffic. */
@@ -328,7 +332,11 @@ export function clientForRun(opts: ClientOptions = {}): ClientChoice {
     // own pre-checks (`aiUnavailableReason`, `./config.ts`).
     const refusal = aiUnavailableReason(env);
     if (refusal) return { ok: false, reason: refusal };
-    const apiKey = env.ANTHROPIC_API_KEY!.trim();
+    // The stubbed model (Phase 2.4, `./model-stub.ts`): the same client, the
+    // same middleware, its fetch in place of the network. Never beside a key.
+    const stub = stubModelActive(env);
+    const apiKey = stub ? 'stubbed-model-no-key' : env.ANTHROPIC_API_KEY!.trim();
+    const fetchImpl = opts.fetch ?? (stub ? (stubMessagesFetch as typeof fetch) : undefined);
 
     const allowed: readonly string[] = (opts.serverTools ?? []).filter((t) =>
         (PERMITTED_SERVER_TOOL_TYPES as readonly string[]).includes(t),
@@ -346,7 +354,7 @@ export function clientForRun(opts: ClientOptions = {}): ClientChoice {
         logger: sdkLogger,
         openTelemetry: { propagation: false, traces: { enabled: true, contentMode: 'metadata_only' } },
         middleware: [messagesOnlyFor(opts, allowed)],
-        ...(opts.fetch ? { fetch: opts.fetch } : {}),
+        ...(fetchImpl ? { fetch: fetchImpl } : {}),
     });
     return { ok: true, client };
 }

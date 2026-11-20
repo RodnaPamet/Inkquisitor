@@ -1,6 +1,7 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import { signUp } from './helpers';
+import { STUB_BASE_URL } from './stub-server';
 
 /**
  * Accessibility of the bible pages (Phase 1.H, item 5), against the
@@ -9,6 +10,9 @@ import { signUp } from './helpers';
  *   - axe (WCAG 2.1 A and AA) finds nothing on the books list, the book
  *     board, the element page's Fields and History tabs, the create and
  *     delete dialogs, and the recently-deleted page;
+ *   - and on the interview pages and dialogs (Phase 2.4): the setup sheet, a
+ *     session with a round open, the stop dialog and a book's interviews —
+ *     against the stubbed-model server, so a round really opens;
  *   - an author can create, edit, relate and restore with the KEYBOARD ONLY:
  *     after the page is opened, every step is a key press — focus moves by
  *     Tab, controls answer Enter, Space, typing and the arrow keys — and no
@@ -158,4 +162,69 @@ test('create, edit, relate and restore with the keyboard alone', async ({ page }
     await page.keyboard.press('ArrowLeft');
     await expect(main.getByRole('tab', { name: 'Fields' })).toBeFocused();
     await expect(main.getByTestId('field-input-role')).toHaveValue('Ferryman');
+});
+
+test.describe('the interview pages (Phase 2.4, the stubbed-model server)', () => {
+    test.use({ baseURL: STUB_BASE_URL });
+
+    test('axe finds no WCAG 2.1 AA violation on the setup sheet, a session, the stop dialog and the interviews list', async ({ page }) => {
+        test.setTimeout(120_000);
+        const { slug, bookId, elementId } = await bookWithCharacter(page);
+        const main = page.getByRole('main');
+        await page.goto(`/w/${slug}/books/${bookId}/elements/${elementId}`);
+        await main.locator('#element-enrich').click();
+        await expect(page.getByRole('dialog').getByTestId('depth-preview')).toBeVisible();
+        await expectNoAxeViolations(page, 'interview setup sheet', '[role="dialog"]');
+        await page.getByRole('dialog').locator('#interview-start').click();
+        await expect(main.getByTestId('question-card').first()).toBeVisible({ timeout: 20_000 });
+        await expectNoAxeViolations(page, 'interview session, round open');
+        await main.locator('#interview-stop').click();
+        await expect(page.getByRole('dialog')).toBeVisible();
+        await expectNoAxeViolations(page, 'stop interview dialog', '[role="dialog"]');
+        await page.keyboard.press('Escape');
+        await page.goto(`/w/${slug}/books/${bookId}/interviews`);
+        await expect(main.getByTestId('interviews-table')).toContainText('Mara');
+        await expectNoAxeViolations(page, 'interviews list');
+    });
+
+    test('start an interview, answer and finish a round with the keyboard alone', async ({ page }) => {
+        test.setTimeout(120_000);
+        const { slug, bookId, elementId } = await bookWithCharacter(page);
+        const main = page.getByRole('main');
+        await page.goto(`/w/${slug}/books/${bookId}/elements/${elementId}`);
+        await expect(main.getByRole('heading', { level: 1, name: 'Mara' })).toBeVisible();
+
+        // Enrich, then Start in the sheet: Tab and Enter.
+        await tabTo(page, main.locator('#element-enrich'));
+        await page.keyboard.press('Enter');
+        const sheet = page.getByRole('dialog');
+        await expect(sheet.getByTestId('depth-preview')).toBeVisible();
+        await tabTo(page, sheet.locator('#interview-start'));
+        await page.keyboard.press('Enter');
+
+        // The round opens with focus in its first question. A number key picks
+        // (and saves), Enter moves on; a written answer is typed and Ctrl+Enter
+        // saves it and moves on. After the last, focus is on Finish round.
+        const cards = main.getByTestId('question-card');
+        await expect(cards.first()).toBeVisible({ timeout: 20_000 });
+        const count = await cards.count();
+        const focusWithin = (el: Locator) => el.evaluate((node) => node.contains(document.activeElement));
+        for (let i = 0; i < count; i++) {
+            const card = cards.nth(i);
+            await expect.poll(() => focusWithin(card)).toBe(true);
+            const kind = await card.getAttribute('data-kind');
+            if (kind === 'OPEN' || kind === 'SCENARIO') {
+                await page.keyboard.type('She keeps the ledger of every crossing.');
+                await page.keyboard.press('Control+Enter');
+                await expect(card).toHaveAttribute('data-status', 'ANSWERED', { timeout: 10_000 });
+            } else {
+                await page.keyboard.press('1');
+                await expect(card).toHaveAttribute('data-status', 'ANSWERED', { timeout: 10_000 });
+                await page.keyboard.press('Enter');
+            }
+        }
+        await expect(main.locator('#round-finish')).toBeFocused();
+        await page.keyboard.press('Enter');
+        await expect(main.locator('[data-testid="round-questions"][data-round="2"]')).toBeVisible({ timeout: 20_000 });
+    });
 });

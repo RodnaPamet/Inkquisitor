@@ -103,7 +103,8 @@ export interface PromptInput {
     sessionAnswers: readonly PromptAnswer[];
 }
 
-const ENGINE_INSTRUCTIONS = [
+/** The engine's fixed instructions: every question prompt's system text begins with them. */
+export const ENGINE_INSTRUCTIONS = [
     'You word interview questions that help an author build the bible of their own book. You never write the book.',
     '',
     'Rules every question follows:',
@@ -178,15 +179,18 @@ function fieldView(f: FieldDef): Record<string, unknown> {
     };
 }
 
-/** The complete request one persona's call sends (design 5.1). Pure. */
-export function buildGenerationRequest(input: PromptInput): GenerationRequest {
-    const guidance = [
+/** The round's product guidance: the dials in words and the packs in play. Product text only. */
+export function roundGuidance(input: PromptInput): string {
+    return [
         '## Dials',
         dialsInWords(input),
         ...input.craftPacks.flatMap((p) => ['', `## Craft pack: ${p.name}`, p.text.trim()]),
         ...(input.persona ? ['', `## Persona pack: ${input.persona.name}`, input.persona.text.trim()] : []),
     ].join('\n');
+}
 
+/** The data blocks of a question call: every piece of author text, labelled (2.1 fences them). */
+export function questionDataBlocks(input: PromptInput): AuthorDataBlock[] {
     // Labels are code (2.1's LABEL_PATTERN): numbered, never an id or a name.
     const data: AuthorDataBlock[] = [];
     input.elements.forEach((e, i) => {
@@ -208,10 +212,14 @@ export function buildGenerationRequest(input: PromptInput): GenerationRequest {
     });
     if (input.related.length > 0) data.push({ label: 'related-elements', text: JSON.stringify(input.related) });
     if (input.sessionAnswers.length > 0) data.push({ label: 'this-session', text: JSON.stringify(input.sessionAnswers) });
+    return data;
+}
 
+/** The complete request one persona's call sends (design 5.1). Pure. */
+export function buildGenerationRequest(input: PromptInput): GenerationRequest {
     return {
-        template: questionTemplateFor(guidance, input.dials.detail),
-        data,
+        template: questionTemplateFor(roundGuidance(input), input.dials.detail),
+        data: questionDataBlocks(input),
         schema: GeneratedQuestionsSchema,
         bookId: input.bookId,
         personaKey: input.personaKey,

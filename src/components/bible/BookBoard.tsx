@@ -23,12 +23,19 @@
  * (`listElements` with `kind` and `after`). Deleting the book opens
  * `<DeleteBookModal>` (export first, then a typed confirmation), for the
  * workspace's OWNER only (`canDeleteBook`, `books.delete`).
+ *
+ * Interviews (Phase 2.4): "Grill me" on the whole book (the header) and on a
+ * kind's card (every entry of that kind; a kind with no entry has nothing to
+ * ask about and offers none) open the interview setup sheet, for editors
+ * only; "Interviews" lists the book's interviews for every viewer.
  */
 import { useState } from 'react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
-import { FileDown, FileText, Plus, Trash2, Upload } from 'lucide-react';
+import { FileDown, FileText, Flame, MessagesSquare, Plus, Trash2, Upload } from 'lucide-react';
+import { InterviewLauncher } from '@/components/interview/InterviewLauncher';
+import { buttonVariants } from '@/components/ui/button-variants';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -60,6 +67,8 @@ export function BookBoard({ workspaceSlug, book, kinds, board, canEdit, canDelet
     const tStage = useTranslations('bible.stage');
     const tTransfer = useTranslations('bible.transfer');
     const tDelete = useTranslations('bible.deleteBook');
+    const tInterview = useTranslations('interview.launch');
+    const tSetup = useTranslations('interview.setup');
     const [creating, setCreating] = useState<{ kind: BibleKind | null } | null>(null);
     const [importing, setImporting] = useState(false);
     const [deleting, setDeleting] = useState(false);
@@ -77,6 +86,21 @@ export function BookBoard({ workspaceSlug, book, kinds, board, canEdit, canDelet
                 meta: <StatusBadge variant="neutral">{tStage(book.stage)}</StatusBadge>,
                 actions: (
                     <div className="flex flex-wrap items-center gap-tight">
+                        <Link href={APP_ROUTES.interviews(workspaceSlug, book.id)} className={buttonVariants({ variant: 'secondary' })} id="book-interviews">
+                            <MessagesSquare className="size-4" aria-hidden="true" />
+                            {tInterview('interviews')}
+                        </Link>
+                        {canEdit ? (
+                            <InterviewLauncher
+                                workspaceSlug={workspaceSlug}
+                                bookId={book.id}
+                                target={{ scope: 'BOOK' }}
+                                title={tSetup('titleBook')}
+                                label={tInterview('grillBook')}
+                                icon={<Flame className="size-4" aria-hidden="true" />}
+                                id="grill-book"
+                            />
+                        ) : null}
                         <Button
                             variant="secondary"
                             icon={<FileDown className="size-4" aria-hidden="true" />}
@@ -125,6 +149,7 @@ export function BookBoard({ workspaceSlug, book, kinds, board, canEdit, canDelet
                             workspaceSlug={workspaceSlug}
                             bookId={book.id}
                             onAdd={canEdit ? () => setCreating({ kind: k.kind }) : undefined}
+                            canInterview={canEdit}
                         />
                     );
                 })}
@@ -154,14 +179,19 @@ function KindCard({
     workspaceSlug,
     bookId,
     onAdd,
+    canInterview = false,
 }: {
     summary: KindSummary;
     board: BoardKindView;
     workspaceSlug: string;
     bookId: string;
     onAdd?: () => void;
+    /** The viewer may run an interview (`bible.edit`): "Grill me" on this kind. */
+    canInterview?: boolean;
 }) {
     const t = useTranslations('bible.board');
+    const tInterview = useTranslations('interview.launch');
+    const tSetup = useTranslations('interview.setup');
     // The first page came with the board; "Show more" appends the next. A new
     // board (after a create or an import re-renders the page) starts again.
     const signature = `${board.entryCount}:${board.filledFieldCount}:${board.nextCursor ?? ''}:${board.entries.map((e) => e.id).join(',')}`;
@@ -205,16 +235,31 @@ function KindCard({
                         {entryCount === 0 ? t('noEntries') : entryCount === 1 ? t('entriesOne') : t('entries', { count: entryCount })}
                     </p>
                 </div>
-                {onAdd ? (
-                    <Button
-                        variant="secondary"
-                        size="sm"
-                        icon={<Plus className="size-3.5" aria-hidden="true" />}
-                        aria-label={t('addOfKind', { kind: summary.label })}
-                        onClick={onAdd}
-                        data-testid={`add-${summary.kind}`}
-                    />
-                ) : null}
+                <div className="flex shrink-0 items-center gap-tight">
+                    {canInterview && board.entryCount > 0 ? (
+                        <InterviewLauncher
+                            workspaceSlug={workspaceSlug}
+                            bookId={bookId}
+                            target={{ scope: 'KIND', kind: summary.kind }}
+                            title={tSetup('titleKind', { kind: summary.label })}
+                            label={null}
+                            icon={<Flame className="size-3.5" aria-hidden="true" />}
+                            size="sm"
+                            aria-label={tInterview('grillKind', { kind: summary.label })}
+                            data-testid={`grill-${summary.kind}`}
+                        />
+                    ) : null}
+                    {onAdd ? (
+                        <Button
+                            variant="secondary"
+                            size="sm"
+                            icon={<Plus className="size-3.5" aria-hidden="true" />}
+                            aria-label={t('addOfKind', { kind: summary.label })}
+                            onClick={onAdd}
+                            data-testid={`add-${summary.kind}`}
+                        />
+                    ) : null}
+                </div>
             </div>
             <CompletenessMeter value={kindCompleteness} label={t('completenessOf', { kind: summary.label })} />
             {entries.length > 0 ? (

@@ -210,6 +210,20 @@ src/app-layer/usecases/      → interviews, interview-answers, interview-rounds
 src/app/api/w/[workspaceSlug]/books/[bookId]/interviews/** → start, list, read, next round, close, stop, answer, skip, decide later
 ```
 
+Phase 2.4 (the interview experience) added:
+
+```
+src/components/interview/    → InterviewSetupSheet, InterviewLauncher, InterviewSession, QuestionCard, RoundFieldsPanel,
+                               InterviewsList, use-interview-stream (lifted), messages (stop reasons and refusals in words)
+src/lib/interview/           → stream-events (SSE contract, lifted), stream-response (transport), rephrase, setup (THE 2.3 SEAM),
+                               api-client, page-model
+src/lib/ai/model-stub.ts     → the stubbed model (AI_MODEL_STUB=1): a local test server's in-process Messages API
+src/app-layer/usecases/      → interview-rephrase, interview-pages
+src/app/api/w/[workspaceSlug]/books/[bookId]/interviews/{stream,[sessionId]/rounds/stream,…/rephrase}
+src/app/w/[workspaceSlug]/books/[bookId]/interviews/{page,new,[sessionId]}
+tests/e2e/stub-server.ts     → the second E2E server (E2E_PORT + 2) with the stubbed model
+```
+
 ## Rules every change obeys
 
 These are `docs/ROADMAP.md` section 3, restated. The roadmap is authoritative
@@ -632,6 +646,34 @@ closed beta with an explicit operator flag (D5, amended 2026-11-19).
   validated with Zod at load and read from disk at `process.cwd()` (the
   Dockerfile copies the directory); a production server loads them at boot
   and exits 1 when they do not; 2.3 mounts them.
+- **The interview experience (Phase 2.4).** Starting an interview and each
+  next round STREAM (`…/interviews/stream`, `…/:sessionId/rounds/stream`,
+  `interviewStreamResponse`): a refusal before the work is under way is the
+  ordinary JSON error; after it, events (`src/lib/interview/stream-events.ts`)
+  end with `committed` or `refusal` (a code) and then `done`. The round is
+  still persisted in ONE transaction after generation: `draft` events are
+  validated candidates, shown read-only, and only the `committed` round's
+  questions are answerable. Closing the stream aborts the signal the usecase
+  hands the model call; the round is abandoned (FAILED, tokens charged, no
+  question written) and the session stays resumable. `produceRound`'s
+  observer is told, never asked (a throw is swallowed). "Ask me this
+  differently" is its own prompt (`REPHRASE_PROMPT`, fast tier); the old
+  wording travels as a data block; the rephrase replaces the question
+  (`replacesQuestionId`, the original `supersededAt`, one transaction), only
+  one of the pair is answerable (409 QUESTION_SUPERSEDED), and a round holds at
+  most `REPHRASES_PER_ROUND_MAX`. Never change `QUESTION_PROMPT`'s text or
+  version for UI work (2.3's evaluation records pin it). The setup sheet reads
+  and sends the dials ONLY through `src/lib/interview/setup.ts`. A card saves
+  each answer as it is given (a pick at once; text on save, Ctrl/⌘+Enter, or
+  leaving the box), one request at a time, keeping the answer on failure;
+  digits are bound `within` the card. Stop reasons and refusals are worded from
+  their codes (`src/components/interview/messages.ts`; the stop table is keyed
+  on `StopReason`, so a new reason fails `tsc` until worded); client code never
+  spells a server variable's name. `AI_MODEL_STUB=1` (`src/lib/ai/model-stub.ts`)
+  is `clientForRun`'s fetch seam taken by configuration, for a local test
+  server: production refuses it unless `APP_URL` and `NEXTAUTH_URL` are both
+  loopback, and anywhere beside `ANTHROPIC_API_KEY`. The interview E2E runs
+  against the second E2E server (`test.use({ baseURL: STUB_BASE_URL })`).
 - **Sanitising author text.** Every author-text write sanitises at the
   usecase layer before it is stored: plain text through `plainLine` /
   `plainBlock` (`src/lib/bible/text.ts`, over `sanitizePlainText`), rich text
