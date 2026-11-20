@@ -584,11 +584,22 @@ export async function runServerToolLoop(input: ServerToolLoopInput, deps: Server
                 : { ...ZERO, searches: seenSearches, fetches: seenFetches };
             let cost = costMicroUsd(resolved.model, usage) + webSearchCostMicroUsd(usage.searches);
             let costEstimated = false;
+            if (partial) {
+                // Cut off mid-stream (issue #30, item 10), by any cause — the
+                // deadline, the caller, the tripwire or a non-text fetch: the
+                // provider generates on until it sees the disconnect, so the
+                // unseen output is charged at its bound, marked estimated.
+                const unseen = Math.max(0, request.max_tokens - partial.outputTokens);
+                if (unseen > 0) {
+                    cost += costMicroUsd(resolved.model, { ...ZERO, outputTokens: unseen });
+                    costEstimated = true;
+                }
+            }
             if (trip.nonText) {
                 // Refused by this layer, not failed: the request is settled
                 // (TOOL_USE_REFUSED), what it read in full is kept, and the
                 // turn stops with the text pages gathered so far.
-                await settle({ callId, startedAt, t0, usage, cost, costEstimated: false, worstCase, attempts: 1, outcome: 'REFUSED_GUARD', errorCode: 'TOOL_USE_REFUSED' });
+                await settle({ callId, startedAt, t0, usage, cost, costEstimated, worstCase, attempts: 1, outcome: 'REFUSED_GUARD', errorCode: 'TOOL_USE_REFUSED' });
                 const salvaged = readToolResults(stream.currentMessage?.content ?? []);
                 searches.push(...salvaged.searches);
                 fetches.push(...salvaged.fetches.filter((f) => f.text !== null));
@@ -601,13 +612,6 @@ export async function runServerToolLoop(input: ServerToolLoopInput, deps: Server
             if (!partial && ending.errorCode !== 'PROVIDER_HTTP_ERROR' && ending.errorCode !== 'REQUEST_REFUSED') {
                 costEstimated = true;
                 cost += worstCaseCostMicroUsd(resolved.model, { inputTokens: inputTokenBound(request), outputTokens: 0 });
-            } else if (partial) {
-                // Cut off mid-stream (issue #30, item 10): the unseen output is charged at its bound, marked estimated.
-                const unseen = Math.max(0, request.max_tokens - partial.outputTokens);
-                if (unseen > 0) {
-                    cost += costMicroUsd(resolved.model, { ...ZERO, outputTokens: unseen });
-                    costEstimated = true;
-                }
             }
             await settle({ callId, startedAt, t0, usage, cost, costEstimated, worstCase, attempts: 1, outcome: ending.outcome, errorCode: ending.errorCode });
             return fail(ending, callId);

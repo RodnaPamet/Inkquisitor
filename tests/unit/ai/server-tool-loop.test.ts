@@ -110,6 +110,18 @@ describe('a fetched PDF (issue #41 item 1)', () => {
         expect(ledger.records[0]).toMatchObject({ outcome: 'REFUSED_GUARD', errorCode: 'TOOL_USE_REFUSED' });
     });
 
+    it('the PDF stop is a stream cut off mid-way like any other: its unseen output is charged at the bound, marked estimated (issue #30 item 10)', async () => {
+        const pdfTurn: FakeTurn = { kind: 'events', events: gatherEvents({ query: 'falconry', pages: [PAGE], pdfUrls: ['https://reports.example.org/hawks.pdf'], stop: 'pause_turn' }) };
+        const { api, ledger, promise } = run([pdfTurn]);
+        await promise;
+        const record = ledger.records[0];
+        expect(record.costEstimated).toBe(true);
+        const maxTokens = (api.requests[0] as { max_tokens: number }).max_tokens;
+        // Input reported at message_start, the search and fetch seen, and the output up to max_tokens.
+        expect(record.costMicroUsd).toBeGreaterThanOrEqual(maxTokens * 10 + WEB_SEARCH_MICRO_USD_PER_REQUEST);
+        expect(record.costMicroUsd).toBeLessThanOrEqual(record.worstCaseMicroUsd);
+    });
+
     it('reserves one context window of input on top while a fetch remains, and none once fetches are spent', () => {
         const request = { model: 'claude-sonnet-5-5', max_tokens: 2_000, messages: [] };
         const withFetch = serverTurnWorstCase('claude-sonnet-5-5', request, { searches: 0, fetches: 1, maxContentTokens: 0 });

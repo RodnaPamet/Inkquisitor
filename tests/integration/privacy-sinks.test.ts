@@ -6,7 +6,8 @@
  * relation's note, a concept note, an interview answer, the reconcile step's
  * proposals, a rephrase, a research brief, an attached file, a fetched page
  * and its findings, a model answer that fails validation, and an unexpected
- * error whose message carries it — through the product's own usecases, the
+ * error whose message carries it, and a model-call rate-limit refusal of a
+ * request about it — through the product's own usecases, the
  * model layer (over the fake Messages API) and the request wrapper. Then every
  * sink is read: every log line the logger was handed (as the redacting
  * formatter would write it, and as it was handed), every span an in-memory
@@ -48,6 +49,7 @@ import { callStructured } from '@/app-layer/usecases/model-calls';
 import { getInterview, startInterview } from '@/app-layer/usecases/interviews';
 import { answerQuestion } from '@/app-layer/usecases/interview-answers';
 import { rephraseQuestion } from '@/app-layer/usecases/interview-rephrase';
+import { chargeModelCalls, MODEL_CALLS_LIMIT } from '@/lib/security/model-call-rate-limit';
 import { closeRoundAndReconcile } from '@/app-layer/usecases/enrichment-reconcile';
 import { attachResearchSource, createResearchBrief, dispatchResearchRun } from '@/app-layer/usecases/research-briefs';
 import { executeResearchRun } from '@/app-layer/usecases/research-run';
@@ -155,6 +157,23 @@ it('a marker planted in every author-text path reaches no log line, span, Sentry
     const view = await startInterview(ctx, bookId, { scope: 'ELEMENT', elementId: ilse.id, depth: 2, detail: 3 }, { generator, embedder: stubQuestionEmbedder });
     const q = view.round!.questions.find((x) => x.kind === 'OPEN' || x.kind === 'SCENARIO') ?? view.round!.questions[0];
     await rephraseQuestion(ctx, bookId, view.session.id, q.id, { generator, embedder: stubQuestionEmbedder }).catch(() => undefined);
+    // The workspace's model-call rate limit (2.H, issue #32 item 5) refusing a request about author text, through
+    // the wrapper: a 429 naming a code, its body and every sink without the marker. The limits are off in tests
+    // unless switched on, as here, for this request alone.
+    const limited = (await getInterview(ctx, bookId, view.session.id)).round!.questions.find((x) => x.id !== q.id && x.answer === null)!;
+    process.env.RATE_LIMIT_ENABLED = '1';
+    try {
+        chargeModelCalls(ctx.workspaceId, MODEL_CALLS_LIMIT.maxAttempts);
+        const refused = await withApiErrorHandling(async () =>
+            Response.json(await rephraseQuestion(ctx, bookId, view.session.id, limited.id, { generator, embedder: stubQuestionEmbedder })),
+        )(new NextRequest('http://localhost/api/w/x/books/b/interviews/s/questions/q/rephrase', { method: 'POST' }), {});
+        expect(refused.status).toBe(429);
+        const refusal = await refused.text();
+        expect(refusal).toContain('MODEL_RATE_LIMITED');
+        expect(refusal.toLowerCase()).not.toContain(MARKER.toLowerCase());
+    } finally {
+        delete process.env.RATE_LIMIT_ENABLED;
+    }
     for (const question of (await getInterview(ctx, bookId, view.session.id)).round!.questions) {
         const body = question.kind === 'CHOICE' || question.kind === 'EITHER_OR' ? { choice: question.options![0] } : question.kind === 'SCALE' ? { scale: 3 } : { text: marked('She fears the dark water.') };
         await answerQuestion(ctx, bookId, view.session.id, question.id, body).catch(() => undefined);
@@ -195,6 +214,7 @@ it('a marker planted in every author-text path reaches no log line, span, Sentry
     expect(read['logs (as written, after the redacting formatter)']).toContain('request completed');
     expect(read['OpenTelemetry spans']).toContain('api.request');
     expect(read.AiCallLog).toContain('interview.reconcile');
+    expect(read.AiCallLog).toContain('interview.rephrase');
     expect(read['audit details']).toContain('BIBLE_ELEMENT_CREATED');
     expect(read.Sentry).toContain('Error');
     for (const [sink, text] of Object.entries(read)) {
