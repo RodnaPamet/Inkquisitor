@@ -48,7 +48,7 @@ import { VersionNumberParam } from '@/app-layer/schemas/bible';
 import { getFieldDef, getRelationType, getTemplate } from '@/lib/bible/templates';
 import { parseStoredFreeform, sanitiseFreeformForStorage } from '@/lib/canvas/freeform';
 import { MAX_MAP_EDGES, MAX_MAP_NODES, SNAPSHOT_LIST_MAX } from '@/lib/canvas/limits';
-import { mapKindFromSlug, type StoryMapKindValue } from '@/lib/canvas/map-kinds';
+import { STORY_MAP_KINDS, mapKindFromSlug, type StoryMapKindValue } from '@/lib/canvas/map-kinds';
 import { parseMapState, serialiseMapState, type MapEdgeRow, type MapNodeRow, type MapState } from '@/lib/canvas/map-state';
 import { runInWorkspaceContext, type PrismaTx } from '@/lib/db/rls-middleware';
 import { ConflictError, NotFoundError, ValidationError } from '@/lib/errors/types';
@@ -106,6 +106,8 @@ export interface MapSnapshotMetaView {
     nodeCount: number;
     edgeCount: number;
     restoredFromVersion: number | null;
+    /** No save wrote this version: a bible deletion took nodes or edges off the map (D20). */
+    fromBibleDeletion: boolean;
     createdAt: string;
     createdByName: string | null;
 }
@@ -408,6 +410,7 @@ export async function listMapSnapshots(
                 nodeCount: r.nodeCount,
                 edgeCount: r.edgeCount,
                 restoredFromVersion: r.restoredFromVersion,
+                fromBibleDeletion: r.fromBibleDeletion,
                 createdAt: r.createdAt.toISOString(),
                 createdByName: r.createdBy?.name ?? null,
             })),
@@ -431,6 +434,7 @@ export async function getMapSnapshot(ctx: WorkspaceRequestContext, bookId: strin
             nodeCount: row.nodeCount,
             edgeCount: row.edgeCount,
             restoredFromVersion: row.restoredFromVersion,
+            fromBibleDeletion: row.fromBibleDeletion,
             createdAt: row.createdAt.toISOString(),
             createdByName: null,
             ...state,
@@ -490,6 +494,64 @@ export async function restoreMapSnapshot(
         });
     } catch (err) {
         return mapReferenceGone(err);
+    }
+}
+
+// ─── Deletions from the bible ───────────────────────────────────────
+
+/** A book's maps as they stood before a bible deletion, by id. */
+export type BookMapVersions = ReadonlyMap<string, number>;
+
+/**
+ * Take every map lock of the book (the same locks a save takes, in one fixed
+ * order) and read the maps' versions. A usecase that deletes a bible element
+ * or relation calls this BEFORE the delete, inside its transaction, and
+ * `recordMapsAfterBibleDeletion` after it. Holding the locks first means no
+ * save of these maps runs between the two (so the snapshot written is exactly
+ * the state at the version the cascade reached), and the deletion never holds
+ * a row a save is waiting for while it waits on that save's rows (no
+ * deadlock).
+ */
+export async function lockMapsForBibleDeletion(db: PrismaTx, ctx: WorkspaceRequestContext, bookId: string): Promise<BookMapVersions> {
+    await StoryMapRepository.lockAll(db, bookId, STORY_MAP_KINDS);
+    const maps = await StoryMapRepository.listForBook(db, ctx.workspaceId, bookId);
+    return new Map(maps.map((m) => [m.id, m.version] as const));
+}
+
+/**
+ * After a bible deletion, write the snapshot of every map its cascade moved
+ * (decision D20: history never skips a version). The cascade's trigger moved
+ * each such map's version once; the snapshot is the map as it now stands,
+ * attributed to the person who deleted, marked `fromBibleDeletion`. The
+ * deferred `story_map_version_has_snapshot` trigger refuses the transaction
+ * at commit if a moved map is left without one.
+ */
+export async function recordMapsAfterBibleDeletion(db: PrismaTx, ctx: WorkspaceRequestContext, bookId: string, before: BookMapVersions): Promise<void> {
+    const maps = await StoryMapRepository.listForBook(db, ctx.workspaceId, bookId);
+    for (const map of maps) {
+        const was = before.get(map.id);
+        if (was === undefined || map.version === was) continue;
+        const state = await readState(db, ctx, bookId, map);
+        await MapSnapshotRepository.create(db, ctx.workspaceId, {
+            mapId: map.id,
+            version: map.version,
+            snapshot: serialiseMapState(state),
+            nodeCount: state.nodes.length,
+            edgeCount: state.edges.length,
+            restoredFromVersion: null,
+            fromBibleDeletion: true,
+            createdById: ctx.userId ?? null,
+        });
+        await logEvent(
+            ctx,
+            {
+                action: 'STORY_MAP_CASCADED',
+                entityType: 'StoryMap',
+                entityId: map.id,
+                details: { bookId, kind: map.kind, version: map.version, nodeCount: state.nodes.length, edgeCount: state.edges.length },
+            },
+            { db },
+        );
     }
 }
 

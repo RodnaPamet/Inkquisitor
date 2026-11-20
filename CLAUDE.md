@@ -976,9 +976,13 @@ closed beta with an explicit operator flag (D5, amended 2026-11-19).
   nothing; every other save writes one `MapSnapshot` (append-only by trigger,
   P0001 `MAP_SNAPSHOT_APPEND_ONLY`). The client stops on a 409 and offers
   Reload or an explicit save-over, never a retry. Deleting an element or
-  relation cascades to its nodes and edges and bumps the map's version
-  (trigger), so an open tab is refused; a restore is a NEW save and drops (and
-  counts) what the bible no longer holds. The freeform layer (sticky notes) is
+  relation cascades to its nodes and edges and bumps the map's version ONCE
+  (trigger), so an open tab is refused, and writes that version's snapshot
+  (D20: every version has one; a deferred trigger refuses a version without
+  one at commit): a usecase that deletes from the bible calls
+  `lockMapsForBibleDeletion` BEFORE the delete and
+  `recordMapsAfterBibleDeletion` after it. A restore is a NEW save and drops
+  (and counts) what the bible no longer holds. The freeform layer (sticky notes) is
   author text: encrypted, bounded, prototype keys and the canvas's own record
   types refused, strings sanitised (`sanitiseFreeformForStorage`). An arrow
   between two nodes becomes an edge only along a relation the book holds.

@@ -74,6 +74,7 @@ const LIST_QUERY_INDEXES: readonly ListQueryIndex[] = [
     { model: 'ResearchProposal', fields: ['workspaceId', 'runId', 'createdAt'], justification: 'a run’s proposals in the order they were made' },
     { model: 'ResearchProposal', fields: ['elementId', 'fieldKey'], justification: 'the other pending research proposals for one field (superseded on an acceptance)' },
     { model: 'ResearchEgress', fields: ['workspaceId', 'runId', 'position'], justification: 'a run’s queries and fetch URLs in order (decision D15, the run’s result page)' },
+    { model: 'StoryMap', fields: ['bookId', 'kind'], justification: 'a book’s maps, one of each kind, which a bible deletion locks and snapshots (Phase 3.1, D20)' },
     { model: 'MapNode', fields: ['mapId', 'bibleElementId'], justification: 'a story map’s nodes, by element (Phase 3.1)' },
     { model: 'MapEdge', fields: ['mapId', 'bibleRelationId'], justification: 'a story map’s edges, by relation (Phase 3.1)' },
     { model: 'MapSnapshot', fields: ['mapId', 'version'], justification: 'a story map’s history, newest save first (Phase 3.1)' },

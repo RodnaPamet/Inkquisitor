@@ -34,6 +34,25 @@ export const StoryMapRepository = {
         await db.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${'story-map:' + bookId + ':' + kind}))`;
     },
 
+    /**
+     * Every map lock of a book, in one fixed order: what a deletion from the
+     * bible takes BEFORE it deletes, so no save of any of the book's maps
+     * interleaves with it (and the two never wait on each other's rows).
+     */
+    async lockAll(db: Db, bookId: string, kinds: readonly StoryMapKind[]) {
+        for (const kind of kinds) await StoryMapRepository.lock(db, bookId, kind);
+    },
+
+    /** A book's maps (at most one of each kind, so three at most). */
+    listForBook(db: Db, workspaceId: string, bookId: string) {
+        return db.storyMap.findMany({
+            where: { workspaceId, bookId },
+            select: { id: true, kind: true, version: true, freeformJson: true },
+            orderBy: { kind: 'asc' },
+            take: 3,
+        });
+    },
+
     find(db: Db, workspaceId: string, bookId: string, kind: StoryMapKind) {
         return db.storyMap.findFirst({
             where: { workspaceId, bookId, kind },
@@ -105,7 +124,16 @@ export const MapSnapshotRepository = {
     create(
         db: Db,
         workspaceId: string,
-        data: { mapId: string; version: number; snapshot: string; nodeCount: number; edgeCount: number; restoredFromVersion: number | null; createdById: string },
+        data: {
+            mapId: string;
+            version: number;
+            snapshot: string;
+            nodeCount: number;
+            edgeCount: number;
+            restoredFromVersion: number | null;
+            fromBibleDeletion?: boolean;
+            createdById: string | null;
+        },
     ) {
         return db.mapSnapshot.create({
             data: {
@@ -116,6 +144,7 @@ export const MapSnapshotRepository = {
                 nodeCount: data.nodeCount,
                 edgeCount: data.edgeCount,
                 restoredFromVersion: data.restoredFromVersion,
+                fromBibleDeletion: data.fromBibleDeletion ?? false,
                 createdById: data.createdById,
             },
             select: { id: true },
@@ -131,6 +160,7 @@ export const MapSnapshotRepository = {
                 nodeCount: true,
                 edgeCount: true,
                 restoredFromVersion: true,
+                fromBibleDeletion: true,
                 createdAt: true,
                 createdBy: { select: { name: true } },
             },
@@ -142,7 +172,7 @@ export const MapSnapshotRepository = {
     find(db: Db, workspaceId: string, mapId: string, version: number) {
         return db.mapSnapshot.findFirst({
             where: { workspaceId, mapId, version },
-            select: { version: true, snapshot: true, nodeCount: true, edgeCount: true, restoredFromVersion: true, createdAt: true },
+            select: { version: true, snapshot: true, nodeCount: true, edgeCount: true, restoredFromVersion: true, fromBibleDeletion: true, createdAt: true },
         });
     },
 };

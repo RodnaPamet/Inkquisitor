@@ -69,6 +69,7 @@ import {
     writeFieldValues,
     type VersionMeta,
 } from './bible-common';
+import { lockMapsForBibleDeletion, recordMapsAfterBibleDeletion } from './story-maps';
 
 // ─── Views ──────────────────────────────────────────────────────────
 
@@ -467,7 +468,12 @@ export async function deleteElement(ctx: WorkspaceRequestContext, bookId: string
     return runInWorkspaceContext(ctx, async (db) => {
         await BibleElementRepository.lock(db, elementId);
         const element = await requireElement(db, ctx, bookId, elementId);
+        // The book's map locks BEFORE the delete: its cascade takes the
+        // element's nodes and edges off the maps, and each map it moves gets
+        // its snapshot (decision D20).
+        const maps = await lockMapsForBibleDeletion(db, ctx, bookId);
         if ((await BibleElementRepository.remove(db, ctx.workspaceId, bookId, elementId)) === 0) throw new NotFoundError('Element not found.');
+        await recordMapsAfterBibleDeletion(db, ctx, bookId, maps);
         await logEvent(ctx, { action: 'BIBLE_ELEMENT_DELETED', entityType: 'BibleElement', entityId: elementId, details: { bookId, kind: element.kind } }, { db });
         return { id: elementId };
     });

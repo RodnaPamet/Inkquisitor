@@ -77,6 +77,7 @@ CREATE TABLE "MapSnapshot" (
     "nodeCount" INTEGER NOT NULL,
     "edgeCount" INTEGER NOT NULL,
     "restoredFromVersion" INTEGER,
+    "fromBibleDeletion" BOOLEAN NOT NULL DEFAULT false,
     "createdById" TEXT,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
@@ -210,7 +211,8 @@ ALTER TABLE "MapNode" ADD CONSTRAINT "MapNode_shape"
 ALTER TABLE "MapSnapshot" ADD CONSTRAINT "MapSnapshot_shape"
     CHECK ("version" >= 1
        AND "nodeCount" >= 0 AND "edgeCount" >= 0
-       AND ("restoredFromVersion" IS NULL OR ("restoredFromVersion" >= 1 AND "restoredFromVersion" < "version")));
+       AND ("restoredFromVersion" IS NULL OR ("restoredFromVersion" >= 1 AND "restoredFromVersion" < "version"))
+       AND NOT ("fromBibleDeletion" AND "restoredFromVersion" IS NOT NULL));
 
 -- ═══════════════════════════════════════════════════════════════════
 -- MapSnapshot is append-only
@@ -275,7 +277,7 @@ CREATE TRIGGER map_snapshot_no_truncate
     FOR EACH STATEMENT EXECUTE FUNCTION map_snapshot_no_truncate();
 
 -- ═══════════════════════════════════════════════════════════════════
--- A bible deletion moves the map's version
+-- A bible deletion moves the map's version, once, and is a snapshot
 -- ═══════════════════════════════════════════════════════════════════
 --
 -- Deleting an element or a relation cascades to its nodes and edges: the map
@@ -292,10 +294,40 @@ CREATE TRIGGER map_snapshot_no_truncate
 -- The map's own save deletes its nodes and edges while their element and
 -- relation still exist, and moves the version itself, conditionally, exactly
 -- once. When the map itself is going (its book's or workspace's cascade) the
--- UPDATE finds no row and does nothing. No snapshot is written: a cascade is
--- not a save, so the version it reaches has none (the history lists saves).
--- (`pg_trigger_depth()` cannot tell them apart: a cascaded delete's row
--- triggers fire at depth 1, measured.)
+-- UPDATE finds no row and does nothing. (`pg_trigger_depth()` cannot tell them
+-- apart: a cascaded delete's row triggers fire at depth 1, measured.)
+--
+-- ONCE PER TRANSACTION (decision D20). One deletion can take a node and
+-- several edges; the version moves once for all of them, recorded in a
+-- transaction-local setting keyed by the map, so the deletion is ONE version.
+--
+-- EVERY VERSION HAS ITS SNAPSHOT (decision D20: history never skips a
+-- version). The snapshot is encrypted by the application, which a trigger
+-- cannot do, so the deleting usecase writes it in the same transaction
+-- (`recordMapsAfterBibleDeletion`, under every map lock of the book, taken
+-- BEFORE the delete so no save interleaves), and the deferred constraint
+-- trigger below refuses, at commit, a map left at a version with no snapshot.
+-- A map gone by then (its book's purge) is not asked.
+--
+-- Concurrency with a save: the deleting usecase takes the book's map locks
+-- before the element's or relation's row, and a save takes its map's lock
+-- before any row, so the two never hold each other's rows: no deadlock, and
+-- the deletion's snapshot is exactly the state at its version.
+
+CREATE OR REPLACE FUNCTION map_bump_once_for_cascade(map_id TEXT) RETURNS void
+LANGUAGE plpgsql
+VOLATILE
+AS $$
+DECLARE
+    marker TEXT := 'inkquisitor.map_cascade_' || md5(map_id);
+BEGIN
+    IF current_setting(marker, true) IS DISTINCT FROM txid_current()::text THEN
+        UPDATE "StoryMap" SET "version" = "version" + 1, "updatedAt" = CURRENT_TIMESTAMP
+        WHERE "id" = map_id;
+        PERFORM set_config(marker, txid_current()::text, true);
+    END IF;
+END;
+$$;
 
 CREATE OR REPLACE FUNCTION map_node_bump_on_cascade() RETURNS trigger
 LANGUAGE plpgsql
@@ -303,8 +335,7 @@ VOLATILE
 AS $$
 BEGIN
     IF NOT EXISTS (SELECT 1 FROM "BibleElement" WHERE "id" = OLD."bibleElementId") THEN
-        UPDATE "StoryMap" SET "version" = "version" + 1, "updatedAt" = CURRENT_TIMESTAMP
-        WHERE "id" = OLD."mapId";
+        PERFORM map_bump_once_for_cascade(OLD."mapId");
     END IF;
     RETURN OLD;
 END;
@@ -316,8 +347,7 @@ VOLATILE
 AS $$
 BEGIN
     IF NOT EXISTS (SELECT 1 FROM "BibleRelation" WHERE "id" = OLD."bibleRelationId") THEN
-        UPDATE "StoryMap" SET "version" = "version" + 1, "updatedAt" = CURRENT_TIMESTAMP
-        WHERE "id" = OLD."mapId";
+        PERFORM map_bump_once_for_cascade(OLD."mapId");
     END IF;
     RETURN OLD;
 END;
@@ -332,3 +362,31 @@ DROP TRIGGER IF EXISTS map_edge_bump_on_cascade ON "MapEdge";
 CREATE TRIGGER map_edge_bump_on_cascade
     AFTER DELETE ON "MapEdge"
     FOR EACH ROW EXECUTE FUNCTION map_edge_bump_on_cascade();
+
+CREATE OR REPLACE FUNCTION story_map_version_has_snapshot() RETURNS trigger
+LANGUAGE plpgsql
+VOLATILE
+AS $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM "StoryMap" WHERE "id" = NEW."id")
+       AND NOT EXISTS (SELECT 1 FROM "MapSnapshot" WHERE "mapId" = NEW."id" AND "version" = NEW."version") THEN
+        RAISE EXCEPTION 'MAP_VERSION_WITHOUT_SNAPSHOT: story map % reached version % with no snapshot', NEW."id", NEW."version"
+            USING ERRCODE = 'P0001';
+    END IF;
+    RETURN NULL;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS story_map_version_has_snapshot_insert ON "StoryMap";
+CREATE CONSTRAINT TRIGGER story_map_version_has_snapshot_insert
+    AFTER INSERT ON "StoryMap"
+    DEFERRABLE INITIALLY DEFERRED
+    FOR EACH ROW EXECUTE FUNCTION story_map_version_has_snapshot();
+
+DROP TRIGGER IF EXISTS story_map_version_has_snapshot_update ON "StoryMap";
+CREATE CONSTRAINT TRIGGER story_map_version_has_snapshot_update
+    AFTER UPDATE OF "version" ON "StoryMap"
+    DEFERRABLE INITIALLY DEFERRED
+    FOR EACH ROW
+    WHEN (OLD."version" IS DISTINCT FROM NEW."version")
+    EXECUTE FUNCTION story_map_version_has_snapshot();

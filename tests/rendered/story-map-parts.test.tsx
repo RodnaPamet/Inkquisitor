@@ -72,9 +72,9 @@ describe('MapConflictNotice', () => {
 
 const SNAPSHOTS = {
     snapshots: [
-        { version: 3, nodeCount: 2, edgeCount: 1, restoredFromVersion: 1, createdAt: '2026-11-20T10:00:00.000Z', createdByName: 'Ada' },
-        { version: 2, nodeCount: 2, edgeCount: 0, restoredFromVersion: null, createdAt: '2026-11-20T09:00:00.000Z', createdByName: null },
-        { version: 1, nodeCount: 1, edgeCount: 0, restoredFromVersion: null, createdAt: '2026-11-20T08:00:00.000Z', createdByName: null },
+        { version: 3, nodeCount: 2, edgeCount: 1, restoredFromVersion: 1, fromBibleDeletion: false, createdAt: '2026-11-20T10:00:00.000Z', createdByName: 'Ada' },
+        { version: 2, nodeCount: 2, edgeCount: 0, restoredFromVersion: null, fromBibleDeletion: true, createdAt: '2026-11-20T09:00:00.000Z', createdByName: 'Ada' },
+        { version: 1, nodeCount: 1, edgeCount: 0, restoredFromVersion: null, fromBibleDeletion: false, createdAt: '2026-11-20T08:00:00.000Z', createdByName: null },
     ],
     truncated: false,
 };
@@ -106,6 +106,10 @@ describe('CanvasHistorySidebar', () => {
         expect(rows[0]).toHaveTextContent('Current');
         expect(rows[0]).toHaveTextContent('Restored from version 1');
         expect(rows[0]).not.toHaveTextContent('Restore\b');
+        // A version a bible deletion made (D20) says so, and names who deleted.
+        expect(rows[1]).toHaveTextContent('An entry or relation was deleted from the bible');
+        expect(rows[1]).toHaveTextContent('Ada');
+        expect(rows[0]).not.toHaveTextContent('deleted from the bible');
         expect(screen.getAllByTestId('canvas-history-restore')).toHaveLength(2);
         fireEvent.click(screen.getAllByTestId('canvas-history-diff')[0]);
         expect(props.onDiffRequest).toHaveBeenCalledWith(2);

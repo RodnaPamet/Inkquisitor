@@ -1196,6 +1196,7 @@
             "current": "Current",
             "counts": "{nodes, plural, one {# node} other {# nodes}} · {edges, plural, one {# edge} other {# edges}}",
             "restoredFrom": "Restored from version {version}",
+            "fromBibleDeletion": "An entry or relation was deleted from the bible",
             "diff": "Compare",
             "restore": "Restore",
             "restoring": "Restoring…",

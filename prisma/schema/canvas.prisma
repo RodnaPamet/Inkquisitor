@@ -32,9 +32,11 @@
 //  `src/lib/security/encrypted-fields.ts`. Nodes and edges carry no text:
 //  names come from the bible.
 //
-//  MapSnapshot is APPEND-ONLY, one per save: a trigger refuses UPDATE and
+//  MapSnapshot is APPEND-ONLY, one per version: a trigger refuses UPDATE and
 //  DELETE for every role, except its map's cascade and the clearing of
-//  `createdById` when that person is deleted.
+//  `createdById` when that person is deleted. Every version a map reaches
+//  has its snapshot, a bible deletion's included (decision D20; a deferred
+//  trigger refuses a version without one at commit).
 // ─────────────────────────────────────────────────────────────────
 
 model StoryMap {
@@ -120,6 +122,9 @@ model MapSnapshot {
   edgeCount           Int
   /// Set when the save was a restore of an earlier snapshot.
   restoredFromVersion Int?
+  /// Set when no save wrote this version: a bible deletion took nodes or
+  /// edges off the map (decision D20: history never skips a version).
+  fromBibleDeletion   Boolean  @default(false)
   createdById         String?
   createdAt           DateTime @default(now())
 

@@ -129,6 +129,7 @@ export function CanvasHistorySidebar({
                                             {r.restoredFromVersion !== null ? (
                                                 <span className="text-xs text-content-muted">{t('restoredFrom', { version: r.restoredFromVersion })}</span>
                                             ) : null}
+                                            {r.fromBibleDeletion ? <span className="text-xs text-content-muted">{t('fromBibleDeletion')}</span> : null}
                                             {!isCurrent ? (
                                                 <div className="flex items-center gap-tight">
                                                     <Button variant="secondary" size="xs" onClick={() => onDiffRequest(r.version)} data-testid="canvas-history-diff">

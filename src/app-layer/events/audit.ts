@@ -66,7 +66,8 @@ export type AuditAction =
     | 'INTERVIEW_DEFAULTS_UPDATED'
     | 'INTERVIEW_QUESTION_REPHRASED'
     | 'STORY_MAP_SAVED'
-    | 'STORY_MAP_RESTORED';
+    | 'STORY_MAP_RESTORED'
+    | 'STORY_MAP_CASCADED';
 
 export interface AuditEventPayload {
     action: AuditAction;

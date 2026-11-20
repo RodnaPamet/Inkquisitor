@@ -184,26 +184,57 @@ describe('references stay inside the book', () => {
     });
 });
 
+async function snapshotVersions(bookId: string) {
+    const map = (await mapRow(bookId))!;
+    return (await prisma.mapSnapshot.findMany({ where: { mapId: map.id }, orderBy: { version: 'asc' }, select: { version: true } })).map((s) => s.version);
+}
+
+/** Every version 1..current has exactly one snapshot (D20: history never skips a version). */
+async function expectUnbrokenHistory(bookId: string) {
+    const map = (await mapRow(bookId))!;
+    expect(await snapshotVersions(bookId)).toEqual(Array.from({ length: map.version }, (_, i) => i + 1));
+}
+
+/** Resolve when some backend is waiting on an advisory lock (the usecase reached the map lock). */
+async function untilWaitingOnAdvisoryLock() {
+    for (let i = 0; i < 200; i++) {
+        const [row] = await prisma.$queryRaw<Array<{ n: bigint }>>`SELECT count(*) AS n FROM pg_locks WHERE locktype = 'advisory' AND NOT granted`;
+        if (Number(row.n) > 0) return;
+        await new Promise((r) => setTimeout(r, 25));
+    }
+    throw new Error('nothing waited on the map lock');
+}
+
 describe('the bible’s deletions', () => {
-    it('deleting an element removes its node and edges and moves the version, so an open tab’s save is refused', async () => {
+    it('deleting an element removes its node and edges and moves the version ONCE, with a snapshot of the map as it now stands (D20)', async () => {
         const book = await freshBook('cascade');
         const c = await createElement(ctx, book.bookId, { kind: 'SETTING', name: 'C cascade' });
         await saveStoryMap(ctx, book.bookId, 'plot', {
             expectedVersion: 0,
             nodes: [node(book.a), node(book.b), node(c.id)],
             edges: [{ relationId: book.rel, sourceElementId: book.a, targetElementId: book.b }],
-            freeform: [],
+            freeform: [note('shape:n1', 'kept through the cascade')],
         });
         await deleteElement(ctx, book.bookId, book.b);
         const after = await getStoryMap(ctx, book.bookId, 'plot');
         expect(after.nodes.map((n) => n.elementId).sort()).toEqual([book.a, c.id].sort());
         expect(after.edges).toEqual([]);
-        expect(after.version).toBeGreaterThan(1);
+        // A node and an edge went: one deletion, one version.
+        expect(after.version).toBe(2);
+        await expectUnbrokenHistory(book.bookId);
+        const snapshot = await getMapSnapshot(ctx, book.bookId, 'plot', '2');
+        expect(snapshot).toMatchObject({ fromBibleDeletion: true, restoredFromVersion: null, nodeCount: 2, edgeCount: 0 });
+        expect(snapshot.nodes.map((n) => n.elementId).sort()).toEqual([book.a, c.id].sort());
+        expect(snapshot.freeform).toEqual([note('shape:n1', 'kept through the cascade')]);
+        const row = await prisma.mapSnapshot.findFirst({ where: { mapId: (await mapRow(book.bookId))!.id, version: 2 } });
+        expect(row?.createdById).toBe(ctx.userId);
+        const listed = (await listMapSnapshots(ctx, book.bookId, 'plot')).snapshots[0];
+        expect(listed).toMatchObject({ version: 2, fromBibleDeletion: true });
         const stale = await refusal(saveStoryMap(ctx, book.bookId, 'plot', { expectedVersion: 1, nodes: [node(book.a), node(book.b)], edges: [], freeform: [] }));
         expect(stale).toMatchObject({ status: 409, reason: 'VERSION_CONFLICT' });
     });
 
-    it('removing a relation removes its edge and moves the version too', async () => {
+    it('removing a relation removes its edge, moves the version and writes its snapshot too', async () => {
         const book = await freshBook('rel-cascade');
         await saveStoryMap(ctx, book.bookId, 'plot', { expectedVersion: 0, nodes: [node(book.a), node(book.b)], edges: [{ relationId: book.rel, sourceElementId: book.a, targetElementId: book.b }], freeform: [] });
         await removeRelation(ctx, book.bookId, book.rel);
@@ -211,6 +242,73 @@ describe('the bible’s deletions', () => {
         expect(after.edges).toEqual([]);
         expect(after.nodes).toHaveLength(2);
         expect(after.version).toBe(2);
+        await expectUnbrokenHistory(book.bookId);
+        expect(await getMapSnapshot(ctx, book.bookId, 'plot', '2')).toMatchObject({ fromBibleDeletion: true, edges: [], nodeCount: 2 });
+    });
+
+    it('a deletion that touches no map writes nothing to it; one map moved leaves the others alone', async () => {
+        const book = await freshBook('untouched');
+        const c = await createElement(ctx, book.bookId, { kind: 'SETTING', name: 'C untouched' });
+        await saveStoryMap(ctx, book.bookId, 'plot', { expectedVersion: 0, nodes: [node(book.a)], edges: [], freeform: [] });
+        await saveStoryMap(ctx, book.bookId, 'timeline', { expectedVersion: 0, nodes: [node(c.id)], edges: [], freeform: [] });
+        await deleteElement(ctx, book.bookId, c.id);
+        expect((await getStoryMap(ctx, book.bookId, 'plot')).version).toBe(1);
+        expect((await getStoryMap(ctx, book.bookId, 'timeline')).version).toBe(2);
+        await expectUnbrokenHistory(book.bookId);
+    });
+
+    it('a deletion waits for a save of the book’s maps in progress, and its snapshot follows that save', async () => {
+        const book = await freshBook('serialised');
+        await saveStoryMap(ctx, book.bookId, 'plot', { expectedVersion: 0, nodes: [node(book.a), node(book.b)], edges: [], freeform: [] });
+        // Stand in for a save holding the map's lock.
+        let release!: () => void;
+        const held = new Promise<void>((r) => (release = r));
+        let locked!: () => void;
+        const lockTaken = new Promise<void>((r) => (locked = r));
+        const holder = prisma.$transaction(
+            async (tx) => {
+                await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${'story-map:' + book.bookId + ':PLOT'}))`;
+                locked();
+                await held;
+            },
+            { timeout: 20_000 },
+        );
+        await lockTaken;
+        let deleted = false;
+        const deletion = deleteElement(ctx, book.bookId, book.b).then(() => (deleted = true));
+        await untilWaitingOnAdvisoryLock();
+        expect(deleted).toBe(false);
+        release();
+        await holder;
+        await deletion;
+        expect((await getStoryMap(ctx, book.bookId, 'plot')).version).toBe(2);
+        await expectUnbrokenHistory(book.bookId);
+    });
+
+    it('a save and a deletion racing: whichever wins, every version has one snapshot and the map is its latest snapshot', async () => {
+        for (let round = 0; round < 4; round++) {
+            const book = await freshBook(`race-del-${round}`);
+            await saveStoryMap(ctx, book.bookId, 'plot', { expectedVersion: 0, nodes: [node(book.a), node(book.b)], edges: [{ relationId: book.rel, sourceElementId: book.a, targetElementId: book.b }], freeform: [] });
+            const results = await Promise.allSettled([
+                saveStoryMap(ctx, book.bookId, 'plot', { expectedVersion: 1, nodes: [node(book.a, 50), node(book.b, 60)], edges: [{ relationId: book.rel, sourceElementId: book.a, targetElementId: book.b }], freeform: [] }),
+                deleteElement(ctx, book.bookId, book.b),
+            ]);
+            expect(results[1].status).toBe('fulfilled');
+            if (results[0].status === 'rejected') expect((results[0].reason as { details?: { reason?: string } }).details?.reason).toBe('VERSION_CONFLICT');
+            await expectUnbrokenHistory(book.bookId);
+            const map = await getStoryMap(ctx, book.bookId, 'plot');
+            const latest = await getMapSnapshot(ctx, book.bookId, 'plot', String(map.version));
+            expect(latest.nodes).toEqual(map.nodes.map((n) => ({ elementId: n.elementId, x: n.x, y: n.y, w: n.w, h: n.h, lane: n.lane })));
+            expect(map.nodes.map((n) => n.elementId)).toEqual([book.a]);
+        }
+    });
+
+    it('the database refuses a deletion that leaves a map at a version with no snapshot, whoever deletes', async () => {
+        const book = await freshBook('no-snapshot');
+        await saveStoryMap(ctx, book.bookId, 'plot', { expectedVersion: 0, nodes: [node(book.a), node(book.b)], edges: [], freeform: [] });
+        await expect(prisma.$executeRaw`DELETE FROM "BibleElement" WHERE "id" = ${book.b}`).rejects.toThrow(/MAP_VERSION_WITHOUT_SNAPSHOT/);
+        expect(await prisma.bibleElement.count({ where: { id: book.b } })).toBe(1);
+        expect((await mapRow(book.bookId))!.version).toBe(1);
     });
 
     it('the map’s own save deleting a node does NOT move the version twice', async () => {
@@ -251,9 +349,13 @@ describe('snapshots', () => {
         await saveStoryMap(ctx, book.bookId, 'plot', { expectedVersion: 0, nodes: [node(book.a), node(book.b)], edges: [{ relationId: book.rel, sourceElementId: book.a, targetElementId: book.b }], freeform: [] });
         await deleteElement(ctx, book.bookId, book.b);
         const version = (await getStoryMap(ctx, book.bookId, 'plot')).version;
+        expect(version).toBe(2);
         const restored = await restoreMapSnapshot(ctx, book.bookId, 'plot', '1', { expectedVersion: version });
         expect(restored.dropped).toEqual({ nodes: 1, edges: 1 });
         expect(restored.map.nodes.map((n) => n.elementId)).toEqual([book.a]);
+        // What survives of version 1 IS the map the deletion left (version 2): nothing to write.
+        expect(restored).toMatchObject({ saved: false, map: { version: 2 } });
+        await expectUnbrokenHistory(book.bookId);
     });
 
     it('is append-only for every role: UPDATE and DELETE refused even to the superuser; a book’s purge takes them with it', async () => {
