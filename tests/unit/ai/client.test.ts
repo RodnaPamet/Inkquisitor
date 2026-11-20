@@ -21,6 +21,7 @@ import {
 } from '@/lib/ai/client';
 import { AiPromptError } from '@/lib/ai/errors';
 import { anthropicWorkspaceHeaders } from '@/lib/ai/anthropic-workspace';
+import { aiConfigProblems } from '@/lib/ai/config';
 import { z } from 'zod';
 import { FAKE_API_KEY_VALUE, fakeAnthropic, setFakeApiKey } from '../../helpers/fake-anthropic';
 
@@ -185,6 +186,25 @@ describe('clientForRun', () => {
         expect(api.headers[0].get('anthropic-workspace-id')).toBeNull();
         expect(api.headers[1].get('anthropic-workspace-id')).toBe('wrkspc_evals01');
         expect(anthropicWorkspaceHeaders('   ')).toEqual({});
+    });
+
+    it('never sends a malformed workspace id: no header at all, and production refuses to start with one (2.3)', async () => {
+        for (const bad of ['wrkspc_a\r\nx-injected: 1', 'wrkspc_a, wrkspc_b', 'wrkspc a', 'wrkspc_"a"', 'x'.repeat(129)]) {
+            expect([bad, anthropicWorkspaceHeaders(bad)]).toEqual([bad, {}]);
+            expect(aiConfigProblems({ ANTHROPIC_WORKSPACE_ID: bad }).some((p) => p.includes('ANTHROPIC_WORKSPACE_ID'))).toBe(true);
+        }
+        expect(anthropicWorkspaceHeaders('wrkspc_01JwQvzr7rXLA5AGx3HKfFUJ')).toEqual({ 'anthropic-workspace-id': 'wrkspc_01JwQvzr7rXLA5AGx3HKfFUJ' });
+        const workspaceProblems = (e: Record<string, string>) => aiConfigProblems(e).filter((p) => p.includes('ANTHROPIC_WORKSPACE_ID'));
+        expect(workspaceProblems({ ANTHROPIC_WORKSPACE_ID: ' wrkspc_01JwQvzr7rXLA5AGx3HKfFUJ\n' })).toEqual([]);
+        expect(workspaceProblems({})).toEqual([]);
+        setFakeApiKey();
+        const api = fakeAnthropic([{ kind: 'text', text: '{}' }]);
+        process.env.ANTHROPIC_WORKSPACE_ID = 'wrkspc_a\nx-injected: 1';
+        const choice = clientForRun({ fetch: api.fetch });
+        if (!choice.ok) throw new Error(choice.reason);
+        await choice.client.messages.stream({ model: 'claude-haiku-5-5', max_tokens: 10, messages: [{ role: 'user', content: 'hi' }] }).finalMessage();
+        expect(api.headers[0].get('anthropic-workspace-id')).toBeNull();
+        expect(api.headers[0].get('x-injected')).toBeNull();
     });
 
     it.each([

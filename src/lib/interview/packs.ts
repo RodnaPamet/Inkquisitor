@@ -26,7 +26,7 @@
  * MOUNTING (2.3, the lifted skill mount system: `pack-mount.ts`) reads three
  * more facts the registry records per pack, without deciding anything: the
  * pack's CONTENT HASH (`sha256:` over the file exactly as the prompt carries
- * it), its TEXT SCAN (`pack-text-scan.ts`; a refused pack loads, is held
+ * it), its TEXT SCAN over every file (`pack-text-scan.ts`; a refused pack loads, is held
  * apart by rule id and never mounts) and its committed EVALUATION RECORD
  * (`evaluation-record.json`, read raw and hashed; `pack-evaluation.ts`
  * checks it).
@@ -42,7 +42,7 @@ import * as path from 'node:path';
 import { z } from 'zod';
 import { BIBLE_KINDS, IDENTIFIER_MAX, IDENTIFIER_PATTERN, type BibleKind } from '@/lib/bible/kinds';
 import { getTemplate } from '@/lib/bible/templates';
-import { scanPackText, type PackTextScan } from './pack-text-scan';
+import { scanPackFiles, type PackFilesScan } from './pack-text-scan';
 import { PERSONA_KEYS, QUESTION_KINDS, type PersonaKey, type QuestionKind } from './vocabulary';
 
 export const PACK_MAX_BYTES = 8_192;
@@ -441,7 +441,8 @@ export interface PackFile {
     contentHash: string;
     /** `sha256:` over the evaluation set (a persona's includes the situations). */
     setHash: string;
-    scan: PackTextScan;
+    /** The load-time text scan over every file of the pack (PACK.md, evals.json, and a persona's situations.json). */
+    scan: PackFilesScan;
     /** The committed record: absent, unreadable (JSON), or read with its file's hash. */
     record: { state: 'absent' } | { state: 'unreadable'; error: string } | { state: 'present'; raw: unknown; hash: string };
 }
@@ -496,7 +497,10 @@ export function loadPacks(dir: string = PACKS_DIR): PackRegistry {
             dir: rel,
             contentHash: craft[kind].contentHash,
             setHash: sha256Of(evalsRaw),
-            scan: scanPackText(raw),
+            scan: scanPackFiles([
+                ['PACK.md', raw],
+                ['evals.json', evalsRaw],
+            ]),
             record: readRecord(path.join(dir, rel)),
         };
     }
@@ -520,7 +524,11 @@ export function loadPacks(dir: string = PACKS_DIR): PackRegistry {
             dir: rel,
             contentHash: personas[key].contentHash,
             setHash: personaSetHash(evalsRaw, situationsRaw),
-            scan: scanPackText(raw),
+            scan: scanPackFiles([
+                ['PACK.md', raw],
+                ['evals.json', evalsRaw],
+                [SITUATIONS_FILE, situationsRaw],
+            ]),
             record: readRecord(path.join(dir, rel)),
         };
     }

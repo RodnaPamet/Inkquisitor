@@ -15,7 +15,8 @@
  *                            to the structural generator), a migrated
  *                            database, an explicit budget
  *                            (AI_MONTHLY_CEILING_USD_DEFAULT, at most
- *                            `EVAL_RUN_BUDGET_MAX_USD`) and --out: a model's
+ *                            `EVAL_RUN_BUDGET_MAX_USD`, held to the month the
+ *                            run started in: `withinRunMonth`) and --out: a model's
  *                            record is never written into the source tree by
  *                            the run that made it; a person commits it after
  *                            review.
@@ -30,7 +31,8 @@
  */
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import type { QuestionGenerator } from '../generator';
+import { spendPeriod } from '@/lib/ai/call-record';
+import { GenerationStop, type QuestionGenerator } from '../generator';
 import { PACK_RECORD_FILE, type PackRegistry } from '../packs';
 import { checkPackRecord, evaluatePack, type RecordKind } from '../pack-evaluation';
 import { loadCoverageEval, runCoverageEvaluation, type CoverageReport } from './coverage';
@@ -115,6 +117,25 @@ export function metered(generator: QuestionGenerator, spent: { microUsd: number;
             const r = await generator.generateCandidates(request, signal);
             spent.microUsd += typeof r.costMicroUsd === 'number' && r.costMicroUsd > 0 ? r.costMicroUsd : 0;
             return r;
+        },
+    };
+}
+
+/**
+ * A model run's budget is its throwaway workspace's MONTHLY ceiling, which 2.1
+ * counts per UTC calendar month. A run that crossed a month boundary would
+ * meet a fresh month with nothing spent, and could spend the budget again. So
+ * a model run's calls are held to the month it started in: the first call
+ * asked for in a later month stops the run (`GenerationStop`, nothing sent),
+ * and the budget bounds the whole run, not each month of it.
+ */
+export function withinRunMonth(generator: QuestionGenerator, startedAt: Date, now: () => Date = () => new Date()): QuestionGenerator {
+    const month = spendPeriod(startedAt);
+    return {
+        unavailableReason: () => generator.unavailableReason(),
+        async generateCandidates(request, signal) {
+            if (spendPeriod(now()) !== month) throw new GenerationStop('WORKSPACE_CEILING', 'RUN_CROSSED_MONTH', null, 0);
+            return generator.generateCandidates(request, signal);
         },
     };
 }

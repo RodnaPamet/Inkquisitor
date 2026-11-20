@@ -660,19 +660,26 @@ closed beta with an explicit operator flag (D5, amended 2026-11-19).
   (`tests/guards/dials-stay-off-the-bible-write-path.test.ts`). Up to three
   personas (CHECK, distinct): each words its round-robin share in its own
   call with its own pack, its questions tagged (`personaKey`, `personaName`);
+  before a round is claimed the month must take one least-cost call per
+  persona (`modelBudgetSignals(…, calls)`), never a round it cannot finish;
   every call's prompt version is `question-generation.<v>+packs.<12 hex>` over
   its packs' hashes, and `metrics.calls` names them. A pack MOUNTS only when
-  its text passes the load-time scan (`pack-text-scan.ts`) and its
+  every file of it (PACK.md, evals.json, a persona's situations.json) passes
+  the load-time scan (`pack-text-scan.ts`) and its
   `evaluation-record.json` passes when REPLAYED through `produceRound` and
   graded against its `evals.json` (`pack-evaluation.ts`; tied to the pack's
-  content hash, the set's hash and `QUESTION_PROMPT_VERSION`); PRODUCTION
+  content hash, the set's hash and `QUESTION_PROMPT_VERSION`; its `generator`
+  claim is checked, not believed: a structural record must be exactly what the
+  structural generator reproduces, and a model record holding the structural
+  generator's output is refused `STRUCTURAL_OUTPUT_AS_MODEL`); PRODUCTION
   accepts only a real model's record, development and test a structural one
   too, with no override (D11, `pack-records-config.ts`). A refused pack is 503
   `PACKS_NOT_MOUNTABLE` naming each pack, nothing written, and production
   logs `[startup] WARN` with the counts. A session pins its packs at start
   (`packPins`, write-once by trigger) — each kind's craft pack (every kind for
   a BOOK session) and each persona's — and every round compares them first
-  (`pinMismatch`): a changed or unpinned pack pauses it `PACK_CHANGED`. After
+  (`pinMismatch`): a changed or unpinned pack pauses it `PACK_CHANGED` (a
+  2.2 session, NULL pins, is never pinned later and stays paused). After
   editing a pack, its `evals.json`, `situations.json` or the question prompt,
   re-run `npm run packs:evaluate`; real-model records come from the Evals
   workflow and land by a reviewed pull request (the 2.3 note, "Evals").

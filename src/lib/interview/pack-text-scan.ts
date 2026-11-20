@@ -29,6 +29,13 @@
  * Stable ids only — the pack rule ids below, plus the guard rule ids that made
  * `pack.injection` or `pack.secret_shape` fire. Never the matched text.
  *
+ * WHICH FILES. Every file of a pack is scanned (`scanPackFiles`): `PACK.md`,
+ * its `evals.json`, and for a persona the shared `situations.json`. The pack
+ * reaches every production prompt; the evaluation set's states and answers are
+ * sent to a real model as data by the `Evals` workflow, and an evaluation
+ * record is only as trustworthy as the set it answered. A rule firing in any of
+ * them refuses the pack, and the report names the file, never its text.
+ *
  * Lifted from inflect-compliance's `src/lib/agentic/flue/skills/text-scan.ts`
  * (see docs/carve-manifest.md): the tool-name rule is not carried (a pack
  * declares no tools and the question engine offers the model none), the rule
@@ -102,5 +109,30 @@ export function scanPackText(text: string): PackTextScan {
     return {
         rules: (Object.keys(PACK_TEXT_RULES) as PackTextRuleId[]).filter((id) => rules.has(id)),
         guardRules: [...guardRules].sort(),
+    };
+}
+
+/** A pack's whole scan: every file's rules merged, and the files any rule fired in. */
+export interface PackFilesScan extends PackTextScan {
+    /** The pack's files a rule fired in, as given (`PACK.md`, `evals.json`, `situations.json`). */
+    readonly files: readonly string[];
+}
+
+/** Scan every file of one pack. Returns no rules for a pack that may be mounted. */
+export function scanPackFiles(files: ReadonlyArray<readonly [name: string, text: string]>): PackFilesScan {
+    const rules = new Set<PackTextRuleId>();
+    const guardRules = new Set<string>();
+    const fired: string[] = [];
+    for (const [name, text] of files) {
+        const scan = scanPackText(text);
+        if (scan.rules.length === 0) continue;
+        fired.push(name);
+        scan.rules.forEach((r) => rules.add(r));
+        scan.guardRules.forEach((r) => guardRules.add(r));
+    }
+    return {
+        rules: (Object.keys(PACK_TEXT_RULES) as PackTextRuleId[]).filter((id) => rules.has(id)),
+        guardRules: [...guardRules].sort(),
+        files: fired,
     };
 }

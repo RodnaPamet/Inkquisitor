@@ -100,7 +100,8 @@ jobs:
           set -euo pipefail
           if ! printf '%s' "$BUDGET" | grep -Eq '^[0-9]+(\.[0-9]{1,2})?$'; then echo "::error::budget_usd must be a number of US dollars"; exit 1; fi
           if ! node -e 'const b=Number(process.argv[1]); process.exit(b > 0 && b <= 25 ? 0 : 1)' "$BUDGET"; then echo "::error::budget_usd must be more than 0 and at most 25"; exit 1; fi
-          if ! printf '%s' "$PACKS" | grep -Eq '^(all|none|[a-z_-]+(,[a-z_-]+)*)$'; then echo "::error::packs must be all, none, or comma-separated pack names"; exit 1; fi
+          # A name starts with a letter: an input beginning with `-` would reach the runner as an option.
+          if ! printf '%s' "$PACKS" | grep -Eq '^(all|none|[a-z][a-z_-]*(,[a-z][a-z_-]*)*)$'; then echo "::error::packs must be all, none, or comma-separated pack names"; exit 1; fi
           if [ "$PACKS" = "none" ]; then echo "args=--no-packs" >> "$GITHUB_OUTPUT"; else echo "args=--packs $PACKS" >> "$GITHUB_OUTPUT"; fi
 
       - uses: actions/checkout@v7

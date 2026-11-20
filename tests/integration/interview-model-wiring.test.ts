@@ -182,6 +182,23 @@ it('a month that cannot take even the least question call pauses the session WOR
     expect(await prisma.aiCallLog.count({ where: { workspaceId: owner.workspaceId } })).toBe(0);
 });
 
+it('a round of three personas is not claimed when the month can take only two of its calls: nothing is spent on a round that cannot finish', async () => {
+    const { owner, ctx, bookId, elementId } = await setup();
+    const floor = minimumQuestionCallMicroUsd(3);
+    process.env.AI_MONTHLY_CEILING_USD_DEFAULT = ((2 * floor + 1) / 1_000_000).toFixed(6);
+    const api = fakeAnthropic([questionModel({ usage: USAGE })]);
+    const view = await startInterview(
+        ctx,
+        bookId,
+        { scope: 'ELEMENT', elementId, depth: 2, detail: 3, personaKeys: ['socratic', 'ruthless-editor', 'gentle-mentor'] },
+        { generator: wired(ctx, api), embedder },
+    );
+    expect(view.session).toMatchObject({ status: 'PAUSED', stopReason: 'WORKSPACE_CEILING' });
+    expect(api.requests).toHaveLength(0);
+    expect(await prisma.interviewRound.count({ where: { sessionId: view.session.id } })).toBe(0);
+    expect(await prisma.aiCallLog.count({ where: { workspaceId: owner.workspaceId } })).toBe(0);
+});
+
 it('a call whose real worst case passes the ceiling is refused by 2.1 (CEILING, recorded): the round is abandoned and the session paused, never a 500', async () => {
     const { owner, ctx, bookId, elementId } = await setup();
     // Room for the floor estimate, not for the real request (packs and data on top).

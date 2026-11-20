@@ -11,7 +11,7 @@
  * Lifted from inflect-compliance's `src/lib/ai/anthropic-workspace.ts` (see
  * docs/carve-manifest.md; Phase 2.3, for the `Evals` workflow's key).
  *
- * `ANTHROPIC_WORKSPACE_ID` (`src/env.ts`) is that name. When it is set, every
+ * `ANTHROPIC_WORKSPACE_ID` (`src/env.ts`) is that name. When it is set (and well formed), every
  * request to the Anthropic API carries `anthropic-workspace-id: <id>`. When it
  * is unset this returns an EMPTY object, so a caller that spreads it sends
  * exactly the headers it sent before and a workspace-scoped key keeps working
@@ -32,7 +32,25 @@
  * a header value `fetch` refuses, whichever path the value took to get here. A
  * blank or whitespace-only value is treated as unset, which is what an operator
  * who cleared it meant.
+ *
+ * ── WHY IT IS CHECKED ───────────────────────────────────────────────────────
+ *
+ * The value becomes a request header on every call. An Anthropic workspace id
+ * is a short token (`wrkspc_…`); anything else — a space, a comma, a quote, a
+ * control character, a pasted second header — is a configuration mistake, and
+ * the header is never sent with it (an empty object, as when unset: an
+ * organisation-level key is then refused by Anthropic, loudly). Production
+ * refuses to start with a malformed value (`aiConfigProblems`), and the env
+ * schema refuses it where validation runs.
  */
+
+/** What an Anthropic workspace id may look like: letters, digits, `_` and `-`, at most 128. */
+export const ANTHROPIC_WORKSPACE_ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
+
+/** Is `value`, trimmed, an acceptable workspace id? */
+export function isAnthropicWorkspaceId(value: string): boolean {
+    return ANTHROPIC_WORKSPACE_ID_PATTERN.test(value.trim());
+}
 
 /** The request header Anthropic reads to place an organisation-level key's request in a workspace. */
 export const ANTHROPIC_WORKSPACE_HEADER = 'anthropic-workspace-id';
@@ -45,5 +63,5 @@ export function anthropicWorkspaceHeaders(
     workspaceId: string | null | undefined,
 ): Record<string, string> {
     const id = workspaceId?.trim();
-    return id ? { [ANTHROPIC_WORKSPACE_HEADER]: id } : {};
+    return id && isAnthropicWorkspaceId(id) ? { [ANTHROPIC_WORKSPACE_HEADER]: id } : {};
 }

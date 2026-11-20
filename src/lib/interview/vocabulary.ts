@@ -69,6 +69,10 @@ export const STATUS_AFTER_STOP: Readonly<Record<StopReason, Exclude<InterviewSta
     GUARD_REFUSED: 'PAUSED',
     // A pack the session pinned is not the file this deployment would teach it
     // (Phase 2.3): paused, because the pins are written once and a deployment
-    // that restores the file lets it resume; the author can start afresh.
+    // that restores the file lets it resume; the author can start afresh. A
+    // session from before pinning (2.2, NULL pins; `stopDetail.problem`
+    // PACK_NOT_PINNED) is never pinned later — a pin written after the start
+    // would be a reconstruction — so it stays paused, readable, and the author
+    // starts a new session.
     PACK_CHANGED: 'PAUSED',
 };

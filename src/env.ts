@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { isNextProductionBuild } from '@/lib/build-phase';
 import { DEV_FALLBACK_DATA_ENCRYPTION_KEY, MIN_DATA_ENCRYPTION_KEY_LENGTH } from '@/lib/security/encryption-constants';
 import { DEV_FALLBACK_AUTH_SECRET, MIN_AUTH_SECRET_LENGTH } from '@/lib/auth/auth-constants';
+import { ANTHROPIC_WORKSPACE_ID_PATTERN } from '@/lib/ai/anthropic-workspace';
 
 /**
  * A secret production cannot run without. Optional elsewhere (development and
@@ -212,7 +213,7 @@ export const env = createEnv({
         // The Anthropic workspace an ORGANISATION-level key's requests belong
         // to (Phase 2.3, lifted from inflect): sent as `anthropic-workspace-id`
         // by `clientForRun` when set; a workspace-scoped key needs none.
-        ANTHROPIC_WORKSPACE_ID: z.string().trim().optional(),
+        ANTHROPIC_WORKSPACE_ID: z.string().trim().regex(ANTHROPIC_WORKSPACE_ID_PATTERN, 'ANTHROPIC_WORKSPACE_ID is an Anthropic workspace id (letters, digits, _ and -)').optional(),
         // Read by the SDK itself and merged into every request; declared so
         // the model layer can refuse to build a client while it is set.
         ANTHROPIC_CUSTOM_HEADERS: z.string().optional(),

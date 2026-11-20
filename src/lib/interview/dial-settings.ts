@@ -165,7 +165,7 @@ export function dialEffects(settings: DialSettings): DialEffects {
         kindsAllowed: kindsAllowed(settings.detail),
         answerTextMax: answerTextMax(settings.detail),
         answerOutputTokens: DETAIL[settings.detail].maxOutputTokens,
-        generationCallsPerRound: Math.max(1, personas),
+        generationCallsPerRound: nextRoundGenerationCalls(personas),
         tokenBudget: tokenBudgetFor(settings.depth, personas),
         depthEmphasis: DEPTH[settings.depth].emphasis,
         detailReply: DETAIL[settings.detail].reply,
@@ -174,9 +174,14 @@ export function dialEffects(settings: DialSettings): DialEffects {
     };
 }
 
+/** The generation calls one more round makes at most: one per persona, one when the session has none. */
+export function nextRoundGenerationCalls(personaCount: number): number {
+    return Math.max(1, personaCount);
+}
+
 /** The tokens one more round of this session would spend at most on generation. */
 export function nextRoundGenerationTokens(personaCount: number): number {
-    return Math.max(1, personaCount) * TOKENS_PER_GENERATION_CALL;
+    return nextRoundGenerationCalls(personaCount) * TOKENS_PER_GENERATION_CALL;
 }
 
 export { DIAL_MAX, DIAL_MIN, PERSONA_KEYS };

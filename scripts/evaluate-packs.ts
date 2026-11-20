@@ -37,6 +37,7 @@ import {
     runPackEvaluations,
     selectedPacks,
     summaryLines,
+    withinRunMonth,
     type EvalArgs,
 } from '../src/lib/interview/evals/run-evaluations';
 import type { QuestionGenerator } from '../src/lib/interview/generator';
@@ -111,7 +112,8 @@ async function main(): Promise<void> {
 
     const model = args.generator === 'model' ? await modelGenerator() : null;
     const spent = { microUsd: 0, calls: 0 };
-    const generator = metered(model ? model.generator : structuralGenerator(), spent);
+    // A model run's budget is a monthly ceiling: its calls are held to the month the run started in.
+    const generator = metered(model ? withinRunMonth(model.generator, new Date()) : structuralGenerator(), spent);
     const who = model ? { kind: 'model' as const, id: model.id } : { kind: 'structural' as const, id: STRUCTURAL_GENERATOR_ID };
     const outRoot = args.out ? path.resolve(args.out) : PACKS_DIR;
 

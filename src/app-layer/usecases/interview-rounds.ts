@@ -50,7 +50,7 @@ import { GenerationStop, type QuestionGenerator } from '@/lib/interview/generato
 import { defaultQuestionGenerator, modelBudgetSignals } from '@/lib/interview/model-seam';
 import { getPacks, type PackRegistry } from '@/lib/interview/packs';
 import { PacksNotMountableError, packNamesFor, parsePackPins, pinMismatch, type MountVerdict, type PackRecordMode } from '@/lib/interview/pack-mount';
-import { nextRoundGenerationTokens } from '@/lib/interview/dial-settings';
+import { nextRoundGenerationCalls, nextRoundGenerationTokens } from '@/lib/interview/dial-settings';
 import { planRound, type RoundPlan } from '@/lib/interview/plan';
 import { QUESTION_PROMPT_VERSION } from '@/lib/interview/prompt';
 import { produceRound, TOKENS_PER_CALL_REPORT_MAX, type PlannedQuestion, type RoundOutput } from '@/lib/interview/round';
@@ -205,7 +205,8 @@ export async function claimRound(db: PrismaTx, ctx: WorkspaceRequestContext, ses
             await InterviewRoundRepository.update(db, ctx.workspaceId, r.id, { status: 'FAILED' });
         }
     }
-    const stop = stopNow(session, state, await modelBudgetSignals(db, ctx, session.detail));
+    // The month must take the whole round: one call per persona (at most), each at its least.
+    const stop = stopNow(session, state, await modelBudgetSignals(db, ctx, session.detail, nextRoundGenerationCalls(session.personaKeys.length)));
     if (stop) {
         await endSession(db, ctx, session, stop.reason, stop.detail);
         return { kind: 'stopped', reason: stop.reason };

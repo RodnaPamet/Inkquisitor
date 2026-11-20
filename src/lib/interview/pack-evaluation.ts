@@ -56,6 +56,7 @@ import type { GenerationResult, QuestionGenerator } from './generator';
 import type { PackFile, PackPriorAnswer, PackRegistry, Situation } from './packs';
 import { planRound } from './plan';
 import { QUESTION_PROMPT_VERSION, type PromptAnswer } from './prompt';
+import { structuralGenerator, STRUCTURAL_GENERATOR_ID } from './evals/structural-generator';
 import { produceRound, type RoundElement, type RoundOutput } from './round';
 import { isPersonaKey, type PersonaKey } from './vocabulary';
 
@@ -373,7 +374,11 @@ export type RecordRefusal =
     | 'UNKNOWN_ANSWER'
     | 'DUPLICATE_ANSWER'
     | 'UNANSWERED_CASE'
-    | 'BELOW_THRESHOLD';
+    | 'BELOW_THRESHOLD'
+    /** A structural record whose generator id or outputs are not the structural generator's. */
+    | 'GENERATOR_MISMATCH'
+    /** A record claiming a real model whose outputs are the structural generator's. */
+    | 'STRUCTURAL_OUTPUT_AS_MODEL';
 
 export type RecordCheck =
     | { ok: true; record: PackEvaluationRecord; grades: CaseGrade[]; passRate: number }
@@ -416,5 +421,63 @@ export async function checkPackRecord(raw: unknown, file: PackFile, registry: Pa
         const failed = grades.filter((g) => !g.passed).map((g) => g.caseId);
         return { ok: false, reason: 'BELOW_THRESHOLD', detail: `${grades.length - failed.length}/${grades.length} cases pass (${failed.join(', ') || 'no cases'})` };
     }
+    const provenance = await checkGeneratorClaim(record, cases, byCase, registry);
+    if (provenance) return provenance;
     return { ok: true, record, grades, passRate };
+}
+
+// ─── What produced a record (D11) ──────────────────────────────────
+
+/** JSON with every object's keys sorted, so two values compare by content, not by key order. */
+function canonical(value: unknown): string {
+    return JSON.stringify(value, (_k, v: unknown) =>
+        v && typeof v === 'object' && !Array.isArray(v) ? Object.fromEntries(Object.entries(v as Record<string, unknown>).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) : v,
+    );
+}
+
+/** An output that asks at least one question: the only kind a comparison can tell apart. */
+function asksSomething(output: unknown): boolean {
+    const qs = output && typeof output === 'object' ? (output as { questions?: unknown }).questions : undefined;
+    return Array.isArray(qs) && qs.length > 0;
+}
+
+/**
+ * Is the record's `generator` claim consistent with its outputs? The claim is a
+ * field anyone editing the file can write, so the gate checks what it can:
+ *
+ *   structural   the id is the structural generator's and every case's outputs
+ *                are EXACTLY what that deterministic generator produces today —
+ *                a structural record is reproducible, so it is reproduced.
+ *   model        the id is not the structural generator's, and NO output that
+ *                asks a question is the structural generator's output for the
+ *                same call: relabelling a structural record (or a copy with a
+ *                few cases touched) as a model's is refused. A real model never
+ *                words a whole call the way the field-key template does.
+ *
+ * What this cannot do is prove a plausible hand-written record came from a
+ * model: records carry no signature, and land only by a reviewed pull request
+ * (the 2.3 note, "Evals"). Returns null when the claim holds.
+ */
+async function checkGeneratorClaim(
+    record: PackEvaluationRecord,
+    cases: readonly PackEvalCase[],
+    byCase: ReadonlyMap<string, unknown[]>,
+    registry: PackRegistry,
+): Promise<RecordCheck | null> {
+    const isStructural = record.generator.kind === 'structural';
+    if (isStructural !== (record.generator.id === STRUCTURAL_GENERATOR_ID)) {
+        return { ok: false, reason: 'GENERATOR_MISMATCH', detail: `a ${record.generator.kind} record names generator ${record.generator.id}` };
+    }
+    for (const c of cases) {
+        const recorded = byCase.get(c.id) ?? [];
+        const { outputs: reproduced } = await runEvalCase(c, registry, structuralGenerator());
+        if (isStructural) {
+            if (canonical(recorded) !== canonical(reproduced)) {
+                return { ok: false, reason: 'GENERATOR_MISMATCH', detail: `${c.id}: not what ${STRUCTURAL_GENERATOR_ID} produces; re-run npm run packs:evaluate` };
+            }
+        } else if (recorded.some((out, i) => asksSomething(reproduced[i]) && canonical(out) === canonical(reproduced[i]))) {
+            return { ok: false, reason: 'STRUCTURAL_OUTPUT_AS_MODEL', detail: `${c.id}: the structural generator's output, recorded as a model's` };
+        }
+    }
+    return null;
 }

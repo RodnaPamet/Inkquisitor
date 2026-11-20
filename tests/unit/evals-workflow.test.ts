@@ -7,7 +7,9 @@
  * uploads the records as an artifact, and runs under a hard budget the runner
  * also enforces. It is no CI check, and no CI job is renamed for it.
  */
+import { spawnSync } from 'node:child_process';
 import * as fs from 'node:fs';
+import * as os from 'node:os';
 import * as path from 'node:path';
 import { parse } from 'yaml';
 import { EVAL_RUN_BUDGET_MAX_USD } from '@/lib/interview/evals/run-evaluations';
@@ -88,6 +90,32 @@ describe('.github/workflows/evals.yml', () => {
         const check = job.steps.find((s) => s.id === 'inputs')!;
         expect(check.run).toContain(`b <= ${EVAL_RUN_BUDGET_MAX_USD}`);
         expect(String(wf.on.workflow_dispatch.inputs!.budget_usd.default)).toBe('5');
+    });
+
+    it('never interpolates an input or a step output into a shell script: they reach `run` through env', () => {
+        for (const step of job.steps) {
+            if (!step.run) continue;
+            expect([step.name, step.run.match(/\$\{\{\s*(inputs|steps|github\.event|vars|secrets)\b[^}]*\}\}/g)]).toEqual([step.name, null]);
+        }
+    });
+
+    it('accepts only pack names, all or none as the packs input: nothing that reaches the runner as an option', () => {
+        const check = job.steps.find((s) => s.id === 'inputs')!;
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ink-evals-wf-'));
+        try {
+            const run = (packs: string) => {
+                const out = path.join(dir, 'out');
+                fs.writeFileSync(out, '');
+                const r = spawnSync('bash', ['-c', check.run!], { env: { PATH: process.env.PATH, PACKS: packs, BUDGET: '5', GITHUB_OUTPUT: out } as unknown as NodeJS.ProcessEnv, encoding: 'utf8' });
+                return { status: r.status, out: fs.readFileSync(out, 'utf8') };
+            };
+            expect(run('all')).toEqual({ status: 0, out: 'args=--packs all\n' });
+            expect(run('none')).toEqual({ status: 0, out: 'args=--no-packs\n' });
+            expect(run('craft-character,persona-socratic')).toEqual({ status: 0, out: 'args=--packs craft-character,persona-socratic\n' });
+            for (const bad of ['--out', '-x', 'all,--coverage', 'craft-character --out /tmp', 'a;b', '$(id)', '']) expect([bad, run(bad).status]).toEqual([bad, 1]);
+        } finally {
+            fs.rmSync(dir, { recursive: true, force: true });
+        }
     });
 
     it('is not part of CI: ci.yml neither names nor needs it', () => {

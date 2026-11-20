@@ -74,6 +74,19 @@ it('a persona whose call fails costs only its share: its fields go to the pack f
 });
 
 describe('picks first (the Gentle Mentor’s order)', () => {
+    it('a Gentle Mentor round leads each element with its picks; with another persona beside it, it does not', async () => {
+        const run = async (personas: string[]) => {
+            const input = setup(personas, 1, 3);
+            // The model words each element's FIRST target open and its second as a scale.
+            const firsts = new Set(['a', 'b', 'c'].map((id) => `${id}:${input.plan.targets.find((t) => t.elementId === id)!.fieldKey}`));
+            const gen = fakeGenerator({ mutate: (q) => (firsts.has(`${q.elementId}:${q.targetsFieldKeys[0]}`) ? q : fakeQuestion(q.elementId, q.targetsFieldKeys[0], ['SCALE'])) });
+            const out = await produceRound(input, { generator: gen });
+            return out.questions.map((q) => `${q.elementId}:${q.kind}`);
+        };
+        expect(await run(['gentle-mentor'])).toEqual(['a:SCALE', 'a:OPEN', 'b:SCALE', 'b:OPEN', 'c:SCALE', 'c:OPEN']);
+        expect(await run(['gentle-mentor', 'socratic'])).toEqual(['a:OPEN', 'a:SCALE', 'b:OPEN', 'b:SCALE', 'c:OPEN', 'c:SCALE']);
+    });
+
     it('applies only when every persona of the session asks for it', () => {
         expect(picksFirst(['gentle-mentor'])).toBe(true);
         expect(picksFirst(['gentle-mentor', 'socratic'])).toBe(false);

@@ -16,7 +16,7 @@ import { NextRequest } from 'next/server';
 import { ZodError } from 'zod';
 import { prisma } from '@/lib/db';
 import { runInWorkspaceContext } from '@/lib/db/rls-middleware';
-import { createBook } from '@/app-layer/usecases/books';
+import { createBook, deleteBook } from '@/app-layer/usecases/books';
 import { createElement } from '@/app-layer/usecases/bible-elements';
 import { closeRound, nextRound, startInterview } from '@/app-layer/usecases/interviews';
 import { answerQuestion } from '@/app-layer/usecases/interview-answers';
@@ -119,6 +119,15 @@ describe('defaults and precedence', () => {
         expect((await refusal(getBookInterviewDefaults(workspaceCtx(other), bookId))).status).toBe(404);
     });
 
+    it('a deleted book has no defaults to read or write: 404, as every route of a deleted book', async () => {
+        const book = (await createBook(ctx, { title: 'Soon gone' })).id;
+        await setBookInterviewDefaults(ctx, book, { depth: 2 });
+        await deleteBook(ctx, book);
+        expect((await refusal(getBookInterviewDefaults(ctx, book))).status).toBe(404);
+        expect((await refusal(setBookInterviewDefaults(ctx, book, { depth: 4 }))).status).toBe(404);
+        expect((await prisma.bookInterviewDefaults.findUniqueOrThrow({ where: { bookId: book } })).depth).toBe(2);
+    });
+
     it('is workspace-scoped: another workspace sees none of this one’s defaults, and the database refuses a bad row', async () => {
         await setWorkspaceInterviewDefaults(ctx, { depth: 1 });
         await setBookInterviewDefaults(ctx, bookId, { detail: 2 });
@@ -160,6 +169,9 @@ describe('several personas (STORM’s perspectives)', () => {
         expect(calls[0].packs).toEqual(['craft-character@1', 'persona-socratic@1']);
         expect(calls.every((c) => c.costBudgetMicroUsd > 0)).toBe(true);
         expect(view.session.packs!.map((p) => p.name)).toEqual(['craft-character', 'persona-socratic', 'persona-gentle-mentor', 'persona-ruthless-editor']);
+        // Each field is asked once a round, whichever persona words it (2.2's rule holds across personas).
+        const refs = view.round!.questions.filter((q) => q.mode === 'FRONTIER').flatMap((q) => q.targetsFieldKeys.map((k) => `${q.elementId}:${k}`));
+        expect(new Set(refs).size).toBe(refs.length);
     });
 
     it('the database holds at most three, known, none twice', async () => {
@@ -185,6 +197,26 @@ describe('pack pins', () => {
         await expect(prisma.$executeRaw`UPDATE "InterviewSession" SET "packPins" = NULL WHERE "id" = ${view.session.id}`).rejects.toThrow(/PACK_PINS_IMMUTABLE/);
         // Every other column still moves.
         expect(await prisma.$executeRaw`UPDATE "InterviewSession" SET "tokensUsed" = "tokensUsed" WHERE "id" = ${view.session.id}`).toBe(1);
+        // And the application role, inside its own workspace, is refused the same.
+        await expect(
+            runInWorkspaceContext(ctx, (db) => db.$executeRaw`UPDATE "InterviewSession" SET "packPins" = '[]'::jsonb WHERE "id" = ${view.session.id}`),
+        ).rejects.toThrow(/PACK_PINS_IMMUTABLE/);
+    });
+
+    it('a session from before pinning (2.2, NULL pins) is never pinned later: it pauses PACK_NOT_PINNED, every time, and the database refuses a late pin', async () => {
+        const el = await character('Before Pinning');
+        const view = await startInterview(ctx, bookId, { scope: 'ELEMENT', elementId: el, depth: 3, detail: 3 }, { generator: fakeGenerator(), embedder });
+        await answerAndClose(view);
+        // A 2.2 row: no pins. Only a superuser with triggers off can make one now.
+        await prisma.$transaction([prisma.$executeRaw`SET LOCAL session_replication_role = replica`, prisma.$executeRaw`UPDATE "InterviewSession" SET "packPins" = NULL WHERE "id" = ${view.session.id}`]);
+        for (let i = 0; i < 2; i++) {
+            const gen = fakeGenerator();
+            const paused = await nextRound(ctx, bookId, view.session.id, { generator: gen, embedder });
+            expect(paused.session).toMatchObject({ status: 'PAUSED', stopReason: 'PACK_CHANGED', stopDetail: { problem: 'PACK_NOT_PINNED' }, packs: null });
+            expect(gen.calls).toHaveLength(0);
+        }
+        expect(await prisma.interviewRound.count({ where: { sessionId: view.session.id } })).toBe(1);
+        await expect(prisma.$executeRaw`UPDATE "InterviewSession" SET "packPins" = '[]'::jsonb WHERE "id" = ${view.session.id}`).rejects.toThrow(/PACK_PINS_IMMUTABLE/);
     });
 
     it('a book session pins the craft pack of every kind', async () => {

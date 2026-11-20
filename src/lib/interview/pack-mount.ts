@@ -17,7 +17,11 @@
  *                              PROMPT_VERSION_MISMATCH, UNKNOWN_ANSWER,
  *                              DUPLICATE_ANSWER, UNANSWERED_CASE,
  *                              BELOW_THRESHOLD — all recomputed by replaying
- *                              the record (`pack-evaluation.ts`)
+ *                              the record (`pack-evaluation.ts`); then the
+ *                              record's generator claim: GENERATOR_MISMATCH (a
+ *                              "structural" record the structural generator
+ *                              does not reproduce), STRUCTURAL_OUTPUT_AS_MODEL
+ *                              (a "model" record holding its outputs)
  *   STRUCTURAL_RECORD_REFUSED  the record passes, but was made by the
  *                              structural generator and this deployment asks
  *                              for a model's record
@@ -51,6 +55,14 @@
  * (`pinMismatch`): a pack whose file changed since the session started is
  * refused (PACK_CHANGED), so a session is never taught by text other than
  * what it started with.
+ *
+ * A session from before pinning (2.2: NULL pins) is NOT pinned on first use
+ * (decided in the 2.3 review): its earlier rounds were taught by packs nobody
+ * recorded, so a pin written now would claim to know what it started with —
+ * the reconstruction the write-once trigger exists to rule out, and the trigger
+ * refuses NULL → value as it refuses every other change. Such a session pauses
+ * PACK_CHANGED (`problem: PACK_NOT_PINNED`) on every round asked of it; its
+ * history stays readable and the author starts a new session.
  */
 import { craftPackName, personaPackName, type PackFile, type PackRegistry } from './packs';
 import { checkPackRecord, type RecordKind, type RecordRefusal } from './pack-evaluation';
@@ -78,7 +90,7 @@ export type MountVerdict = { ok: true; pin: PackPin } | { ok: false; reason: Mou
 
 /** May a session mount this pack under `mode`? */
 export async function checkPackMountable(file: PackFile, registry: PackRegistry, mode: PackRecordMode): Promise<MountVerdict> {
-    if (file.scan.rules.length > 0) return { ok: false, reason: 'TEXT_REFUSED', detail: [...file.scan.rules, ...file.scan.guardRules].join(', ') };
+    if (file.scan.rules.length > 0) return { ok: false, reason: 'TEXT_REFUSED', detail: `${file.scan.files.join(', ')}: ${[...file.scan.rules, ...file.scan.guardRules].join(', ')}` };
     if (file.record.state === 'absent') return { ok: false, reason: 'NO_RECORD', detail: 'no evaluation-record.json; run npm run packs:evaluate' };
     if (file.record.state === 'unreadable') return { ok: false, reason: 'RECORD_UNREADABLE', detail: file.record.error };
     const check = await checkPackRecord(file.record.raw, file, registry);

@@ -59,6 +59,35 @@ describe('the budget', () => {
     });
 });
 
+describe('a model run’s budget is one month’s ceiling, so the run is held to its month', () => {
+    it('a call asked for in the month the run started goes through; one in the next month stops the run with nothing sent', async () => {
+        const { withinRunMonth } = await import('@/lib/interview/evals/run-evaluations');
+        const { GenerationStop } = await import('@/lib/interview/generator');
+        const inner = fakeGenerator();
+        let clock = new Date('2026-11-30T23:59:58Z');
+        const held = withinRunMonth(inner, new Date('2026-11-30T23:30:00Z'), () => clock);
+        const out = fs.mkdtempSync(path.join(os.tmpdir(), 'ink-evals-'));
+        try {
+            const before = await runPackEvaluations({ registry: packs, names: ['craft-mood'], generator: held, who: { kind: 'model', id: 'x' }, outRoot: out });
+            expect(before[0].file).not.toBeNull();
+            const sent = inner.calls.length;
+            expect(sent).toBeGreaterThan(0);
+            clock = new Date('2026-12-01T00:00:01Z');
+            await expect(held.generateCandidates(inner.calls[0])).rejects.toBeInstanceOf(GenerationStop);
+            const after = await runPackEvaluations({ registry: packs, names: ['craft-plot', 'craft-theme'], generator: held, who: { kind: 'model', id: 'x' }, outRoot: out });
+            expect(after).toEqual([expect.objectContaining({ name: 'craft-plot', passed: false, file: null, error: expect.stringMatching(/^GenerationStop/) })]);
+            expect(inner.calls).toHaveLength(sent);
+        } finally {
+            fs.rmSync(out, { recursive: true, force: true });
+        }
+    });
+
+    it('the script holds the model generator to its month', () => {
+        const script = fs.readFileSync(path.resolve(__dirname, '../../../scripts/evaluate-packs.ts'), 'utf8');
+        expect(script).toMatch(/withinRunMonth\(model\.generator, new Date\(\)\)/);
+    });
+});
+
 describe('a run', () => {
     it('writes each record under the output root, checked the way the mount gate checks it', async () => {
         const out = fs.mkdtempSync(path.join(os.tmpdir(), 'ink-evals-'));
