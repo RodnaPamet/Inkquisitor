@@ -31,6 +31,14 @@
  *                            structural reconciler is the reference reconciler
  *                            (`src/lib/enrichment/evals/evaluation.ts`); the
  *                            model one is the product's wired reconciler.
+ *   --research               also run the research agent's sets (Phase 2.6:
+ *                            research and adversarial briefs over a fake web)
+ *                            and write its record: beside the sets
+ *                            (src/lib/research/evals/) for a structural run,
+ *                            DIR/research/ under --out. The structural
+ *                            researcher is the deterministic one; the model
+ *                            run makes the findings and fit calls over each
+ *                            case's fake web (no live search).
  *   --out DIR                where records go: DIR/<pack dir>/evaluation-record.json
  *
  * Every figure in a record is recomputed by the mount gate when it is read;
@@ -56,12 +64,14 @@ export interface EvalArgs {
     coverage: boolean;
     /** Also run the reconcile evaluation (Phase 2.5). */
     reconcile: boolean;
+    /** Also run the research agent's evaluation (Phase 2.6). */
+    research: boolean;
     out: string | null;
 }
 
 /** Parse the command line. Throws a plain message on anything it does not understand. */
 export function parseEvalArgs(argv: readonly string[]): EvalArgs {
-    const args: EvalArgs = { generator: 'structural', packs: 'all', coverage: false, reconcile: false, out: null };
+    const args: EvalArgs = { generator: 'structural', packs: 'all', coverage: false, reconcile: false, research: false, out: null };
     for (let i = 0; i < argv.length; i++) {
         const a = argv[i];
         const value = (): string => {
@@ -71,6 +81,7 @@ export function parseEvalArgs(argv: readonly string[]): EvalArgs {
         };
         if (a === '--coverage') args.coverage = true;
         else if (a === '--reconcile') args.reconcile = true;
+        else if (a === '--research') args.research = true;
         else if (a === '--no-packs') args.packs = [];
         else if (a.startsWith('--generator')) {
             const v = value();

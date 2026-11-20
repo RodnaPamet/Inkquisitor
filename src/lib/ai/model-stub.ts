@@ -37,6 +37,12 @@
  * answer, never as content. A RECONCILE request (Phase 2.5) is answered by
  * `stubReconcileAnswer`: an ADD of the author's own words into each empty
  * field an answer targeted, NO_CHANGE everywhere else, nothing invented.
+ * The RESEARCH agent's requests (Phase 2.6) are answered from a fake web, with
+ * no network: a gather turn runs one web search and one fetch of a page built
+ * from the brief's question alone (`stubWebPage`), streamed as the server
+ * tools' own blocks; the findings call quotes each source's first sentence;
+ * the fit call proposes that claim for the first empty field of the first
+ * scope element. The product's validation still judges every word.
  */
 import type { AiEnvRecord } from './config';
 
@@ -266,6 +272,122 @@ export function stubReconcileAnswer(body: Record<string, unknown>): { operations
     return { operations: operations.slice(0, 40), newElements: [] };
 }
 
+// ─── The research agent (Phase 2.6) ────────────────────────────────
+
+/** The stub's fake web: one page per question, under a reserved `.example` name, its text built from the question alone. */
+export const STUB_WEB_ORIGIN = 'https://research.stub.example';
+
+function stubTopic(question: string): string {
+    return question.replace(/[?!.]+\s*$/, '').replace(/\s+/g, ' ').trim().slice(0, 120) || 'the topic';
+}
+
+/** The page the stub's web holds for a question (deterministic; no network). */
+export function stubWebPage(question: string): { url: string; title: string; text: string } {
+    const topic = stubTopic(question);
+    const slug = topic.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60) || 'topic';
+    return {
+        url: `${STUB_WEB_ORIGIN}/${slug}`,
+        title: `Notes on ${topic}`,
+        text: `Historical records describe ${topic} in careful detail. Archives hold several firsthand accounts of ${topic}. Scholars agree on the main facts about ${topic}.`,
+    };
+}
+
+/**
+ * The stub's answer to a research GATHER request (the web tools offered): one
+ * web search for the brief's question, its one hit fetched — both server tool
+ * blocks and their results, as the Messages API streams them — then a short
+ * closing text. Built from the brief's question block alone.
+ */
+function stubGatherEvents(body: Record<string, unknown>, model: string): Array<Record<string, unknown>> | null {
+    const tools = Array.isArray(body.tools) ? (body.tools as Array<{ type?: unknown }>) : [];
+    if (!tools.some((t) => t.type === 'web_search_20260209')) return null;
+    const question = fencedBlocks(body).get('brief.question') ?? '';
+    const page = stubWebPage(question);
+    const query = stubTopic(question).split(' ').slice(0, 8).join(' ');
+    const usage = { input_tokens: 2_000, output_tokens: 1 };
+    return [
+        { type: 'message_start', message: { id: 'msg_stub_gather', type: 'message', role: 'assistant', model, content: [], stop_reason: null, stop_sequence: null, usage } },
+        { type: 'content_block_start', index: 0, content_block: { type: 'server_tool_use', id: 'srvtoolu_stub_1', name: 'web_search', input: {} } },
+        { type: 'content_block_delta', index: 0, delta: { type: 'input_json_delta', partial_json: JSON.stringify({ query }) } },
+        { type: 'content_block_stop', index: 0 },
+        {
+            type: 'content_block_start',
+            index: 1,
+            content_block: { type: 'web_search_tool_result', tool_use_id: 'srvtoolu_stub_1', content: [{ type: 'web_search_result', url: page.url, title: page.title, encrypted_content: 'stub', page_age: null }] },
+        },
+        { type: 'content_block_stop', index: 1 },
+        { type: 'content_block_start', index: 2, content_block: { type: 'server_tool_use', id: 'srvtoolu_stub_2', name: 'web_fetch', input: {} } },
+        { type: 'content_block_delta', index: 2, delta: { type: 'input_json_delta', partial_json: JSON.stringify({ url: page.url }) } },
+        { type: 'content_block_stop', index: 2 },
+        {
+            type: 'content_block_start',
+            index: 3,
+            content_block: {
+                type: 'web_fetch_tool_result',
+                tool_use_id: 'srvtoolu_stub_2',
+                content: { type: 'web_fetch_result', url: page.url, retrieved_at: '2026-11-20T00:00:00Z', content: { type: 'document', source: { type: 'text', media_type: 'text/plain', data: page.text }, title: page.title, citations: null } },
+            },
+        },
+        { type: 'content_block_stop', index: 3 },
+        { type: 'content_block_start', index: 4, content_block: { type: 'text', text: '' } },
+        { type: 'content_block_delta', index: 4, delta: { type: 'text_delta', text: `Read ${page.title}.` } },
+        { type: 'content_block_stop', index: 4 },
+        { type: 'message_delta', delta: { stop_reason: 'end_turn', stop_sequence: null }, usage: { output_tokens: 60, server_tool_use: { web_search_requests: 1, web_fetch_requests: 1 } } },
+        { type: 'message_stop' },
+    ];
+}
+
+/** The stub's FINDINGS answer: each source's first sentence as a claim, quoted verbatim from it. Pure. */
+export function stubFindingsAnswer(body: Record<string, unknown>): { findings: Array<Record<string, unknown>> } | null {
+    const blocks = [...fencedBlocks(body)].filter(([label]) => label.startsWith('source.'));
+    if (blocks.length === 0) return null;
+    const findings: Array<Record<string, unknown>> = [];
+    for (const [, text] of blocks) {
+        let source: { ref?: unknown; text?: unknown };
+        try {
+            source = JSON.parse(text) as { ref?: unknown; text?: unknown };
+        } catch {
+            continue;
+        }
+        if (typeof source.ref !== 'string' || typeof source.text !== 'string') continue;
+        const sentences = source.text.split(/(?<=[.!?])\s+/).map((x) => x.trim()).filter((x) => x.length >= 20);
+        if (sentences.length === 0) continue;
+        findings.push({ claim: sentences[0], summary: sentences.slice(0, 2).join(' '), confidence: 'MEDIUM', citations: [{ ref: source.ref, quote: sentences[0] }] });
+    }
+    return { findings: findings.slice(0, 3) };
+}
+
+/** The stub's FIT answer: the first finding as an ADD into the first empty text, rich-text or list field of the first scope element. Pure. */
+export function stubFitAnswer(body: Record<string, unknown>): { proposals: Array<Record<string, unknown>>; noFit: Array<Record<string, unknown>> } | null {
+    const blocks = fencedBlocks(body);
+    const findings = [...blocks].filter(([label]) => label.startsWith('finding.')).map(([, t]) => {
+        try {
+            return JSON.parse(t) as { ref?: string; claim?: string };
+        } catch {
+            return {};
+        }
+    });
+    if (findings.length === 0) return null;
+    const first = findings[0];
+    for (const [label, text] of blocks) {
+        if (!label.startsWith('element.')) continue;
+        let e: { elementId?: string; role?: string; fields?: Array<{ key?: string; type?: string }>; stored_values?: Record<string, unknown> };
+        try {
+            e = JSON.parse(text) as typeof e;
+        } catch {
+            continue;
+        }
+        if (e.role !== 'scope' || !e.elementId) continue;
+        const field = (e.fields ?? []).find((f) => (f.type === 'text' || f.type === 'richtext' || f.type === 'list') && f.key && !(f.key in (e.stored_values ?? {})));
+        if (!field || !first.claim || !first.ref) continue;
+        return {
+            proposals: [{ op: 'ADD', elementId: e.elementId, fieldKey: field.key, value: field.type === 'list' ? [first.claim] : first.claim, newKind: null, newName: null, newSummary: null, rationale: 'The finding bears on this entry.', cites: [first.ref] }],
+            noFit: [],
+        };
+    }
+    return { proposals: [], noFit: findings.filter((f) => f.ref).map((f) => ({ finding: f.ref, reason: 'No entry in scope has an empty field it fits.' })) };
+}
+
 function sse(events: Array<Record<string, unknown>>): string {
     return events.map((e) => `event: ${String(e.type)}\ndata: ${JSON.stringify(e)}\n\n`).join('');
 }
@@ -307,7 +429,9 @@ export async function stubMessagesFetch(input: string | URL | Request, init?: Re
         body = {};
     }
     const model = typeof body.model === 'string' ? body.model : 'stub-model';
-    const text = JSON.stringify(stubReconcileAnswer(body) ?? stubAnswer(body));
+    const gather = stubGatherEvents(body, model);
+    if (gather) return new Response(sse(gather), { status: 200, headers: { 'content-type': 'text/event-stream' } });
+    const text = JSON.stringify(stubFindingsAnswer(body) ?? stubFitAnswer(body) ?? stubReconcileAnswer(body) ?? stubAnswer(body));
     return new Response(streamedMessage(model, text, { input_tokens: 1_500, output_tokens: Math.max(50, Math.ceil(text.length / 4)) }), {
         status: 200,
         headers: { 'content-type': 'text/event-stream' },

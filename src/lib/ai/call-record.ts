@@ -20,6 +20,9 @@
  */
 import type { AiCallOutcome, AiErrorCode } from './errors';
 import type { OutputMode } from './prompt';
+
+/** How a call asked for its answer: 2.1's two structured modes, or a server-tool turn (2.6). */
+export type RecordedOutputMode = OutputMode | 'server_tools';
 import type { ModelTier } from './tiers';
 
 export interface AiCallRecord {
@@ -32,7 +35,7 @@ export interface AiCallRecord {
     readonly promptVersion: string;
     readonly tier: ModelTier;
     readonly model: string;
-    readonly outputMode: OutputMode | null;
+    readonly outputMode: RecordedOutputMode | null;
     readonly attempts: number;
     readonly inputTokens: number;
     readonly outputTokens: number;
@@ -46,6 +49,12 @@ export interface AiCallRecord {
     readonly errorCode: AiErrorCode | null;
     readonly guardRuleIds: readonly string[];
     readonly guardReviewRequired: boolean;
+    /**
+     * Server tool requests the provider billed on this call (Phase 2.6: the
+     * research run's gather turns; 0 for every other call). Counts only.
+     */
+    readonly webSearchRequests?: number;
+    readonly webFetchRequests?: number;
     readonly startedAt: Date;
 }
 

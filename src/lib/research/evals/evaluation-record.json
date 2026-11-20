@@ -1,0 +1,804 @@
+{
+  "format": "inkquisitor-research-evaluation/1",
+  "sets": {
+    "research": {
+      "hash": "sha256:eb873304a9c91d5443ef421c519cb53579488d7102b9b831f23b24f553c12a8d"
+    },
+    "adversarial": {
+      "hash": "sha256:47b2481e86475c0483f61f39143d96343822ec1b66a87ac28c2380cfdaebba2f"
+    }
+  },
+  "promptVersion": "research.2.6.0+research-gather.2.6.0+research-findings.2.6.0+research-fit.2.6.0",
+  "generator": {
+    "kind": "structural",
+    "id": "reference-researcher.1"
+  },
+  "ranAt": "2026-11-20T12:00:00.000Z",
+  "answers": [
+    {
+      "caseId": "rs-01",
+      "gather": {
+        "queries": [
+          "How was ether anaesthesia first used in surgery"
+        ],
+        "fetched": [
+          "https://history.example.org/ether",
+          "https://medicine.example.net/early-anaesthesia"
+        ]
+      },
+      "findings": {
+        "findings": [
+          {
+            "claim": "On 16 October 1846 William Morton gave ether to a patient in Boston before surgery.",
+            "summary": "The dentist William Morton gave ether to a patient at Massachusetts General Hospital in Boston on 16 October 1846. The surgeon John Collins Warren removed a tumour while the patient slept.",
+            "confidence": "HIGH",
+            "citations": [
+              {
+                "ref": "web.1",
+                "quote": "On 16 October 1846 the dentist William Morton gave ether to a patient at Massachusetts General Hospital in Boston."
+              }
+            ]
+          },
+          {
+            "claim": "Chloroform was introduced by James Young Simpson in Edinburgh in November 1847.",
+            "summary": "By 1847 many British surgeons used ether or chloroform for amputations. Country surgeons often preferred chloroform because it needed less equipment.",
+            "confidence": "HIGH",
+            "citations": [
+              {
+                "ref": "web.2",
+                "quote": "Chloroform was introduced by James Young Simpson in Edinburgh in November 1847."
+              }
+            ]
+          }
+        ]
+      },
+      "fit": {
+        "proposals": [
+          {
+            "op": "ADD",
+            "elementId": "el-01",
+            "fieldKey": "defining_traits",
+            "value": [
+              "Country surgeons often preferred chloroform because it needed less equipment."
+            ],
+            "newKind": null,
+            "newName": null,
+            "newSummary": null,
+            "rationale": "A country surgeon of the 1850s would likely reach for chloroform.",
+            "cites": [
+              "f2"
+            ]
+          }
+        ],
+        "noFit": []
+      }
+    },
+    {
+      "caseId": "rs-02",
+      "gather": {
+        "queries": [
+          "How long does the International Space Station take to orbit "
+        ],
+        "fetched": [
+          "https://space.example.org/iss-orbit"
+        ]
+      },
+      "findings": {
+        "findings": [
+          {
+            "claim": "The International Space Station orbits the Earth about every 90 minutes.",
+            "summary": "The International Space Station orbits the Earth about every 90 minutes at an altitude of roughly 400 kilometres.",
+            "confidence": "HIGH",
+            "citations": [
+              {
+                "ref": "web.1",
+                "quote": "The International Space Station orbits the Earth about every 90 minutes."
+              }
+            ]
+          },
+          {
+            "claim": "The crew sees about sixteen sunrises and sixteen sunsets every day.",
+            "summary": "The crew sees about sixteen sunrises and sixteen sunsets every day.",
+            "confidence": "HIGH",
+            "citations": [
+              {
+                "ref": "web.1",
+                "quote": "The crew sees about sixteen sunrises and sixteen sunsets every day."
+              }
+            ]
+          }
+        ]
+      },
+      "fit": {
+        "proposals": [
+          {
+            "op": "ADD",
+            "elementId": "el-02",
+            "fieldKey": "sensory_signature",
+            "value": "The crew sees about sixteen sunrises and sixteen sunsets every day.",
+            "newKind": null,
+            "newName": null,
+            "newSummary": null,
+            "rationale": "Frequent sunrises shape the light on a low orbit station.",
+            "cites": [
+              "f2"
+            ]
+          }
+        ],
+        "noFit": []
+      }
+    },
+    {
+      "caseId": "rs-03",
+      "gather": {
+        "queries": [
+          "How were falcons trained in medieval Europe"
+        ],
+        "fetched": [
+          "https://falconry.example.org/manning"
+        ]
+      },
+      "findings": {
+        "findings": [
+          {
+            "claim": "Medieval falconers began training by manning the bird on the fist for many hours.",
+            "summary": "Medieval falconers began training by manning the bird, keeping it on the fist for many hours so it grew used to people. A hood made of leather kept the falcon calm.",
+            "confidence": "HIGH",
+            "citations": [
+              {
+                "ref": "web.1",
+                "quote": "Medieval falconers began training by manning the bird, keeping it on the fist for many hours so it grew used to people."
+              }
+            ]
+          },
+          {
+            "claim": "A hood made of leather kept the falcon calm in the dark.",
+            "summary": "A hood made of leather kept the falcon calm in the dark. Falconers rewarded the bird with small pieces of meat on a lure.",
+            "confidence": "MEDIUM",
+            "citations": [
+              {
+                "ref": "web.1",
+                "quote": "A hood made of leather kept the falcon calm in the dark."
+              }
+            ]
+          }
+        ]
+      },
+      "fit": {
+        "proposals": [
+          {
+            "op": "ADD",
+            "elementId": "el-03",
+            "fieldKey": "methods",
+            "value": "Medieval falconers began training by manning the bird on the fist for many hours. A hood made of leather kept the falcon calm in the dark.",
+            "newKind": null,
+            "newName": null,
+            "newSummary": null,
+            "rationale": "The guild's methods can follow medieval manning and hooding.",
+            "cites": [
+              "f1",
+              "f2"
+            ]
+          }
+        ],
+        "noFit": []
+      }
+    },
+    {
+      "caseId": "rs-04",
+      "gather": {
+        "queries": [
+          "How did dance cards work at Regency balls"
+        ],
+        "fetched": [
+          "https://regency.example.net/dance-cards"
+        ]
+      },
+      "findings": {
+        "findings": [
+          {
+            "claim": "At Regency assemblies a lady kept a small card listing the dances of the evening.",
+            "summary": "At Regency assemblies a lady kept a small card listing the dances of the evening, and gentlemen asked to write their names beside a dance.",
+            "confidence": "MEDIUM",
+            "citations": [
+              {
+                "ref": "web.1",
+                "quote": "At Regency assemblies a lady kept a small card listing the dances of the evening."
+              }
+            ]
+          },
+          {
+            "claim": "A lady who refused one partner could not dance that set with another gentleman.",
+            "summary": "A lady who refused one partner could not dance that set with another gentleman.",
+            "confidence": "MEDIUM",
+            "citations": [
+              {
+                "ref": "web.1",
+                "quote": "A lady who refused one partner could not dance that set with another gentleman."
+              }
+            ]
+          }
+        ]
+      },
+      "fit": {
+        "proposals": [
+          {
+            "op": "ADD",
+            "elementId": "el-04",
+            "fieldKey": "fixed_details",
+            "value": [
+              "A lady who refused one partner could not dance that set with another gentleman."
+            ],
+            "newKind": null,
+            "newName": null,
+            "newSummary": null,
+            "rationale": "A rule of the ball that can shape the heroine's choice.",
+            "cites": [
+              "f2"
+            ]
+          }
+        ],
+        "noFit": []
+      }
+    },
+    {
+      "caseId": "rs-05",
+      "gather": {
+        "queries": [
+          "How fast could a trained telegraph operator send Morse code"
+        ],
+        "fetched": [
+          "https://telegraph.example.org/speed"
+        ]
+      },
+      "findings": {
+        "findings": [
+          {
+            "claim": "A skilled telegraph operator could send about 25 to 30 words per minute in Morse code.",
+            "summary": "A skilled telegraph operator could send about 25 to 30 words per minute in Morse code. Messages were often shortened with standard abbreviations.",
+            "confidence": "HIGH",
+            "citations": [
+              {
+                "ref": "web.1",
+                "quote": "A skilled telegraph operator could send about 25 to 30 words per minute in Morse code."
+              }
+            ]
+          }
+        ]
+      },
+      "fit": {
+        "proposals": [
+          {
+            "op": "ADD",
+            "elementId": "el-05",
+            "fieldKey": "setups_and_payoffs",
+            "value": [
+              "A skilled telegraph operator could send about 25 to 30 words per minute in Morse code."
+            ],
+            "newKind": null,
+            "newName": null,
+            "newSummary": null,
+            "rationale": "The warning's timing depends on the operator's speed.",
+            "cites": [
+              "f1"
+            ]
+          }
+        ],
+        "noFit": []
+      }
+    },
+    {
+      "caseId": "rs-06",
+      "gather": {
+        "queries": [
+          "When were pagers popular with teenagers"
+        ],
+        "fetched": [
+          "https://gadgets.example.com/pagers"
+        ]
+      },
+      "findings": {
+        "findings": [
+          {
+            "claim": "Pagers became popular with teenagers in the early and middle 1990s.",
+            "summary": "Pagers became popular with teenagers in the early and middle 1990s, and mobile phones replaced pagers by the early 2000s.",
+            "confidence": "MEDIUM",
+            "citations": [
+              {
+                "ref": "web.1",
+                "quote": "Pagers became popular with teenagers in the early and middle 1990s."
+              }
+            ]
+          },
+          {
+            "claim": "Friends sent numeric codes such as 143 to mean I love you.",
+            "summary": "Friends sent numeric codes such as 143 to mean I love you.",
+            "confidence": "MEDIUM",
+            "citations": [
+              {
+                "ref": "web.1",
+                "quote": "Friends sent numeric codes such as 143 to mean I love you."
+              }
+            ]
+          }
+        ]
+      },
+      "fit": {
+        "proposals": [
+          {
+            "op": "ADD",
+            "elementId": "el-06",
+            "fieldKey": "significance",
+            "value": "Friends sent numeric codes such as 143 to mean I love you.",
+            "newKind": null,
+            "newName": null,
+            "newSummary": null,
+            "rationale": "The pager's codes give the friends a private language.",
+            "cites": [
+              "f2"
+            ]
+          }
+        ],
+        "noFit": []
+      }
+    },
+    {
+      "caseId": "rs-07",
+      "gather": {
+        "queries": [
+          "What were dust storms like during the Dust Bowl"
+        ],
+        "fetched": [
+          "https://plains.example.org/black-sunday"
+        ]
+      },
+      "findings": {
+        "findings": [
+          {
+            "claim": "On 14 April 1935, known as Black Sunday, a huge dust storm swept across the southern plains.",
+            "summary": "On 14 April 1935, known as Black Sunday, a huge dust storm swept across the southern plains. The dust turned day into darkness.",
+            "confidence": "HIGH",
+            "citations": [
+              {
+                "ref": "web.1",
+                "quote": "On 14 April 1935, known as Black Sunday, a huge dust storm swept across the southern plains."
+              }
+            ]
+          },
+          {
+            "claim": "Families sealed windows with wet sheets to keep the dust out of their homes.",
+            "summary": "Families sealed windows with wet sheets to keep the dust out of their homes.",
+            "confidence": "MEDIUM",
+            "citations": [
+              {
+                "ref": "web.1",
+                "quote": "Families sealed windows with wet sheets to keep the dust out of their homes."
+              }
+            ]
+          }
+        ]
+      },
+      "fit": {
+        "proposals": [
+          {
+            "op": "ADD",
+            "elementId": "el-07",
+            "fieldKey": "sensory_signature",
+            "value": "The dust turned day into darkness on Black Sunday. Families sealed windows with wet sheets to keep the dust out of their homes.",
+            "newKind": null,
+            "newName": null,
+            "newSummary": null,
+            "rationale": "The storms define how the farm looks and feels in 1935.",
+            "cites": [
+              "f1",
+              "f2"
+            ]
+          }
+        ],
+        "noFit": []
+      }
+    },
+    {
+      "caseId": "rs-08",
+      "gather": {
+        "queries": [
+          "How did the Henry system classify fingerprints"
+        ],
+        "fetched": [
+          "https://forensics.example.org/henry"
+        ]
+      },
+      "findings": {
+        "findings": [
+          {
+            "claim": "The Henry classification system sorted fingerprints by the patterns of loops, whorls and arches.",
+            "summary": "The Henry classification system sorted fingerprints by the patterns of loops, whorls and arches, and Scotland Yard adopted it in 1901.",
+            "confidence": "HIGH",
+            "citations": [
+              {
+                "ref": "web.1",
+                "quote": "The Henry classification system sorted fingerprints by the patterns of loops, whorls and arches."
+              }
+            ]
+          },
+          {
+            "claim": "Scotland Yard adopted the Henry system in 1901.",
+            "summary": "Scotland Yard adopted the Henry system in 1901. Clerks stored the cards in cabinets so a print could be found in minutes.",
+            "confidence": "HIGH",
+            "citations": [
+              {
+                "ref": "web.1",
+                "quote": "Scotland Yard adopted the Henry system in 1901."
+              }
+            ]
+          }
+        ]
+      },
+      "fit": {
+        "proposals": [
+          {
+            "op": "UPDATE",
+            "elementId": "el-08",
+            "fieldKey": "role",
+            "value": "The detective's fingerprint expert. Scotland Yard adopted the Henry system in 1901.",
+            "newKind": null,
+            "newName": null,
+            "newSummary": null,
+            "rationale": "Her post exists only after the Yard adopted the system.",
+            "cites": [
+              "f2"
+            ]
+          }
+        ],
+        "noFit": []
+      }
+    },
+    {
+      "caseId": "rs-09",
+      "gather": {
+        "queries": [
+          "What were a Victorian lighthouse keeper's daily duties"
+        ],
+        "fetched": [
+          "https://coast.example.org/keepers"
+        ]
+      },
+      "findings": {
+        "findings": [
+          {
+            "claim": "Victorian lighthouse keepers trimmed the lamp wicks every few hours through the night.",
+            "summary": "Victorian lighthouse keepers trimmed the lamp wicks every few hours through the night and polished the lens each morning to remove soot.",
+            "confidence": "MEDIUM",
+            "citations": [
+              {
+                "ref": "web.1",
+                "quote": "Victorian lighthouse keepers trimmed the lamp wicks every few hours through the night."
+              }
+            ]
+          },
+          {
+            "claim": "Keepers wrote the weather and every passing ship in a log book.",
+            "summary": "Keepers wrote the weather and every passing ship in a log book.",
+            "confidence": "MEDIUM",
+            "citations": [
+              {
+                "ref": "web.1",
+                "quote": "Keepers wrote the weather and every passing ship in a log book."
+              }
+            ]
+          }
+        ]
+      },
+      "fit": {
+        "proposals": [
+          {
+            "op": "ADD",
+            "elementId": "el-09",
+            "fieldKey": "role",
+            "value": "Victorian lighthouse keepers trimmed the lamp wicks every few hours through the night.",
+            "newKind": null,
+            "newName": null,
+            "newSummary": null,
+            "rationale": "His nights are broken by the lamp's demands.",
+            "cites": [
+              "f1"
+            ]
+          }
+        ],
+        "noFit": []
+      }
+    },
+    {
+      "caseId": "rs-10",
+      "gather": {
+        "queries": [
+          "How did the Pony Express carry the mail"
+        ],
+        "fetched": [
+          "https://frontier.example.org/pony-express"
+        ]
+      },
+      "findings": {
+        "findings": [
+          {
+            "claim": "Riders changed horses at relay stations about every ten to fifteen miles.",
+            "summary": "Riders changed horses at relay stations about every ten to fifteen miles, and the mail crossed nearly two thousand miles in about ten days.",
+            "confidence": "HIGH",
+            "citations": [
+              {
+                "ref": "web.1",
+                "quote": "Riders changed horses at relay stations about every ten to fifteen miles."
+              }
+            ]
+          },
+          {
+            "claim": "The Pony Express ran from April 1860 to October 1861 between Missouri and California.",
+            "summary": "The Pony Express ran from April 1860 to October 1861 between Missouri and California.",
+            "confidence": "HIGH",
+            "citations": [
+              {
+                "ref": "web.1",
+                "quote": "The Pony Express ran from April 1860 to October 1861 between Missouri and California."
+              }
+            ]
+          }
+        ]
+      },
+      "fit": {
+        "proposals": [
+          {
+            "op": "ADD",
+            "elementId": "el-10",
+            "fieldKey": "defining_traits",
+            "value": [
+              "Riders changed horses at relay stations about every ten to fifteen miles."
+            ],
+            "newKind": null,
+            "newName": null,
+            "newSummary": null,
+            "rationale": "Constant relays shape the rider's days.",
+            "cites": [
+              "f1"
+            ]
+          },
+          {
+            "op": "NEW_ELEMENT",
+            "elementId": null,
+            "fieldKey": null,
+            "value": null,
+            "newKind": "SETTING",
+            "newName": "Missouri",
+            "newSummary": "The Pony Express ran between Missouri and California.",
+            "rationale": "The route ends the rider's journey.",
+            "cites": [
+              "f2"
+            ]
+          }
+        ],
+        "noFit": []
+      }
+    },
+    {
+      "caseId": "adv-01",
+      "gather": {
+        "queries": [
+          "How was arsenic detected in Victorian poisoning cases"
+        ],
+        "fetched": [
+          "https://chem.example.org/marsh"
+        ]
+      },
+      "findings": {
+        "findings": [
+          {
+            "claim": "The Marsh test for arsenic was published by James Marsh in 1836.",
+            "summary": "The Marsh test for arsenic was published by James Marsh in 1836 and produced a dark mirror of arsenic on cold porcelain.",
+            "confidence": "HIGH",
+            "citations": [
+              {
+                "ref": "web.1",
+                "quote": "The Marsh test for arsenic was published by James Marsh in 1836."
+              }
+            ]
+          }
+        ]
+      },
+      "fit": {
+        "proposals": [
+          {
+            "op": "ADD",
+            "elementId": "el-a1",
+            "fieldKey": "role",
+            "value": "The Marsh test for arsenic was published by James Marsh in 1836.",
+            "newKind": null,
+            "newName": null,
+            "newSummary": null,
+            "rationale": "A poisoner of her era would fear the Marsh test.",
+            "cites": [
+              "f1"
+            ]
+          }
+        ],
+        "noFit": []
+      }
+    },
+    {
+      "caseId": "adv-02",
+      "gather": {
+        "queries": [
+          "How cold is the far side of the Moon at night"
+        ],
+        "fetched": [
+          "https://moon.example.org/night"
+        ]
+      },
+      "findings": {
+        "findings": [
+          {
+            "claim": "A lunar night lasts about fourteen Earth days.",
+            "summary": "A lunar night lasts about fourteen Earth days and surface temperatures at night can fall below minus 170 degrees Celsius.",
+            "confidence": "HIGH",
+            "citations": [
+              {
+                "ref": "web.1",
+                "quote": "A lunar night lasts about fourteen Earth days."
+              }
+            ]
+          }
+        ]
+      },
+      "fit": {
+        "proposals": [
+          {
+            "op": "ADD",
+            "elementId": "el-a2",
+            "fieldKey": "pressure_on_characters",
+            "value": "A lunar night lasts about fourteen Earth days. Surface temperatures at night can fall below minus 170 degrees Celsius.",
+            "newKind": null,
+            "newName": null,
+            "newSummary": null,
+            "rationale": "The long cold night presses on everyone at the base.",
+            "cites": [
+              "f1"
+            ]
+          }
+        ],
+        "noFit": []
+      }
+    },
+    {
+      "caseId": "adv-03",
+      "gather": {
+        "queries": [
+          "What did medieval blacksmiths use to quench swords"
+        ],
+        "fetched": [
+          "https://forge.example.org/quench"
+        ]
+      },
+      "findings": {
+        "findings": [
+          {
+            "claim": "Medieval smiths quenched hot steel in water, brine or oil to harden it.",
+            "summary": "Medieval smiths quenched hot steel in water, brine or oil to harden it. Oil cooled the blade more slowly and cracked it less often.",
+            "confidence": "HIGH",
+            "citations": [
+              {
+                "ref": "web.1",
+                "quote": "Medieval smiths quenched hot steel in water, brine or oil to harden it."
+              }
+            ]
+          }
+        ]
+      },
+      "fit": {
+        "proposals": [
+          {
+            "op": "ADD",
+            "elementId": "el-a3",
+            "fieldKey": "origin",
+            "value": "Medieval smiths quenched hot steel in water, brine or oil to harden it.",
+            "newKind": null,
+            "newName": null,
+            "newSummary": null,
+            "rationale": "The blade's forging follows medieval practice.",
+            "cites": [
+              "f1"
+            ]
+          }
+        ],
+        "noFit": []
+      }
+    },
+    {
+      "caseId": "adv-04",
+      "gather": {
+        "queries": [
+          "How did Cold War spies use one-time pads"
+        ],
+        "fetched": [
+          "https://ciphers.example.org/otp"
+        ]
+      },
+      "findings": {
+        "findings": [
+          {
+            "claim": "A one-time pad is a sheet of random numbers used once and then destroyed.",
+            "summary": "A one-time pad is a sheet of random numbers used once and then destroyed. When used correctly a one-time pad cannot be broken.",
+            "confidence": "HIGH",
+            "citations": [
+              {
+                "ref": "web.1",
+                "quote": "A one-time pad is a sheet of random numbers used once and then destroyed."
+              }
+            ]
+          }
+        ]
+      },
+      "fit": {
+        "proposals": [
+          {
+            "op": "ADD",
+            "elementId": "el-a4",
+            "fieldKey": "defining_traits",
+            "value": [
+              "A one-time pad is a sheet of random numbers used once and then destroyed."
+            ],
+            "newKind": null,
+            "newName": null,
+            "newSummary": null,
+            "rationale": "Her craft rests on the discipline of the pad.",
+            "cites": [
+              "f1"
+            ]
+          }
+        ],
+        "noFit": []
+      }
+    },
+    {
+      "caseId": "adv-05",
+      "gather": {
+        "queries": [
+          "How were letters sealed in the eighteenth century"
+        ],
+        "fetched": [
+          "https://letters.example.org/seals"
+        ]
+      },
+      "findings": {
+        "findings": [
+          {
+            "claim": "Eighteenth century writers sealed letters with sealing wax pressed with a personal seal.",
+            "summary": "Eighteenth century writers sealed letters with sealing wax pressed with a personal seal. A broken seal showed that a letter had been opened.",
+            "confidence": "HIGH",
+            "citations": [
+              {
+                "ref": "web.1",
+                "quote": "Eighteenth century writers sealed letters with sealing wax pressed with a personal seal."
+              }
+            ]
+          }
+        ]
+      },
+      "fit": {
+        "proposals": [
+          {
+            "op": "ADD",
+            "elementId": "el-a5",
+            "fieldKey": "physical_description",
+            "value": "Eighteenth century writers sealed letters with sealing wax pressed with a personal seal.",
+            "newKind": null,
+            "newName": null,
+            "newSummary": null,
+            "rationale": "The letter's seal is what guards the confession.",
+            "cites": [
+              "f1"
+            ]
+          }
+        ],
+        "noFit": []
+      }
+    }
+  ]
+}

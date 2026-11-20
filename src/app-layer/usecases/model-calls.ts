@@ -31,6 +31,12 @@ import {
     type StructuredCallResult,
 } from '@/lib/ai/call-structured';
 import { runInWorkspaceContext, type PrismaTx } from '@/lib/db/rls-middleware';
+import {
+    runServerToolLoop as runServerToolLoopCore,
+    type ServerToolLoopDeps,
+    type ServerToolLoopInput,
+    type ServerToolLoopResult,
+} from '@/lib/ai/server-tool-loop';
 
 /** The ledger of one workspace, over `AiCallLog`, `AiSpendMonth` and `AiSpendReservation`. */
 export function workspaceAiLedger(ctx: Pick<WorkspaceRequestContext, 'workspaceId' | 'requestId' | 'userId'>): AiLedger {
@@ -120,4 +126,18 @@ export async function modelBudgetState(
     const spend = await AiCallRepository.monthSpend(db, ctx.workspaceId, periodStartOf(now), now);
     const ceiling = monthlyCeilingMicroUsd(switches);
     return { killSwitch: false, workspaceCeilingReached: spend.spentMicroUsd + spend.reservedMicroUsd + nextCallWorstMicroUsd > ceiling };
+}
+
+/**
+ * A server-tool turn in the context's workspace (Phase 2.6, the research run's
+ * gather step): `runServerToolLoop` bound to the workspace's ledger, every
+ * request recorded against it and held to its monthly ceiling. As with
+ * `callStructured`, the calling feature checks its own permission first.
+ */
+export async function runServerToolLoop(
+    ctx: WorkspaceRequestContext,
+    input: Omit<ServerToolLoopInput, 'requestedById'>,
+    deps: Omit<ServerToolLoopDeps, 'ledger'> = {},
+): Promise<ServerToolLoopResult> {
+    return runServerToolLoopCore({ ...input, requestedById: ctx.userId }, { ...deps, ledger: workspaceAiLedger(ctx) });
 }

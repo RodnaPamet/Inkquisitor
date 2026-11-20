@@ -44,7 +44,8 @@ model AiCallLog {
   tier                AiModelTier
   /// The model id the tier resolved to.
   model               String
-  /// `json_schema` or `single_tool`; NULL when the call ended before a request was built.
+  /// `json_schema` or `single_tool`, or `server_tools` for a research run's
+  /// gather turn (2.6); NULL when the call ended before a request was built.
   outputMode          String?
   /// Requests sent: 0 (refused before any), 1, or 2 (one repair).
   attempts            Int
@@ -67,6 +68,10 @@ model AiCallLog {
   guardRuleIds        String[]
   /// True when the guard flagged the call: its answer needs a person.
   guardReviewRequired Boolean
+  /// Server tool requests the provider billed (Phase 2.6, a research run's
+  /// gather turns; 0 for every other call). Counts only.
+  webSearchRequests   Int           @default(0)
+  webFetchRequests    Int           @default(0)
   startedAt           DateTime
   createdAt           DateTime      @default(now())
 

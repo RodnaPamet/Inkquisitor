@@ -96,14 +96,57 @@ describe('inspectRequest (pure)', () => {
         expect(inspectRequest(request).refusal).toBe(refusal);
     });
 
+    const fetchTool = { type: 'web_fetch_20260209', name: 'web_fetch', max_uses: 4, allowed_callers: ['direct'], max_content_tokens: 8000 };
+    const searchTool = { type: 'web_search_20260209', name: 'web_search', max_uses: 3, allowed_callers: ['direct'] };
+
     it('a server tool passes only when the client was built to allow its type', () => {
-        const request = { method: 'POST', url: URL_MESSAGES, body: body({ tools: [{ type: 'web_fetch_20260209', name: 'web_fetch' }] }) };
+        const request = { method: 'POST', url: URL_MESSAGES, body: body({ tools: [fetchTool] }) };
         expect(inspectRequest(request, ['web_fetch_20260209']).refusal).toBeNull();
         expect(inspectRequest(request, ['web_search_20260209']).refusal).toBe('SERVER_TOOL');
     });
 
-    it('allows no server tool at all in 2.1 (subphase 2.6 adds web search and fetch, in one place)', () => {
-        expect(PERMITTED_SERVER_TOOL_TYPES).toEqual([]);
+    it('allows EXACTLY the web search and web fetch types (2.6, decision D9), in one place', () => {
+        expect([...PERMITTED_SERVER_TOOL_TYPES]).toEqual(['web_search_20260209', 'web_fetch_20260209']);
+        // Every other server tool type stays refused even when a caller names it.
+        for (const type of ['code_execution_20260521', 'web_search_20260318', 'web_fetch_20260309', 'web_search_20250305', 'bash_20250124', 'mcp_toolset']) {
+            const request = { method: 'POST', url: URL_MESSAGES, body: body({ tools: [{ ...searchTool, type }] }) };
+            expect(inspectRequest(request, [...PERMITTED_SERVER_TOOL_TYPES, type]).refusal).toBe('SERVER_TOOL');
+        }
+    });
+
+    it.each([
+        ['dynamic filtering (the code execution caller)', { ...searchTool, allowed_callers: ['code_execution_20260120'] }],
+        ['no allowed_callers (the 20260209 default is code execution)', { type: 'web_search_20260209', name: 'web_search', max_uses: 3 }],
+        ['both callers', { ...searchTool, allowed_callers: ['direct', 'code_execution_20260120'] }],
+        ['no max_uses (an uncapped tool)', { type: 'web_search_20260209', name: 'web_search', allowed_callers: ['direct'] }],
+        ['a max_uses past the ceiling', { ...searchTool, max_uses: 51 }],
+        ['a fractional max_uses', { ...searchTool, max_uses: 2.5 }],
+        ['another name', { ...searchTool, name: 'search' }],
+        ['a member outside the shape (user_location)', { ...searchTool, user_location: { type: 'approximate', country: 'GB' } }],
+        ['a member outside the shape (cache_control)', { ...searchTool, cache_control: { type: 'ephemeral' } }],
+    ])('refuses a web search definition with %s', (_name, tool) => {
+        const request = { method: 'POST', url: URL_MESSAGES, body: body({ tools: [tool] }) };
+        expect(inspectRequest(request, [...PERMITTED_SERVER_TOOL_TYPES]).refusal).toBe('SERVER_TOOL');
+    });
+
+    it('lets a pause_turn continuation pass the server tools\' own blocks back in the ASSISTANT turn only', () => {
+        const turn = [
+            { type: 'server_tool_use', id: 'srvtoolu_1', name: 'web_search', input: { query: 'q' } },
+            { type: 'web_search_tool_result', tool_use_id: 'srvtoolu_1', content: [] },
+            { type: 'server_tool_use', id: 'srvtoolu_2', name: 'web_fetch', input: { url: 'https://example.org/' } },
+            { type: 'web_fetch_tool_result', tool_use_id: 'srvtoolu_2', content: { type: 'web_fetch_tool_result_error', error_code: 'unavailable' } },
+            { type: 'text', text: 'reading' },
+        ];
+        const assistant = { method: 'POST', url: URL_MESSAGES, body: body({ tools: [searchTool, fetchTool], messages: [{ role: 'user', content: 'hi' }, { role: 'assistant', content: turn }] }) };
+        expect(inspectRequest(assistant, [...PERMITTED_SERVER_TOOL_TYPES]).refusal).toBeNull();
+        // Not for a client that allows no server tool, nor in a user turn, nor for a tool the client does not allow.
+        expect(inspectRequest(assistant).refusal).toBe('CONTENT_BLOCK');
+        const user = { method: 'POST', url: URL_MESSAGES, body: body({ tools: [searchTool], messages: [{ role: 'user', content: turn.slice(0, 2) }] }) };
+        expect(inspectRequest(user, [...PERMITTED_SERVER_TOOL_TYPES]).refusal).toBe('CONTENT_BLOCK');
+        const searchOnly = { method: 'POST', url: URL_MESSAGES, body: body({ tools: [searchTool], messages: [{ role: 'user', content: 'hi' }, { role: 'assistant', content: turn }] }) };
+        expect(inspectRequest(searchOnly, ['web_search_20260209']).refusal).toBe('CONTENT_BLOCK');
+        const otherUse = { method: 'POST', url: URL_MESSAGES, body: body({ tools: [searchTool], messages: [{ role: 'user', content: 'hi' }, { role: 'assistant', content: [{ type: 'server_tool_use', id: 's', name: 'code_execution', input: {} }] }] }) };
+        expect(inspectRequest(otherUse, [...PERMITTED_SERVER_TOOL_TYPES]).refusal).toBe('CONTENT_BLOCK');
     });
 
     it('the shape names the body members, never their values', () => {

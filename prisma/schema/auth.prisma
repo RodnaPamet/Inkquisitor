@@ -46,6 +46,11 @@ model User {
   interviewAnswers    Answer[]
   /// Phase 2.5: proposals this person decided.
   enrichmentDecisions EnrichmentProposal[]
+  /// Phase 2.6: research briefs this person wrote, runs they dispatched and
+  /// proposals they decided; each link is cleared when the person is deleted.
+  researchBriefs      ResearchBrief[]
+  researchRuns        ResearchRun[]
+  researchDecisions   ResearchProposal[]
   /// Model calls this person's requests made; the link is cleared (and the
   /// record kept) when the person is deleted.
   aiCalls             AiCallLog[]

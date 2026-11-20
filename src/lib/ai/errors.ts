@@ -60,6 +60,9 @@ export const AI_ERROR_CODES = [
     'GUARD_BLOCKED_OUTPUT',
     // a scanner threw: the guard fails closed (nothing sent, or the answer withheld)
     'GUARD_UNAVAILABLE',
+    // a server-tool turn (2.6, the research run) issued a tool use code refused
+    // (a query or URL that quotes the book's stored text): the stream is cut
+    'TOOL_USE_REFUSED',
     // CEILING
     'SPEND_CEILING',
     // TIMEOUT / ABORTED
@@ -135,6 +138,20 @@ export class AiGuardBlockedError extends AiCallError {
         this.name = 'AiGuardBlockedError';
         this.direction = direction;
         this.ruleIds = [...ruleIds];
+    }
+}
+
+/**
+ * A server-tool turn (Phase 2.6) issued a tool use code refused — a web
+ * search query or a fetch URL the caller's check judged unsendable (the
+ * research run: one that quotes the book's stored text). The turn's stream is
+ * cut as soon as the call's input is complete. 422. `tool` and `refusal` are
+ * codes; the query itself is never kept.
+ */
+export class AiToolUseRefusedError extends AiCallError {
+    constructor(tool: string, refusal: string, callId: string | null) {
+        super('A tool call was refused before its result was used.', 'AI_TOOL_USE_REFUSED', 422, 'TOOL_USE_REFUSED', callId, { tool, refusal });
+        this.name = 'AiToolUseRefusedError';
     }
 }
 

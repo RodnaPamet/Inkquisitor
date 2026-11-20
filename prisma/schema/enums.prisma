@@ -51,11 +51,13 @@ enum BookStage {
 }
 
 /// What produced a bible version: the author by hand, an interview the
-/// author accepted (Phase 2), or an import (Phase 1.3).
+/// author accepted (Phase 2), an import (Phase 1.3), or research the author
+/// accepted (Phase 2.6).
 enum BibleVersionSource {
   MANUAL
   INTERVIEW
   IMPORT
+  RESEARCH
 }
 
 /// What an interview covers (Phase 2.2): one element, every element of one
@@ -197,4 +199,55 @@ enum AiModelTier {
   FAST
   BALANCED
   DEEP
+}
+
+/// How deep a research brief goes (Phase 2.6): it sets the run's step and
+/// spend budget (`src/lib/research/vocabulary.ts`, `DEPTH_BUDGETS`).
+enum ResearchDepth {
+  QUICK
+  STANDARD
+  THOROUGH
+}
+
+/// Where a research brief stands: never run, waiting in the queue, running,
+/// or how its latest run ended (Phase 2.6).
+enum ResearchBriefStatus {
+  READY
+  QUEUED
+  RUNNING
+  DONE
+  FAILED
+  REFUSED
+}
+
+/// A research run's state (Phase 2.6). A run is a background job, one per
+/// brief at a time: QUEUED until the worker claims it.
+enum ResearchRunStatus {
+  QUEUED
+  RUNNING
+  DONE
+  FAILED
+  REFUSED
+}
+
+/// How sure a finding is, as the agent states it and code bounds it (2.6).
+enum ResearchConfidence {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+/// What a research citation points at: a fetched web page, or a file the
+/// author attached to the brief (2.6).
+enum ResearchCitationKind {
+  URL
+  UPLOAD
+}
+
+/// What a research proposal does (2.6): add to an empty field, update a
+/// filled one, or propose a new element.
+enum ResearchProposalOperation {
+  ADD
+  UPDATE
+  NEW_ELEMENT
 }

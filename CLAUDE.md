@@ -25,6 +25,7 @@ npm run build:worker      # esbuild → dist/worker.mjs, dist/worker-healthcheck
 npm run secret-scan       # scripts/detect-secrets.sh (staged files; --all for every tracked file)
 npm run packs:evaluate    # re-run the interview packs' evaluation sets, structural records beside the packs (2.3)
 npm run packs:evaluate -- --no-packs --reconcile   # the reconcile step's sets (2.5): its structural record beside them
+npm run packs:evaluate -- --no-packs --research    # the research agent's sets (2.6): its structural record beside them
 npm run docs:build        # the Starlight help site (site/), from docs/user/
 npm run lint              # eslint . (flat config, eslint.config.mjs)
 npm run typecheck         # tsc --noEmit, then packages/ui alone (no `@/` imports there)
@@ -57,7 +58,7 @@ builds the help site and deploys it only on main when Pages is enabled;
 `postgres-image.yml` publishes `ghcr.io/rodnapamet/inkquisitor-postgres`
 (main only, weekly and on an upstream digest move; build, smoke, Trivy, then
 push); `evals.yml` (**Evals**, dispatch only, not a check) makes real-model
-pack evaluation records (and, with its `reconcile` input, the reconcile step's)
+pack evaluation records (and, with its `reconcile` and `research` inputs, the reconcile step's and the research agent's)
 on `secrets.ANTHROPIC_API_KEY` and uploads them as an artifact, committing
 nothing (`tests/unit/evals-workflow.test.ts`).
 
@@ -254,6 +255,21 @@ src/lib/enrichment/          → the pure core: vocabulary, schema (output), val
 src/app-layer/usecases/      → enrichment-reconcile (the run; close/stop wrappers), enrichment-review (reads, accept, reject, bulk)
 src/app/api/w/[workspaceSlug]/books/[bookId]/interviews/[sessionId]/{proposals/**,rounds/[roundNumber]/reconcile}
 src/app/w/[workspaceSlug]/books/[bookId]/interviews/[sessionId]/review → the review page (src/components/enrichment/SessionReview)
+```
+
+Phase 2.6 (the research agent, D9) added:
+
+```
+prisma/schema/research.prisma → ResearchBrief, ResearchSource, ResearchRun, ResearchFinding, ResearchCitation, ResearchProposal(+Finding)
+src/lib/ai/server-tool-loop.ts → runServerToolLoop: the web tools' pause_turn loop (one AiCallLog row a request, the tripwire)
+src/lib/research/            → the pure core: vocabulary (depth budgets, outcomes), query-egress (THE egress check), sources
+                               (quoteFound), prompt (GATHER / FINDINGS / FIT), schema, validate, run (runResearchSteps), researcher,
+                               model-seam.ts (THE wiring to 2.1), storage, record-gate, stream-*, api-client; evals/ (research.json,
+                               adversarial.json, evaluation: replay grader over a fake web; evaluation-record.json)
+src/app-layer/usecases/      → research-briefs (create, attach, dispatch), research-run (the job's work), research-review, research-pages
+src/app-layer/jobs/          → `research-run`, one job per run, addressed by id
+src/app/api/w/[workspaceSlug]/books/[bookId]/research/** → briefs, sources, runs (+ stream), keep finding, accept / reject proposal
+src/app/w/[workspaceSlug]/books/[bookId]/research → the Research page (src/components/research/ResearchPage)
 ```
 
 ## Rules every change obeys
@@ -557,7 +573,7 @@ closed beta with an explicit operator flag (D5, amended 2026-11-19).
   (`PERMITTED_BODY_MEMBERS`), `output_config` members and content block types
   (`PERMITTED_CONTENT_BLOCK_TYPES`: no `url` or `file` sources) are each a
   reviewed line; a new server tool type is added to
-  `PERMITTED_SERVER_TOOL_TYPES` (empty until 2.6) and nowhere else. An output
+  `PERMITTED_SERVER_TOOL_TYPES` and nowhere else (since 2.6 exactly `web_search_20260209` and `web_fetch_20260209`, each with `allowed_callers: ["direct"]`, its own name and `max_uses` 1..50, and their blocks only in assistant turns). An output
   schema the structured-output feature cannot take (a record, recursion, a
   non-object root, past the optional / union limits) is refused when the
   request is built. Calling a model is NOT a permission of its own: it runs
@@ -792,6 +808,32 @@ closed beta with an explicit operator flag (D5, amended 2026-11-19).
   prompt or the output schema, re-run `npm run packs:evaluate -- --no-packs
   --reconcile`. The review page words refusals from `enrichment.errors`; a
   reader reads, an editor decides.
+- **Research (Phase 2.6; D9).** A brief (question, purpose, scope elements,
+  at most `SOURCES_PER_BRIEF_MAX` URLs and text/Markdown files through the 1.3
+  bounded, virus-scanned path, a depth) is run by the `research-run` job, one
+  per run (`attempts: 1`, payload ids only), under `bible.edit`; `bible.view`
+  reads. A run is three model steps: GATHER (the server web tools, through
+  `runServerToolLoop`), FINDINGS and FIT (`callStructured`). QUERY EGRESS
+  (`src/lib/research/query-egress.ts`, the header is the contract): the brief
+  is refused when it quotes the book's stored text (`BRIEF_QUOTES_BIBLE`, a
+  4-word shingle with 2 content words), the gather request carries the brief
+  and NOTHING ELSE of the book, and each query and fetch URL is checked as the
+  stream completes it — a TRIPWIRE (the provider runs a server tool before we
+  see it), never described as a gate. Never add bible, manuscript or answer
+  text to the gather request. Fetched pages and files are untrusted data
+  (fenced, guard-scanned) and never stored whole: a finding stores only a
+  quoted span `quoteFound` verified in the text the findings call was shown
+  (search results are encrypted by the provider, so only FETCHED pages can be
+  cited). FIT proposals (ADD, UPDATE, NEW_ELEMENT) stay inside the scope and
+  the templates, cite this run's findings, never write prose (D3), and are
+  flagged, not refused, when they address the product (D14). Depth caps
+  searches, fetches, requests and spend (`DEPTH_BUDGETS`); every request is an
+  `AiCallLog` row under the ceiling and the kill switch. Accepting writes one
+  version with source RESEARCH naming its proposal and findings (CHECK
+  `BibleEntryVersion_research_names_findings`); a run that found nothing
+  says why (rule 6). D11 applies (`research/record-gate.ts`). After editing
+  the sets, prompts or schemas, re-run `npm run packs:evaluate -- --no-packs
+  --research`. `docs/sub-processors.md` is the sub-processor draft.
 - **Sanitising author text.** Every author-text write sanitises at the
   usecase layer before it is stored: plain text through `plainLine` /
   `plainBlock` (`src/lib/bible/text.ts`, over `sanitizePlainText`), rich text

@@ -28,6 +28,7 @@ import { seedBible } from '../helpers/bible';
 import { seedVectors } from '../helpers/vectors';
 import { seedInterview } from '../helpers/interview';
 import { seedReconciledRound } from '../helpers/enrichment';
+import { seedResearchRun } from '../helpers/research';
 import { seedAiCall, seedReservation } from '../helpers/ai-calls';
 import { createAccount, workspaceCtx } from '../helpers/workspaces';
 import { setBookInterviewDefaults, setWorkspaceInterviewDefaults } from '@/app-layer/usecases/interview-defaults';
@@ -131,6 +132,11 @@ beforeAll(async () => {
         const seeded = await seedReconciledRound(workspaceCtx(acct), book.bookId, book.characterId);
         if (!seeded.closed.reconcile?.proposed.ADD) throw new Error('the RLS fixture proposed nothing');
     }
+    // A research run (Phase 2.6): a brief and its file, a run, findings with citations, proposals and their findings.
+    for (const [acct, book] of [[a, aBook], [b, bBook]] as const) {
+        const seeded = await seedResearchRun(workspaceCtx(acct), book.bookId, book.characterId);
+        if (seeded.result.outcome !== 'OK') throw new Error(`the RLS research fixture ended ${String(seeded.result.outcome)}`);
+    }
     // The model layer's ledger (2.1): a settled call and a live reservation.
     await seedAiCall(workspaceCtx(a), aBook.bookId, 'rls-a');
     await seedAiCall(workspaceCtx(b), bBook.bookId, 'rls-b');
@@ -165,6 +171,13 @@ it('there is something to cover: zero tables is never complete coverage', () => 
             'ReconcileRun',
             'EnrichmentProposal',
             'EnrichmentCitation',
+            'ResearchBrief',
+            'ResearchSource',
+            'ResearchRun',
+            'ResearchFinding',
+            'ResearchCitation',
+            'ResearchProposal',
+            'ResearchProposalFinding',
             'AiCallLog',
             'AiSpendMonth',
             'AiSpendReservation',

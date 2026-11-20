@@ -33,7 +33,7 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
-import { FileDown, FileText, Flame, MessagesSquare, Plus, Trash2, Upload } from 'lucide-react';
+import { FileDown, FileText, Flame, MessagesSquare, Plus, Search, Trash2, Upload } from 'lucide-react';
 import { InterviewLauncher } from '@/components/interview/InterviewLauncher';
 import { buttonVariants } from '@/components/ui/button-variants';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
@@ -69,6 +69,7 @@ export function BookBoard({ workspaceSlug, book, kinds, board, canEdit, canDelet
     const tDelete = useTranslations('bible.deleteBook');
     const tInterview = useTranslations('interview.launch');
     const tSetup = useTranslations('interview.setup');
+    const tResearch = useTranslations('research');
     const [creating, setCreating] = useState<{ kind: BibleKind | null } | null>(null);
     const [importing, setImporting] = useState(false);
     const [deleting, setDeleting] = useState(false);
@@ -89,6 +90,10 @@ export function BookBoard({ workspaceSlug, book, kinds, board, canEdit, canDelet
                         <Link href={APP_ROUTES.interviews(workspaceSlug, book.id)} className={buttonVariants({ variant: 'secondary' })} id="book-interviews">
                             <MessagesSquare className="size-4" aria-hidden="true" />
                             {tInterview('interviews')}
+                        </Link>
+                        <Link href={APP_ROUTES.research(workspaceSlug, book.id)} className={buttonVariants({ variant: 'secondary' })} id="book-research">
+                            <Search className="size-4" aria-hidden="true" />
+                            {tResearch('title')}
                         </Link>
                         {canEdit ? (
                             <InterviewLauncher

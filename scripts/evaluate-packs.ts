@@ -16,6 +16,12 @@
  *       sets (src/lib/enrichment/evals/evaluation-record.json). Re-run after
  *       editing the sets, the reconcile prompt or its output schema.
  *
+ *   npm run packs:evaluate -- --research [--no-packs]
+ *       also the research agent's evaluation sets (Phase 2.6): the
+ *       deterministic researcher's record is written beside the sets
+ *       (src/lib/research/evals/evaluation-record.json). Re-run after editing
+ *       the sets, the research prompts or their output schemas.
+ *
  *   npm run packs:evaluate -- --generator model --out evals-out [--packs a,b] [--coverage] [--reconcile]
  *       a REAL model, through the product's own wired generator and 2.1's
  *       `callStructured` (guard, fence, ledger and spend ceiling all apply),
@@ -50,6 +56,33 @@ import type { QuestionGenerator } from '../src/lib/interview/generator';
 import type { Reconciler } from '../src/lib/enrichment/reconciler';
 import { REFERENCE_RECONCILER_ID, referenceReconciler } from '../src/lib/enrichment/evals/evaluation';
 import { meteredReconciler, reconcilerWithinRunMonth, RECONCILE_RECORD_RELATIVE, runReconcileEvaluation } from '../src/lib/interview/evals/run-evaluations';
+import type { Researcher } from '../src/lib/research/researcher';
+import { checkResearchRecord, modelAnswersWith, RESEARCH_RECORD_FORMAT, structuralRecord } from '../src/lib/research/evals/evaluation';
+import { researchEvalSets } from '../src/lib/research/evals/eval-set';
+import { RESEARCH_PROMPT_VERSION } from '../src/lib/research/prompt';
+import * as fs from 'node:fs';
+
+/** Where the structural research record is written (beside the sets), relative to the repository. */
+const RESEARCH_RECORD_RELATIVE = 'src/lib/research/evals/evaluation-record.json';
+
+/** The research agent's sets (2.6): the record written to `file` and checked as the gate checks it. */
+async function runResearchEvaluation(researcher: Researcher | null, modelId: string | null, file: string): Promise<{ passed: boolean; detail: string }> {
+    const now = new Date();
+    const record = researcher
+        ? {
+              format: RESEARCH_RECORD_FORMAT,
+              sets: { research: { ...researchEvalSets.research }, adversarial: { ...researchEvalSets.adversarial } },
+              promptVersion: RESEARCH_PROMPT_VERSION,
+              generator: { kind: 'model' as const, id: modelId ?? 'model' },
+              ranAt: now.toISOString(),
+              answers: await modelAnswersWith(researcher),
+          }
+        : structuralRecord(now);
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, JSON.stringify(record, null, 2) + '\n');
+    const check = await checkResearchRecord(record);
+    return check.ok ? { passed: true, detail: `citation validity ${check.validity.toFixed(2)}` } : { passed: false, detail: check.reason };
+}
 
 function out(line: string): void {
     process.stdout.write(line + '\n');
@@ -61,7 +94,7 @@ function fail(message: string, code: number): never {
 }
 
 /** The wired model generator in a throwaway workspace, and what it closes. */
-async function modelGenerator(): Promise<{ generator: QuestionGenerator; reconciler: Reconciler; id: string; reconcilerId: string; close: () => Promise<void> }> {
+async function modelGenerator(): Promise<{ generator: QuestionGenerator; reconciler: Reconciler; researcher: Researcher; id: string; reconcilerId: string; close: () => Promise<void> }> {
     if (!process.env.ANTHROPIC_API_KEY?.trim()) fail('ANTHROPIC_API_KEY is not set: a model run never falls back to the structural generator', 2);
     if (!process.env.DATABASE_URL) fail('a model run needs DATABASE_URL (a migrated database: the call ledger and the spend ceiling live there)', 2);
     const budget = (() => {
@@ -71,7 +104,7 @@ async function modelGenerator(): Promise<{ generator: QuestionGenerator; reconci
             return fail(err instanceof Error ? err.message : String(err), 2);
         }
     })();
-    const [{ provisionAccountWithWorkspace }, { defaultQuestionGenerator }, { getPermissionsForRole }, { modelForTier }, { QUESTION_PROMPT }, { prisma }, { defaultReconciler }, { RECONCILE_PROMPT }] =
+    const [{ provisionAccountWithWorkspace }, { defaultQuestionGenerator }, { getPermissionsForRole }, { modelForTier }, { QUESTION_PROMPT }, { prisma }, { defaultReconciler }, { RECONCILE_PROMPT }, { defaultResearcher }] =
         await Promise.all([
             import('../src/app-layer/usecases/sign-up'),
             import('../src/lib/interview/model-seam'),
@@ -81,6 +114,7 @@ async function modelGenerator(): Promise<{ generator: QuestionGenerator; reconci
             import('../src/lib/db'),
             import('../src/lib/enrichment/model-seam'),
             import('../src/lib/enrichment/prompt'),
+            import('../src/lib/research/model-seam'),
         ]);
     const requestId = randomUUID();
     const account = await provisionAccountWithWorkspace({
@@ -101,11 +135,12 @@ async function modelGenerator(): Promise<{ generator: QuestionGenerator; reconci
     };
     const generator = defaultQuestionGenerator(ctx);
     const reconciler = defaultReconciler(ctx);
+    const researcher = defaultResearcher(ctx);
     const unavailable = generator.unavailableReason();
     if (unavailable) fail(`no model call can be made (${unavailable})`, 2);
     const id = modelForTier(QUESTION_PROMPT.tier);
     out(`packs:evaluate: model ${id}, budget $${budget} (the run's workspace ceiling)`);
-    return { generator, reconciler, id, reconcilerId: modelForTier(RECONCILE_PROMPT.tier), close: () => prisma.$disconnect() };
+    return { generator, reconciler, researcher, id, reconcilerId: modelForTier(RECONCILE_PROMPT.tier), close: () => prisma.$disconnect() };
 }
 
 async function main(): Promise<void> {
@@ -141,12 +176,19 @@ async function main(): Promise<void> {
             const file = args.out ? path.join(path.resolve(args.out), 'reconcile', 'evaluation-record.json') : path.resolve(RECONCILE_RECORD_RELATIVE);
             reconcile = await runReconcileEvaluation(reconciler, rWho, file);
         }
+        let research = null;
+        if (args.research) {
+            const file = args.out ? path.join(path.resolve(args.out), 'research', 'evaluation-record.json') : path.resolve(RESEARCH_RECORD_RELATIVE);
+            research = await runResearchEvaluation(model?.researcher ?? null, model?.reconcilerId ?? null, file);
+        }
         for (const line of summaryLines(results, coverage, model ? spent : null, reconcile)) out(line);
+        if (research) out(`Research: ${research.passed ? 'passed' : 'NOT passed'} (${research.detail}).`);
         const ok =
             results.every((r) => r.passed) &&
             results.length === names.length &&
             (!coverage || coverage.status === 'NOT_ASSESSED' || coverage.passed === coverage.sessions.length) &&
-            (!reconcile || reconcile.passed);
+            (!reconcile || reconcile.passed) &&
+            (!research || research.passed);
         process.exitCode = ok ? 0 : 1;
     } finally {
         await model?.close();

@@ -242,6 +242,14 @@ export interface VersionMeta {
      * same). Written with the version, never after.
      */
     sourceAnswerIds?: readonly string[];
+    /**
+     * The research findings a RESEARCH version is drawn from (Phase 2.6, rule
+     * 1): required, and non-empty, exactly when `source` is RESEARCH (CHECK
+     * `BibleEntryVersion_research_names_findings`); and the research proposal
+     * it accepted, if any (a finding kept as a research note names none).
+     */
+    sourceFindingIds?: readonly string[];
+    sourceResearchProposalId?: string | null;
 }
 
 /**
@@ -267,6 +275,10 @@ export async function recordVersion(db: PrismaTx, ctx: WorkspaceRequestContext, 
     if ((meta.source === 'INTERVIEW') !== (sourceAnswerIds.length > 0)) {
         throw new ValidationError('An interview version names the answers it is drawn from, and only an interview version does.', { reason: 'VERSION_SOURCE_ANSWERS' });
     }
+    const sourceFindingIds = [...new Set(meta.sourceFindingIds ?? [])];
+    if ((meta.source === 'RESEARCH') !== (sourceFindingIds.length > 0) || (meta.sourceResearchProposalId && meta.source !== 'RESEARCH')) {
+        throw new ValidationError('A research version names the findings it is drawn from, and only a research version does.', { reason: 'VERSION_SOURCE_FINDINGS' });
+    }
     const versionNumber = (await BibleVersionRepository.latestNumber(db, ctx.workspaceId, elementId)) + 1;
     return BibleVersionRepository.create(db, ctx.workspaceId, {
         bookId,
@@ -278,5 +290,7 @@ export async function recordVersion(db: PrismaTx, ctx: WorkspaceRequestContext, 
         restoredFromVersion: meta.restoredFromVersion ?? null,
         authorId: ctx.userId,
         sourceAnswerIds,
+        sourceFindingIds,
+        sourceResearchProposalId: meta.sourceResearchProposalId ?? null,
     });
 }

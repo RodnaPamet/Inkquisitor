@@ -1,0 +1,1064 @@
+{
+  "format": "inkquisitor-research-eval/1",
+  "cases": [
+    {
+      "id": "rs-01",
+      "genre": "historical mystery",
+      "brief": {
+        "question": "How was ether anaesthesia first used in surgery?",
+        "purpose": "The village surgeon in my 1850s mystery needs a believable way to put a patient under.",
+        "depth": "QUICK"
+      },
+      "scope": [
+        {
+          "id": "el-01",
+          "kind": "CHARACTER",
+          "name": "Dr Ambrose Hale",
+          "role": "scope",
+          "summary": "A country surgeon who distrusts new methods.",
+          "stored": {
+            "want": "To keep his patients alive through the winter."
+          }
+        }
+      ],
+      "web": [
+        {
+          "url": "https://history.example.org/ether",
+          "title": "The first public ether operation",
+          "text": "On 16 October 1846 the dentist William Morton gave ether to a patient at Massachusetts General Hospital in Boston. The surgeon John Collins Warren then removed a tumour from the patient's neck while the patient slept. News of the ether demonstration reached British surgeons within two months."
+        },
+        {
+          "url": "https://medicine.example.net/early-anaesthesia",
+          "title": "Early anaesthesia in Britain",
+          "text": "By 1847 many British surgeons used ether or chloroform for amputations. Chloroform was introduced by James Young Simpson in Edinburgh in November 1847. Country surgeons often preferred chloroform because it needed less equipment."
+        }
+      ],
+      "expect": {
+        "claims": [
+          {
+            "mustContain": [
+              "1846",
+              "ether"
+            ]
+          },
+          {
+            "mustContain": [
+              "chloroform",
+              "1847"
+            ]
+          }
+        ],
+        "fitTargets": [
+          {
+            "elementId": "el-01",
+            "fieldKey": "defining_traits"
+          },
+          {
+            "elementId": "el-01",
+            "fieldKey": "role"
+          }
+        ],
+        "mustNotContain": [],
+        "mustNotQuery": []
+      },
+      "reference": {
+        "queries": [
+          "How was ether anaesthesia first used in surgery"
+        ],
+        "findings": {
+          "findings": [
+            {
+              "claim": "On 16 October 1846 William Morton gave ether to a patient in Boston before surgery.",
+              "summary": "The dentist William Morton gave ether to a patient at Massachusetts General Hospital in Boston on 16 October 1846. The surgeon John Collins Warren removed a tumour while the patient slept.",
+              "confidence": "HIGH",
+              "citations": [
+                {
+                  "ref": "web.1",
+                  "quote": "On 16 October 1846 the dentist William Morton gave ether to a patient at Massachusetts General Hospital in Boston."
+                }
+              ]
+            },
+            {
+              "claim": "Chloroform was introduced by James Young Simpson in Edinburgh in November 1847.",
+              "summary": "By 1847 many British surgeons used ether or chloroform for amputations. Country surgeons often preferred chloroform because it needed less equipment.",
+              "confidence": "HIGH",
+              "citations": [
+                {
+                  "ref": "web.2",
+                  "quote": "Chloroform was introduced by James Young Simpson in Edinburgh in November 1847."
+                }
+              ]
+            }
+          ]
+        },
+        "fit": {
+          "proposals": [
+            {
+              "op": "ADD",
+              "elementId": "el-01",
+              "fieldKey": "defining_traits",
+              "value": [
+                "Country surgeons often preferred chloroform because it needed less equipment."
+              ],
+              "newKind": null,
+              "newName": null,
+              "newSummary": null,
+              "rationale": "A country surgeon of the 1850s would likely reach for chloroform.",
+              "cites": [
+                "f2"
+              ]
+            }
+          ],
+          "noFit": []
+        }
+      }
+    },
+    {
+      "id": "rs-02",
+      "genre": "science fiction",
+      "brief": {
+        "question": "How long does the International Space Station take to orbit the Earth?",
+        "purpose": "A station in my novel should feel like a real low orbit station.",
+        "depth": "QUICK"
+      },
+      "scope": [
+        {
+          "id": "el-02",
+          "kind": "SETTING",
+          "name": "Halcyon Station",
+          "role": "scope",
+          "summary": "A crowded research station in low orbit.",
+          "stored": {
+            "place_type": "An orbital research station."
+          }
+        }
+      ],
+      "web": [
+        {
+          "url": "https://space.example.org/iss-orbit",
+          "title": "The orbit of the ISS",
+          "text": "The International Space Station orbits the Earth about every 90 minutes. It flies at an altitude of roughly 400 kilometres. The crew sees about sixteen sunrises and sixteen sunsets every day."
+        }
+      ],
+      "expect": {
+        "claims": [
+          {
+            "mustContain": [
+              "90 minutes"
+            ]
+          },
+          {
+            "mustContain": [
+              "sixteen sunrises"
+            ]
+          }
+        ],
+        "fitTargets": [
+          {
+            "elementId": "el-02",
+            "fieldKey": "sensory_signature"
+          },
+          {
+            "elementId": "el-02",
+            "fieldKey": "layout_landmarks"
+          }
+        ],
+        "mustNotContain": [],
+        "mustNotQuery": []
+      },
+      "reference": {
+        "queries": [
+          "How long does the International Space Station take to orbit "
+        ],
+        "findings": {
+          "findings": [
+            {
+              "claim": "The International Space Station orbits the Earth about every 90 minutes.",
+              "summary": "The International Space Station orbits the Earth about every 90 minutes at an altitude of roughly 400 kilometres.",
+              "confidence": "HIGH",
+              "citations": [
+                {
+                  "ref": "web.1",
+                  "quote": "The International Space Station orbits the Earth about every 90 minutes."
+                }
+              ]
+            },
+            {
+              "claim": "The crew sees about sixteen sunrises and sixteen sunsets every day.",
+              "summary": "The crew sees about sixteen sunrises and sixteen sunsets every day.",
+              "confidence": "HIGH",
+              "citations": [
+                {
+                  "ref": "web.1",
+                  "quote": "The crew sees about sixteen sunrises and sixteen sunsets every day."
+                }
+              ]
+            }
+          ]
+        },
+        "fit": {
+          "proposals": [
+            {
+              "op": "ADD",
+              "elementId": "el-02",
+              "fieldKey": "sensory_signature",
+              "value": "The crew sees about sixteen sunrises and sixteen sunsets every day.",
+              "newKind": null,
+              "newName": null,
+              "newSummary": null,
+              "rationale": "Frequent sunrises shape the light on a low orbit station.",
+              "cites": [
+                "f2"
+              ]
+            }
+          ],
+          "noFit": []
+        }
+      }
+    },
+    {
+      "id": "rs-03",
+      "genre": "fantasy",
+      "brief": {
+        "question": "How were falcons trained in medieval Europe?",
+        "purpose": "My kingdom's falconers need believable training methods.",
+        "depth": "STANDARD"
+      },
+      "scope": [
+        {
+          "id": "el-03",
+          "kind": "FACTION",
+          "name": "The Mews Guild",
+          "role": "scope",
+          "summary": "The royal falconers.",
+          "stored": {
+            "purpose": "Keeps the royal hawks."
+          }
+        },
+        {
+          "id": "el-03b",
+          "kind": "CHARACTER",
+          "name": "Wren",
+          "role": "related",
+          "summary": "An apprentice falconer.",
+          "stored": {}
+        }
+      ],
+      "web": [
+        {
+          "url": "https://falconry.example.org/manning",
+          "title": "Manning a hawk",
+          "text": "Medieval falconers began training by manning the bird, keeping it on the fist for many hours so it grew used to people. A hood made of leather kept the falcon calm in the dark. Falconers rewarded the bird with small pieces of meat on a lure."
+        }
+      ],
+      "expect": {
+        "claims": [
+          {
+            "mustContain": [
+              "manning"
+            ]
+          },
+          {
+            "mustContain": [
+              "hood"
+            ]
+          }
+        ],
+        "fitTargets": [
+          {
+            "elementId": "el-03",
+            "fieldKey": "methods"
+          },
+          {
+            "elementId": "el-03b",
+            "fieldKey": "defining_traits"
+          }
+        ],
+        "mustNotContain": [],
+        "mustNotQuery": []
+      },
+      "reference": {
+        "queries": [
+          "How were falcons trained in medieval Europe"
+        ],
+        "findings": {
+          "findings": [
+            {
+              "claim": "Medieval falconers began training by manning the bird on the fist for many hours.",
+              "summary": "Medieval falconers began training by manning the bird, keeping it on the fist for many hours so it grew used to people. A hood made of leather kept the falcon calm.",
+              "confidence": "HIGH",
+              "citations": [
+                {
+                  "ref": "web.1",
+                  "quote": "Medieval falconers began training by manning the bird, keeping it on the fist for many hours so it grew used to people."
+                }
+              ]
+            },
+            {
+              "claim": "A hood made of leather kept the falcon calm in the dark.",
+              "summary": "A hood made of leather kept the falcon calm in the dark. Falconers rewarded the bird with small pieces of meat on a lure.",
+              "confidence": "MEDIUM",
+              "citations": [
+                {
+                  "ref": "web.1",
+                  "quote": "A hood made of leather kept the falcon calm in the dark."
+                }
+              ]
+            }
+          ]
+        },
+        "fit": {
+          "proposals": [
+            {
+              "op": "ADD",
+              "elementId": "el-03",
+              "fieldKey": "methods",
+              "value": "Medieval falconers began training by manning the bird on the fist for many hours. A hood made of leather kept the falcon calm in the dark.",
+              "newKind": null,
+              "newName": null,
+              "newSummary": null,
+              "rationale": "The guild's methods can follow medieval manning and hooding.",
+              "cites": [
+                "f1",
+                "f2"
+              ]
+            }
+          ],
+          "noFit": []
+        }
+      }
+    },
+    {
+      "id": "rs-04",
+      "genre": "regency romance",
+      "brief": {
+        "question": "How did dance cards work at Regency balls?",
+        "purpose": "My heroine's first ball turns on who signs her card.",
+        "depth": "QUICK"
+      },
+      "scope": [
+        {
+          "id": "el-04",
+          "kind": "TIMELINE_EVENT",
+          "name": "The Assembly Ball",
+          "role": "scope",
+          "summary": "The heroine's first public ball.",
+          "stored": {
+            "story_time": "Spring of 1814."
+          }
+        }
+      ],
+      "web": [
+        {
+          "url": "https://regency.example.net/dance-cards",
+          "title": "Dance cards at the assembly",
+          "text": "At Regency assemblies a lady kept a small card listing the dances of the evening. Gentlemen asked to write their names beside a dance before it began. A lady who refused one partner could not dance that set with another gentleman."
+        }
+      ],
+      "expect": {
+        "claims": [
+          {
+            "mustContain": [
+              "card",
+              "dances"
+            ]
+          },
+          {
+            "mustContain": [
+              "refused"
+            ]
+          }
+        ],
+        "fitTargets": [
+          {
+            "elementId": "el-04",
+            "fieldKey": "fixed_details"
+          }
+        ],
+        "mustNotContain": [],
+        "mustNotQuery": []
+      },
+      "reference": {
+        "queries": [
+          "How did dance cards work at Regency balls"
+        ],
+        "findings": {
+          "findings": [
+            {
+              "claim": "At Regency assemblies a lady kept a small card listing the dances of the evening.",
+              "summary": "At Regency assemblies a lady kept a small card listing the dances of the evening, and gentlemen asked to write their names beside a dance.",
+              "confidence": "MEDIUM",
+              "citations": [
+                {
+                  "ref": "web.1",
+                  "quote": "At Regency assemblies a lady kept a small card listing the dances of the evening."
+                }
+              ]
+            },
+            {
+              "claim": "A lady who refused one partner could not dance that set with another gentleman.",
+              "summary": "A lady who refused one partner could not dance that set with another gentleman.",
+              "confidence": "MEDIUM",
+              "citations": [
+                {
+                  "ref": "web.1",
+                  "quote": "A lady who refused one partner could not dance that set with another gentleman."
+                }
+              ]
+            }
+          ]
+        },
+        "fit": {
+          "proposals": [
+            {
+              "op": "ADD",
+              "elementId": "el-04",
+              "fieldKey": "fixed_details",
+              "value": [
+                "A lady who refused one partner could not dance that set with another gentleman."
+              ],
+              "newKind": null,
+              "newName": null,
+              "newSummary": null,
+              "rationale": "A rule of the ball that can shape the heroine's choice.",
+              "cites": [
+                "f2"
+              ]
+            }
+          ],
+          "noFit": []
+        }
+      }
+    },
+    {
+      "id": "rs-05",
+      "genre": "thriller",
+      "brief": {
+        "question": "How fast could a trained telegraph operator send Morse code?",
+        "purpose": "My courier sends a warning by telegraph and I need the timing right.",
+        "depth": "QUICK"
+      },
+      "scope": [
+        {
+          "id": "el-05",
+          "kind": "PLOT",
+          "name": "The Warning",
+          "role": "scope",
+          "summary": "A courier races to warn the capital.",
+          "stored": {
+            "driving_goal": "Warn the capital before dawn."
+          }
+        }
+      ],
+      "web": [
+        {
+          "url": "https://telegraph.example.org/speed",
+          "title": "Telegraph operators",
+          "text": "A skilled telegraph operator could send about 25 to 30 words per minute in Morse code. Competition operators in the 1890s reached more than 40 words per minute. Messages were often shortened with standard abbreviations to save time."
+        }
+      ],
+      "expect": {
+        "claims": [
+          {
+            "mustContain": [
+              "words per minute"
+            ]
+          }
+        ],
+        "fitTargets": [
+          {
+            "elementId": "el-05",
+            "fieldKey": "complications"
+          },
+          {
+            "elementId": "el-05",
+            "fieldKey": "setups_and_payoffs"
+          }
+        ],
+        "mustNotContain": [],
+        "mustNotQuery": []
+      },
+      "reference": {
+        "queries": [
+          "How fast could a trained telegraph operator send Morse code"
+        ],
+        "findings": {
+          "findings": [
+            {
+              "claim": "A skilled telegraph operator could send about 25 to 30 words per minute in Morse code.",
+              "summary": "A skilled telegraph operator could send about 25 to 30 words per minute in Morse code. Messages were often shortened with standard abbreviations.",
+              "confidence": "HIGH",
+              "citations": [
+                {
+                  "ref": "web.1",
+                  "quote": "A skilled telegraph operator could send about 25 to 30 words per minute in Morse code."
+                }
+              ]
+            }
+          ]
+        },
+        "fit": {
+          "proposals": [
+            {
+              "op": "ADD",
+              "elementId": "el-05",
+              "fieldKey": "setups_and_payoffs",
+              "value": [
+                "A skilled telegraph operator could send about 25 to 30 words per minute in Morse code."
+              ],
+              "newKind": null,
+              "newName": null,
+              "newSummary": null,
+              "rationale": "The warning's timing depends on the operator's speed.",
+              "cites": [
+                "f1"
+              ]
+            }
+          ],
+          "noFit": []
+        }
+      }
+    },
+    {
+      "id": "rs-06",
+      "genre": "young adult",
+      "brief": {
+        "question": "When were pagers popular with teenagers?",
+        "purpose": "My 1990s characters pass secret codes by pager.",
+        "depth": "QUICK"
+      },
+      "scope": [
+        {
+          "id": "el-06",
+          "kind": "OBJECT",
+          "name": "Jess's Pager",
+          "role": "scope",
+          "summary": "A battered pager the friends share.",
+          "stored": {}
+        }
+      ],
+      "web": [
+        {
+          "url": "https://gadgets.example.com/pagers",
+          "title": "The pager years",
+          "text": "Pagers became popular with teenagers in the early and middle 1990s. Friends sent numeric codes such as 143 to mean I love you. Mobile phones replaced pagers for most teenagers by the early 2000s."
+        }
+      ],
+      "expect": {
+        "claims": [
+          {
+            "mustContain": [
+              "1990s"
+            ]
+          },
+          {
+            "mustContain": [
+              "143"
+            ]
+          }
+        ],
+        "fitTargets": [
+          {
+            "elementId": "el-06",
+            "fieldKey": "physical_description"
+          },
+          {
+            "elementId": "el-06",
+            "fieldKey": "significance"
+          }
+        ],
+        "mustNotContain": [],
+        "mustNotQuery": []
+      },
+      "reference": {
+        "queries": [
+          "When were pagers popular with teenagers"
+        ],
+        "findings": {
+          "findings": [
+            {
+              "claim": "Pagers became popular with teenagers in the early and middle 1990s.",
+              "summary": "Pagers became popular with teenagers in the early and middle 1990s, and mobile phones replaced pagers by the early 2000s.",
+              "confidence": "MEDIUM",
+              "citations": [
+                {
+                  "ref": "web.1",
+                  "quote": "Pagers became popular with teenagers in the early and middle 1990s."
+                }
+              ]
+            },
+            {
+              "claim": "Friends sent numeric codes such as 143 to mean I love you.",
+              "summary": "Friends sent numeric codes such as 143 to mean I love you.",
+              "confidence": "MEDIUM",
+              "citations": [
+                {
+                  "ref": "web.1",
+                  "quote": "Friends sent numeric codes such as 143 to mean I love you."
+                }
+              ]
+            }
+          ]
+        },
+        "fit": {
+          "proposals": [
+            {
+              "op": "ADD",
+              "elementId": "el-06",
+              "fieldKey": "significance",
+              "value": "Friends sent numeric codes such as 143 to mean I love you.",
+              "newKind": null,
+              "newName": null,
+              "newSummary": null,
+              "rationale": "The pager's codes give the friends a private language.",
+              "cites": [
+                "f2"
+              ]
+            }
+          ],
+          "noFit": []
+        }
+      }
+    },
+    {
+      "id": "rs-07",
+      "genre": "literary fiction",
+      "brief": {
+        "question": "What were dust storms like during the Dust Bowl?",
+        "purpose": "A farm family in my novel lives through the storms of 1935.",
+        "depth": "STANDARD"
+      },
+      "scope": [
+        {
+          "id": "el-07",
+          "kind": "SETTING",
+          "name": "The Kettering Farm",
+          "role": "scope",
+          "summary": "A wheat farm in the Oklahoma panhandle.",
+          "stored": {
+            "place_type": "A wheat farm."
+          }
+        },
+        {
+          "id": "el-07b",
+          "kind": "MOOD",
+          "name": "Dread",
+          "role": "related",
+          "summary": "The family's mounting dread.",
+          "stored": {}
+        }
+      ],
+      "web": [
+        {
+          "url": "https://plains.example.org/black-sunday",
+          "title": "Black Sunday",
+          "text": "On 14 April 1935, known as Black Sunday, a huge dust storm swept across the southern plains. The dust turned day into darkness and people could not see their own hands. Families sealed windows with wet sheets to keep the dust out of their homes."
+        }
+      ],
+      "expect": {
+        "claims": [
+          {
+            "mustContain": [
+              "Black Sunday",
+              "1935"
+            ]
+          },
+          {
+            "mustContain": [
+              "wet sheets"
+            ]
+          }
+        ],
+        "fitTargets": [
+          {
+            "elementId": "el-07",
+            "fieldKey": "sensory_signature"
+          },
+          {
+            "elementId": "el-07",
+            "fieldKey": "traces_of_past"
+          },
+          {
+            "elementId": "el-07b",
+            "fieldKey": "sources_of_feeling"
+          }
+        ],
+        "mustNotContain": [],
+        "mustNotQuery": []
+      },
+      "reference": {
+        "queries": [
+          "What were dust storms like during the Dust Bowl"
+        ],
+        "findings": {
+          "findings": [
+            {
+              "claim": "On 14 April 1935, known as Black Sunday, a huge dust storm swept across the southern plains.",
+              "summary": "On 14 April 1935, known as Black Sunday, a huge dust storm swept across the southern plains. The dust turned day into darkness.",
+              "confidence": "HIGH",
+              "citations": [
+                {
+                  "ref": "web.1",
+                  "quote": "On 14 April 1935, known as Black Sunday, a huge dust storm swept across the southern plains."
+                }
+              ]
+            },
+            {
+              "claim": "Families sealed windows with wet sheets to keep the dust out of their homes.",
+              "summary": "Families sealed windows with wet sheets to keep the dust out of their homes.",
+              "confidence": "MEDIUM",
+              "citations": [
+                {
+                  "ref": "web.1",
+                  "quote": "Families sealed windows with wet sheets to keep the dust out of their homes."
+                }
+              ]
+            }
+          ]
+        },
+        "fit": {
+          "proposals": [
+            {
+              "op": "ADD",
+              "elementId": "el-07",
+              "fieldKey": "sensory_signature",
+              "value": "The dust turned day into darkness on Black Sunday. Families sealed windows with wet sheets to keep the dust out of their homes.",
+              "newKind": null,
+              "newName": null,
+              "newSummary": null,
+              "rationale": "The storms define how the farm looks and feels in 1935.",
+              "cites": [
+                "f1",
+                "f2"
+              ]
+            }
+          ],
+          "noFit": []
+        }
+      }
+    },
+    {
+      "id": "rs-08",
+      "genre": "police procedural",
+      "brief": {
+        "question": "How did the Henry system classify fingerprints?",
+        "purpose": "My Edwardian detective sergeant files prints at Scotland Yard.",
+        "depth": "QUICK"
+      },
+      "scope": [
+        {
+          "id": "el-08",
+          "kind": "CHARACTER",
+          "name": "Sergeant Mabel Orr",
+          "role": "scope",
+          "summary": "A fingerprint clerk at the Yard.",
+          "stored": {
+            "role": "The detective's fingerprint expert."
+          }
+        }
+      ],
+      "web": [
+        {
+          "url": "https://forensics.example.org/henry",
+          "title": "The Henry classification system",
+          "text": "The Henry classification system sorted fingerprints by the patterns of loops, whorls and arches. Scotland Yard adopted the Henry system in 1901. Clerks stored the cards in cabinets so a print could be found in minutes."
+        }
+      ],
+      "expect": {
+        "claims": [
+          {
+            "mustContain": [
+              "loops",
+              "whorls"
+            ]
+          },
+          {
+            "mustContain": [
+              "1901"
+            ]
+          }
+        ],
+        "fitTargets": [
+          {
+            "elementId": "el-08",
+            "fieldKey": "defining_traits"
+          },
+          {
+            "elementId": "el-08",
+            "fieldKey": "role"
+          }
+        ],
+        "mustNotContain": [],
+        "mustNotQuery": []
+      },
+      "reference": {
+        "queries": [
+          "How did the Henry system classify fingerprints"
+        ],
+        "findings": {
+          "findings": [
+            {
+              "claim": "The Henry classification system sorted fingerprints by the patterns of loops, whorls and arches.",
+              "summary": "The Henry classification system sorted fingerprints by the patterns of loops, whorls and arches, and Scotland Yard adopted it in 1901.",
+              "confidence": "HIGH",
+              "citations": [
+                {
+                  "ref": "web.1",
+                  "quote": "The Henry classification system sorted fingerprints by the patterns of loops, whorls and arches."
+                }
+              ]
+            },
+            {
+              "claim": "Scotland Yard adopted the Henry system in 1901.",
+              "summary": "Scotland Yard adopted the Henry system in 1901. Clerks stored the cards in cabinets so a print could be found in minutes.",
+              "confidence": "HIGH",
+              "citations": [
+                {
+                  "ref": "web.1",
+                  "quote": "Scotland Yard adopted the Henry system in 1901."
+                }
+              ]
+            }
+          ]
+        },
+        "fit": {
+          "proposals": [
+            {
+              "op": "UPDATE",
+              "elementId": "el-08",
+              "fieldKey": "role",
+              "value": "The detective's fingerprint expert. Scotland Yard adopted the Henry system in 1901.",
+              "newKind": null,
+              "newName": null,
+              "newSummary": null,
+              "rationale": "Her post exists only after the Yard adopted the system.",
+              "cites": [
+                "f2"
+              ]
+            }
+          ],
+          "noFit": []
+        }
+      }
+    },
+    {
+      "id": "rs-09",
+      "genre": "gothic horror",
+      "brief": {
+        "question": "What were a Victorian lighthouse keeper's daily duties?",
+        "purpose": "My keeper is alone on the rock through a long winter.",
+        "depth": "QUICK"
+      },
+      "scope": [
+        {
+          "id": "el-09",
+          "kind": "CHARACTER",
+          "name": "Thomas Penrose",
+          "role": "scope",
+          "summary": "A lighthouse keeper on a remote rock.",
+          "stored": {}
+        }
+      ],
+      "web": [
+        {
+          "url": "https://coast.example.org/keepers",
+          "title": "The keeper's day",
+          "text": "Victorian lighthouse keepers trimmed the lamp wicks every few hours through the night. They polished the lens each morning to remove soot. Keepers wrote the weather and every passing ship in a log book."
+        }
+      ],
+      "expect": {
+        "claims": [
+          {
+            "mustContain": [
+              "wicks"
+            ]
+          },
+          {
+            "mustContain": [
+              "log book"
+            ]
+          }
+        ],
+        "fitTargets": [
+          {
+            "elementId": "el-09",
+            "fieldKey": "role"
+          },
+          {
+            "elementId": "el-09",
+            "fieldKey": "defining_traits"
+          }
+        ],
+        "mustNotContain": [],
+        "mustNotQuery": []
+      },
+      "reference": {
+        "queries": [
+          "What were a Victorian lighthouse keeper's daily duties"
+        ],
+        "findings": {
+          "findings": [
+            {
+              "claim": "Victorian lighthouse keepers trimmed the lamp wicks every few hours through the night.",
+              "summary": "Victorian lighthouse keepers trimmed the lamp wicks every few hours through the night and polished the lens each morning to remove soot.",
+              "confidence": "MEDIUM",
+              "citations": [
+                {
+                  "ref": "web.1",
+                  "quote": "Victorian lighthouse keepers trimmed the lamp wicks every few hours through the night."
+                }
+              ]
+            },
+            {
+              "claim": "Keepers wrote the weather and every passing ship in a log book.",
+              "summary": "Keepers wrote the weather and every passing ship in a log book.",
+              "confidence": "MEDIUM",
+              "citations": [
+                {
+                  "ref": "web.1",
+                  "quote": "Keepers wrote the weather and every passing ship in a log book."
+                }
+              ]
+            }
+          ]
+        },
+        "fit": {
+          "proposals": [
+            {
+              "op": "ADD",
+              "elementId": "el-09",
+              "fieldKey": "role",
+              "value": "Victorian lighthouse keepers trimmed the lamp wicks every few hours through the night.",
+              "newKind": null,
+              "newName": null,
+              "newSummary": null,
+              "rationale": "His nights are broken by the lamp's demands.",
+              "cites": [
+                "f1"
+              ]
+            }
+          ],
+          "noFit": []
+        }
+      }
+    },
+    {
+      "id": "rs-10",
+      "genre": "western",
+      "brief": {
+        "question": "How did the Pony Express carry the mail?",
+        "purpose": "A rider in my western carries a letter across the territory in 1860.",
+        "depth": "STANDARD"
+      },
+      "scope": [
+        {
+          "id": "el-10",
+          "kind": "CHARACTER",
+          "name": "Eli Burke",
+          "role": "scope",
+          "summary": "A young Pony Express rider.",
+          "stored": {
+            "role": "A rider for the mail service."
+          }
+        }
+      ],
+      "web": [
+        {
+          "url": "https://frontier.example.org/pony-express",
+          "title": "The Pony Express",
+          "text": "The Pony Express ran from April 1860 to October 1861 between Missouri and California. Riders changed horses at relay stations about every ten to fifteen miles. The mail crossed nearly two thousand miles in about ten days."
+        }
+      ],
+      "expect": {
+        "claims": [
+          {
+            "mustContain": [
+              "relay stations"
+            ]
+          },
+          {
+            "mustContain": [
+              "ten days"
+            ]
+          }
+        ],
+        "fitTargets": [
+          {
+            "elementId": "el-10",
+            "fieldKey": "defining_traits"
+          },
+          {
+            "elementId": "el-10",
+            "fieldKey": "role"
+          }
+        ],
+        "mustNotContain": [],
+        "mustNotQuery": []
+      },
+      "reference": {
+        "queries": [
+          "How did the Pony Express carry the mail"
+        ],
+        "findings": {
+          "findings": [
+            {
+              "claim": "Riders changed horses at relay stations about every ten to fifteen miles.",
+              "summary": "Riders changed horses at relay stations about every ten to fifteen miles, and the mail crossed nearly two thousand miles in about ten days.",
+              "confidence": "HIGH",
+              "citations": [
+                {
+                  "ref": "web.1",
+                  "quote": "Riders changed horses at relay stations about every ten to fifteen miles."
+                }
+              ]
+            },
+            {
+              "claim": "The Pony Express ran from April 1860 to October 1861 between Missouri and California.",
+              "summary": "The Pony Express ran from April 1860 to October 1861 between Missouri and California.",
+              "confidence": "HIGH",
+              "citations": [
+                {
+                  "ref": "web.1",
+                  "quote": "The Pony Express ran from April 1860 to October 1861 between Missouri and California."
+                }
+              ]
+            }
+          ]
+        },
+        "fit": {
+          "proposals": [
+            {
+              "op": "ADD",
+              "elementId": "el-10",
+              "fieldKey": "defining_traits",
+              "value": [
+                "Riders changed horses at relay stations about every ten to fifteen miles."
+              ],
+              "newKind": null,
+              "newName": null,
+              "newSummary": null,
+              "rationale": "Constant relays shape the rider's days.",
+              "cites": [
+                "f1"
+              ]
+            },
+            {
+              "op": "NEW_ELEMENT",
+              "elementId": null,
+              "fieldKey": null,
+              "value": null,
+              "newKind": "SETTING",
+              "newName": "Missouri",
+              "newSummary": "The Pony Express ran between Missouri and California.",
+              "rationale": "The route ends the rider's journey.",
+              "cites": [
+                "f2"
+              ]
+            }
+          ],
+          "noFit": []
+        }
+      }
+    }
+  ]
+}

@@ -20,8 +20,8 @@ import { OTEL_CARRIER_KEY, readTraceCarrier, stripTraceCarrier } from '@/lib/obs
 afterEach(() => executorRegistry._reset());
 
 describe('executor registry', () => {
-    it('registers the heartbeat and the book purge (Phase 1.H), nothing else', () => {
-        expect(executorRegistry.listRegistered()).toEqual(['heartbeat', 'book-purge']);
+    it('registers the heartbeat, the book purge (Phase 1.H) and the research run (2.6), nothing else', () => {
+        expect(executorRegistry.listRegistered()).toEqual(['heartbeat', 'book-purge', 'research-run']);
     });
 
     it('the heartbeat is a no-op that succeeds', async () => {

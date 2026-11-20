@@ -1,0 +1,234 @@
+// ─────────────────────────────────────────────────────────────────
+//  The research agent (Phase 2.6, decision D9): the author writes a
+//  research brief, a background run searches the open web and reads
+//  the author's own sources, and its findings become proposed bible
+//  changes the author reviews.
+//
+//  NOTHING HERE CHANGES THE BIBLE. A proposal waits for the author
+//  (rule 1); accepting one writes one BibleEntryVersion with source
+//  RESEARCH naming the proposal and the findings it cites, through the
+//  bible's own versioned save (`src/app-layer/usecases/research-review.ts`).
+//
+//  EVERY MODEL HERE IS WORKSPACE-SCOPED (FORCE RLS, `workspace_isolation`,
+//  `superuser_bypass`), and the workspace travels in every foreign key: a
+//  finding is reached by (workspaceId, runId, id), so a citation, a
+//  proposal's finding link and a proposal all name the RUN they belong to
+//  and the database refuses a link across runs.
+//
+//  AUTHOR-PRIVATE TEXT IS ENCRYPTED AT REST (`src/lib/security/encrypted-
+//  fields.ts`) and sanitised at the usecase layer before it is stored: a
+//  brief's question, purpose and URLs; an attached file's name and text; a
+//  finding's claim, summary and no-fit reason; a citation's URL, title and
+//  quoted span; a proposal's value, rationale and new element's name and
+//  summary. A run holds counts and codes only.
+// ─────────────────────────────────────────────────────────────────
+
+/// What the author asked to be researched.
+model ResearchBrief {
+  id              String              @id @default(cuid())
+  workspaceId     String
+  bookId          String
+  /// The topic or question (encrypted).
+  question        String
+  /// What it is for: a character's profession, a setting's period, … (encrypted).
+  purpose         String
+  /// The bible elements the brief is about (ids in the book; the usecase
+  /// checks each when the brief is written and again when it runs).
+  scopeElementIds String[]            @default([])
+  /// The URLs the author attached, a JSON array of strings (encrypted).
+  sourceUrls      String?
+  depth           ResearchDepth
+  status          ResearchBriefStatus @default(READY)
+  /// Who wrote it; NULL once that person is deleted.
+  requestedById   String?
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  book        Book             @relation(fields: [workspaceId, bookId], references: [workspaceId, id], onDelete: Cascade)
+  requestedBy User?            @relation(fields: [requestedById], references: [id], onDelete: SetNull)
+  sources     ResearchSource[]
+  runs        ResearchRun[]
+
+  @@unique([workspaceId, id])
+  /// A book's briefs, newest first (the Research page).
+  @@index([workspaceId, bookId, createdAt])
+  @@index([requestedById])
+}
+
+/// A file the author attached to a brief, kept as its extracted text.
+model ResearchSource {
+  id          String   @id @default(cuid())
+  workspaceId String
+  bookId      String
+  briefId     String
+  /// The file's name as uploaded (encrypted).
+  filename    String
+  mediaType   String
+  /// The upload's size in bytes, before extraction.
+  byteLength  Int
+  /// The file's text (encrypted). Never stored as a file.
+  text        String
+  createdAt   DateTime @default(now())
+
+  brief     ResearchBrief      @relation(fields: [workspaceId, briefId], references: [workspaceId, id], onDelete: Cascade)
+  citations ResearchCitation[]
+
+  @@unique([workspaceId, id])
+  /// A brief's sources.
+  @@index([workspaceId, briefId])
+}
+
+/// One run of a brief: a background job, counts and codes only.
+model ResearchRun {
+  id            String            @id @default(cuid())
+  workspaceId   String
+  bookId        String
+  briefId       String
+  status        ResearchRunStatus @default(QUEUED)
+  /// How it ended, a code from the closed list (CHECK; `RESEARCH_OUTCOMES`).
+  outcome       String?
+  depth         ResearchDepth
+  /// The caps the depth set: searches, fetches, requests, spend (numbers).
+  budget        Json
+  /// What the run's model calls cost, micro-US-dollars.
+  spentMicroUsd Int               @default(0)
+  /// Where the run is (phase and counts), for the progress stream. Never text.
+  progress      Json?
+  /// Counts and codes: findings and proposals stored, refusals by code, the
+  /// AiCallLog ids. Never text.
+  metrics       Json?
+  /// The research prompts' version (rule 9).
+  promptVersion String
+  /// Who dispatched it; NULL once that person is deleted.
+  requestedById String?
+  createdAt     DateTime          @default(now())
+  startedAt     DateTime?
+  finishedAt    DateTime?
+
+  brief       ResearchBrief      @relation(fields: [workspaceId, briefId], references: [workspaceId, id], onDelete: Cascade)
+  requestedBy User?              @relation(fields: [requestedById], references: [id], onDelete: SetNull)
+  findings    ResearchFinding[]
+  proposals   ResearchProposal[]
+
+  @@unique([workspaceId, id])
+  /// A brief's runs, newest first.
+  @@index([workspaceId, briefId, createdAt])
+  /// A book's runs by status.
+  @@index([workspaceId, bookId, status])
+  @@index([requestedById])
+}
+
+/// A claim a run found, resting on at least one verified citation (rule 2).
+model ResearchFinding {
+  id            String             @id @default(cuid())
+  workspaceId   String
+  bookId        String
+  runId         String
+  /// Its place in the run's answer.
+  position      Int
+  /// The claim, one or two sentences (encrypted).
+  claim         String
+  /// What the sources say about it, at more length (encrypted).
+  summary       String
+  confidence    ResearchConfidence
+  /// Why it fits nothing in scope, when the fit step said so (encrypted).
+  noFitReason   String?
+  /// The research note an author kept this finding as (set once).
+  keptElementId String?
+  createdAt     DateTime           @default(now())
+
+  run       ResearchRun               @relation(fields: [workspaceId, runId], references: [workspaceId, id], onDelete: Cascade)
+  citations ResearchCitation[]
+  proposals ResearchProposalFinding[]
+
+  @@unique([workspaceId, runId, id])
+  /// A run's findings in order.
+  @@index([workspaceId, runId, position])
+}
+
+/// Where a finding's claim comes from: a quoted span of a fetched page or an attached file.
+model ResearchCitation {
+  id          String               @id @default(cuid())
+  workspaceId String
+  runId       String
+  findingId   String
+  kind        ResearchCitationKind
+  /// URL: the page's address (encrypted).
+  url         String?
+  /// UPLOAD: the attached file.
+  sourceId    String?
+  /// The page's or file's title (encrypted).
+  title       String?
+  /// The words quoted, found verbatim in the retrieved text (encrypted).
+  quotedSpan  String
+  /// When the page was retrieved (URL only).
+  retrievedAt DateTime?
+
+  finding ResearchFinding @relation(fields: [workspaceId, runId, findingId], references: [workspaceId, runId, id], onDelete: Cascade)
+  source  ResearchSource? @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+
+  /// A finding's citations.
+  @@index([workspaceId, runId, findingId])
+  @@index([sourceId])
+}
+
+/// A proposed bible change drawn from a run's findings, waiting for the author.
+model ResearchProposal {
+  id               String                    @id @default(cuid())
+  workspaceId      String
+  bookId           String
+  runId            String
+  operation        ResearchProposalOperation
+  /// ADD / UPDATE: the element (in the book: a trigger holds it).
+  elementId        String?
+  /// ADD / UPDATE: the template key.
+  fieldKey         String?
+  /// ADD / UPDATE: the value, JSON-encoded by the field's type (encrypted).
+  proposedValue    String?
+  /// ADD / UPDATE: the element's latest version when proposed.
+  baseVersion      Int?
+  /// NEW_ELEMENT: the kind, name and summary proposed (name and summary encrypted).
+  newKind          BibleElementKind?
+  newName          String?
+  newSummary       String?
+  /// How the findings bear on the element: the agent's reasoning (encrypted).
+  rationale        String
+  /// What the author is warned of (D14): POSSIBLE_INSTRUCTION.
+  flags            String[]                  @default([])
+  status           EnrichmentProposalStatus  @default(PENDING)
+  decidedById      String?
+  decidedAt        DateTime?
+  /// The BibleEntryVersion an accepted ADD / UPDATE wrote (no foreign key).
+  versionId        String?
+  /// The element an accepted NEW_ELEMENT created (no foreign key).
+  createdElementId String?
+  createdAt        DateTime                  @default(now())
+
+  run       ResearchRun               @relation(fields: [workspaceId, runId], references: [workspaceId, id], onDelete: Cascade)
+  element   BibleElement?             @relation(fields: [elementId], references: [id], onDelete: Cascade)
+  decidedBy User?                     @relation(fields: [decidedById], references: [id], onDelete: SetNull)
+  findings  ResearchProposalFinding[]
+
+  @@unique([workspaceId, runId, id])
+  /// A run's proposals in the order they were made.
+  @@index([workspaceId, runId, createdAt])
+  /// A book's proposals by status.
+  @@index([workspaceId, bookId, status])
+  /// The pending proposals for one field.
+  @@index([elementId, fieldKey])
+  @@index([decidedById])
+}
+
+/// A finding a proposal cites (rule 2). Inserted with its proposal, never changed.
+model ResearchProposalFinding {
+  workspaceId String
+  runId       String
+  proposalId  String
+  findingId   String
+
+  proposal ResearchProposal @relation(fields: [workspaceId, runId, proposalId], references: [workspaceId, runId, id], onDelete: Cascade)
+  finding  ResearchFinding  @relation(fields: [workspaceId, runId, findingId], references: [workspaceId, runId, id], onDelete: Cascade)
+
+  @@id([proposalId, findingId])
+  @@index([workspaceId, runId, findingId])
+}
