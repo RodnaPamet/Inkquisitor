@@ -134,6 +134,8 @@ export interface ReconcileMetrics {
     answered: number;
     /** Operations stored, by kind. */
     proposed: { ADD: number; UPDATE: number; REMOVE: number; NEW_ELEMENT: number };
+    /** Of those, flagged POSSIBLE_INSTRUCTION (D14). */
+    flagged: number;
     noChange: number;
     refused: Partial<Record<RefusalCode, number>>;
     /** The output was not readable at all (every item lost). */
@@ -164,6 +166,7 @@ function metricsOf(input: ReconcileRoundInput, outcome: ReconcileOutcome, call: 
         scopeFields: input.elements.reduce((n, e) => n + e.scopeKeys.length, 0),
         answered: input.answers.filter((a) => a.status === 'ANSWERED').length,
         proposed,
+        flagged: (validation?.proposals ?? []).filter((p) => p.flags.length > 0).length,
         noChange: validation?.noChange ?? 0,
         refused: validation ? refusalCounts(validation.refusals) : {},
         unreadable: validation?.unreadable ?? false,

@@ -11,8 +11,11 @@
  *                    proposal was made says so, and the diff is against its
  *                    value NOW; accepting then tells the server the author saw
  *                    it (`reviewedCurrent`).
- *   bulk accept      only for ADDs into fields still empty (the server checks
- *                    again, and refuses the whole batch otherwise)
+ *   a flag           a proposal whose text addresses the product itself is
+ *                    marked "possible instruction" with what that means (owner
+ *                    decision D14); it is accepted one by one, never in bulk
+ *   bulk accept      only for unflagged ADDs into fields still empty (the
+ *                    server checks again, and refuses the whole batch otherwise)
  *   a new entry      shown apart: its kind, name and summary, the answers that
  *                    name it; Accept creates it, Edit changes the name and
  *                    summary first, Reject drops it
@@ -112,6 +115,22 @@ function Sources({ ids, answers }: { ids: readonly string[]; answers: Record<str
     );
 }
 
+/** The warnings a proposal carries (D14), each a badge and a sentence saying what it means. */
+function Flags({ id, flags }: { id: string; flags: readonly string[] }) {
+    const t = useTranslations('enrichment.flag');
+    if (flags.length === 0) return null;
+    return (
+        <div className="space-y-tight rounded-md border border-border-emphasis bg-bg-subtle p-3" data-testid="proposal-flag" id={`proposal-${id}-flags`}>
+            {flags.map((f) => (
+                <div key={f} className="space-y-1">
+                    <StatusBadge variant="warning">{t(`${f}.label`)}</StatusBadge>
+                    <p className="text-sm text-content-default">{t(`${f}.explained`)}</p>
+                </div>
+            ))}
+        </div>
+    );
+}
+
 function statusVariant(status: string): 'info' | 'success' | 'neutral' | 'warning' {
     if (status === 'PENDING') return 'info';
     if (status === 'ACCEPTED' || status === 'EDITED_ACCEPTED') return 'success';
@@ -156,6 +175,7 @@ function FieldProposalCard({ p, answers, canEdit, actions, scaleOf, workspaceSlu
                     </StatusBadge>
                 </div>
             </div>
+            {pending ? <Flags id={p.id} flags={p.flags} /> : null}
             {pending && changed ? (
                 <p className="rounded-md border border-border-default bg-bg-subtle p-3 text-sm text-content-default" data-testid="proposal-changed">
                     {t('changedSince', { base: p.baseVersion, current: p.currentVersion })}
@@ -274,6 +294,7 @@ function NewElementCard({
                     {t(`status.${p.status}`)}
                 </StatusBadge>
             </div>
+            {pending ? <Flags id={p.id} flags={p.flags} /> : null}
             {p.summary && !editing ? <p className="whitespace-pre-wrap text-sm text-content-default">{p.summary}</p> : null}
             {p.createdElementId ? (
                 <Link href={APP_ROUTES.bibleElement(workspaceSlug, bookId, p.createdElementId)} className="text-sm text-content-emphasis hover:underline">
@@ -388,7 +409,8 @@ export function SessionReview({ workspaceSlug, book, review: initial, canEdit, k
             return t('rejected');
         });
     };
-    const eligible = review.fields.filter((f) => f.bulkEligible);
+    // The server says what is eligible; a flagged proposal (D14) is never sent in bulk whatever it says.
+    const eligible = review.fields.filter((f) => f.bulkEligible && f.flags.length === 0);
     const bulk = () =>
         run(async () => {
             const { decisions } = await enrichmentApi.bulkAccept(

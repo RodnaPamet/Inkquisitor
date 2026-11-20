@@ -49,6 +49,7 @@ export const PROPOSAL_SELECT = {
     newKind: true,
     newName: true,
     newSummary: true,
+    flags: true,
     status: true,
     decidedById: true,
     decidedAt: true,
@@ -73,6 +74,8 @@ export interface ProposalWrite {
     newKind: BibleElementKind | null;
     newName: string | null;
     newSummary: string | null;
+    /** The author's warnings (D14), from `PROPOSAL_FLAGS`. */
+    flags: string[];
 }
 
 export const ReconcileRunRepository = {

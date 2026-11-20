@@ -27,6 +27,16 @@ export type ProposalKind = (typeof PROPOSAL_KINDS)[number];
 export const PROPOSAL_STATUSES = ['PENDING', 'ACCEPTED', 'EDITED_ACCEPTED', 'REJECTED', 'SUPERSEDED'] as const;
 export type ProposalStatus = (typeof PROPOSAL_STATUSES)[number];
 
+/**
+ * What a stored proposal warns the author of (owner decision D14,
+ * 2026-11-20): POSSIBLE_INSTRUCTION when its text addresses the product
+ * itself (an action on a field, the bible, a prompt, …: `addressesTheProduct`).
+ * Such a proposal is stored and shown, never bulk-accepted, and accepted only
+ * one by one. Mirrored by the CHECK `EnrichmentProposal_flags_known`.
+ */
+export const PROPOSAL_FLAGS = ['POSSIBLE_INSTRUCTION'] as const;
+export type ProposalFlag = (typeof PROPOSAL_FLAGS)[number];
+
 export const RECONCILE_RUN_STATUSES = ['RUNNING', 'DONE', 'FAILED', 'REFUSED'] as const;
 export type ReconcileRunStatus = (typeof RECONCILE_RUN_STATUSES)[number];
 
@@ -70,6 +80,27 @@ export type ReconcileOutcome = (typeof RECONCILE_OUTCOMES)[number];
 export const DONE_OUTCOMES: readonly ReconcileOutcome[] = ['OK', 'NOTHING_TO_RECONCILE'];
 export const REFUSED_OUTCOMES: readonly ReconcileOutcome[] = ['AI_UNAVAILABLE', 'RECONCILE_NOT_EVALUATED'];
 
+/**
+ * A RUNNING run older than this is a claim whose process died (the balanced
+ * tier's deadline, 3 minutes, bounds a live call): the next request may claim
+ * it again, and every read shows it as FAILED `CLAIM_EXPIRED`, re-runnable,
+ * rather than "reconciling" for ever.
+ */
+export const STALE_RECONCILE_MS = 5 * 60_000;
+
+/**
+ * How a run reads: its stored status and outcome, except that a RUNNING run
+ * whose claim has gone stale is FAILED `CLAIM_EXPIRED` (nothing will finish
+ * it; the author may run it again).
+ */
+export function effectiveRunState(
+    run: { status: ReconcileRunStatus; outcome: string | null; startedAt: Date },
+    now: number = Date.now(),
+): { status: ReconcileRunStatus; outcome: ReconcileOutcome | null } {
+    if (run.status === 'RUNNING' && now - run.startedAt.getTime() >= STALE_RECONCILE_MS) return { status: 'FAILED', outcome: 'CLAIM_EXPIRED' };
+    return { status: run.status, outcome: (run.outcome as ReconcileOutcome | null) ?? null };
+}
+
 /** The run status an outcome ends in. */
 export function statusOfOutcome(outcome: ReconcileOutcome): Exclude<ReconcileRunStatus, 'RUNNING'> {
     if (DONE_OUTCOMES.includes(outcome)) return 'DONE';
@@ -94,7 +125,9 @@ export function statusOfOutcome(outcome: ReconcileOutcome): Exclude<ReconcileRun
  *   VALUE_MISSING              an ADD or UPDATE with no value (or one that sanitises to nothing)
  *   VALUE_INVALID              a value of the wrong type or past the field's bounds
  *   CHANGES_NOTHING            an UPDATE to the value the field already holds
- *   COPIES_INJECTED_TEXT       markup, a URL no clean cited answer gave, or text the guard flags
+ *   COPIES_INJECTED_TEXT       markup or a script scheme, a URL no clean cited answer gave, text the
+ *                              guard flags, or an answer cited by its id in the text (a sentence that
+ *                              only addresses the product is FLAGGED, not refused: D14)
  *   UNSOURCED_SENTENCE         a sentence (list item, choice, scale) the cited answers, or for
  *                              an UPDATE the stored value, do not support (rule 2: refused, not softened)
  *   KIND_NOT_PROPOSABLE        a new element of a kind that cannot be proposed (CUSTOM)

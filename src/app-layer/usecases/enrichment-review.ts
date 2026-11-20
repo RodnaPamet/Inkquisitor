@@ -25,7 +25,10 @@
  *                 when it differs from the proposal. A REMOVE has nothing to
  *                 edit; an edit cannot empty a field (reject instead).
  *   reject        REJECTED; nothing is written to the bible.
- *   bulk accept   only ADD proposals into fields STILL EMPTY when accepted,
+ *   flags         a proposal flagged POSSIBLE_INSTRUCTION (its text addresses
+ *                 the product itself; owner decision D14) is shown as such and
+ *                 accepted only one by one, by the same explicit accept.
+ *   bulk accept   only unflagged ADD proposals into fields STILL EMPTY when accepted,
  *                 each naming its element's reviewed version; one version per
  *                 element, naming every answer behind it. One ineligible item
  *                 refuses the whole request (409 BULK_INELIGIBLE), nothing
@@ -57,9 +60,8 @@ import { decodeFieldValue, sameFieldValue, type FieldValue } from '@/lib/bible/f
 import type { FieldDef } from '@/lib/bible/template-schema';
 import { getFieldDef } from '@/lib/bible/templates';
 import { decodeProposedValue } from '@/lib/enrichment/storage';
-import { nameKey } from '@/lib/enrichment/validate';
 import { bulkEligible, opFits } from '@/lib/enrichment/review-rules';
-import type { ProposalStatus, ReconcileOutcome, StoredOp } from '@/lib/enrichment/vocabulary';
+import { effectiveRunState, PROPOSAL_FLAGS, type ProposalFlag, type ProposalStatus, type ReconcileOutcome, type StoredOp } from '@/lib/enrichment/vocabulary';
 import {
     DERIVED_SLUG_ATTEMPTS,
     isUniqueViolation,
@@ -74,6 +76,7 @@ import {
     writeFieldValues,
 } from './bible-common';
 import { createElementInTx } from './bible-elements';
+import { bookHoldsElementName } from './enrichment-names';
 
 /** A session's proposals a review reads at most (it reads one more to say it was cut). */
 export const REVIEW_PROPOSALS_MAX = 400;
@@ -111,8 +114,10 @@ export interface FieldProposalView {
     /** The element's version when proposed, and now: a review shows the change when they differ. */
     baseVersion: number;
     currentVersion: number;
-    /** Offered for bulk acceptance: a PENDING ADD into a field that is still empty. */
+    /** Offered for bulk acceptance: a PENDING, unflagged ADD into a field that is still empty. */
     bulkEligible: boolean;
+    /** What the author is warned of (D14): POSSIBLE_INSTRUCTION. */
+    flags: ProposalFlag[];
     citedAnswerIds: string[];
     decidedAt: string | null;
 }
@@ -126,6 +131,8 @@ export interface NewElementProposalView {
     name: string;
     summary: string | null;
     createdElementId: string | null;
+    /** What the author is warned of (D14): POSSIBLE_INSTRUCTION. */
+    flags: ProposalFlag[];
     citedAnswerIds: string[];
     decidedAt: string | null;
 }
@@ -154,6 +161,8 @@ function answerText(a: { status: string; text: string | null; choice: string | n
 }
 
 const citationIds = (p: ProposalRow) => p.citations.map((c) => c.answerId);
+/** A stored proposal's flags, those of the closed list only. */
+const flagsOf = (p: ProposalRow): ProposalFlag[] => p.flags.filter((f): f is ProposalFlag => (PROPOSAL_FLAGS as readonly string[]).includes(f));
 
 /** Every proposal of a session, with the current state of what each targets and the answers each cites (`bible.view`). */
 export async function getSessionReview(ctx: WorkspaceRequestContext, bookId: string, sessionId: string): Promise<SessionReviewView> {
@@ -191,6 +200,7 @@ export async function getSessionReview(ctx: WorkspaceRequestContext, bookId: str
                     name: p.newName ?? '',
                     summary: p.newSummary,
                     createdElementId: p.createdElementId,
+                    flags: flagsOf(p),
                     citedAnswerIds: citationIds(p),
                     decidedAt: p.decidedAt ? p.decidedAt.toISOString() : null,
                 });
@@ -215,7 +225,8 @@ export async function getSessionReview(ctx: WorkspaceRequestContext, bookId: str
                 currentValue: current,
                 baseVersion: p.baseVersion!,
                 currentVersion: versions.get(element.id) ?? 0,
-                bulkEligible: bulkEligible({ status: p.status, operation: p.operation! }, current),
+                bulkEligible: bulkEligible({ status: p.status, operation: p.operation!, flags: p.flags }, current),
+                flags: flagsOf(p),
                 citedAnswerIds: citationIds(p),
                 decidedAt: p.decidedAt ? p.decidedAt.toISOString() : null,
             });
@@ -228,7 +239,8 @@ export async function getSessionReview(ctx: WorkspaceRequestContext, bookId: str
         }
         const runs = (await ReconcileRunRepository.listForSession(db, ctx.workspaceId, sessionId, REVIEW_ROUNDS_READ)).map((r) => {
             const m = (r.metrics ?? {}) as { reviewRequired?: boolean; refusalReason?: string };
-            return { roundNumber: numberOf.get(r.roundId) ?? null, status: r.status, outcome: (r.outcome as ReconcileOutcome | null) ?? null, reviewRequired: m.reviewRequired ?? false, refusalReason: m.refusalReason ?? null };
+            const state = effectiveRunState(r);
+            return { roundNumber: numberOf.get(r.roundId) ?? null, status: state.status, outcome: state.outcome, reviewRequired: m.reviewRequired ?? false, refusalReason: m.refusalReason ?? null };
         });
         return {
             session: { id: session.id, bookId, scope: session.scope, targetElementId: session.targetElementId, targetKind: session.targetKind, status: session.status },
@@ -332,7 +344,7 @@ async function acceptField(db: PrismaTx, ctx: WorkspaceRequestContext, bookId: s
             action: 'ENRICHMENT_PROPOSAL_ACCEPTED',
             entityType: 'EnrichmentProposal',
             entityId: p.id,
-            details: { bookId, sessionId, elementId: element.id, fieldKey: key, operation: op, edited, versionNumber: version.versionNumber, citedAnswerCount: answerIds.length, superseded },
+            details: { bookId, sessionId, elementId: element.id, fieldKey: key, operation: op, edited, flags: p.flags, versionNumber: version.versionNumber, citedAnswerCount: answerIds.length, superseded },
         },
         { db },
     );
@@ -345,9 +357,7 @@ async function acceptNewElement(db: PrismaTx, ctx: WorkspaceRequestContext, book
     if (input.value !== undefined) throw new ValidationError('A new element takes a name and a summary, not a value.', { reason: 'EDIT_NOT_ALLOWED' });
     const name = input.name !== undefined ? requiredLine(input.name, ELEMENT_NAME_MAX, 'Name') : requiredLine(p.newName ?? '', ELEMENT_NAME_MAX, 'Name');
     const summary = input.summary !== undefined ? (optionalBlock(input.summary, ELEMENT_SUMMARY_MAX, 'Summary') ?? null) : (optionalBlock(p.newSummary, ELEMENT_SUMMARY_MAX, 'Summary') ?? null);
-    const key = nameKey(name);
-    const same = await BibleElementRepository.page(db, ctx.workspaceId, bookId, { q: name, take: 20 });
-    if (same.some((e) => nameKey(e.name) === key)) throw new ConflictError('The book already has an element of that name.', { reason: 'ELEMENT_EXISTS' });
+    if (await bookHoldsElementName(db, ctx, bookId, name)) throw new ConflictError('The book already has an element of that name.', { reason: 'ELEMENT_EXISTS' });
     const answerIds = citationIds(p);
     const { element, version } = await createElementInTx(
         db,
@@ -433,7 +443,8 @@ export async function bulkAcceptProposals(ctx: WorkspaceRequestContext, bookId: 
         const byElement = new Map<string, ProposalRow[]>();
         const currentValues = new Map<string, Map<string, FieldValue>>();
         for (const p of rows) {
-            if (p.kind !== 'FIELD' || p.operation !== 'ADD' || p.status !== 'PENDING' || p.citations.length === 0) {
+            // A flagged proposal (D14) is decided one by one, never in bulk.
+            if (p.kind !== 'FIELD' || p.operation !== 'ADD' || p.status !== 'PENDING' || p.citations.length === 0 || p.flags.length > 0) {
                 ineligible.push(p.id);
                 continue;
             }

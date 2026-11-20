@@ -762,11 +762,16 @@ closed beta with an explicit operator flag (D5, amended 2026-11-19).
   proposal (`validate.ts`, the order in its header): in the round's scope, the
   op fits the stored value (ADD empty, UPDATE / REMOVE filled), cites only
   this run's ANSWERED answers, a value `normaliseFieldValue` accepts, no copied
-  instruction (markup, an unvouched URL, the guard's flag, a sentence that
-  addresses the product: `addressesTheProduct`), and every sentence grounded
+  instruction (markup or a script scheme, an unvouched URL, the guard's
+  injection hit, an answer cited by id in the text), and every sentence grounded
   in the cited answers (`groundSentence`, 70 %; for UPDATE also the stored
   value). Refused, never softened; NO_CHANGE and refusals are counts on the
-  run, never rows. The database holds the rest: a citation's foreign key is
+  run, never rows. A sentence that addresses the product
+  (`addressesTheProduct`) is NOT refused (D14): the proposal is stored with
+  `flags` `POSSIBLE_INSTRUCTION`, shown as a possible instruction, never
+  bulk-accepted, accepted one by one. A RUNNING run older than
+  `STALE_RECONCILE_MS` reads FAILED `CLAIM_EXPIRED` (`effectiveRunState`) and
+  is re-runnable. The database holds the rest: a citation's foreign key is
   `(workspaceId, sessionId, answerId)`, a trigger refuses a non-ANSWERED
   answer, a deferred trigger a proposal with no citation, and
   `enrichment_proposal_fixed` every change but the one decision. ONLY
@@ -776,8 +781,9 @@ closed beta with an explicit operator flag (D5, amended 2026-11-19).
   `reviewedCurrent` (409 PROPOSAL_OUTDATED), the op must still fit (409
   PROPOSAL_STALE), and the version is source INTERVIEW with
   `sourceAnswerIds` (CHECK `BibleEntryVersion_interview_names_answers`; a new
-  element through `createElementInTx`); bulk accept is ADD into fields still
-  empty, all or nothing. That module is on the write path: no dial, pack or
+  element through `createElementInTx`, refused when the book holds the name by
+  `nameKey`: `bookHoldsElementName`); bulk accept is unflagged ADD into fields
+  still empty, all or nothing. That module is on the write path: no dial, pack or
   model import. D11 applies to reconcile (`record-gate.ts`, the packs' own
   `deploymentPackRecordMode()`, so D13's stub server accepts structural
   records too): production reconciles only on a real model's

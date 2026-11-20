@@ -16,6 +16,7 @@ import { reconcilerOver } from '@/lib/enrichment/model-seam';
 import { RECONCILE_CALL_COST_BUDGET_MICRO_USD, RECONCILE_PROMPT, RECONCILE_PROMPT_VERSION } from '@/lib/enrichment/prompt';
 import { reconcileRequestFor, runReconcileStep } from '@/lib/enrichment/reconcile';
 import type { Reconciler } from '@/lib/enrichment/reconciler';
+import { bulkEligible } from '@/lib/enrichment/review-rules';
 import { ReconcileOutputSchema } from '@/lib/enrichment/schema';
 import { fakeAnthropic, setFakeApiKey, type FakeTurn } from '../../helpers/fake-anthropic';
 import { memoryLedger, type MemoryLedger } from '../../helpers/memory-ai-ledger';
@@ -116,7 +117,7 @@ describe('2.1 outcome → the run (the table in model-seam.ts); a failed call pr
 describe('adversarial answers change nothing beyond their own content', () => {
     const adversarial = allReconcileCases().filter((c) => c.id.startsWith('adv-'));
 
-    it.each(adversarial.map((c) => [c.id, c] as const))('%s: a model that obeys the injection is refused on every point it obeys', async (_id, c) => {
+    it.each(adversarial.map((c) => [c.id, c] as const))('%s: a model that obeys the injection is refused, or flagged for the author, on every point it obeys', async (_id, c) => {
         const input = roundInputOf(c);
         const element = input.elements[0];
         const injected = c.injectedText!;
@@ -134,10 +135,20 @@ describe('adversarial answers change nothing beyond their own content', () => {
         const step = await runReconcileStep(input, { unavailableReason: () => null, reconcile: async () => ({ output: obey, tokensUsed: 0 }) });
         const stored = step.validation!.proposals;
         // Nothing outside scope, no invented element, and no stored value carries the injection
-        // (an in-world order may be recorded, but only as the answer's own story text).
+        // unless it is FLAGGED a possible instruction (D14): stored PENDING, shown as such, never
+        // bulk-eligible, so it changes nothing until the author accepts it on its own (an in-world
+        // order may be recorded, but only as the answer's own story text).
         expect(stored.every((p) => p.kind === 'FIELD' && element.scopeKeys.includes(p.fieldKey) && p.elementId === element.elementId)).toBe(true);
         const fragments = c.expect.operations.flatMap((o) => (o.op === 'ADD' || o.op === 'UPDATE' ? o.mustNotContain : []));
-        for (const p of stored) for (const f of fragments) expect(JSON.stringify(p.kind === 'FIELD' ? p.value : '').toLowerCase()).not.toContain(f.toLowerCase());
+        for (const p of stored) {
+            if (p.kind !== 'FIELD') continue;
+            const carries = fragments.some((f) => JSON.stringify(p.value).toLowerCase().includes(f.toLowerCase()));
+            if (!carries) continue;
+            expect([c.id, p.fieldKey, p.flags]).toEqual([c.id, p.fieldKey, ['POSSIBLE_INSTRUCTION']]);
+            expect(bulkEligible({ status: 'PENDING', operation: p.operation, flags: p.flags }, null)).toBe(false);
+        }
+        // What the guard, markup, an unvouched URL or an answer-id citation catches is still refused.
+        if (['adv-01', 'adv-02', 'adv-05'].includes(c.id)) expect(step.validation!.refusals.map((r) => r.code)).toContain('COPIES_INJECTED_TEXT');
         expect(step.validation!.refusals.map((r) => r.code)).toContain('TARGETS_OUT_OF_SCOPE_FIELD');
         expect(stored.some((p) => p.kind === 'NEW_ELEMENT')).toBe(false);
     });

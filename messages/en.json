@@ -907,6 +907,12 @@
         },
         "removeExplained": "Remove the stored value: your answers take it back and give nothing in its place.",
         "changedSince": "This entry changed since the proposal was made (version {base} then, {current} now). The comparison shows its value now; accept only if the change still fits.",
+        "flag": {
+            "POSSIBLE_INSTRUCTION": {
+                "label": "Possible instruction",
+                "explained": "This text reads like an instruction to Inkquisitor (to change fields, the bible or the prompt) rather than a fact about your story. It may have been copied from an answer. Accept it only if it really belongs in your bible; it is never accepted together with other changes."
+            }
+        },
         "citesTitle": "Drawn from",
         "answerMissing": "That answer is no longer available.",
         "notAnswered": "(not answered)",
@@ -919,7 +925,7 @@
         "reject": "Reject",
         "rejectAria": "Reject the change to {field} of {element}",
         "bulkAccept": "Accept all {count} additions to empty fields",
-        "bulkHelp": "Only additions to fields that are still empty can be accepted together; review every other change on its own.",
+        "bulkHelp": "Only additions to fields that are still empty, and not marked as a possible instruction, can be accepted together; review every other change on its own.",
         "accepted": "Accepted. The bible has a new version.",
         "acceptedNew": "Accepted. {name} is now in the bible.",
         "bulkAccepted": "{count, plural, one {# change accepted.} other {# changes accepted.}}",

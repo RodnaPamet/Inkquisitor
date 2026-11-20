@@ -66,14 +66,15 @@ import type { Reconciler } from '@/lib/enrichment/reconciler';
 import { reconcileGate, type ReconcileGateVerdict } from '@/lib/enrichment/record-gate';
 import { sanitiseProposalForStorage } from '@/lib/enrichment/storage';
 import { nameKey } from '@/lib/enrichment/validate';
-import { statusOfOutcome, type ReconcileOutcome, type RefusalCode } from '@/lib/enrichment/vocabulary';
+import { effectiveRunState, STALE_RECONCILE_MS, statusOfOutcome, type ReconcileOutcome, type RefusalCode } from '@/lib/enrichment/vocabulary';
 import type { PackRecordMode } from '@/lib/interview/pack-records-config';
 import { decodeOptions, decodeScaleLabels } from '@/lib/interview/storage';
 import { logger } from '@/lib/observability/logger';
 import { requireBook } from './bible-common';
+import { bookHoldsElementName } from './enrichment-names';
 import { deploymentPackRecordMode } from './interview-packs';
 import { closeRound, stopInterview } from './interviews';
-import type { InterviewView } from './interview-state';
+import { SESSION_ANSWERS_MAX, type InterviewView } from './interview-state';
 
 /** What a usecase may be handed instead of the deployment's own (tests; the evaluation). */
 export interface EnrichmentDeps {
@@ -84,12 +85,12 @@ export interface EnrichmentDeps {
     gate?: () => Promise<ReconcileGateVerdict>;
 }
 
-/** A RUNNING run older than this is a claim whose process died: the next request may run it again. */
-export const STALE_RECONCILE_MS = 5 * 60_000;
+/** A RUNNING run older than this is a claim whose process died: the next request may run it again (`vocabulary.ts`). */
+export { STALE_RECONCILE_MS };
 /** A round's questions read at most (a round asks at most eight; rephrases add a few). */
 const ROUND_QUESTIONS_MAX = 60;
-/** A session's answer rows read at most (every revision). */
-const SESSION_ANSWERS_READ = 2_000;
+/** A session's answer rows read at most (every revision): the session state's own bound, which `session-bounds.test.ts` holds to every row a session can have. */
+const SESSION_ANSWERS_READ = SESSION_ANSWERS_MAX;
 /** Stored fields read per element. */
 const FIELDS_PER_ELEMENT = 50;
 /** Pending new-element names compared at persist. */
@@ -102,6 +103,8 @@ export interface ReconcileRunView {
     attempts: number;
     /** Proposals stored, by kind (counts only). */
     proposed: { ADD: number; UPDATE: number; REMOVE: number; NEW_ELEMENT: number };
+    /** Of those, flagged POSSIBLE_INSTRUCTION for the author (D14). */
+    flagged: number;
     noChange: number;
     /** Proposals code refused, by code (counts only). */
     refused: Partial<Record<RefusalCode, number>>;
@@ -118,12 +121,14 @@ interface StoredMetrics extends Partial<ReconcileMetrics> {
 
 export function runView(run: ReconcileRunRow, roundNumber: number): ReconcileRunView {
     const m = (run.metrics ?? {}) as StoredMetrics;
+    const state = effectiveRunState(run);
     return {
         roundNumber,
-        status: run.status,
-        outcome: (run.outcome as ReconcileOutcome | null) ?? null,
+        status: state.status,
+        outcome: state.outcome,
         attempts: run.attempts,
         proposed: m.proposed ?? { ADD: 0, UPDATE: 0, REMOVE: 0, NEW_ELEMENT: 0 },
+        flagged: m.flagged ?? 0,
         noChange: m.noChange ?? 0,
         refused: m.refused ?? {},
         reviewRequired: m.reviewRequired ?? false,
@@ -243,11 +248,14 @@ async function claimRun(
     let runId: string;
     let attempt: number;
     if (existing) {
-        const fresh = existing.status === 'RUNNING' && Date.now() - existing.startedAt.getTime() < STALE_RECONCILE_MS;
+        const fresh = existing.status === 'RUNNING' && effectiveRunState(existing).status === 'RUNNING';
         if (existing.status === 'DONE' || fresh) {
             if (mode === 'auto') return { kind: 'skipped', run: existing };
             throw new ConflictError(fresh ? 'This round is being reconciled.' : 'This round has been reconciled.', { reason: fresh ? 'RECONCILE_RUNNING' : 'RECONCILE_DONE' });
         }
+        // A stale claim (its process died) is recorded as such before it is claimed again: the
+        // expired attempt is audited CLAIM_EXPIRED, and a late answer of it is refused by its attempt.
+        if (existing.status === 'RUNNING') await finishRun(db, ctx, session, round, existing.id, existing.attempts, 'CLAIM_EXPIRED', {});
         attempt = existing.attempts + 1;
         runId = existing.id;
         await ReconcileRunRepository.reclaim(db, ctx.workspaceId, runId, RECONCILE_PROMPT_VERSION, attempt);
@@ -272,10 +280,11 @@ async function persistRun(
     claim: Extract<Claim, { kind: 'claimed' }>,
     step: Awaited<ReturnType<typeof runReconcileStep>>,
 ): Promise<void> {
+    // The call's tokens are the session's whatever becomes of its answer (2.2's rule), an overtaken claim's too.
+    if (step.metrics.tokensUsed > 0) await InterviewSessionRepository.addTokens(db, ctx.workspaceId, session.id, step.metrics.tokensUsed);
     const run = await ReconcileRunRepository.find(db, ctx.workspaceId, session.id, round.id);
     // A claim overtaken (stale, and claimed again by another request): this call's answer is not used.
     if (!run || run.status !== 'RUNNING' || run.attempts !== claim.attempt) return;
-    if (step.metrics.tokensUsed > 0) await InterviewSessionRepository.addTokens(db, ctx.workspaceId, session.id, step.metrics.tokensUsed);
     if (step.outcome !== 'OK' || !step.call) {
         await finishRun(db, ctx, session, round, claim.runId, claim.attempt, step.outcome, step.metrics);
         return;
@@ -291,14 +300,15 @@ async function persistRun(
     const kinds = new Map(now.elements.map((e) => [e.elementId, e.kind]));
     const versions = new Map<string, number>();
     const proposed = { ADD: 0, UPDATE: 0, REMOVE: 0, NEW_ELEMENT: 0 };
+    let flagged = 0;
     const refused: Partial<Record<RefusalCode, number>> = {};
     for (const r of validation.refusals) refused[r.code] = (refused[r.code] ?? 0) + 1;
     for (const draft of validation.proposals) {
         if (draft.kind === 'NEW_ELEMENT') {
             const key = nameKey(draft.name);
-            const named = await BibleElementRepository.page(db, ctx.workspaceId, session.bookId, { q: draft.name, take: 20 });
-            if (pendingNames.has(key) || named.some((e) => nameKey(e.name) === key)) {
-                const code: RefusalCode = pendingNames.has(key) ? 'ALREADY_PROPOSED' : 'ELEMENT_EXISTS';
+            const alreadyProposed = pendingNames.has(key);
+            if (alreadyProposed || (await bookHoldsElementName(db, ctx, session.bookId, draft.name))) {
+                const code: RefusalCode = alreadyProposed ? 'ALREADY_PROPOSED' : 'ELEMENT_EXISTS';
                 refused[code] = (refused[code] ?? 0) + 1;
                 continue;
             }
@@ -327,15 +337,18 @@ async function persistRun(
                 newKind: draft.kind === 'NEW_ELEMENT' ? draft.newKind : null,
                 newName: text.newName,
                 newSummary: text.newSummary,
+                flags: [...draft.flags],
             },
             draft.citedAnswerIds,
         );
+        if (draft.flags.length > 0) flagged++;
         if (draft.kind === 'NEW_ELEMENT') proposed.NEW_ELEMENT++;
         else proposed[draft.operation]++;
     }
     await finishRun(db, ctx, session, round, claim.runId, claim.attempt, 'OK', {
         ...step.metrics,
         proposed,
+        flagged,
         noChange: validation.noChange,
         refused,
         unreadable: validation.unreadable,
@@ -447,12 +460,19 @@ export async function stopInterviewAndReconcile(
     deps: EnrichmentDeps = {},
 ): Promise<{ interview: InterviewView; reconcile: ReconcileRunView[] }> {
     const interview = await stopInterview(ctx, bookId, sessionId);
-    const pending = await runInWorkspaceContext(ctx, async (db) => {
-        const rounds = await InterviewRoundRepository.listForSession(db, ctx.workspaceId, sessionId, STOP_ROUNDS_READ);
-        const runs = await ReconcileRunRepository.listForSession(db, ctx.workspaceId, sessionId, STOP_ROUNDS_READ);
-        const ran = new Set(runs.map((r) => r.roundId));
-        return rounds.filter((r) => r.status === 'CLOSED' && !ran.has(r.id)).map((r) => r.number);
-    });
+    // The stop has committed: nothing after it may turn the response into an error.
+    let pending: number[];
+    try {
+        pending = await runInWorkspaceContext(ctx, async (db) => {
+            const rounds = await InterviewRoundRepository.listForSession(db, ctx.workspaceId, sessionId, STOP_ROUNDS_READ);
+            const runs = await ReconcileRunRepository.listForSession(db, ctx.workspaceId, sessionId, STOP_ROUNDS_READ);
+            const ran = new Set(runs.map((r) => r.roundId));
+            return rounds.filter((r) => r.status === 'CLOSED' && !ran.has(r.id)).map((r) => r.number);
+        });
+    } catch (err) {
+        logger.warn('enrichment.reconcile_after_stop_failed', { component: 'enrichment', sessionId, error: err instanceof Error ? err.name : 'unknown' });
+        return { interview, reconcile: [] };
+    }
     const reconcile: ReconcileRunView[] = [];
     for (const n of pending) {
         const view = await reconcileAfterClose(ctx, bookId, sessionId, n, deps);

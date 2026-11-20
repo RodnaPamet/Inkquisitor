@@ -13,7 +13,11 @@ export function opFits(op: StoredOp, current: FieldValue | null): boolean {
     return op === 'ADD' ? empty : !empty;
 }
 
-/** Offered for bulk acceptance: a PENDING ADD into a field that is still empty. Nothing else is ever accepted in bulk. */
-export function bulkEligible(p: { status: ProposalStatus; operation: StoredOp }, current: FieldValue | null): boolean {
-    return p.status === 'PENDING' && p.operation === 'ADD' && opFits('ADD', current);
+/**
+ * Offered for bulk acceptance: a PENDING ADD into a field that is still empty
+ * and carries no flag (a POSSIBLE_INSTRUCTION is decided one by one, D14).
+ * Nothing else is ever accepted in bulk.
+ */
+export function bulkEligible(p: { status: ProposalStatus; operation: StoredOp; flags: readonly string[] }, current: FieldValue | null): boolean {
+    return p.status === 'PENDING' && p.operation === 'ADD' && p.flags.length === 0 && opFits('ADD', current);
 }

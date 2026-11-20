@@ -70,6 +70,7 @@ CREATE TABLE "EnrichmentProposal" (
     "newKind" "BibleElementKind",
     "newName" TEXT,
     "newSummary" TEXT,
+    "flags" TEXT[] DEFAULT ARRAY[]::TEXT[],
     "status" "EnrichmentProposalStatus" NOT NULL DEFAULT 'PENDING',
     "decidedById" TEXT,
     "decidedAt" TIMESTAMP(3),
@@ -216,6 +217,11 @@ ALTER TABLE "EnrichmentProposal" ADD CONSTRAINT "EnrichmentProposal_kind_shape"
             AND "elementId" IS NULL AND "fieldKey" IS NULL AND "operation" IS NULL AND "proposedValue" IS NULL AND "baseVersion" IS NULL
             AND "newKind" IS NOT NULL AND "newName" IS NOT NULL AND "versionId" IS NULL)
     );
+-- A proposal's flags are codes from the closed list (src/lib/enrichment/vocabulary.ts,
+-- PROPOSAL_FLAGS; owner decision D14): POSSIBLE_INSTRUCTION, a text that addresses
+-- the product itself, stored for the author's review rather than refused. Never NULL.
+ALTER TABLE "EnrichmentProposal" ADD CONSTRAINT "EnrichmentProposal_flags_known"
+    CHECK ("flags" IS NOT NULL AND "flags" <@ ARRAY['POSSIBLE_INSTRUCTION']::text[]);
 ALTER TABLE "EnrichmentProposal" ADD CONSTRAINT "EnrichmentProposal_fieldKey_shape"
     CHECK ("fieldKey" IS NULL OR ("fieldKey" ~ '^[a-z][a-z0-9_]*$' AND char_length("fieldKey") <= 64));
 ALTER TABLE "EnrichmentProposal" ADD CONSTRAINT "EnrichmentProposal_baseVersion_positive"

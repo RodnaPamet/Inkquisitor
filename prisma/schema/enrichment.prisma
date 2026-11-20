@@ -90,6 +90,11 @@ model EnrichmentProposal {
   newName          String?
   /// NEW_ELEMENT: a short summary drawn from the answers, or NULL (encrypted).
   newSummary       String?
+  /// What the author is warned of, from a closed list (CHECK; `PROPOSAL_FLAGS`):
+  /// POSSIBLE_INSTRUCTION when the text addresses the product itself (owner
+  /// decision D14). A flagged proposal is shown as such and never bulk-accepted.
+  /// Fixed at insert, like the rest of the proposal.
+  flags            String[]                 @default([])
   status           EnrichmentProposalStatus @default(PENDING)
   /// Who decided it; NULL while PENDING, and once that person is deleted.
   decidedById      String?
