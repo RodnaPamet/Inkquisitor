@@ -42,9 +42,9 @@ describe('.github/workflows/evals.yml', () => {
         expect(Object.keys(wf.jobs)).toEqual(['evals']);
     });
 
-    it('runs only when a person dispatches it, with packs, coverage, reconcile, research, rephrase and budget inputs', () => {
+    it('runs only when a person dispatches it, with packs, coverage, reconcile, research, rephrase, sources and budget inputs', () => {
         expect(Object.keys(wf.on)).toEqual(['workflow_dispatch']);
-        expect(Object.keys(wf.on.workflow_dispatch.inputs ?? {})).toEqual(['packs', 'coverage', 'reconcile', 'research', 'rephrase', 'budget_usd']);
+        expect(Object.keys(wf.on.workflow_dispatch.inputs ?? {})).toEqual(['packs', 'coverage', 'reconcile', 'research', 'rephrase', 'sources', 'budget_usd']);
         expect(wf.on.workflow_dispatch.inputs!.research.type).toBe('boolean');
         expect(wf.on.workflow_dispatch.inputs!.coverage.type).toBe('boolean');
         expect(wf.on.workflow_dispatch.inputs!.reconcile.type).toBe('boolean');
@@ -63,6 +63,16 @@ describe('.github/workflows/evals.yml', () => {
         const run = job.steps.find((s) => s.run?.includes('packs:evaluate'))!;
         expect(run.env).toMatchObject({ REPHRASE: '${{ inputs.rephrase }}' });
         expect(run.run).toMatch(/if \[ "\$REPHRASE" = "true" \]; then extra="\$extra --rephrase"; fi/);
+    });
+
+    it('runs source fact extraction’s set (Phase 4.0) on the same model path, its record uploaded with the others', () => {
+        expect(wf.on.workflow_dispatch.inputs!.sources.type).toBe('boolean');
+        expect(wf.on.workflow_dispatch.inputs!.sources.default).toBe(false);
+        const run = job.steps.find((s) => s.run?.includes('packs:evaluate'))!;
+        expect(run.env).toMatchObject({ SOURCES: '${{ inputs.sources }}' });
+        expect(run.run).toMatch(/if \[ "\$SOURCES" = "true" \]; then extra="\$extra --sources"; fi/);
+        const upload = job.steps.find((s) => s.uses?.startsWith('actions/upload-artifact@'))!;
+        expect(String(upload.with!.path)).toContain('evals-out/**/evaluation-record.json');
     });
 
     it('runs the judge over the ungraded behaviours on every model run, its report uploaded (Phase 2.H)', () => {

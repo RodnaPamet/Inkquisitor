@@ -8,13 +8,13 @@
   "set": {
     "hash": "sha256:f9d241dd003d44e95e6c5cc908ba52587517d69bc80683fba67ac512ebb8229a"
   },
-  "promptVersion": "question-generation.3.3.0",
-  "promptHash": "sha256:e323d027ca3f08b1fe46492f832fe827fed195bfd4d96ebd0647fe1b143137b1",
+  "promptVersion": "question-generation.4.0.0",
+  "promptHash": "sha256:42cda40fa00f5332518e211d5ab5b32bbecc336aee826b82386064090ffdaec3",
   "generator": {
     "kind": "structural",
     "id": "structural-generator.1"
   },
-  "ranAt": "2026-11-20T19:56:56.639Z",
+  "ranAt": "2026-11-21T08:41:59.045Z",
   "answers": [
     {
       "caseId": "timeline_event-01",

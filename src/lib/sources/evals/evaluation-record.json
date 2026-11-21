@@ -1,0 +1,188 @@
+{
+  "format": "inkquisitor-source-facts-evaluation/1",
+  "set": {
+    "hash": "sha256:9c8bc228a88ec0bc2172cb1b763d98b473d96167e620b06b9f70351e39279493"
+  },
+  "promptVersion": "source-facts.4.0.0",
+  "promptHash": "sha256:533b5b0c4027ad797f0c5c2afd29fc989b8dedf743d6727f4b3fb00213840344",
+  "generator": {
+    "kind": "structural",
+    "id": "reference-extractor.1"
+  },
+  "ranAt": "2026-11-21T08:42:24.028Z",
+  "answers": [
+    {
+      "caseId": "sf-01",
+      "facts": {
+        "facts": [
+          {
+            "subject": "Wren Hollis",
+            "predicate": "ABILITY",
+            "object": "",
+            "statement": "Wren Hollis never learned to swim.",
+            "quote": "Wren Hollis never learned to swim.",
+            "storyTimeFrom": "",
+            "storyTimeTo": ""
+          },
+          {
+            "subject": "Wren Hollis",
+            "predicate": "OCCUPATION",
+            "object": "the bakery on Canal Street",
+            "statement": "She worked mornings at the bakery on Canal Street.",
+            "quote": "She worked mornings at the bakery on Canal Street",
+            "storyTimeFrom": "",
+            "storyTimeTo": ""
+          }
+        ]
+      }
+    },
+    {
+      "caseId": "sf-02",
+      "facts": {
+        "facts": [
+          {
+            "subject": "Ostrik",
+            "predicate": "WANT",
+            "object": "his sister freed from the salt mines",
+            "statement": "Ostrik wants nothing more than to see his sister freed from the salt mines.",
+            "quote": "Ostrik wants nothing more than to see his sister freed from the salt mines.",
+            "storyTimeFrom": "",
+            "storyTimeTo": ""
+          },
+          {
+            "subject": "Ostrik",
+            "predicate": "APPEARANCE",
+            "object": "a burn scar across his left hand",
+            "statement": "Ostrik is a tall man with a burn scar across his left hand.",
+            "quote": "He is a tall man with a burn scar across his left hand",
+            "storyTimeFrom": "",
+            "storyTimeTo": ""
+          },
+          {
+            "subject": "The Ember Guild",
+            "predicate": "PURPOSE",
+            "object": "keeping the old furnaces of Varr burning",
+            "statement": "The Ember Guild exists to keep the old furnaces of Varr burning through the long dark.",
+            "quote": "The Ember Guild exists to keep the old furnaces of Varr burning through the long dark.",
+            "storyTimeFrom": "",
+            "storyTimeTo": ""
+          }
+        ]
+      }
+    },
+    {
+      "caseId": "sf-03",
+      "facts": {
+        "facts": [
+          {
+            "subject": "Inspector Mabry",
+            "predicate": "LOCATION",
+            "object": "Greyhallow",
+            "statement": "Inspector Mabry took lodgings at Greyhallow.",
+            "quote": "Inspector Mabry took lodgings at Greyhallow",
+            "storyTimeFrom": "the winter of 1893",
+            "storyTimeTo": ""
+          },
+          {
+            "subject": "Greyhallow",
+            "predicate": "PLACE_TYPE",
+            "object": "an inn",
+            "statement": "Greyhallow is a draughty inn of fourteen rooms.",
+            "quote": "Greyhallow is a draughty inn of fourteen rooms",
+            "storyTimeFrom": "",
+            "storyTimeTo": ""
+          }
+        ]
+      }
+    },
+    {
+      "caseId": "sf-04",
+      "facts": {
+        "facts": [
+          {
+            "subject": "Ines Albar",
+            "predicate": "OCCUPATION",
+            "object": "chief medic on the Halcyon",
+            "statement": "Ines Albar is chief medic on the Halcyon.",
+            "quote": "Ines Albar - chief medic on the Halcyon.",
+            "storyTimeFrom": "",
+            "storyTimeTo": ""
+          },
+          {
+            "subject": "Cooperative",
+            "predicate": "MEMBERSHIP",
+            "object": "every licensed miner in the belt",
+            "statement": "The Cooperative's members are every licensed miner in the belt.",
+            "quote": "The Cooperative's members are every licensed miner in the belt.",
+            "storyTimeFrom": "",
+            "storyTimeTo": ""
+          }
+        ]
+      }
+    },
+    {
+      "caseId": "sf-05",
+      "facts": {
+        "facts": [
+          {
+            "subject": "Clara Venn",
+            "predicate": "RELATIONSHIP",
+            "object": "Thomas Ashe",
+            "statement": "Clara Venn had loved Thomas Ashe since the harvest dance.",
+            "quote": "Clara Venn had loved Thomas Ashe since the harvest dance",
+            "storyTimeFrom": "the harvest dance",
+            "storyTimeTo": ""
+          }
+        ]
+      }
+    },
+    {
+      "caseId": "adv-01",
+      "facts": {
+        "facts": [
+          {
+            "subject": "Marek Sol",
+            "predicate": "POSSESSION",
+            "object": "a revolver from his father",
+            "statement": "Marek Sol carries a revolver he took from his father.",
+            "quote": "Marek Sol carries a revolver he took from his father.",
+            "storyTimeFrom": "",
+            "storyTimeTo": ""
+          }
+        ]
+      }
+    },
+    {
+      "caseId": "adv-02",
+      "facts": {
+        "facts": [
+          {
+            "subject": "Lady Ashcombe",
+            "predicate": "APPEARANCE",
+            "object": "mourning black",
+            "statement": "Lady Ashcombe wears mourning black.",
+            "quote": "She wears mourning black though no one in the house has died.",
+            "storyTimeFrom": "",
+            "storyTimeTo": ""
+          }
+        ]
+      }
+    },
+    {
+      "caseId": "adv-03",
+      "facts": {
+        "facts": [
+          {
+            "subject": "Pip",
+            "predicate": "WANT",
+            "object": "a dog",
+            "statement": "Pip wants a dog more than anything.",
+            "quote": "Pip is twelve and wants a dog more than anything.",
+            "storyTimeFrom": "",
+            "storyTimeTo": ""
+          }
+        ]
+      }
+    }
+  ]
+}

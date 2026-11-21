@@ -42,7 +42,7 @@ import { GenerationStop, type GenerationFailureKind, type GenerationResult, type
 import type { CraftPack, PackRegistry, RelationsPack } from './packs';
 import type { PendingSubject, RelationSubject } from './subjects';
 import type { RoundPlan } from './plan';
-import { buildGenerationRequest, QUESTION_PROMPT, type PromptAnswer, type PromptElement } from './prompt';
+import { buildGenerationRequest, QUESTION_PROMPT, type PromptAnswer, type PromptElement, type PromptSourceContext } from './prompt';
 import { disclosesInstructions, promptRuns } from '@/lib/text/prompt-disclosure';
 import { sanitiseQuestionForStorage } from './storage';
 import type { PersonaKey, QuestionOrigin } from './vocabulary';
@@ -91,6 +91,8 @@ export interface RoundInput {
     /** Exact-repeat keys (`exactKey`) already known to the caller; `findExactRepeats` adds the book's own. */
     askedKeys?: ReadonlySet<string>;
     packs: Pick<PackRegistry, 'craft' | 'personas'> & { relations?: RelationsPack };
+    /** Phase 4.0: the retriever's confirmed source facts and passages for the scope, as context only. */
+    sourceContext?: PromptSourceContext;
     /** The cosine thresholds of the embedder's revision (`cosineThresholdsFor`, issue #32 item 1); default: uncalibrated. */
     cosineThresholds?: CosineThresholds;
 }
@@ -419,6 +421,7 @@ export async function produceRound(input: RoundInput, deps: RoundDeps): Promise<
             elements: promptElements,
             related: input.related,
             sessionAnswers: input.sessionAnswers,
+            sourceContext: input.sourceContext,
         });
         metrics.generationCalls++;
         const call: RoundCall = {

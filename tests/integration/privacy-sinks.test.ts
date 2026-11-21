@@ -76,6 +76,12 @@ import { questionModelAnswer, systemOf } from '../helpers/fake-question-model';
 import { stubQuestionEmbedder } from '../helpers/interview';
 import { CLEAN_SCAN, gatherEvents, MOUNTED_GATE } from '../helpers/research';
 import { createAccount, workspaceCtx } from '../helpers/workspaces';
+import { makeDocx } from '../helpers/source-files';
+import { dispatchIngestion, uploadSource } from '@/app-layer/usecases/source-library';
+import { executeSourceIngest } from '@/app-layer/usecases/source-ingest';
+import { decideFact, listBookFacts, setFactOverride } from '@/app-layer/usecases/source-facts';
+import { defaultFactExtractor } from '@/lib/sources/model-seam';
+import { StubEmbeddingProvider } from '@/lib/ai/embeddings/stub-provider';
 
 /** One word that appears nowhere but in author text: any sink holding it holds author text. */
 const MARKER = 'Zyxquorblemarkh';
@@ -279,6 +285,29 @@ it('a marker planted in every author-text path reaches no log line, span, Sentry
     const { runId } = await dispatchResearchRun(ctx, bookId, brief.id, { gate: MOUNTED_GATE, enqueue: async () => undefined });
     await executeResearchRun({ workspaceId: ctx.workspaceId, runId }, { gate: MOUNTED_GATE, researcher: (c) => defaultResearcher(c, { fetch: web.fetch }) });
 
+    // Sources (Phase 4.0): a DOCX whose name and text carry the marker, read into chunks, its
+    // facts drawn by a model that quotes it, a second chunk answered with marker-laden invalid output.
+    const draft = makeDocx([{ heading: marked('Chapter') }, { para: `Light wants to keep the lamp burning ${MARKER} all winter.` }]);
+    const src = await uploadSource(ctx, { kind: 'series' }, { bytes: draft, filename: marked('draft') + '.docx' }, { scan: CLEAN_SCAN });
+    await dispatchIngestion(ctx, src.id, { confirmWorstCaseMicroUsd: src.worstCaseMicroUsd }, { enqueue: async () => undefined });
+    const extraction = fakeAnthropic([
+        { kind: 'text', text: JSON.stringify({ facts: [{ subject: 'Light', predicate: 'WANT', object: MARKER, statement: `Light wants to keep the lamp burning ${MARKER} all winter.`, quote: `Light wants to keep the lamp burning ${MARKER} all winter.`, storyTimeFrom: '', storyTimeTo: '' }] }) },
+    ]);
+    const ingested = await executeSourceIngest({ workspaceId: ctx.workspaceId, sourceId: src.id }, { extractor: (c) => defaultFactExtractor(c, { fetch: extraction.fetch }), embedder: () => new StubEmbeddingProvider() });
+    expect(ingested.outcome).toBe('OK');
+    const sourceFacts = await listBookFacts(ctx, bookId);
+    expect(sourceFacts.facts).toHaveLength(0);
+    const { setSeriesOptIn } = await import('@/app-layer/usecases/source-library');
+    await setSeriesOptIn(ctx, bookId, src.id, true);
+    const drawn = (await listBookFacts(ctx, bookId)).facts[0];
+    expect(drawn.statement).toContain(MARKER);
+    await decideFact(ctx, drawn.id, 'CONFIRM');
+    await setFactOverride(ctx, bookId, drawn.id, { text: marked('Our own answer') });
+    const invalidSource = await uploadSource(ctx, { kind: 'book', bookId }, { bytes: new TextEncoder().encode(`Light keeps a ${MARKER} journal of every ship.`), filename: 'log.txt' }, { scan: CLEAN_SCAN });
+    await dispatchIngestion(ctx, invalidSource.id, { confirmWorstCaseMicroUsd: invalidSource.worstCaseMicroUsd }, { enqueue: async () => undefined });
+    const broken = fakeAnthropic([{ kind: 'repeat', turn: { kind: 'text', text: JSON.stringify({ wrong: MARKER }) } }]);
+    await executeSourceIngest({ workspaceId: ctx.workspaceId, sourceId: invalidSource.id }, { extractor: (c) => defaultFactExtractor(c, { fetch: broken.fetch }), embedder: () => new StubEmbeddingProvider() });
+
     // The paths were really taken (a vacuous pass is no pass).
     expect(logged.length).toBeGreaterThan(10);
     expect(exporter.getFinishedSpans().some((s) => s.name === 'api.request')).toBe(true);
@@ -294,6 +323,9 @@ it('a marker planted in every author-text path reaches no log line, span, Sentry
     expect(read.AiCallLog).toContain('interview.rephrase');
     expect(read['audit details']).toContain('BIBLE_ELEMENT_CREATED');
     expect(read['audit details']).toContain('STORY_MAP_SAVED');
+    expect(read['audit details']).toContain('SOURCE_INGEST_FINISHED');
+    expect(read['audit details']).toContain('STORY_FACT_OVERRIDE_SET');
+    expect(read.AiCallLog).toContain('sources.extract-facts');
     expect(read.Sentry).toContain('Error');
     for (const [sink, text] of Object.entries(read)) {
         expect([sink, text.toLowerCase().includes(MARKER.toLowerCase())]).toEqual([sink, false]);

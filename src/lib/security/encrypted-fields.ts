@@ -65,6 +65,11 @@ export const ENCRYPTED_FIELDS: EncryptedFieldManifest = Object.freeze({
     // Phase 3.1: a story map's freeform layer (sticky notes and loose text are author text) and each save's snapshot of the map.
     StoryMap: Object.freeze(['freeformJson']),
     MapSnapshot: Object.freeze(['snapshot']),
+    // Phase 4.0 (D23, D26): a source's file name, a chunk's passage and headings, a fact's words, a book's override.
+    Source: Object.freeze(['filename']),
+    SourceChunk: Object.freeze(['text', 'headingPath']),
+    StoryFact: Object.freeze(['subjectName', 'objectLiteral', 'statement', 'quote', 'storyTimeFrom', 'storyTimeTo']),
+    StoryFactOverride: Object.freeze(['text']),
 });
 
 /** The lookups the extension runs per operation, compiled once per manifest. */

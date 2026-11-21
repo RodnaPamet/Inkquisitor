@@ -180,7 +180,7 @@ async function refusalOf(res: Response): Promise<never> {
     throw new BibleApiError(res.status, reason, details);
 }
 
-async function answerOf<T>(res: Response): Promise<T> {
+export async function answerOf<T>(res: Response): Promise<T> {
     if (!res.ok) await refusalOf(res);
     return (await res.json()) as T;
 }

@@ -31,6 +31,7 @@ import { seedReconciledRound } from '../helpers/enrichment';
 import { seedResearchRun } from '../helpers/research';
 import { seedAiCall, seedReservation } from '../helpers/ai-calls';
 import { seedStoryMap } from '../helpers/canvas';
+import { seedSourceLibrary } from '../helpers/sources';
 import { createAccount, workspaceCtx } from '../helpers/workspaces';
 import { setBookInterviewDefaults, setWorkspaceInterviewDefaults } from '@/app-layer/usecases/interview-defaults';
 
@@ -80,7 +81,7 @@ async function isolationLeaks(table: string, self: string, other: string): Promi
     // asked (the question is invisible to `self`: VECTOR_SOURCE_MISSING), so
     // the probe copies a vector of the fixture source, which has no guard.
     // Unordered, LIMIT 1 picked either, and the test failed now and then.
-    const sourceFilter = table === 'VectorEmbedding' ? ` AND "sourceModel" <> 'Question'` : '';
+    const sourceFilter = table === 'VectorEmbedding' ? ` AND "sourceModel" NOT IN ('Question', 'SourceChunk')` : '';
     const [source] = await prisma.$queryRawUnsafe<Array<{ row: Record<string, unknown> }>>(
         `SELECT row_to_json(t) AS row FROM "${table}" t WHERE "${col}" = $1${sourceFilter} LIMIT 1`,
         other,
@@ -141,6 +142,9 @@ beforeAll(async () => {
     // A story map (Phase 3.1): the map, its nodes and edge, and the save's snapshot.
     await seedStoryMap(workspaceCtx(a), aBook, 'rls-a');
     await seedStoryMap(workspaceCtx(b), bBook, 'rls-b');
+    // The source library (Phase 4.0): a book source and a series source, chunks, facts, an opt-in and an override.
+    await seedSourceLibrary(workspaceCtx(a), aBook.bookId, 'rls-a');
+    await seedSourceLibrary(workspaceCtx(b), bBook.bookId, 'rls-b');
     // The model layer's ledger (2.1): a settled call and a live reservation.
     await seedAiCall(workspaceCtx(a), aBook.bookId, 'rls-a');
     await seedAiCall(workspaceCtx(b), bBook.bookId, 'rls-b');
@@ -151,7 +155,7 @@ beforeAll(async () => {
         await setWorkspaceInterviewDefaults(workspaceCtx(acct), { depth: 2 });
         await setBookInterviewDefaults(workspaceCtx(acct), book.bookId, { detail: 4 });
     }
-});
+}, 60_000);
 
 it('there is something to cover: zero tables is never complete coverage', () => {
     expect(scoped.length).toBeGreaterThan(0);
@@ -190,6 +194,12 @@ it('there is something to cover: zero tables is never complete coverage', () => 
             'MapNode',
             'MapEdge',
             'MapSnapshot',
+            'SourceLibrary',
+            'Source',
+            'SourceChunk',
+            'StoryFact',
+            'BookSeriesSource',
+            'StoryFactOverride',
         ]),
     );
 });

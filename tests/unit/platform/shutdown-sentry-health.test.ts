@@ -29,7 +29,7 @@ describe('Sentry scrubbing', () => {
     it('drops bodies, cookies, auth headers, query strings and the IP', () => {
         const event = {
             request: {
-                headers: { Authorization: 'Bearer x', cookie: 's=1', 'user-agent': 'ua' },
+                headers: { Authorization: 'Bearer x', cookie: 's=1', 'user-agent': 'ua', 'X-Source-Filename': 'Mara%27s%20diary.docx' },
                 data: { answer: 'Mara never forgave her brother' },
                 cookies: { s: '1' },
                 url: 'https://app.example/reset?token=abc&page=2',

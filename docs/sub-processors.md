@@ -14,12 +14,23 @@ bible, interview answers, research briefs, and (from Phase 5) the manuscript.
 
 | Party | What it receives | When | Terms |
 |---|---|---|---|
-| Anthropic (Claude API, Messages endpoint only) | Author text in fenced data blocks; the product's own prompts; the model's answers | Every model feature: interview questions (2.2), rephrasing (2.4), enrichment (2.5), research findings and fit (2.6) | Zero data retention (`AI_RETENTION_MODE=zdr`, an organisation arrangement with Anthropic) is the launch gate; standard retention (`standard-beta`) only during the closed beta (decision D5, amended 2026-11-19). Output JSON schemas are code and carry no author text (Anthropic caches schemas outside zero retention). |
+| Anthropic (Claude API, Messages endpoint only) | Author text in fenced data blocks; the product's own prompts; the model's answers | Every model feature: interview questions (2.2; since 4.0 with the author's confirmed source facts and relevant passages of their own drafts as context), rephrasing (2.4), enrichment (2.5), research findings and fit (2.6), source fact extraction (4.0: each passage of an uploaded draft, its headings and the book's element names) | Zero data retention (`AI_RETENTION_MODE=zdr`, an organisation arrangement with Anthropic) is the launch gate; standard retention (`standard-beta`) only during the closed beta (decision D5, amended 2026-11-19). Output JSON schemas are code and carry no author text (Anthropic caches schemas outside zero retention). |
 
 The messages-only middleware (`src/lib/ai/client.ts`) refuses every other
 Anthropic surface (files, batches, message threads, containers, MCP, beta
 headers), so nothing is stored at Anthropic on the product's behalf beyond the
 Messages call itself.
+
+## Source fact extraction (Phase 4.0, decisions D23 and D26)
+
+Reading facts from an uploaded source sends **every passage** of it (about
+1–2k tokens each, with its chapter headings and, for a book's library, the
+book's element names) to Anthropic, one fast-tier call per passage, under the
+same retention mode as every model call. It happens only after the author has
+seen the estimated cost and confirmed it, per source; uploading alone sends
+nothing. The uploaded file is never stored (only its extracted passages,
+encrypted at rest in PostgreSQL); the passages' embeddings are made inside
+the deployment (the 2.0 embedding provider), never by an external service.
 
 ## Research: web search and web fetch (Phase 2.6, decision D9)
 
@@ -94,7 +105,7 @@ actually left.
 |---|---|---|
 | Sentry (optional, `SENTRY_DSN`) | Error reports: codes, ids, stack frames; never author text (`src/lib/observability/redaction.ts`) | Errors, when configured |
 | Upstash (optional) | Rate-limit counters keyed by a masked client address | When both Upstash variables are set |
-| S3-compatible storage (optional) | Uploaded files (none today: an import is read and never stored, and a research file's text is stored encrypted in PostgreSQL) | When `STORAGE_PROVIDER=s3` |
+| S3-compatible storage (optional) | Uploaded files (none today: an import is read and never stored, a research file's text and a source's passages are stored encrypted in PostgreSQL) | When `STORAGE_PROVIDER=s3` |
 | Have I Been Pwned (optional) | The first five characters of a password's SHA-1 hash (k-anonymity) | Sign-up, unless `PASSWORD_BREACH_CHECK=off` |
 | Google (optional) | Sign-in identity | When Google sign-in is configured |
 | tldraw (tldraw Inc., `cdn.tldraw.com`) | One request for its watermark-tracking image (`TLDRAW_WATERMARK_TRACK_URL`, `src/lib/security/csp.ts`): the visitor's **IP address** and the product's **domain name** (the `Referer`, cut to the origin by `Referrer-Policy`), and the browser's ordinary request headers. **No author text, map content or account data**: the request is a fixed URL with no query. The CSP admits that one URL in `connect-src` and nothing else of the host (decision D20); fonts, icons and the translation are served from our own origin | Each time a story map opens on an https deployment (tldraw's licence manager, since tldraw 3.x is used unlicensed with its watermark, D1) |

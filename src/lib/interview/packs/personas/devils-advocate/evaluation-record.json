@@ -8,13 +8,13 @@
   "set": {
     "hash": "sha256:0ae01c4e75b6507fc5e88281652f74433ad4a250b994d0058ce5f88bf690b72c"
   },
-  "promptVersion": "question-generation.3.3.0",
-  "promptHash": "sha256:e323d027ca3f08b1fe46492f832fe827fed195bfd4d96ebd0647fe1b143137b1",
+  "promptVersion": "question-generation.4.0.0",
+  "promptHash": "sha256:42cda40fa00f5332518e211d5ab5b32bbecc336aee826b82386064090ffdaec3",
   "generator": {
     "kind": "structural",
     "id": "structural-generator.1"
   },
-  "ranAt": "2026-11-20T19:56:59.350Z",
+  "ranAt": "2026-11-21T08:42:02.193Z",
   "answers": [
     {
       "caseId": "devils-advocate-01",

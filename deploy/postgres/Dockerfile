@@ -78,3 +78,10 @@ RUN set -eux \
  && make -C /tmp/pgvector OPTFLAGS="" with_llvm=no install \
  && rm -rf /tmp/pgvector \
  && apk del --no-network .pgvector-build
+
+# Base-image packages with a fixed advisory are raised to the fixed version
+# here, each with its floor, so a cached layer cannot keep shipping the old
+# one and the next base image that already carries it makes this a no-op.
+# libxml2: CVE-2026-86144 (HIGH; fixed in 2.13.9-r3), reported by Trivy on
+# postgres:16-alpine (alpine 3.24.4) on 2026-11-21.
+RUN apk add --no-cache --upgrade "libxml2>=2.13.9-r3"

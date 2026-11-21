@@ -3,13 +3,13 @@
   "set": {
     "hash": "sha256:29ef985abe427cc8eb1b2cb15f071dd8e9add6b4b8d00d8dfcde93cba3d1c21e"
   },
-  "promptVersion": "question-rephrase.2.4.0",
-  "promptHash": "sha256:8aa082cd7e7264c7a65cbf26966d064ab1c9428f80f30924559fe7ccdb999a07",
+  "promptVersion": "question-rephrase.4.0.0",
+  "promptHash": "sha256:2d9d50d6974466aae9123748bd4ed706f5a7f27130a887d010dc55666ef2ed27",
   "generator": {
     "kind": "structural",
     "id": "structural-rephraser.1"
   },
-  "ranAt": "2026-11-20T19:57:24.647Z",
+  "ranAt": "2026-11-21T08:42:03.534Z",
   "answers": [
     {
       "caseId": "rp-01",

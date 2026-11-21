@@ -4,8 +4,8 @@
  * SAFETY (roadmap rule 4 — author text never reaches an error sink):
  *   - the SDK's data collection is PINNED off in `init`, not inherited: a
  *     default the SDK may widen in a later major must not decide it;
- *   - `scrubEvent` (beforeSend) drops request bodies, cookies and
- *     authorization headers, the user's IP address, and EVERY query string
+ *   - `scrubEvent` (beforeSend) drops request bodies, cookies,
+ *     authorization headers and the headers that carry author text, the user's IP address, and EVERY query string
  *     and fragment, of the request's URL and of each breadcrumb's (`redactUrl`;
  *     issue #29 item 1: a query carries what the person typed);
  *   - an error's message is reported only when it is our own (an AppError):
@@ -60,6 +60,9 @@ export function redactUrl(url: string): string {
     return `${url.slice(0, cut)}${hadQuery ? `?${FILTERED_QUERY}` : ''}`;
 }
 
+/** Request headers that carry author text (a source upload's file name, Phase 4.0): never in a report. */
+const AUTHOR_TEXT_HEADERS: ReadonlySet<string> = new Set(['x-source-filename']);
+
 /** The breadcrumb data members that hold a URL (fetch and xhr `url`, navigation `from` and `to`). */
 const BREADCRUMB_URL_KEYS = ['url', 'from', 'to'] as const;
 
@@ -80,7 +83,7 @@ export function scrubEvent(event: ErrorEvent, hint?: EventHint): ErrorEvent | nu
             const headers = { ...event.request.headers };
             for (const name of Object.keys(headers)) {
                 const lower = name.toLowerCase();
-                if (lower === 'authorization' || lower === 'cookie' || lower === 'x-api-key') delete headers[name];
+                if (lower === 'authorization' || lower === 'cookie' || lower === 'x-api-key' || AUTHOR_TEXT_HEADERS.has(lower)) delete headers[name];
             }
             event.request.headers = headers;
         }

@@ -70,11 +70,25 @@ export interface ResearchRunPayload {
  */
 export type AiCallLogRetentionPayload = Record<string, never>;
 
+/**
+ * One source ingestion (Phase 4.0, D23): the source's id and its workspace,
+ * never its text. The executor reads the source, rebuilds the requester's
+ * context from their CURRENT membership (stopped if they may no longer edit
+ * the bible) and reads it chunk by chunk (`usecases/source-ingest.ts`).
+ * Resumable and idempotent: a source that is no longer QUEUED is left alone,
+ * and a chunk already read is never read again.
+ */
+export interface SourceIngestPayload {
+    workspaceId: string;
+    sourceId: string;
+}
+
 export interface JobPayloadMap {
     heartbeat: HeartbeatPayload;
     'book-purge': BookPurgePayload;
     'research-run': ResearchRunPayload;
     'ai-call-log-retention': AiCallLogRetentionPayload;
+    'source-ingest': SourceIngestPayload;
 }
 
 export type JobName = keyof JobPayloadMap;
@@ -119,6 +133,15 @@ export const JOB_DEFAULTS: Record<JobName, JobDefaults> = {
         backoff: { type: 'exponential', delay: 60_000 },
         removeOnComplete: 30,
         removeOnFail: 100,
+    },
+    'source-ingest': {
+        // One attempt: an ingestion that stops ends with its named outcome and
+        // the author resumes it (a new job), so nothing is ever spent twice
+        // without their confirmation.
+        attempts: 1,
+        backoff: { type: 'fixed', delay: 0 },
+        removeOnComplete: 100,
+        removeOnFail: 200,
     },
 };
 

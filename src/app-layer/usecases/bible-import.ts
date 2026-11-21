@@ -139,7 +139,7 @@ export interface ImportDeps {
 const IMPORT_TX_TIMEOUT_MS = 120_000;
 
 /** The upload through the virus scanner, refused unless the storage policy lets it through. */
-export async function assertUploadClean(ctx: WorkspaceRequestContext, bytes: Uint8Array, deps: ImportDeps, what: 'bundle' | 'concept-note' | 'research-source'): Promise<void> {
+export async function assertUploadClean(ctx: WorkspaceRequestContext, bytes: Uint8Array, deps: ImportDeps, what: 'bundle' | 'concept-note' | 'research-source' | 'source'): Promise<void> {
     const result = await (deps.scan ?? scanBuffer)(Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength));
     if (result.status === 'CLEAN') return;
     if (result.status === 'INFECTED') {

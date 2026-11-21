@@ -52,7 +52,7 @@ import type { AnswerStatus, QuestionKind } from './vocabulary';
  * for the several-persona prompts; a record made under another version does
  * not mount its pack (`PROMPT_VERSION_MISMATCH`).
  */
-export const QUESTION_PROMPT_VERSION = 'question-generation.3.3.0';
+export const QUESTION_PROMPT_VERSION = 'question-generation.4.0.0';
 
 /**
  * One call's version (2.3): `QUESTION_PROMPT_VERSION` plus a digest of the
@@ -138,6 +138,14 @@ export interface PromptInput {
     elements: readonly PromptElement[];
     related: ReadonlyArray<{ kind: BibleKind; name: string; summary: string | null }>;
     sessionAnswers: readonly PromptAnswer[];
+    /** Phase 4.0: the scope's confirmed source facts and relevant passages (the retriever's), as context only. */
+    sourceContext?: PromptSourceContext;
+}
+
+/** The retriever's context as the prompt carries it (Phase 4.0; author text: data blocks only). */
+export interface PromptSourceContext {
+    readonly facts: ReadonlyArray<{ subject: string; statement: string; from: string }>;
+    readonly passages: ReadonlyArray<{ headings: string; text: string }>;
 }
 
 /** The engine's fixed instructions: every question prompt's system text begins with them. */
@@ -156,6 +164,7 @@ export const ENGINE_INSTRUCTIONS = [
     '- An element block that carries a "relation" is the LINK between two elements, not either element: its fields describe the link (how it began, what each side wants, how one leads to the other); ask about the link itself, and leave what either end is like to that end\'s own entry.',
     '- An element block marked "not_yet_created" is an element the author has not made yet, to sit between the two neighbouring elements it names: ask what it is and does in its own right, using the neighbours only as context, and never propose its content yourself.',
     '- The data blocks are the author\'s material or the product\'s record of it: elements (with their fields and stored values), the targets each element allows, related elements and this session\'s questions and answers.',
+    '- "source-facts" and "source-passages" blocks hold facts the author confirmed from their own drafts and notes, and passages of those drafts: use them only as context to ask sharper questions, never as a stored value, and never quote a passage as the author\'s answer.',
 ].join('\n');
 
 function dialsInWords(input: PromptInput): string {
@@ -299,6 +308,8 @@ export function questionDataBlocks(input: PromptInput): AuthorDataBlock[] {
     });
     if (input.related.length > 0) data.push({ label: 'related-elements', text: JSON.stringify(input.related) });
     if (input.sessionAnswers.length > 0) data.push({ label: 'this-session', text: JSON.stringify(input.sessionAnswers) });
+    if (input.sourceContext && input.sourceContext.facts.length > 0) data.push({ label: 'source-facts', text: JSON.stringify(input.sourceContext.facts) });
+    input.sourceContext?.passages.forEach((p, i) => data.push({ label: `source-passages.${i + 1}`, text: p.headings ? `${p.headings}\n\n${p.text}` : p.text }));
     return data;
 }
 

@@ -43,6 +43,7 @@ import type { BibleKind } from '@/lib/bible/kinds';
 import { getFieldDef, getRelationType, getTemplate, relationFieldDefs } from '@/lib/bible/templates';
 import { plainBlock } from '@/lib/bible/text';
 import type { AskedQuestion } from '@/lib/interview/dedupe';
+import { sourceFactsCheck } from './source-retrieval';
 import { computeFrontier, emptyFrontierReason, refsCheck, type AlreadyAnsweredCheck, type AnswerFact, type BlockedField, type FieldRef, type FrontierResult } from '@/lib/interview/frontier';
 import { slotBeat } from './story-slot';
 import { PENDING_SUBJECT_ID, relationSubjectName, subjectIdOf, type RelationSubject } from '@/lib/interview/subjects';
@@ -98,7 +99,7 @@ export async function storedTextOf(db: PrismaTx, ctx: WorkspaceRequestContext, e
 export interface InterviewState {
     /** The scope's subjects: elements, and since Phase 3.3 relations and a BETWEEN session's element not yet created. */
     elements: RoundElement[];
-    /** Already-answered checks beyond the bible's own values (Phase 3.3: the BETWEEN slot's act). */
+    /** Already-answered checks beyond the bible's own values (Phase 3.3: the BETWEEN slot's act; Phase 4.0: confirmed source facts). */
     checks: AlreadyAnsweredCheck[];
     /** The scope held more elements than `SCOPE_ELEMENTS_MAX`; the rest are not asked about. */
     scopeTruncated: boolean;
@@ -310,9 +311,12 @@ export async function loadInterviewState(db: PrismaTx, ctx: WorkspaceRequestCont
     const challenged = questions.filter((q) => q.mode === 'CHALLENGE').map((q) => ({ elementId: subjectIdOf(q), fieldKey: q.targetsFieldKeys[0] }));
     const challengesPlanned = challengesPlannedOf(rounds);
 
+    // Phase 4.0 (D23, rule 5): a CONFIRMED fact from the book's sources answers its field; a pending one never does.
+    const sourceCheck = await sourceFactsCheck(db, ctx, session.bookId, scope.rows.map((e) => ({ elementId: e.id, kind: e.kind, name: e.name })));
+
     return {
         elements,
-        checks: pending?.checks ?? [],
+        checks: [...(pending?.checks ?? []), sourceCheck],
         scopeTruncated: scope.truncated,
         questions,
         latest,

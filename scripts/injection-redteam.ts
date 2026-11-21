@@ -58,7 +58,7 @@ async function main(): Promise<void> {
         fail(`AI_MONTHLY_CEILING_USD_DEFAULT must be the run's budget, more than 0 and at most ${suite.REDTEAM_BUDGET_MAX_USD} US dollars`, 2);
     }
 
-    const [{ provisionAccountWithWorkspace }, { getPermissionsForRole }, { callStructured, modelUnavailableReason }, { questionGeneratorOver }, { reconcilerOver }, { defaultResearcher }, { prisma }] =
+    const [{ provisionAccountWithWorkspace }, { getPermissionsForRole }, { callStructured, modelUnavailableReason }, { questionGeneratorOver }, { reconcilerOver }, { defaultResearcher }, { prisma }, { defaultFactExtractor }] =
         await Promise.all([
             import('../src/app-layer/usecases/sign-up'),
             import('../src/lib/permissions'),
@@ -67,6 +67,7 @@ async function main(): Promise<void> {
             import('../src/lib/enrichment/model-seam'),
             import('../src/lib/research/model-seam'),
             import('../src/lib/db'),
+            import('../src/lib/sources/model-seam'),
         ]);
     const unavailable = modelUnavailableReason();
     if (unavailable) fail(`no model call can be made (${unavailable})`, 2);
@@ -107,6 +108,7 @@ async function main(): Promise<void> {
             generator: questionGeneratorOver((input) => callStructured(ctx, input, { fetch: capture })),
             reconciler: reconcilerOver((input) => callStructured(ctx, input, { fetch: capture })),
             researcher: defaultResearcher(ctx, { fetch: capture }),
+            extractor: defaultFactExtractor(ctx, { fetch: capture }),
             requests: () => sent,
         });
         const reached = report.cases.filter((v) => !suite.UNREACHED_OUTCOMES.has(v.outcome)).length;

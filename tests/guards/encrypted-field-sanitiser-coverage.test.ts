@@ -96,6 +96,16 @@ const COVERAGE: Readonly<Record<string, Classification>> = {
     'ResearchProposal.newSummary': { repository: 'ResearchProposalRepository', writeMethods: ['create'], sanitiser: 'sanitiseResearchProposalForStorage' },
     'ResearchProposal.rationale': { repository: 'ResearchProposalRepository', writeMethods: ['create'], sanitiser: 'sanitiseResearchProposalForStorage' },
     'ResearchEgress.text': { repository: 'ResearchEgressRepository', writeMethods: ['createMany'], sanitiser: 'sanitiseEgressForStorage' },
+    'Source.filename': { repository: 'SourceRepository', writeMethods: ['create'], sanitiser: 'sanitiseSourceNameForStorage' },
+    'SourceChunk.text': { repository: 'SourceChunkRepository', writeMethods: ['createMany'], sanitiser: 'sanitiseChunkForStorage' },
+    'SourceChunk.headingPath': { repository: 'SourceChunkRepository', writeMethods: ['createMany'], sanitiser: 'sanitiseChunkForStorage' },
+    'StoryFact.subjectName': { repository: 'StoryFactRepository', writeMethods: ['createMany'], sanitiser: 'sanitiseFactForStorage' },
+    'StoryFact.objectLiteral': { repository: 'StoryFactRepository', writeMethods: ['createMany'], sanitiser: 'sanitiseFactForStorage' },
+    'StoryFact.statement': { repository: 'StoryFactRepository', writeMethods: ['createMany'], sanitiser: 'sanitiseFactForStorage' },
+    'StoryFact.quote': { repository: 'StoryFactRepository', writeMethods: ['createMany'], sanitiser: 'sanitiseFactForStorage' },
+    'StoryFact.storyTimeFrom': { repository: 'StoryFactRepository', writeMethods: ['createMany'], sanitiser: 'sanitiseFactForStorage' },
+    'StoryFact.storyTimeTo': { repository: 'StoryFactRepository', writeMethods: ['createMany'], sanitiser: 'sanitiseFactForStorage' },
+    'StoryFactOverride.text': { repository: 'StoryFactOverrideRepository', writeMethods: ['upsert'], sanitiser: 'sanitiseOverrideForStorage' },
     // Phase 3.1: a story map's freeform layer (sticky notes and loose text) is author text; a snapshot is the saved state.
     'StoryMap.freeformJson': { repository: 'StoryMapRepository', writeMethods: ['create', 'commit'], sanitiser: 'sanitiseFreeformForStorage' },
     'MapSnapshot.snapshot': {
@@ -128,6 +138,10 @@ const REPOSITORIES: Readonly<Record<string, { file: string; model: string }>> = 
     ResearchEgressRepository: { file: 'src/app-layer/repositories/research.repository.ts', model: 'ResearchEgress' },
     StoryMapRepository: { file: 'src/app-layer/repositories/story-map.repository.ts', model: 'StoryMap' },
     MapSnapshotRepository: { file: 'src/app-layer/repositories/story-map.repository.ts', model: 'MapSnapshot' },
+    SourceRepository: { file: 'src/app-layer/repositories/source.repository.ts', model: 'Source' },
+    SourceChunkRepository: { file: 'src/app-layer/repositories/source.repository.ts', model: 'SourceChunk' },
+    StoryFactRepository: { file: 'src/app-layer/repositories/source.repository.ts', model: 'StoryFact' },
+    StoryFactOverrideRepository: { file: 'src/app-layer/repositories/source.repository.ts', model: 'StoryFactOverride' },
 };
 
 /** Wrappers, where each is defined and what it must call; the chain must end at a primitive. */
@@ -147,6 +161,10 @@ const WRAPPERS: Readonly<Record<string, { file: string; calls: readonly string[]
     sanitiseResearchProposalForStorage: { file: 'src/lib/research/storage.ts', calls: ['normaliseFieldValue', 'plainBlock'] },
     sanitiseEgressForStorage: { file: 'src/lib/research/storage.ts', calls: ['plainLine'] },
     sanitiseFreeformForStorage: { file: 'src/lib/canvas/freeform.ts', calls: ['sanitiseFreeformRecords'] },
+    sanitiseSourceNameForStorage: { file: 'src/lib/sources/storage.ts', calls: ['plainLine'] },
+    sanitiseChunkForStorage: { file: 'src/lib/sources/storage.ts', calls: ['plainBlock', 'plainLine'] },
+    sanitiseFactForStorage: { file: 'src/lib/sources/storage.ts', calls: ['plainLine'] },
+    sanitiseOverrideForStorage: { file: 'src/lib/sources/storage.ts', calls: ['plainBlock'] },
     sanitiseFreeformRecords: { file: 'src/lib/canvas/freeform.ts', calls: ['cleanValue'] },
     cleanValue: { file: 'src/lib/canvas/freeform.ts', calls: ['cleanString'] },
     cleanString: { file: 'src/lib/canvas/freeform.ts', calls: ['sanitizePlainText'] },

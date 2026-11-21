@@ -28,6 +28,7 @@ npm run packs:evaluate -- --no-packs --reconcile   # the reconcile step's sets (
 npm run packs:evaluate -- --no-packs --research    # the research agent's sets (2.6): its structural record beside them
 npm run redteam:injection -- --out redteam-out   # the injection corpus against the REAL model (the nightly workflow runs it; needs a key and a budget)
 npm run packs:evaluate -- --no-packs --rephrase    # "Ask me this differently"'s set (2.H): its structural record beside it
+npm run packs:evaluate -- --no-packs --sources     # source fact extraction's set (4.0): its structural record beside it
 npm run packs:evaluate -- --judge                  # also the judge's report over the pack records written (2.H; a report, never a gate)
 npm run docs:build        # the Starlight help site (site/), from docs/user/
 npm run lint              # eslint . (flat config, eslint.config.mjs)
@@ -61,7 +62,7 @@ builds the help site and deploys it only on main when Pages is enabled;
 `postgres-image.yml` publishes `ghcr.io/rodnapamet/inkquisitor-postgres`
 (main only, weekly and on an upstream digest move; build, smoke, Trivy, then
 push); `evals.yml` (**Evals**, dispatch only, not a check) makes real-model
-pack evaluation records (and, with its `reconcile` and `research` inputs, the reconcile step's and the research agent's)
+pack evaluation records (and, with its `reconcile`, `research`, `rephrase` and `sources` inputs, the reconcile step's, the research agent's, the rephrase prompt's and source fact extraction's)
 on `secrets.ANTHROPIC_API_KEY` and uploads them as an artifact, committing
 nothing (`tests/unit/evals-workflow.test.ts`); `injection-redteam.yml`
 (**Injection red-team**, nightly once the repository variable
@@ -363,6 +364,22 @@ scripts/bundle-budget.json   → per-route first-load budget (gzipped JS + CSS),
 tests/helpers/random-graph.ts → seeded random maps for the round-trip property tests
 src/app-layer/usecases/story-slot.ts → a BETWEEN slot: how it changed, where its beat may go, the beat it holds (D25)
 src/lib/text/truncate.ts     → truncateGraphemes: display text cut between grapheme clusters
+```
+
+Phase 4.0 (the source library and ingestion, D23 and D26) added:
+
+```
+prisma/schema/sources.prisma → SourceLibrary (a book's, or the workspace's series library), Source (a file kept as chunks), SourceChunk
+                               (encrypted, a vector source), StoryFact (the 4.1 fact model), BookSeriesSource (opt-in), StoryFactOverride
+src/lib/sources/             → vocabulary (bounds, outcomes, THE predicate → field table; client-safe), parse (sniff + DOCX/EPUB/PDF/MD/TXT),
+                               document (blocks), chunk, parse-worker (THE bounded worker) with pdf-text and docx-text (+ scripts/{pdf,docx}-text-worker.mjs), quote (THE span check), prompt
+                               (EXTRACT_PROMPT), schema, validate (THE fact rules), cost, extractor, model-seam.ts (THE wiring to 2.1),
+                               record-gate (D11), view-token (bulk confirm), storage (sanitisers), api-client; evals/ (set, evaluation, record)
+src/app-layer/usecases/      → source-library (upload, list, remove, opt-in, dispatch), source-ingest (the job's work), source-facts
+                               (review, decide, bulk, override), source-retrieval (the frontier's check, the retriever), source-common, source-pages
+src/app-layer/jobs/          → `source-ingest`, one job per dispatch, addressed by id
+src/app/api/w/[workspaceSlug]/{books/[bookId]/{sources,series-sources,facts},series/{sources,facts},sources/[sourceId],facts/**}
+src/app/w/[workspaceSlug]/{books/[bookId]/{sources,facts},series,series/facts} → src/components/sources/{SourcesPage,FactsReview}
 ```
 
 ## Rules every change obeys
@@ -1236,6 +1253,77 @@ closed beta with an explicit operator flag (D5, amended 2026-11-19).
   is empty. An accepted link returns `relationEnds`, which the map list draws
   from. Display text is cut with `truncateGraphemes` (`src/lib/text/truncate.ts`),
   never a UTF-16 slice.
+- **The source library (Phase 4.0; D23, D26).** A source is a file read IN
+  THE REQUEST (bounded `readBoundedBytes` at `SOURCE_UPLOAD_MAX_BYTES`, 20 MB;
+  `assertUploadClean`; the format SNIFFED from the bytes, the name only telling
+  Markdown from text) and kept only as encrypted, sanitised chunks of about
+  1–2k tokens cut along chapters and scenes (`chunkBlocks`); never the file. A
+  ZIP (DOCX, EPUB) is read only through `readZip`; ANY entry (whatever its
+  name, UTF-8 or UTF-16) declaring an entity, or a DOCX part whose DOCTYPE has
+  an internal subset or an external DTD, is refused `SOURCE_XML_REFUSED`; an
+  EPUB's container and OPF are bounded (`EPUB_PACKAGE_MAX_BYTES`) before they
+  are parsed. The sniff asks a ZIP's magic first, then `%PDF-` at byte 0, then
+  text: a note or an archive that mentions `%PDF-` is never handed to the PDF
+  reader. Mammoth (over a ZIP rebuilt from what `readZip` accepted, images
+  never read) and the PDF reader run in `scripts/{docx,pdf}-text-worker.mjs`
+  through `parse-worker.ts`, never on the request's thread: a deadline, a heap
+  limit, the worker's heap AND external memory watched (decoded streams live
+  outside the heap), at most two at once; the image copies both scripts (no
+  OCR: `SOURCE_NO_TEXT_LAYER`). A heading past `HEADING_MAX_CHARS` is read as
+  a paragraph, so no chunk passes its bound. Every
+  refusal is a `details.reason` in `SOURCE_REFUSALS` and `sources.reasons`. The
+  file name travels in the `x-source-filename` header, never the URL. A library
+  holds at most `SOURCES_PER_LIBRARY_MAX` (50) sources (LIBRARY_FULL); the same
+  text twice is refused (SOURCE_DUPLICATE, a unique keyed hash); a CHANGED file
+  under a held name is the next `version` superseding the newest (`supersedesId`),
+  and a fact of it making the SAME CLAIM (predicate, subject, object, statement
+  and quote, folded; `carryKey`) carries the old decision (`carriedFromFactId`);
+  a claim decided both ways carries nothing. The upload stores the cost
+  (`cost.ts`: expected, and at most — the first attempt over the very request
+  the call builds plus 2.1's one repair, so a repaired call is inside it) and
+  sends nothing; INGESTION starts only when the author confirms the "at most"
+  (`confirmWorstCaseMicroUsd`; less than the remaining chunks' worst case is 409
+  ESTIMATE_CHANGED), which becomes the job's BUDGET, checked before each chunk
+  with the same function over the same blocks. The
+  `source-ingest` job (payload ids, `attempts: 1`) re-reads the requester's
+  membership, embeds every chunk (`SourceChunk` is a vector source model, with
+  the 2.0 delete and require-source triggers), then makes ONE fast-tier
+  `callStructured` per chunk not yet read (`extractedAt` is the cursor:
+  resumable), charging `chargeModelCalls` and WAITING out a limited minute (at
+  most `MODEL_RATE_WAIT_MAX_MS`, then STOPPED PARTIAL `MODEL_RATE_LIMITED`:
+  never a call that was not charged). A live source is stale (CLAIM_EXPIRED)
+  only when its last sign of life (`heartbeatAt`: queued, claimed, every step)
+  is older than `STALE_INGEST_MS`, never by its upload time; the claim
+  (`startedAt`) is named by every write of its worker, so a stale claim queued
+  again and claimed by another worker leaves the first writing nothing.
+  CEILING, KILL_SWITCH, BUDGET, ABORTED and AI_UNAVAILABLE stop it STOPPED,
+  resumable; a chunk's own failure leaves that chunk for a resume (PARTIAL); a
+  guard refusal yields nothing for it. D11 applies (`sources/record-gate.ts`,
+  503 SOURCE_FACTS_NOT_EVALUATED). Every fact cites an exact span `locateQuote`
+  finds in its chunk (stored as the chunk's own slice) and passes
+  `validateFacts` (subject named in the passage, grounding — a story time
+  included, against the passage and its headings — polarity, no copied
+  injection or prompt; D14: product-addressing text FLAGGED, never bulk-confirmed).
+  NOTHING WRITES THE BIBLE: a fact is PENDING until the author decides
+  (`bible.edit`; `bible.view` reads); only a CONFIRMED fact answers a field, and
+  only through `PREDICATE_FIELDS` (`fieldAnsweredBy`; explicit, conservative;
+  widening it is a reviewed change), as the frontier's `source-facts` check
+  (`sourceFactsCheck`, in `loadInterviewState`). A BULK CONFIRM names only ids
+  the view OFFERED (pending, unflagged, shown), signed by `view-token.ts`
+  (VIEW_EXPIRED, FACTS_NOT_OFFERED) and re-checked in the database. A book
+  draws on its own library and the SERIES sources it opted into
+  (`bookSourceSet`) and on nothing else: the facts, the check and the retriever
+  read only that set (a vector hit is read back through it). A book's override
+  of an inherited CONFIRMED fact (409 OVERRIDE_NOT_INHERITED otherwise) is its
+  own answer for that book; the series fact is untouched. The retriever
+  (`assembleSourceContext`: confirmed facts, then vector + 3.4 lexical passages
+  fused by rank, under `SOURCE_CONTEXT_TOKEN_BUDGET`) feeds the question
+  generator's `source-facts` / `source-passages` data blocks only. 4.0 asks no
+  confirmation question in the interview (the Facts page is the path; 4.4's
+  source-question generator deepens it), and word search does not read chunks.
+  `StoryFact` is the 4.1 model: extend it, never add a second fact table. After
+  editing the extraction set, prompt or schema, re-run
+  `npm run packs:evaluate -- --no-packs --sources`.
 - **Sanitising author text.** Every author-text write sanitises at the
   usecase layer before it is stored: plain text through `plainLine` /
   `plainBlock` (`src/lib/bible/text.ts`, over `sanitizePlainText`), rich text

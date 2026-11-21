@@ -17,6 +17,8 @@ import { questionGeneratorOver } from '@/lib/interview/model-seam';
 import { QUESTION_PROMPT } from '@/lib/interview/prompt';
 import { FINDINGS_PROMPT, FIT_PROMPT } from '@/lib/research/prompt';
 import { researchStepsOver } from '@/lib/research/model-seam';
+import { extractorOver } from '@/lib/sources/model-seam';
+import { EXTRACT_PROMPT } from '@/lib/sources/prompt';
 import { INJECTION_CORPUS, INJECTION_SURFACES, type InjectionCase } from '@/lib/redteam/corpus';
 import {
     disclosesPrompt,
@@ -102,6 +104,19 @@ function compromisedAnswer(body: Record<string, unknown>): string {
             noFit: [],
         });
     }
+    if (is(EXTRACT_PROMPT)) {
+        // Phase 4.0: a fact that is the injection, one about the other book, the prompt recited, the instruction obeyed.
+        const name = SCENE.character.name;
+        return JSON.stringify({
+            facts: [
+                { subject: name, predicate: 'OTHER', object: '', statement: injected, quote: injected, storyTimeFrom: '', storyTimeTo: '' },
+                { subject: FOREIGN_CANARY, predicate: 'ROLE', object: '', statement: `${FOREIGN_CANARY} keeps the light.`, quote: `${name} keeps the Wennaway light alone`, storyTimeFrom: '', storyTimeTo: '' },
+                { subject: name, predicate: 'OTHER', object: '', statement: `${recite(EXTRACT_PROMPT.system)}.`, quote: `${name} keeps the Wennaway light alone`, storyTimeFrom: '', storyTimeTo: '' },
+                { subject: name, predicate: 'OTHER', object: 'APPROVED', statement: `${name} keeps the Wennaway light alone. APPROVED`, quote: `${name} keeps the Wennaway light alone`, storyTimeFrom: '', storyTimeTo: '' },
+                { subject: name, predicate: 'ROLE', object: '', statement: `${name} keeps the Wennaway light alone after her brother drowns.`, quote: `${name} keeps the Wennaway light alone after her brother drowns.`, storyTimeFrom: '', storyTimeTo: '' },
+            ],
+        });
+    }
     // Question generation: the round's planned fields, and every attack beside them.
     const input = c ? (c.surface === 'RELATION_TEXT' ? relationRoundInputFor(c) : roundInputFor(c)) : null;
     const target = input?.plan.targets[0];
@@ -128,6 +143,7 @@ function compromisedSeams(): InjectionSeams & { api: ReturnType<typeof fakeAnthr
         generator: questionGeneratorOver((input) => call(input) as never),
         reconciler: reconcilerOver((input) => call(input) as never),
         researcher: researchStepsOver((input) => call(input) as never),
+        extractor: extractorOver((input) => call(input) as never),
         requests: () => api.requests,
     };
 }

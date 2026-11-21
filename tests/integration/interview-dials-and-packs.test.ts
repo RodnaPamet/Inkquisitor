@@ -228,10 +228,12 @@ describe('pack pins', () => {
         await expect(prisma.$executeRaw`UPDATE "InterviewSession" SET "packPins" = '[]'::jsonb WHERE "id" = ${view.session.id}`).rejects.toThrow(/PACK_PINS_IMMUTABLE/);
     });
 
+    // A BOOK session mounts and verifies all sixteen craft packs (each record replayed) and, since 4.0, reads the
+    // book's source set too: 4.5–4.8 s on a loaded runner, so Jest's 5 s default decided this test by the clock.
     it('a book session pins the craft pack of every kind', async () => {
         const view = await startInterview(ctx, bookId, { scope: 'BOOK', depth: 1, detail: 1 }, { generator: fakeGenerator(), embedder });
         expect(view.session.packs!.filter((p) => p.name.startsWith('craft-'))).toHaveLength(16);
-    });
+    }, 30_000);
 
     it('a session refuses a pack whose file changed after it started (PACK_CHANGED), and resumes when the file is restored', async () => {
         const el = await character('Changed Under It');

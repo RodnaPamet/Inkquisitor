@@ -175,6 +175,23 @@ function registerDefaultExecutors(): void {
             };
         });
     });
+
+    // Phase 4.0: one source ingestion, named by id (decision D23).
+    executorRegistry.register('source-ingest', async (payload) => {
+        const startedAt = new Date().toISOString();
+        const startMs = performance.now();
+        return runJob('source-ingest', async () => {
+            const { executeSourceIngest } = await import('@/app-layer/usecases/source-ingest');
+            const r = await executeSourceIngest(payload);
+            return {
+                ...emptyResult('source-ingest', startedAt, startMs),
+                itemsScanned: 1,
+                itemsActioned: r.ran ? 1 : 0,
+                itemsSkipped: r.ran ? 0 : 1,
+                details: { sourceId: payload.sourceId, outcome: r.outcome },
+            };
+        });
+    });
 }
 
 registerDefaultExecutors();
