@@ -1210,7 +1210,11 @@ closed beta with an explicit operator flag (D5, amended 2026-11-19).
   of the order. A spent gap
   REBALANCES the whole order (`rebalancedRanks`, under the order's lock, one
   `BIBLE_ORDER_REBALANCED` audit row, no version: no place relative to another
-  moves) and is placed again. A whole-order read is `readPlacedOrder` (409
+  moves) and is placed again. AUDIT LAST: a placement writes its rows (the
+  rebalance's, the element's rank) before the transaction's first audit row
+  (`recordRebalance` after them; a slot's beat reserves its place with
+  `reserveOrderPlaceTx` before it is created), because the audit lock is held
+  to commit and a writer holding a beat's row appends one too (40P01). A whole-order read is `readPlacedOrder` (409
   ORDER_SCOPE_TOO_LARGE past `ORDER_SCOPE_MAX`, never a cut read); the import's
   ORDER_TAKEN check asks for the ranks it writes (`holdersOfRanks`). A slot's
   beat (`story-slot.ts`, kept off the dials' import graph) is placed as proposed
