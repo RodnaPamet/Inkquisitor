@@ -87,8 +87,8 @@ const gateOf = (job: Job): Step | undefined =>
 describe('deploy/postgres/Dockerfile — postgres:16-alpine plus pinned pgvector, and nothing else', () => {
     const ops = instructions(read(DOCKERFILE));
 
-    it('is a gosu build stage, then FROM, COPY, two ARGs and one RUN (the scan is not vacuous)', () => {
-        expect(ops.map((o) => o.op)).toEqual(['FROM', 'ARG', 'ARG', 'RUN', 'FROM', 'COPY', 'ARG', 'ARG', 'RUN']);
+    it('is a gosu build stage, then FROM, COPY, two ARGs, the pgvector RUN and the base-package RUN (the scan is not vacuous)', () => {
+        expect(ops.map((o) => o.op)).toEqual(['FROM', 'ARG', 'ARG', 'RUN', 'FROM', 'COPY', 'ARG', 'ARG', 'RUN', 'RUN']);
     });
 
     it('builds the final stage FROM the official 16-alpine TAG: same musl, no digest', () => {
@@ -131,6 +131,13 @@ describe('deploy/postgres/Dockerfile — postgres:16-alpine plus pinned pgvector
             'rm -rf /tmp/pgvector',
             'apk del --no-network .pgvector-build',
         ]);
+    });
+
+    it('raises base-image packages with a fixed HIGH advisory to the fixed version, with a floor', () => {
+        // Trivy (CRITICAL,HIGH, ignore-unfixed) fails the Docker check on a
+        // base package with a fix; the floor keeps a cached layer honest.
+        expect(ops[9].op).toBe('RUN');
+        expect(ops[9].args.trim()).toBe('apk add --no-cache --upgrade "libxml2>=2.13.9-r3"');
     });
 });
 
