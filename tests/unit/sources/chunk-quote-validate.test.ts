@@ -2,7 +2,7 @@
  * Chunking at headings, the span check, the fact rules, the cost estimate, the
  * view token and the predicate → field table (Phase 4.0). Pure.
  */
-import { chunkBlocks, cutPoint, documentTextOf, estimateTokens } from '@/lib/sources/chunk';
+import { chunkBlocks, cutPoint, DEFAULT_CHUNK_BOUNDS, documentTextOf, estimateTokens, HEADING_MAX_CHARS } from '@/lib/sources/chunk';
 import type { DocBlock } from '@/lib/sources/document';
 import { chunkCost, sourceCost } from '@/lib/sources/cost';
 import { buildModelRequest, buildRepairRequest, inputTokenBound, MAX_REPAIR_ISSUES, resolveCall } from '@/lib/ai/prompt';
@@ -57,6 +57,20 @@ describe('chunking', () => {
 
     it('cuts an unbroken run at the bound, never inside a surrogate pair', () => {
         expect(cutPoint('a'.repeat(9) + '😀' + 'b'.repeat(10), 10)).toBe(9);
+    });
+
+    it('reads an overlong "heading" (a whole draft in one <h1>, a chapter after `# `) as a paragraph: no chunk passes the bound', () => {
+        const draft = Array.from({ length: 3_000 }, (_, i) => `Wren rowed past mooring ${i}.`).join(' ');
+        const chunks = chunkBlocks([{ kind: 'heading', level: 1, text: 'Part One' }, { kind: 'heading', level: 1, text: draft }, para(20)]);
+        expect(chunks.length).toBeGreaterThan(5);
+        for (const c of chunks) {
+            expect(c.text.length).toBeLessThanOrEqual(DEFAULT_CHUNK_BOUNDS.maxChars);
+            expect(c.headingPath).toEqual(['Part One']);
+        }
+        const doc = documentTextOf(chunks);
+        for (const c of chunks) expect(doc.slice(c.startOffset, c.endOffset)).toBe(c.text);
+        // A title within the bound is still a heading.
+        expect(chunkBlocks([{ kind: 'heading', level: 2, text: 'x'.repeat(HEADING_MAX_CHARS) }, para(5)])[0].headingPath).toEqual(['x'.repeat(HEADING_MAX_CHARS)]);
     });
 
     it('chunks the default bounds at about 1–2k tokens', () => {

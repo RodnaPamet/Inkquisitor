@@ -6,6 +6,10 @@
  *     title) or a break once it holds `CHUNK_MIN_TOKENS`, and always before it
  *     would pass `CHUNK_MAX_TOKENS`: a paragraph that does not fit starts the
  *     next chunk.
+ *   • A "heading" longer than `HEADING_MAX_CHARS` (a whole document in one
+ *     `<h1>`, a Markdown line of a chapter after `# `) is not a heading: it is
+ *     read as a paragraph, so it is split like one and never rides in every
+ *     later chunk's heading path. No chunk passes `maxChars`.
  *   • A paragraph longer than a whole chunk is split at the last sentence end
  *     before the bound, else the last space, else (one unbroken run) at the
  *     bound itself, never inside a surrogate pair.
@@ -37,6 +41,9 @@ export interface ChunkBounds {
 export const DEFAULT_CHUNK_BOUNDS: ChunkBounds = { minChars: CHUNK_MIN_TOKENS * CHARS_PER_TOKEN, maxChars: CHUNK_MAX_TOKENS * CHARS_PER_TOKEN };
 
 const SEPARATOR = '\n\n';
+
+/** A heading is a title: longer than this, it is read as the paragraph it is. */
+export const HEADING_MAX_CHARS = 300;
 
 export function estimateTokens(text: string): number {
     return Math.ceil(text.length / CHARS_PER_TOKEN);
@@ -98,7 +105,8 @@ export function chunkBlocks(blocks: readonly DocBlock[], bounds: ChunkBounds = D
         first = false;
     };
 
-    for (const block of blocks) {
+    for (const original of blocks) {
+        const block: DocBlock = original.kind === 'heading' && original.text.length > HEADING_MAX_CHARS ? { kind: 'para', text: original.text } : original;
         if (block.kind === 'break') {
             if (partsChars >= bounds.minChars) flush();
             continue;

@@ -4,9 +4,10 @@
  * entity-declaring XML part, a wrong format, an oversize text.
  */
 import { deflateSync } from 'node:zlib';
-import { writeZip } from '@/lib/archive/zip';
+import { randomBytes } from 'node:crypto';
+import { readZip, writeZip } from '@/lib/archive/zip';
 import { blocksFromHtml, blocksFromMarkdown, blocksFromPlainText, isBreakLine, isChapterLine } from '@/lib/sources/document';
-import { parseSource, resolveZipPath, sniffFormat, SourceRefusal } from '@/lib/sources/parse';
+import { parseSource, resolveZipPath, sniffFormat, SOURCE_ZIP_LIMITS, SourceRefusal } from '@/lib/sources/parse';
 import { SOURCE_TEXT_MAX_CHARS } from '@/lib/sources/vocabulary';
 import { makeDocx, makeEpub, makePdf } from '../../helpers/source-files';
 
@@ -65,6 +66,21 @@ describe('sniffing', () => {
         expect(sniffFormat(makeEpub([{ title: 'One', paras: ['A'] }]), 'book.docx').format).toBe('EPUB');
     });
 
+    it('is never fooled into the PDF reader by a text or an archive that mentions %PDF- near its start', async () => {
+        // A note about PDFs is a note.
+        expect(sniffFormat(utf8('Printer notes: %PDF-1.7 is the version it wants.\nWren never learned to swim.'), 'notes.txt').format).toBe('TXT');
+        expect(sniffFormat(utf8('# Export settings\n\nUse %PDF-1.4 for the proof copy.'), 'notes.md').format).toBe('MARKDOWN');
+        // A DOCX whose first entry's name holds the marker is a DOCX, and reads as one.
+        const entries = readZip(makeDocx([{ para: 'Wren never learned to swim.' }]), SOURCE_ZIP_LIMITS);
+        const docx = writeZip(new Map<string, string | Uint8Array>([['%PDF-1.7 notes.txt', 'x'], ...entries]));
+        expect(Buffer.from(docx.subarray(0, 1024)).toString('latin1')).toContain('%PDF-');
+        expect(sniffFormat(docx, 'draft.docx').format).toBe('DOCX');
+        expect((await parseSource(docx, 'draft.docx', { readPdf: async () => ({ ok: false, reason: 'SOURCE_PARSE_FAILED' }) })).blocks).toEqual([{ kind: 'para', text: 'Wren never learned to swim.' }]);
+        // A real PDF still reads as one: at byte 0, or behind junk in bytes that are not text.
+        expect(sniffFormat(utf8('%PDF-1.7\n'), 'x.pdf').format).toBe('PDF');
+        expect(sniffFormat(new Uint8Array([0xff, 0xfe, 0x00, ...utf8('%PDF-1.7\n'), 0xe2, 0xe3]), 'x.pdf').format).toBe('PDF');
+    });
+
     it('refuses what is none of the five', async () => {
         expect(await refusal(parseSource(new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3]), 'photo.jpg'))).toBe('SOURCE_TYPE');
         expect(await refusal(parseSource(writeZip(new Map([['readme.txt', 'x']])), 'a.zip'))).toBe('SOURCE_TYPE');
@@ -90,6 +106,41 @@ describe('DOCX', () => {
         });
         expect(await refusal(parseSource(bomb, 'bomb.docx'))).toBe('SOURCE_XML_REFUSED');
     });
+
+    it('refuses an entity in a part of ANY name (mammoth follows the relationships), in UTF-16 too, and a DTD', async () => {
+        const entity = '<?xml version="1.0"?><!DOCTYPE d [<!ENTITY a "aaaaaaaaaa">]><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:t>&a;</w:t></w:r></w:p></w:body></w:document>';
+        const elsewhere = makeDocx([{ para: 'x' }], {
+            '_rels/.rels': '<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/main.part"/></Relationships>',
+            'word/main.part': entity,
+        });
+        expect(await refusal(parseSource(elsewhere, 'renamed-part.docx'))).toBe('SOURCE_XML_REFUSED');
+        const utf16 = writeZip(new Map<string, Uint8Array | string>([...readZip(makeDocx([{ para: 'x' }]), SOURCE_ZIP_LIMITS), ['word/document.xml', new Uint8Array(Buffer.from(`\ufeff${entity}`, 'utf16le'))]]));
+        expect(await refusal(parseSource(utf16, 'utf16.docx'))).toBe('SOURCE_XML_REFUSED');
+        const parameter = makeDocx([{ para: 'x' }], { 'word/settings.xml': '<?xml version="1.0"?><!DOCTYPE s [<!ENTITY % p "x">]><s/>' });
+        expect(await refusal(parseSource(parameter, 'param.docx'))).toBe('SOURCE_XML_REFUSED');
+        const external = makeDocx([{ para: 'x' }], { 'word/settings.xml': '<?xml version="1.0"?><!DOCTYPE s SYSTEM "http://evil.example/x.dtd"><s/>' });
+        expect(await refusal(parseSource(external, 'dtd.docx'))).toBe('SOURCE_XML_REFUSED');
+    });
+
+    it('never inlines an image: a photo-heavy draft is read for its words, not refused as too long', async () => {
+        // 10 MB of photo (incompressible bytes): as a data URI it would pass the text bound alone.
+        const photo = new Uint8Array(randomBytes(10 * 1024 * 1024));
+        const drawing =
+            '<w:p><w:r><w:drawing><wp:inline xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"><wp:docPr id="1" name="Cover"/><a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:blipFill><a:blip xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" r:embed="rId9"/></pic:blipFill></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p>';
+        const docx = writeZip(
+            new Map<string, Uint8Array | string>([
+                ...readZip(makeDocx([{ para: 'Wren never learned to swim.' }]), SOURCE_ZIP_LIMITS),
+                ['word/document.xml', `<?xml version="1.0" encoding="UTF-8"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>${drawing}<w:p><w:r><w:t>Wren never learned to swim.</w:t></w:r></w:p></w:body></w:document>`],
+                [
+                    'word/_rels/document.xml.rels',
+                    '<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/><Relationship Id="rId9" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/cover.png"/></Relationships>',
+                ],
+                ['word/media/cover.png', photo],
+            ]),
+        );
+        const parsed = await parseSource(docx, 'photos.docx');
+        expect(parsed.blocks).toEqual([{ kind: 'para', text: 'Wren never learned to swim.' }]);
+    }, 30_000);
 
     it('refuses a zip bomb before inflating it (an entry far past its ratio)', async () => {
         const zeros = Buffer.alloc(5 * 1024 * 1024);

@@ -2,9 +2,16 @@
  * READING AN UPLOAD (Phase 4.0, D26): what it is, and its text as blocks.
  *
  * THE FORMAT IS SNIFFED FROM THE BYTES, the file name only telling Markdown
- * from plain text (both are text):
+ * from plain text (both are text). In this order, so no text and no archive
+ * that merely MENTIONS `%PDF-` near its start is handed to the PDF reader:
  *
- *   `%PDF-` in the first KiB       PDF: its text layer, in a bounded worker
+ *   a ZIP's magic at byte 0        a DOCX or an EPUB (below), or `SOURCE_TYPE`
+ *   `%PDF-` at byte 0              PDF
+ *   valid UTF-8 with no NUL        Markdown (`.md`, `.markdown`) or plain text
+ *   `%PDF-` in the first KiB of    PDF (a header behind a few bytes of junk, as
+ *   bytes that are not text        readers accept)
+ *
+ *   PDF                            its text layer, in a bounded worker
  *                                  thread (`pdf-text.ts`). No text layer is
  *                                  refused `SOURCE_NO_TEXT_LAYER` (no OCR, D26).
  *   a ZIP holding `word/document.xml`  DOCX: through mammoth (BSD-2-Clause), as
@@ -12,17 +19,21 @@
  *   a ZIP whose `mimetype` is `application/epub+zip`   EPUB: the OPF's spine,
  *                                  each XHTML document through the HTML block
  *                                  reader, a chapter break between documents.
- *   valid UTF-8 with no NUL        Markdown (`.md`, `.markdown`) or plain text.
  *
  * Anything else is refused `SOURCE_TYPE`.
  *
  * BOUNDS. A ZIP is read ONLY through `readZip` (counts, sizes, ratio, names,
  * the local header against the central directory: a zip bomb is refused
- * `SOURCE_ARCHIVE_REFUSED`). Every XML part of a DOCX or an EPUB is refused
- * when it declares an entity (`<!ENTITY`: entity expansion is how a small XML
- * file becomes a huge one), `SOURCE_XML_REFUSED`. Mammoth is handed a ZIP
- * REBUILT from the entries `readZip` accepted, so it reads nothing that was
- * not checked. The PDF worker has a heap limit and a deadline; the other
+ * `SOURCE_ARCHIVE_REFUSED`). EVERY entry of a DOCX or an EPUB — whatever its
+ * name, since mammoth follows the package's relationships to a part of any
+ * name — is refused when it declares an entity (`<!ENTITY`, a parameter entity
+ * included: entity expansion is how a small XML file becomes a huge one), in
+ * UTF-8 or UTF-16, `SOURCE_XML_REFUSED`; a DOCX entry whose DOCTYPE has an
+ * internal subset or names an external DTD (no Word part has either) is
+ * refused the same. Mammoth is handed a ZIP REBUILT from the entries `readZip`
+ * accepted, so it reads nothing that was not checked, and it never inlines an
+ * image (a photo is not text, and as a data URI it would count against the
+ * text bound). The PDF worker has a heap limit and a deadline; the other
  * readers are bounded by their input, which these limits bound. A text past
  * `SOURCE_TEXT_MAX_CHARS` is refused `SOURCE_TOO_LONG`.
  */
@@ -66,7 +77,10 @@ function startsWith(bytes: Uint8Array, magic: readonly number[]): boolean {
     return magic.every((b, i) => bytes[i] === b);
 }
 
-function hasPdfHeader(bytes: Uint8Array): boolean {
+const PDF_MAGIC = [0x25, 0x50, 0x44, 0x46, 0x2d]; // %PDF-
+
+/** `%PDF-` somewhere in the first KiB (a header behind junk): asked only of bytes that are neither a ZIP nor text. */
+function hasPdfHeaderNearStart(bytes: Uint8Array): boolean {
     const head = Buffer.from(bytes.buffer, bytes.byteOffset, Math.min(bytes.byteLength, 1024)).toString('latin1');
     return head.includes('%PDF-');
 }
@@ -85,11 +99,33 @@ function textOfEntry(entries: ReadonlyMap<string, Uint8Array>, name: string): st
     return raw ? decodeUtf8(raw) : null;
 }
 
-function assertNoEntityDeclarations(entries: ReadonlyMap<string, Uint8Array>): void {
-    for (const [name, data] of entries) {
-        if (!/\.(?:xml|rels|opf|ncx|xhtml|html|htm)$/i.test(name)) continue;
-        // Latin-1 keeps every byte one character, so the marker is found whatever the encoding claims.
-        if (/<!ENTITY/i.test(Buffer.from(data.buffer, data.byteOffset, data.byteLength).toString('latin1'))) throw new SourceRefusal('SOURCE_XML_REFUSED');
+/** How far past `<!DOCTYPE` its declaration is read for an internal subset or an external identifier. */
+const DOCTYPE_WINDOW = 1_024;
+
+/** A DOCTYPE with an internal subset (`[`) or an external DTD (`SYSTEM` / `PUBLIC`); `<!DOCTYPE html>` alone is neither. Scanned with indexOf, never a backtracking pattern. */
+function declaresDtd(lower: string): boolean {
+    for (let at = lower.indexOf('<!doctype'); at >= 0; at = lower.indexOf('<!doctype', at + 1)) {
+        const window = lower.slice(at + 9, at + 9 + DOCTYPE_WINDOW);
+        const end = window.indexOf('>');
+        const decl = end >= 0 ? window.slice(0, end) : window;
+        if (decl.includes('[') || /\b(?:system|public)\b/.test(decl)) return true;
+    }
+    return false;
+}
+
+/**
+ * Refuse an archive any entry of which declares an XML entity (or, with `dtd`, carries a DOCTYPE with an
+ * internal subset or an external DTD). Every entry, whatever its name: a reader that follows the package's
+ * relationships parses a part of any name as XML.
+ */
+function assertNoEntityDeclarations(entries: ReadonlyMap<string, Uint8Array>, refuse: { dtd: boolean }): void {
+    for (const data of entries.values()) {
+        // Latin-1 keeps every byte one character, so the marker is found whatever the encoding claims;
+        // without its NULs, a UTF-16 document's ASCII markup reads as ASCII too.
+        const latin1 = Buffer.from(data.buffer, data.byteOffset, data.byteLength).toString('latin1').toLowerCase();
+        for (const text of latin1.includes('\u0000') ? [latin1, latin1.replace(/\u0000/g, '')] : [latin1]) {
+            if (text.includes('<!entity') || (refuse.dtd && declaresDtd(text))) throw new SourceRefusal('SOURCE_XML_REFUSED');
+        }
     }
 }
 
@@ -137,12 +173,15 @@ function decodeURIComponentSafe(s: string): string | null {
     }
 }
 
+/** Mammoth never reads or inlines an image: an `<img>` with no source, which the block reader ignores. */
+const NO_IMAGES = mammoth.images.imgElement(async () => ({ src: '' }));
+
 async function parseDocx(entries: Map<string, Uint8Array>): Promise<DocBlock[]> {
-    assertNoEntityDeclarations(entries);
+    assertNoEntityDeclarations(entries, { dtd: true });
     const rebuilt = writeZip(entries);
     let html: string;
     try {
-        const result = await mammoth.convertToHtml({ buffer: Buffer.from(rebuilt.buffer, rebuilt.byteOffset, rebuilt.byteLength) });
+        const result = await mammoth.convertToHtml({ buffer: Buffer.from(rebuilt.buffer, rebuilt.byteOffset, rebuilt.byteLength) }, { convertImage: NO_IMAGES });
         html = result.value ?? '';
     } catch {
         throw new SourceRefusal('SOURCE_PARSE_FAILED');
@@ -152,7 +191,8 @@ async function parseDocx(entries: Map<string, Uint8Array>): Promise<DocBlock[]> 
 }
 
 function parseEpub(entries: Map<string, Uint8Array>): DocBlock[] {
-    assertNoEntityDeclarations(entries);
+    // An EPUB 2 document carries the XHTML DOCTYPE as a matter of course; its markup is read by htmlparser2, which never fetches or expands one.
+    assertNoEntityDeclarations(entries, { dtd: false });
     const container = textOfEntry(entries, 'META-INF/container.xml');
     if (container === null) throw new SourceRefusal('SOURCE_PARSE_FAILED');
     const rootfile = xmlElements(container).find((e) => e.name === 'rootfile' && typeof e.attrs['full-path'] === 'string');
@@ -199,7 +239,6 @@ async function parsePdf(bytes: Uint8Array, deps: ParseDeps): Promise<DocBlock[]>
 /** What the upload is (sniffed from its bytes; the name tells Markdown from text). Throws `SourceRefusal`. */
 export function sniffFormat(bytes: Uint8Array, filename: string): { format: SourceFormat; entries?: Map<string, Uint8Array>; text?: string } {
     if (bytes.byteLength === 0) throw new SourceRefusal('SOURCE_EMPTY');
-    if (hasPdfHeader(bytes)) return { format: 'PDF' };
     if (startsWith(bytes, ZIP_MAGIC)) {
         const entries = readZipOrRefuse(bytes);
         const mimetype = textOfEntry(entries, 'mimetype');
@@ -207,9 +246,11 @@ export function sniffFormat(bytes: Uint8Array, filename: string): { format: Sour
         if (entries.has('word/document.xml') && entries.has('[Content_Types].xml')) return { format: 'DOCX', entries };
         throw new SourceRefusal('SOURCE_TYPE');
     }
+    if (startsWith(bytes, PDF_MAGIC)) return { format: 'PDF' };
     const text = decodeUtf8(bytes);
-    if (text === null) throw new SourceRefusal('SOURCE_TYPE');
-    return { format: /\.(?:md|markdown)$/i.test(filename.trim()) ? 'MARKDOWN' : 'TXT', text };
+    if (text !== null) return { format: /\.(?:md|markdown)$/i.test(filename.trim()) ? 'MARKDOWN' : 'TXT', text };
+    if (hasPdfHeaderNearStart(bytes)) return { format: 'PDF' };
+    throw new SourceRefusal('SOURCE_TYPE');
 }
 
 /** Read an upload into blocks. Throws `SourceRefusal` (the reasons in the header). */
