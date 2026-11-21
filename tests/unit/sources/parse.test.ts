@@ -7,7 +7,7 @@ import { deflateSync } from 'node:zlib';
 import { randomBytes } from 'node:crypto';
 import { readZip, writeZip } from '@/lib/archive/zip';
 import { blocksFromHtml, blocksFromMarkdown, blocksFromPlainText, isBreakLine, isChapterLine } from '@/lib/sources/document';
-import { parseSource, resolveZipPath, sniffFormat, SOURCE_ZIP_LIMITS, SourceRefusal } from '@/lib/sources/parse';
+import { EPUB_PACKAGE_MAX_BYTES, parseSource, resolveZipPath, sniffFormat, SOURCE_ZIP_LIMITS, SourceRefusal } from '@/lib/sources/parse';
 import { SOURCE_TEXT_MAX_CHARS } from '@/lib/sources/vocabulary';
 import { makeDocx, makeEpub, makePdf } from '../../helpers/source-files';
 
@@ -186,6 +186,14 @@ describe('EPUB', () => {
             { kind: 'heading', level: 1, text: 'Two' },
             { kind: 'para', text: 'Second.' },
         ]);
+    });
+
+    it('refuses a package document past its bound before parsing a single element of it', async () => {
+        // A spine within its bound, behind megabytes of elements every one of which the reader would collect.
+        const huge = `<?xml version="1.0"?><package xmlns="http://www.idpf.org/2007/opf"><metadata>${'<meta property="x"/>'.repeat(Math.ceil(EPUB_PACKAGE_MAX_BYTES / 20) + 1)}</metadata><manifest><item id="c0" href="text/ch0.xhtml" media-type="application/xhtml+xml"/></manifest><spine><itemref idref="c0"/></spine></package>`;
+        // Stored, not deflated: a bound on the archive's ratio must not be what refuses it.
+        const epub = writeZip(new Map<string, string | Uint8Array>([...readZip(makeEpub([{ title: 'One', paras: ['x'] }]), SOURCE_ZIP_LIMITS), ['OEBPS/content.opf', huge]]), { maxRatio: SOURCE_ZIP_LIMITS.maxRatio });
+        expect(await refusal(parseSource(epub, 'huge-opf.epub'))).toBe('SOURCE_TOO_LONG');
     });
 
     it('never reads above the archive root, and refuses an entity declaration', async () => {

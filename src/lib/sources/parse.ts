@@ -62,6 +62,12 @@ export const SOURCE_ZIP_LIMITS: ZipLimits = { maxEntries: 4_000, maxEntryBytes: 
 
 /** EPUB spine documents read at most. */
 export const EPUB_SPINE_MAX = 2_000;
+/**
+ * The EPUB's container and package (OPF) documents, at most: a real OPF of `EPUB_SPINE_MAX` documents is
+ * well under a megabyte, and every element of it is collected, so a 40 MB one would be half a gigabyte of
+ * objects and seconds on the request's thread before the spine's own bound could refuse it.
+ */
+export const EPUB_PACKAGE_MAX_BYTES = 4 * 1024 * 1024;
 
 export interface ParsedSource {
     format: SourceFormat;
@@ -186,14 +192,21 @@ async function parseDocx(entries: Map<string, Uint8Array>, deps: ParseDeps): Pro
     return blocksFromHtml(result.html);
 }
 
+/** The container or the OPF as text, refused past `EPUB_PACKAGE_MAX_BYTES` before anything parses it. */
+function packageText(entries: ReadonlyMap<string, Uint8Array>, name: string): string | null {
+    const raw = entries.get(name);
+    if (raw && raw.byteLength > EPUB_PACKAGE_MAX_BYTES) throw new SourceRefusal('SOURCE_TOO_LONG');
+    return textOfEntry(entries, name);
+}
+
 function parseEpub(entries: Map<string, Uint8Array>): DocBlock[] {
     // An EPUB 2 document carries the XHTML DOCTYPE as a matter of course; its markup is read by htmlparser2, which never fetches or expands one.
     assertNoEntityDeclarations(entries, { dtd: false });
-    const container = textOfEntry(entries, 'META-INF/container.xml');
+    const container = packageText(entries, 'META-INF/container.xml');
     if (container === null) throw new SourceRefusal('SOURCE_PARSE_FAILED');
     const rootfile = xmlElements(container).find((e) => e.name === 'rootfile' && typeof e.attrs['full-path'] === 'string');
     const opfPath = rootfile ? resolveZipPath('', rootfile.attrs['full-path']) : null;
-    const opf = opfPath ? textOfEntry(entries, opfPath) : null;
+    const opf = opfPath ? packageText(entries, opfPath) : null;
     if (opf === null || opfPath === null) throw new SourceRefusal('SOURCE_PARSE_FAILED');
     const opfDir = opfPath.includes('/') ? opfPath.slice(0, opfPath.lastIndexOf('/')) : '';
     const elements = xmlElements(opf);
