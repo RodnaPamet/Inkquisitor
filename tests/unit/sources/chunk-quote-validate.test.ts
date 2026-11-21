@@ -108,6 +108,14 @@ describe('the fact rules', () => {
         expect(passage.text.slice(r.facts[0].quoteStart, r.facts[0].quoteEnd)).toBe(r.facts[0].quote);
     });
 
+    it('keeps a story time the passage or its headings give, and refuses one the model made up', () => {
+        const timed = { text: 'In the winter of 1203 Wren Hollis never learned to swim.', headingPath: ['After the fire'] };
+        const kept = validateFacts({ facts: [fact({ storyTimeFrom: 'the winter of 1203', storyTimeTo: 'after the fire' })] }, timed);
+        expect(kept.facts.map((f) => [f.storyTimeFrom, f.storyTimeTo])).toEqual([['the winter of 1203', 'after the fire']]);
+        const invented = validateFacts({ facts: [fact({ storyTimeFrom: 'the summer of 1490' })] }, timed);
+        expect(invented).toMatchObject({ facts: [], refusals: { NOT_GROUNDED: 1 } });
+    });
+
     it('refuses each rule by name', () => {
         const r = validateFacts(
             {

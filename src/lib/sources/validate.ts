@@ -11,7 +11,8 @@
  *   QUOTE_NOT_FOUND         the quote is not one contiguous run of the passage (`locateQuote`)
  *   COPIES_INJECTED_TEXT    markup or a script scheme, an address the passage does not give,
  *                           the guard's injection hit, or eight words of the prompt
- *   NOT_GROUNDED            a sentence of the statement is not supported by the quote and the subject
+ *   NOT_GROUNDED            a sentence of the statement (or the object) is not supported by the quote
+ *                           and the subject, or a story time the passage and its headings do not give
  *   POLARITY_CHANGED        the statement drops or adds a negation the quote has (`polarityKept`)
  *   DUPLICATE               the same predicate, subject and span twice
  *
@@ -109,6 +110,11 @@ export function validateFacts(raw: unknown, passage: { text: string; headingPath
         const objectLiteral = clip(plainLine(item.object), OBJECT_MAX) || null;
         const groundedText = [statement, objectLiteral ?? ''].filter((t) => t !== '');
         if (!groundedText.every((t) => sentences(groundingForm(t)).every((s) => groundSentence(s, sources).supported))) return refuse('NOT_GROUNDED');
+        // When it holds is shown with the fact: the passage (or its headings) must say it, never the model alone.
+        const storyTimeFrom = clip(plainLine(item.storyTimeFrom), STORY_TIME_MAX) || null;
+        const storyTimeTo = clip(plainLine(item.storyTimeTo), STORY_TIME_MAX) || null;
+        const passageSources = [groundingForm(context)];
+        if (![storyTimeFrom, storyTimeTo].every((t) => t === null || sentences(groundingForm(t)).every((s) => groundSentence(s, passageSources).supported))) return refuse('NOT_GROUNDED');
         if (!polarityKept(statement, [quote])) return refuse('POLARITY_CHANGED');
         const key = `${item.predicate}|${nameKey(subjectName)}|${span.start}:${span.end}`;
         if (seen.has(key)) return refuse('DUPLICATE');
@@ -122,8 +128,8 @@ export function validateFacts(raw: unknown, passage: { text: string; headingPath
             quote,
             quoteStart: span.start,
             quoteEnd: span.end,
-            storyTimeFrom: clip(plainLine(item.storyTimeFrom), STORY_TIME_MAX) || null,
-            storyTimeTo: clip(plainLine(item.storyTimeTo), STORY_TIME_MAX) || null,
+            storyTimeFrom,
+            storyTimeTo,
             flags: [statement, objectLiteral ?? ''].some((t) => addressesTheProduct(t)) ? ['POSSIBLE_INSTRUCTION'] : [],
         });
     });
