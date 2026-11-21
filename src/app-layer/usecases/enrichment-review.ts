@@ -114,7 +114,7 @@ import {
     writeFieldValues,
 } from './bible-common';
 import { createElementInTx } from './bible-elements';
-import { ACT_FIELD_KEY, placeNewElementInOrderTx } from './bible-order';
+import { ACT_FIELD_KEY, placeNewElementInOrderTx, reserveOrderPlaceTx } from './bible-order';
 import { createRelationInTx, relationExists, relationGoneAsNotFound } from './bible-relations';
 import { bookHoldsElementName } from './enrichment-names';
 import { slotChangeOf, slotLaneChoices, type SlotChange } from './story-slot';
@@ -765,6 +765,17 @@ async function acceptNewElement(db: PrismaTx, ctx: WorkspaceRequestContext, book
     // Its first fields (Phase 3.3): the slot's answers, and the act of the lane it was asked about.
     const fields = [...decodeNewElementFields(p.proposedValue)].map(([key, value]) => ({ key, value }));
     if (p.fillsSlot && session?.slotAct && getFieldDef(p.newKind!, ACT_FIELD_KEY)) fields.push({ key: ACT_FIELD_KEY, value: session.slotAct });
+    // Between the slot's neighbours, or where the author chose: the place is chosen (and a spent gap rebalanced)
+    // BEFORE the element is created, because creating it writes an audit row, and a rebalance after one could
+    // deadlock with a writer holding a beat's row (bible-order.ts, "AUDIT LAST").
+    let reserved: Awaited<ReturnType<typeof reserveOrderPlaceTx>> | null = null;
+    if (p.fillsSlot && session && !(input.placement && 'unplaced' in input.placement)) {
+        const target =
+            input.placement && 'after' in input.placement
+                ? { after: input.placement.after, before: input.placement.before }
+                : { after: session.slotAfterElementId, before: session.slotBeforeElementId };
+        reserved = await reserveOrderPlaceTx(db, ctx, bookId, p.newKind!, target);
+    }
     const { element, version } = await createElementInTx(
         db,
         ctx,
@@ -772,15 +783,8 @@ async function acceptNewElement(db: PrismaTx, ctx: WorkspaceRequestContext, book
         { kind: p.newKind!, name, summary, customLabel: null, fields },
         { source: 'INTERVIEW', changeSummary: optionalBlock(input.changeSummary, CHANGE_SUMMARY_MAX, 'Change summary') ?? null, sourceAnswerIds: answerIds },
     );
-    // Between the slot's neighbours, or where the author chose, through the order move (one version, marked moved in order).
-    let placement: { orderRank: string; versionNumber: number } | null = null;
-    if (p.fillsSlot && session && !(input.placement && 'unplaced' in input.placement)) {
-        const target =
-            input.placement && 'after' in input.placement
-                ? { after: input.placement.after, before: input.placement.before }
-                : { after: session.slotAfterElementId, before: session.slotBeforeElementId };
-        placement = await placeNewElementInOrderTx(db, ctx, bookId, element, target, { source: 'INTERVIEW', sourceAnswerIds: answerIds });
-    }
+    // Placed where it was reserved, through the order move (one version, marked moved in order).
+    const placement = reserved ? await placeNewElementInOrderTx(db, ctx, bookId, element, reserved, { source: 'INTERVIEW', sourceAnswerIds: answerIds }) : null;
     const placed = placement !== null;
     const edited = name !== p.newName || summary !== p.newSummary;
     const status: ProposalStatus = edited ? 'EDITED_ACCEPTED' : 'ACCEPTED';

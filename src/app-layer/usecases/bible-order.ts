@@ -118,13 +118,24 @@ export interface OrderTarget {
  *                refused at once: the whole order is given short, evenly
  *                spaced ranks in the same order (`rebalancedRanks`), and the
  *                rank is computed again. Only a rank still past the bound
- *                is 409 ORDER_RANK_EXHAUSTED.
+ *                is 409 ORDER_RANK_EXHAUSTED. Its audit row is the CALLER's to
+ *                write (`recordRebalance`), after its own row writes.
+ *
+ * AUDIT LAST. The audit trail's lock (`audit:<workspace>`) is held from a
+ * transaction's first audit row to its commit, and every audited write takes
+ * it. A rebalance writes every placed element's row, and the placement then
+ * writes the element's own; a writer holding a KEY SHARE on one of those rows
+ * (an insert naming the element: a relation, a version, a map node) appends
+ * its audit row before it commits. So a transaction that places must write
+ * those rows BEFORE any audit row of its own, or the two wait on each other
+ * and Postgres aborts one (40P01). Call this before the transaction's first
+ * `logEvent`, write the element's rank, and only then audit.
  */
 export async function rankForTarget(
     db: PrismaTx,
     ctx: WorkspaceRequestContext,
     bookId: string,
-    element: { id: string; kind: BibleElementKind },
+    element: { id: string | null; kind: BibleElementKind },
     target: OrderTarget,
 ): Promise<{ rank: string; rebalanced: number }> {
     let ranked = await readPlacedOrder(db, ctx, bookId, element.kind);
@@ -158,7 +169,8 @@ export async function rankForTarget(
  * REBALANCE one (book, kind) order (Phase 3.H, issue #50 item 7, decision
  * D25): every placed element gets a short rank, evenly spaced, in exactly the
  * order it stood in. The CALLER holds the order's lock (two rebalances, or a
- * rebalance and a move, cannot interleave). Deterministic: the same order
+ * rebalance and a move, cannot interleave), and writes its audit row
+ * (`recordRebalance`) after its own row writes. Deterministic: the same order
  * gives the same ranks.
  *
  * IT WRITES NO VERSION. A version records a change an author (or an accepted
@@ -169,7 +181,7 @@ export async function rankForTarget(
  * entries the author never made in their history and make every open tab's
  * next save of those elements a VERSION_CONFLICT. A restore never applies an
  * old rank (3.2), so an older snapshot's rank stays history only. One audit
- * row records it, with the count.
+ * row records it, with the count (`recordRebalance`).
  */
 async function rebalanceOrder(db: PrismaTx, ctx: WorkspaceRequestContext, bookId: string, kind: BibleElementKind, ranked: ReadonlyArray<{ id: string; orderRank: string }>): Promise<number> {
     const sorted = [...ranked].sort((a, b) => compareRanks(a.orderRank, b.orderRank));
@@ -182,39 +194,64 @@ async function rebalanceOrder(db: PrismaTx, ctx: WorkspaceRequestContext, bookId
         sorted.map((r) => r.id),
         ranks,
     );
-    await logEvent(ctx, { action: 'BIBLE_ORDER_REBALANCED', entityType: 'Book', entityId: bookId, details: { bookId, kind, elementCount: sorted.length } }, { db });
     return sorted.length;
 }
 
+/** The rebalance's one audit row (ids and a count), written by the caller once its row writes are done (`rankForTarget`, "AUDIT LAST"). */
+export async function recordRebalance(db: PrismaTx, ctx: WorkspaceRequestContext, bookId: string, kind: BibleElementKind, elementCount: number): Promise<void> {
+    if (elementCount === 0) return;
+    await logEvent(ctx, { action: 'BIBLE_ORDER_REBALANCED', entityType: 'Book', entityId: bookId, details: { bookId, kind, elementCount } }, { db });
+}
+
 /**
- * Place a NEW, unplaced element of an ordered kind inside the caller's
- * transaction (Phase 3.3: accepting the beat "What happens between these?"
- * proposed; 3.H: the place the author chose once its slot changed). The 3.2
- * move's rules: the CALLER holds the order's lock (`lockOrder`, taken before
- * any element lock) and the element's; the rank by `rankForTarget` (a
- * neighbour no longer placed is 409 ORDER_STALE: the element never lands
- * anywhere the author did not choose, decision D25); one version marked
+ * The place a NEW element of an ordered kind will take (Phase 3.3; 3.H), chosen
+ * BEFORE the element is created: the 3.2 move's rules (`rankForTarget`: a
+ * neighbour no longer placed is 409 ORDER_STALE, so the element never lands
+ * anywhere the author did not choose, decision D25), and a spent gap's
+ * rebalance. The CALLER holds the order's lock (`lockOrder`, taken before any
+ * element lock) from here to its commit, so the rank stays free, and calls
+ * this before the transaction's first audit row ("AUDIT LAST" above): creating
+ * the element writes one, and a rebalance after it could deadlock.
+ */
+export async function reserveOrderPlaceTx(
+    db: PrismaTx,
+    ctx: WorkspaceRequestContext,
+    bookId: string,
+    kind: BibleElementKind,
+    target: OrderTarget,
+): Promise<{ kind: BibleElementKind; rank: string; rebalanced: number }> {
+    if (!isOrderedKind(kind)) throw new ValidationError('Only plot beats and timeline events have a story order.', { reason: 'ORDER_NOT_ALLOWED', kind });
+    const { rank, rebalanced } = await rankForTarget(db, ctx, bookId, { id: null, kind }, target);
+    return { kind, rank, rebalanced };
+}
+
+/**
+ * Place a NEW, unplaced element at the place `reserveOrderPlaceTx` chose for
+ * it, inside the caller's transaction (Phase 3.3: accepting the beat "What
+ * happens between these?" proposed; 3.H: the place the author chose once its
+ * slot changed), under the order's lock and the element's: one version marked
  * `movedInOrder`, naming what the placement came from (`meta`: an accepted
- * proposal's is INTERVIEW, naming its answers, rule 1).
+ * proposal's is INTERVIEW, naming its answers, rule 1), and the rebalance's
+ * audit row if the reservation rebalanced.
  */
 export async function placeNewElementInOrderTx(
     db: PrismaTx,
     ctx: WorkspaceRequestContext,
     bookId: string,
     element: { id: string; kind: BibleElementKind },
-    target: OrderTarget,
+    place: { kind: BibleElementKind; rank: string; rebalanced: number },
     meta: Pick<VersionMeta, 'source' | 'sourceAnswerIds'> = { source: 'MANUAL' },
 ): Promise<{ orderRank: string; versionNumber: number }> {
-    if (!isOrderedKind(element.kind)) throw new ValidationError('Only plot beats and timeline events have a story order.', { reason: 'ORDER_NOT_ALLOWED', kind: element.kind });
-    const { rank } = await rankForTarget(db, ctx, bookId, element, target);
-    await BibleElementRepository.setOrderRank(db, ctx.workspaceId, bookId, element.id, rank);
+    if (place.kind !== element.kind) throw new RangeError('placeNewElementInOrderTx: a place reserved for another kind');
+    await BibleElementRepository.setOrderRank(db, ctx.workspaceId, bookId, element.id, place.rank);
     const version = await recordVersion(db, ctx, bookId, element.id, { ...meta, movedInOrder: true });
+    await recordRebalance(db, ctx, bookId, element.kind, place.rebalanced);
     await logEvent(
         ctx,
         { action: 'BIBLE_ELEMENT_MOVED', entityType: 'BibleElement', entityId: element.id, details: { bookId, kind: element.kind, versionNumber: version.versionNumber, rankChanged: true, actChanged: false } },
         { db },
     );
-    return { orderRank: rank, versionNumber: version.versionNumber };
+    return { orderRank: place.rank, versionNumber: version.versionNumber };
 }
 
 export async function moveElementInOrder(ctx: WorkspaceRequestContext, bookId: string, elementId: string, input: unknown): Promise<OrderMoveResult> {
@@ -262,13 +299,16 @@ export async function moveElementInOrder(ctx: WorkspaceRequestContext, bookId: s
             }
 
             let rank = current;
+            let rebalanced = 0;
             if (!standsThere) {
-                rank = (await rankForTarget(db, ctx, bookId, { id: elementId, kind }, { after: parsed.after, before: parsed.before })).rank;
+                ({ rank, rebalanced } = await rankForTarget(db, ctx, bookId, { id: elementId, kind }, { after: parsed.after, before: parsed.before }));
                 await BibleElementRepository.setOrderRank(db, ctx.workspaceId, bookId, elementId, rank);
             }
             if (actChanges) await writeFieldValues(db, ctx, element, [{ key: ACT_FIELD_KEY, value: parsed.act }]);
 
             const version = await recordVersion(db, ctx, bookId, elementId, { source: 'MANUAL', movedInOrder: true });
+            // Audit last: every row this move writes is written ("AUDIT LAST", `rankForTarget`).
+            await recordRebalance(db, ctx, bookId, kind, rebalanced);
             await logEvent(
                 ctx,
                 {

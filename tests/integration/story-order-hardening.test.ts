@@ -73,6 +73,16 @@ async function untilWaitingOnAdvisoryLock() {
     throw new Error('nothing waited on an advisory lock');
 }
 
+/** Resolve when some backend is waiting on a row lock (another transaction's, or the row itself). */
+async function untilWaitingOnRow() {
+    for (let i = 0; i < 400; i++) {
+        const [row] = await prisma.$queryRaw<Array<{ n: bigint }>>`SELECT count(*) AS n FROM pg_locks WHERE locktype IN ('transactionid', 'tuple') AND NOT granted`;
+        if (Number(row.n) > 0) return;
+        await new Promise((r) => setTimeout(r, 25));
+    }
+    throw new Error('nothing waited on a row');
+}
+
 async function book(title = 'The Salt Ledger') {
     const ctx = workspaceCtx(await createAccount());
     const bookId = (await createBook(ctx, { title })).id;
@@ -285,6 +295,59 @@ describe('a rebalance (#50 item 7)', () => {
         expect(new Set(rebalancedRanks(3))).toEqual(new Set(ranks));
         // ...and wrote no version: the moved beat's move is the one version (rule 1 holds: nobody's story changed).
         expect(await prisma.bibleEntryVersion.count({ where: { bookId } })).toBe(versionsBefore + 1);
+        expect(await prisma.auditLog.count({ where: { action: 'BIBLE_ORDER_REBALANCED', entityId: bookId } })).toBe(1);
+    });
+
+    /**
+     * The audit trail's lock (`audit:<workspace>`) is taken by every audited
+     * write and held to its commit. A writer holding a KEY SHARE on a beat's row
+     * (a relation, a version or a map node naming it) and then appending its
+     * audit row waits on that lock; a rebalance that had ALREADY appended a row
+     * and then waited on the same beat's row closed the cycle, and Postgres
+     * aborted one of the two (40P01: a 500). So a placement waits for the rows it
+     * writes before it writes any audit row of its own.
+     */
+    async function holdRowThenAudit(beatId: string, workspaceId: string, act: () => Promise<unknown>) {
+        let acting: Promise<unknown> | null = null;
+        await prisma.$transaction(
+            async (tx) => {
+                // What an insert naming the beat holds (its foreign key's KEY SHARE)…
+                await tx.$queryRaw`SELECT 1 FROM "BibleElement" WHERE "id" = ${beatId} FOR KEY SHARE`;
+                acting = act();
+                acting.catch(() => undefined);
+                // …until the placement waits on that row,
+                await untilWaitingOnRow();
+                // …and then its own audit row.
+                await tx.$executeRaw`SET LOCAL lock_timeout = '5s'`;
+                await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${'audit:' + workspaceId}))`;
+            },
+            { timeout: 20_000 },
+        );
+        return acting!;
+    }
+
+    it('a slot’s beat placed by a rebalance waits for a beat’s row before it writes an audit row, so a writer holding that row is not deadlocked', async () => {
+        const { ctx, bookId, first, second, sessionId, proposal } = await proposedSlotBeat();
+        // The slot's gap is spent: placing the beat between the two rebalances the order.
+        await prisma.bibleElement.update({ where: { id: first.id }, data: { orderRank: 'i' } });
+        await prisma.bibleElement.update({ where: { id: second.id }, data: { orderRank: `i${'0'.repeat(ORDER_RANK_MAX - 2)}1` } });
+        const { workspaceId } = await prisma.book.findUniqueOrThrow({ where: { id: bookId }, select: { workspaceId: true } });
+        const accepted = (await holdRowThenAudit(first.id, workspaceId, () => acceptProposal(ctx, bookId, sessionId, proposal.id, {}))) as { elementId: string };
+        expect(await orderOf(bookId)).toEqual([first.id, accepted.elementId, second.id]);
+        expect(await prisma.auditLog.count({ where: { action: 'BIBLE_ORDER_REBALANCED', entityId: bookId } })).toBe(1);
+    });
+
+    it('an unplaced beat moved into a spent gap waits for its own row before it writes the rebalance’s audit row', async () => {
+        const { ctx, bookId } = await book();
+        const one = await beat(ctx, bookId, 'One');
+        const two = await beat(ctx, bookId, 'Two');
+        const loose = await beat(ctx, bookId, 'Not placed yet');
+        await prisma.bibleElement.update({ where: { id: one.id }, data: { orderRank: 'i' } });
+        await prisma.bibleElement.update({ where: { id: two.id }, data: { orderRank: `i${'0'.repeat(ORDER_RANK_MAX - 2)}1` } });
+        const { workspaceId } = await prisma.book.findUniqueOrThrow({ where: { id: bookId }, select: { workspaceId: true } });
+        const baseVersion = await versionOf(ctx, bookId, loose.id);
+        await holdRowThenAudit(loose.id, workspaceId, () => moveElementInOrder(ctx, bookId, loose.id, { baseVersion, after: one.id, before: two.id }));
+        expect(await orderOf(bookId)).toEqual([one.id, loose.id, two.id]);
         expect(await prisma.auditLog.count({ where: { action: 'BIBLE_ORDER_REBALANCED', entityId: bookId } })).toBe(1);
     });
 });
