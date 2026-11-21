@@ -4,7 +4,7 @@
  */
 import { chunkBlocks, cutPoint, DEFAULT_CHUNK_BOUNDS, documentTextOf, estimateTokens, HEADING_MAX_CHARS } from '@/lib/sources/chunk';
 import type { DocBlock } from '@/lib/sources/document';
-import { chunkCost, sourceCost } from '@/lib/sources/cost';
+import { chunkCost, chunkRequestInputBound, sourceCost } from '@/lib/sources/cost';
 import { buildModelRequest, buildRepairRequest, inputTokenBound, MAX_REPAIR_ISSUES, resolveCall } from '@/lib/ai/prompt';
 import { jsonSchemaFor } from '@/lib/ai/client';
 import { worstCaseCostMicroUsd } from '@/lib/ai/pricing';
@@ -175,6 +175,14 @@ describe('the cost estimate', () => {
             worstCaseCostMicroUsd(model, { inputTokens: inputTokenBound(first), outputTokens: first.max_tokens }) +
             worstCaseCostMicroUsd(model, { inputTokens: inputTokenBound(repair), outputTokens: repair.max_tokens });
         expect(chunkCost(blocks(text, ['Wren']), model).worst).toBeGreaterThanOrEqual(ledger);
+        // The first request's bound is the real request's, byte for byte.
+        expect(chunkRequestInputBound(blocks(text, ['Wren']))).toBe(inputTokenBound(first));
+    });
+
+    it('prices a passage that repeats a sentence of the prompt (which 2.1 refuses to send) instead of failing the upload', () => {
+        const echo = 'You never write story prose, never invent, and never judge the writing.';
+        expect(EXTRACT_PROMPT.system).toContain(echo);
+        expect(chunkCost({ headings: [], text: echo, bookNames: [] }).worst).toBeGreaterThan(0);
     });
 });
 

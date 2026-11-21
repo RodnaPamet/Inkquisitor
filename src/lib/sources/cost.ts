@@ -21,7 +21,7 @@
  */
 import { jsonSchemaFor } from '@/lib/ai/client';
 import { costMicroUsd, worstCaseCostMicroUsd } from '@/lib/ai/pricing';
-import { buildModelRequest, inputTokenBound, resolveCall } from '@/lib/ai/prompt';
+import { buildModelRequest, inputTokenBound, neutralizeAuthorText, resolveCall } from '@/lib/ai/prompt';
 import { modelForTier } from '@/lib/ai/tiers';
 import { EXTRACT_MAX_OUTPUT_TOKENS, EXTRACT_PROMPT, extractBlocks } from './prompt';
 import { FactsOutputSchema } from './schema';
@@ -52,11 +52,24 @@ export interface ChunkCostInput {
     readonly bookNames: readonly string[];
 }
 
-/** 2.1's input bound (`inputTokenBound`) for the chunk's first request, over the blocks the job sends. */
+/** A string's bytes inside a JSON document: its UTF-8 bytes with JSON's escaping, without the quotes. */
+function jsonStringBytes(text: string): number {
+    return Buffer.byteLength(JSON.stringify(text), 'utf8') - 2;
+}
+
+/**
+ * 2.1's input bound (`inputTokenBound`) for the chunk's first request, over the blocks the job sends:
+ * the request built with the same blocks EMPTIED (every byte of code: the system prompt, the task, the
+ * fence, the labels, the output schema), plus each block's text as the fence writes it (neutralised) and
+ * as the body serialises it (JSON-escaped) — byte for byte what the real request's body holds. Built with
+ * empty blocks so that a passage which happens to repeat a sentence of the prompt (2.1 refuses to SEND
+ * that, `AiPromptError`) still has a price rather than failing the upload.
+ */
 export function chunkRequestInputBound(chunk: ChunkCostInput): number {
     outputSchema ??= jsonSchemaFor(FactsOutputSchema);
-    const request = buildModelRequest(EXTRACT_PROMPT, extractBlocks(chunk), resolveCall(EXTRACT_PROMPT), outputSchema, NONCE_OF_A_REAL_LENGTH);
-    return inputTokenBound(request);
+    const blocks = extractBlocks(chunk);
+    const empty = buildModelRequest(EXTRACT_PROMPT, blocks.map((b) => ({ label: b.label, text: '' })), resolveCall(EXTRACT_PROMPT), outputSchema, NONCE_OF_A_REAL_LENGTH);
+    return inputTokenBound(empty) + blocks.reduce((n, b) => n + jsonStringBytes(neutralizeAuthorText(b.text)), 0);
 }
 
 export function chunkCost(chunk: ChunkCostInput, model: string = modelForTier(EXTRACT_PROMPT.tier)): { expected: number; worst: number } {
