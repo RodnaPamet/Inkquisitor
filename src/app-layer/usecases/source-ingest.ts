@@ -73,6 +73,8 @@ export interface SourceIngestDeps {
     signal?: AbortSignal;
     /** Waits out a limited minute (tests: instant). */
     sleep?: (ms: number, signal?: AbortSignal) => Promise<void>;
+    /** Charges one model call to the workspace's minute (D17; tests: a full minute). */
+    charge?: (workspaceId: string, calls: number) => void;
 }
 
 interface IngestMetrics {
@@ -112,14 +114,41 @@ function defaultSleep(ms: number, signal?: AbortSignal): Promise<void> {
     });
 }
 
-function carryKey(predicate: string, subject: string, quote: string): string {
-    return `${predicate}|${nameKey(subject)}|${foldWithOrigins(quote).text}`;
+/**
+ * The CLAIM a decision is about: the predicate, the subject, the object, what the fact states and the
+ * passage it quotes. A decision carries to a re-upload's fact only when every part is the same (folded), so
+ * two facts drawn from one passage (Mara is the captain, Mara is the surgeon) never trade decisions.
+ */
+export function carryKey(f: { predicate: string; subjectName: string; objectLiteral: string | null; statement: string; quote: string }): string {
+    return JSON.stringify([f.predicate, nameKey(f.subjectName), nameKey(f.objectLiteral ?? ''), foldWithOrigins(f.statement).text, foldWithOrigins(f.quote).text]);
 }
 
-async function finish(ctx: { workspaceId: string; requestId: string; userId?: string }, source: Pick<SourceRow, 'id' | 'library'>, outcome: SourceOutcome, metrics: Partial<IngestMetrics>, remaining: number): Promise<SourceOutcome> {
+/** The superseded version's decided facts by claim; a claim decided twice, differently, carries nothing. */
+export function carriedByClaim<T extends { predicate: string; subjectName: string; objectLiteral: string | null; statement: string; quote: string; status: string }>(facts: readonly T[]): Map<string, T> {
+    const out = new Map<string, T>();
+    const conflicted = new Set<string>();
+    for (const f of facts) {
+        const key = carryKey(f);
+        const held = out.get(key);
+        if (held && held.status !== f.status) conflicted.add(key);
+        else if (!held) out.set(key, f);
+    }
+    for (const key of conflicted) out.delete(key);
+    return out;
+}
+
+async function finish(
+    ctx: { workspaceId: string; requestId: string; userId?: string },
+    source: Pick<SourceRow, 'id' | 'library'>,
+    outcome: SourceOutcome,
+    metrics: Partial<IngestMetrics>,
+    remaining: number,
+    claim?: Date,
+): Promise<SourceOutcome> {
     const status = outcome === 'OK' ? 'DONE' : outcome === 'INTERNAL' || outcome === 'ENQUEUE_FAILED' ? 'FAILED' : 'STOPPED';
+    // Once claimed, only this worker's claim is ended: a source queued again and claimed by another is left to it.
     const ended = await runInWorkspaceContext(ctx, (db) =>
-        SourceRepository.finish(db, ctx.workspaceId, source.id, { status, outcome, metrics: metrics as unknown as Prisma.InputJsonValue, from: ['QUEUED', 'RUNNING'], finishedAt: new Date() }),
+        SourceRepository.finish(db, ctx.workspaceId, source.id, { status, outcome, metrics: metrics as unknown as Prisma.InputJsonValue, from: claim ? ['RUNNING'] : ['QUEUED', 'RUNNING'], finishedAt: new Date(), claim }),
     );
     if (ended) {
         await logEvent(ctx, {
@@ -133,7 +162,7 @@ async function finish(ctx: { workspaceId: string; requestId: string; userId?: st
 }
 
 /** Embed every chunk of the source (step 2). Never throws for a provider condition. */
-async function embedChunks(ctx: WorkspaceRequestContext, source: SourceRow, provider: EmbeddingProvider | null, metrics: IngestMetrics): Promise<void> {
+async function embedChunks(ctx: WorkspaceRequestContext, source: SourceRow, claim: Date, provider: EmbeddingProvider | null, metrics: IngestMetrics): Promise<void> {
     if (!provider) {
         metrics.embedFailed = true;
         return;
@@ -158,7 +187,10 @@ async function embedChunks(ctx: WorkspaceRequestContext, source: SourceRow, prov
             contentHash: vectorContentHash(ctx.workspaceId, c.text),
             embedding: result.vectors[i],
         }));
-        await runInWorkspaceContext(ctx, (db) => getVectorRepository().upsert(db, ctx.workspaceId, records));
+        await runInWorkspaceContext(ctx, async (db) => {
+            await getVectorRepository().upsert(db, ctx.workspaceId, records);
+            await SourceRepository.touch(db, ctx.workspaceId, source.id, claim);
+        });
         metrics.embedded += page.length;
         if (page.length < MAX_EMBED_BATCH) break;
     }
@@ -198,24 +230,26 @@ export async function executeSourceIngest(payload: { workspaceId: string; source
     if (!verdict.mounted) return { ran: true, outcome: await finish(ctx, source, 'NOT_EVALUATED', { errorCode: verdict.reason }, remainingOf()) };
 
     const read = await runInWorkspaceContext(ctx, async (db) => {
-        if (!(await SourceRepository.claim(db, ctx.workspaceId, source.id, new Date()))) return null;
+        const claim = await SourceRepository.claim(db, ctx.workspaceId, source.id, new Date());
+        if (!claim) return null;
         const names = source.library.scope === 'BOOK' && source.library.bookId ? await bookNamesOf(db, ctx, source.library.bookId) : [];
         const carried = source.supersedesId ? await StoryFactRepository.listDecidedForSource(db, ctx.workspaceId, source.supersedesId, 2_000) : [];
-        return { names, carried };
+        return { claim, names, carried };
     });
     if (!read) return { ran: false, outcome: null };
-    const namesText = read.names.map((n) => n.name).join('\n');
+    const claim = read.claim;
+    const bookNames = read.names.map((n) => n.name);
     const byNameKey = new Map<string, string | null>();
     for (const n of read.names) {
         const key = nameKey(n.name);
         byNameKey.set(key, byNameKey.has(key) ? null : n.id);
     }
     const linkOf = (name: string | null): string | null => (name ? (byNameKey.get(nameKey(name)) ?? null) : null);
-    const carriedBy = new Map(read.carried.map((f) => [carryKey(f.predicate, f.subjectName, f.quote), f] as const));
+    const carriedBy = carriedByClaim(read.carried);
 
     try {
         // 2. Embed (only on a first pass: a resume's chunks are embedded already, and an upsert of the same text writes nothing).
-        if (source.chunksDone === 0) await embedChunks(ctx, source, deps.embedder ? deps.embedder() : (() => { const p = getEmbeddingProvider(); return p.ok ? p.provider : null; })(), metrics);
+        if (source.chunksDone === 0) await embedChunks(ctx, source, claim, deps.embedder ? deps.embedder() : (() => { const p = getEmbeddingProvider(); return p.ok ? p.provider : null; })(), metrics);
 
         // 3. Extract, chunk by chunk.
         const extractor = (deps.extractor ?? defaultFactExtractor)(ctx);
@@ -229,24 +263,29 @@ export async function executeSourceIngest(payload: { workspaceId: string; source
             for (const chunk of page) {
                 after = chunk.position;
                 if (chunk.extractedAt) continue;
-                if (deps.signal?.aborted) return { ran: true, outcome: await finish(ctx, source, 'ABORTED', metrics, await pendingOf(ctx, source.id)) };
+                if (deps.signal?.aborted) return { ran: true, outcome: await finish(ctx, source, 'ABORTED', metrics, await pendingOf(ctx, source.id), claim) };
                 const headings = decodeHeadingPath(chunk.headingPath);
-                const worst = chunkCost({ text: chunk.text, namesText }).worst;
-                if (spent + worst > budget) return { ran: true, outcome: await finish(ctx, source, 'BUDGET', metrics, await pendingOf(ctx, source.id)) };
-                await waitForModelRate(ctx.workspaceId, sleep, deps.signal);
-                const result = await extractor.extract({ data: extractBlocks({ text: chunk.text, headingPath: headings, bookNames: read.names.map((n) => n.name) }), bookId: source.library.bookId }, deps.signal);
+                const blocks = { text: chunk.text, headings, bookNames };
+                // The same blocks the call sends: its worst case (a repair included) must still fit what is left of the budget.
+                const worst = chunkCost(blocks).worst;
+                if (spent + worst > budget) return { ran: true, outcome: await finish(ctx, source, 'BUDGET', metrics, await pendingOf(ctx, source.id), claim) };
+                if (!(await waitForModelRate(ctx, source.id, claim, deps.charge ?? chargeModelCalls, sleep, deps.signal))) {
+                    // The minute stayed full past the wait: never a call that was not charged (D17). Resumable.
+                    return { ran: true, outcome: await finish(ctx, source, 'PARTIAL', { ...metrics, errorCode: 'MODEL_RATE_LIMITED' }, await pendingOf(ctx, source.id), claim) };
+                }
+                const result = await extractor.extract({ data: extractBlocks(blocks), bookId: source.library.bookId }, deps.signal);
                 spent += result.costMicroUsd;
                 if (metrics.callIds.length < CALL_IDS_KEPT) metrics.callIds.push(...result.callIds);
                 if (!result.ok) {
                     metrics.failures[result.failure] = (metrics.failures[result.failure] ?? 0) + 1;
                     if (STOPPING.has(result.failure)) {
-                        await runInWorkspaceContext(ctx, (db) => SourceRepository.advance(db, ctx.workspaceId, source.id, { chunksDone: 0, facts: 0, spentMicroUsd: result.costMicroUsd }));
-                        return { ran: true, outcome: await finish(ctx, source, stopOutcome(result.failure), { ...metrics, errorCode: result.errorCode }, await pendingOf(ctx, source.id)) };
+                        await runInWorkspaceContext(ctx, (db) => SourceRepository.advance(db, ctx.workspaceId, source.id, claim, { chunksDone: 0, facts: 0, spentMicroUsd: result.costMicroUsd }));
+                        return { ran: true, outcome: await finish(ctx, source, stopOutcome(result.failure), { ...metrics, errorCode: result.errorCode }, await pendingOf(ctx, source.id), claim) };
                     }
                     const yieldsNothing = result.failure === 'GUARD_REFUSED';
                     if (yieldsNothing) metrics.guardRefused++;
                     else metrics.chunksFailed++;
-                    const still = await persistChunk(ctx, source, chunk, [], yieldsNothing, result.costMicroUsd);
+                    const still = await persistChunk(ctx, source, claim, chunk, [], yieldsNothing, result.costMicroUsd);
                     if (!still) return { ran: true, outcome: null };
                     continue;
                 }
@@ -254,7 +293,7 @@ export async function executeSourceIngest(payload: { workspaceId: string; source
                 metrics.drafted += validation.drafted;
                 for (const [code, n] of Object.entries(validation.refusals)) metrics.refusals[code] = (metrics.refusals[code] ?? 0) + (n ?? 0);
                 const rows = validation.facts.map((draft) => factRow(ctx, source, chunk, sanitiseFactForStorage(draft), linkOf, carriedBy));
-                const still = await persistChunk(ctx, source, chunk, rows, true, result.costMicroUsd);
+                const still = await persistChunk(ctx, source, claim, chunk, rows, true, result.costMicroUsd);
                 if (!still) return { ran: true, outcome: null };
                 metrics.chunksRead++;
                 metrics.factsKept += rows.length;
@@ -263,10 +302,10 @@ export async function executeSourceIngest(payload: { workspaceId: string; source
             if (page.length < CHUNK_PAGE) break;
         }
         const remaining = await pendingOf(ctx, source.id);
-        return { ran: true, outcome: await finish(ctx, source, remaining === 0 ? 'OK' : 'PARTIAL', metrics, remaining) };
+        return { ran: true, outcome: await finish(ctx, source, remaining === 0 ? 'OK' : 'PARTIAL', metrics, remaining, claim) };
     } catch (err) {
         logger.error('sources.ingest_failed', { component: 'sources', sourceId: source.id, error: err instanceof Error ? err.name : 'unknown' });
-        return { ran: true, outcome: await finish(ctx, source, 'INTERNAL', { ...metrics, errorCode: 'INTERNAL' }, remainingOf()) };
+        return { ran: true, outcome: await finish(ctx, source, 'INTERNAL', { ...metrics, errorCode: 'INTERNAL' }, remainingOf(), claim) };
     }
 }
 
@@ -274,17 +313,36 @@ async function pendingOf(ctx: WorkspaceRequestContext, sourceId: string): Promis
     return runInWorkspaceContext(ctx, (db) => SourceChunkRepository.countPending(db, ctx.workspaceId, sourceId));
 }
 
-/** The workspace's model-call minute (D17): a limited minute is waited out, never failed — the job has nowhere to send a 429. */
-async function waitForModelRate(workspaceId: string, sleep: (ms: number, signal?: AbortSignal) => Promise<void>, signal?: AbortSignal): Promise<void> {
-    for (let attempt = 0; attempt < 30; attempt++) {
+/** How long one chunk waits out a full model-call minute at most before the ingestion stops PARTIAL (well inside `STALE_INGEST_MS`). */
+export const MODEL_RATE_WAIT_MAX_MS = 5 * 60 * 1000;
+
+/**
+ * The workspace's model-call minute (D17): a limited minute is waited out, never failed — the job has nowhere
+ * to send a 429. Bounded: past `MODEL_RATE_WAIT_MAX_MS` (or once aborted) it answers false and NO call is
+ * charged or made, so a call never leaves uncharged. Each wait is a sign of life on the claim.
+ */
+async function waitForModelRate(
+    ctx: WorkspaceRequestContext,
+    sourceId: string,
+    claim: Date,
+    charge: (workspaceId: string, calls: number) => void,
+    sleep: (ms: number, signal?: AbortSignal) => Promise<void>,
+    signal?: AbortSignal,
+): Promise<boolean> {
+    let waited = 0;
+    for (;;) {
         try {
-            chargeModelCalls(workspaceId, 1);
-            return;
+            charge(ctx.workspaceId, 1);
+            return true;
         } catch (err) {
             if (!(err instanceof RateLimitedError)) throw err;
+            if (waited >= MODEL_RATE_WAIT_MAX_MS || signal?.aborted) return false;
             const retry = Number((err.details as { retryAfterMs?: unknown } | undefined)?.retryAfterMs ?? 1_000);
-            await sleep(Math.min(60_000, Math.max(250, retry)), signal);
-            if (signal?.aborted) return;
+            const ms = Math.min(60_000, Math.max(250, Number.isFinite(retry) ? retry : 1_000), MODEL_RATE_WAIT_MAX_MS - waited);
+            await sleep(ms, signal);
+            waited += ms;
+            if (signal?.aborted) return false;
+            await runInWorkspaceContext(ctx, (db) => SourceRepository.touch(db, ctx.workspaceId, sourceId, claim));
         }
     }
 }
@@ -299,7 +357,7 @@ function factRow(
     linkOf: (name: string | null) => string | null,
     carriedBy: ReadonlyMap<string, { id: string; status: 'PENDING' | 'CONFIRMED' | 'REJECTED'; decidedById: string | null; decidedAt: Date | null }>,
 ): FactInsert {
-    const carried = carriedBy.get(carryKey(draft.predicate, draft.subjectName, draft.quote));
+    const carried = carriedBy.get(carryKey(draft));
     const book = source.library.scope === 'BOOK';
     return {
         sourceId: source.id,
@@ -329,15 +387,16 @@ function factRow(
  * is read) and the spend, while the source is still RUNNING (a removed source
  * or a stale claim writes nothing). Returns whether the source still runs.
  */
-async function persistChunk(ctx: WorkspaceRequestContext, source: SourceRow, chunk: SourceChunkRow, rows: FactInsert[], read: boolean, costMicroUsd: number): Promise<boolean> {
+async function persistChunk(ctx: WorkspaceRequestContext, source: SourceRow, claim: Date, chunk: SourceChunkRow, rows: FactInsert[], read: boolean, costMicroUsd: number): Promise<boolean> {
     return runInWorkspaceContext(ctx, async (db) => {
         await SourceRepository.lock(db, source.id);
         const now = await SourceRepository.find(db, ctx.workspaceId, source.id);
-        if (!now || now.status !== 'RUNNING') return false;
+        // Still RUNNING, and still under THIS worker's claim: a stale claim re-dispatched and claimed again belongs to its new worker.
+        if (!now || now.status !== 'RUNNING' || now.startedAt?.getTime() !== claim.getTime()) return false;
         if (read) {
             if (!(await SourceChunkRepository.markExtracted(db, ctx.workspaceId, chunk.id, new Date()))) return true;
             await StoryFactRepository.createMany(db, ctx.workspaceId, rows);
         }
-        return SourceRepository.advance(db, ctx.workspaceId, source.id, { chunksDone: read ? 1 : 0, facts: read ? rows.length : 0, spentMicroUsd: costMicroUsd });
+        return SourceRepository.advance(db, ctx.workspaceId, source.id, claim, { chunksDone: read ? 1 : 0, facts: read ? rows.length : 0, spentMicroUsd: costMicroUsd });
     });
 }

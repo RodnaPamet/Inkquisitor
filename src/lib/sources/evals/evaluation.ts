@@ -155,7 +155,7 @@ export async function modelExtractionAnswers(extractor: FactExtractor): Promise<
     const answers: ExtractionRecord['answers'] = [];
     for (const c of extractionCases) {
         const passage = casePassage(c);
-        const r = await extractor.extract({ data: extractBlocks({ text: passage.text, headingPath: passage.headingPath, bookNames: c.bookNames }), bookId: null });
+        const r = await extractor.extract({ data: extractBlocks({ text: passage.text, headings: passage.headingPath, bookNames: c.bookNames }), bookId: null });
         answers.push({ caseId: c.id, facts: r.ok ? r.output : { facts: [] } });
     }
     return answers;

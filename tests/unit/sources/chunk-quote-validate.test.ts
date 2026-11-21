@@ -5,10 +5,15 @@
 import { chunkBlocks, cutPoint, documentTextOf, estimateTokens } from '@/lib/sources/chunk';
 import type { DocBlock } from '@/lib/sources/document';
 import { chunkCost, sourceCost } from '@/lib/sources/cost';
+import { buildModelRequest, buildRepairRequest, inputTokenBound, MAX_REPAIR_ISSUES, resolveCall } from '@/lib/ai/prompt';
+import { jsonSchemaFor } from '@/lib/ai/client';
+import { worstCaseCostMicroUsd } from '@/lib/ai/pricing';
+import { EXTRACT_PROMPT, extractBlocks } from '@/lib/sources/prompt';
+import { FactsOutputSchema } from '@/lib/sources/schema';
 import { locateQuote } from '@/lib/sources/quote';
 import { validateFacts } from '@/lib/sources/validate';
 import { signViewToken, verifyViewToken } from '@/lib/sources/view-token';
-import { fieldAnsweredBy, PREDICATE_FIELDS, SOURCE_REFUSALS } from '@/lib/sources/vocabulary';
+import { effectiveSourceState, fieldAnsweredBy, PREDICATE_FIELDS, SOURCE_REFUSALS } from '@/lib/sources/vocabulary';
 import { getFieldDef } from '@/lib/bible/templates';
 import type { BibleKind } from '@/lib/bible/kinds';
 import messages from '../../../messages/en.json';
@@ -118,13 +123,36 @@ describe('the fact rules', () => {
 });
 
 describe('the cost estimate', () => {
+    const blocks = (text: string, bookNames: string[] = []) => ({ headings: ['Chapter 1'], text, bookNames });
+
     it('is per chunk, expected below the worst case, and the sum over chunks', () => {
-        const one = chunkCost({ text: 'x'.repeat(6_000), namesText: '' }, 'claude-haiku-5-5');
+        const one = chunkCost(blocks('x'.repeat(6_000)), 'claude-haiku-5-5');
         expect(one.expected).toBeGreaterThan(0);
         expect(one.worst).toBeGreaterThan(one.expected);
-        const two = sourceCost([{ text: 'x'.repeat(6_000), namesText: '' }, { text: 'x'.repeat(6_000), namesText: '' }], 'claude-haiku-5-5');
+        const two = sourceCost([blocks('x'.repeat(6_000)), blocks('x'.repeat(6_000))], 'claude-haiku-5-5');
         expect(two.worst).toBe(2 * one.worst);
-        expect(chunkCost({ text: 'x'.repeat(6_000), namesText: 'Wren\nOstrik' }, 'claude-haiku-5-5').worst).toBeGreaterThan(one.worst);
+        expect(chunkCost(blocks('x'.repeat(6_000), ['Wren', 'Ostrik']), 'claude-haiku-5-5').worst).toBeGreaterThan(one.worst);
+    });
+
+    // What 2.1 can charge for one chunk's call: its first request's worst case and, after an invalid answer
+    // of the whole output budget, the repair request's. The "at most" (and so the job's BUDGET check) must
+    // cover both, over the very request the call builds — JSON escaping of dialogue and the fence included.
+    it.each([
+        ['plain prose', 'x'.repeat(8_000)],
+        ['dialogue, every quote and line break escaped', '"Hi," she said.\n'.repeat(500)],
+        ['two-byte letters', 'é'.repeat(4_000)],
+    ])('covers 2.1’s own worst case for the call and its one repair (%s)', (_name, text) => {
+        const model = 'claude-haiku-5-5';
+        const resolved = resolveCall(EXTRACT_PROMPT);
+        const first = buildModelRequest(EXTRACT_PROMPT, extractBlocks(blocks(text, ['Wren'])), resolved, jsonSchemaFor(FactsOutputSchema), 'f'.repeat(32));
+        // The longest answer the model can give within its output budget, as dense in bytes as text gets.
+        const answer = '{"facts":[{"subject":"Wren","statement":"' + '\\"é'.repeat(first.max_tokens * 2) + '"}]}';
+        const issues = Array.from({ length: MAX_REPAIR_ISSUES }, (_, i) => ({ path: `facts.${i}.storyTimeFrom`, code: 'too_big', message: 'is longer than the schema allows' }));
+        const repair = buildRepairRequest(first, [{ type: 'text', text: answer }], issues, null);
+        const ledger =
+            worstCaseCostMicroUsd(model, { inputTokens: inputTokenBound(first), outputTokens: first.max_tokens }) +
+            worstCaseCostMicroUsd(model, { inputTokens: inputTokenBound(repair), outputTokens: repair.max_tokens });
+        expect(chunkCost(blocks(text, ['Wren']), model).worst).toBeGreaterThanOrEqual(ledger);
     });
 });
 
@@ -159,5 +187,21 @@ describe('the predicate → field table', () => {
     it('every upload refusal is worded for the page', () => {
         const reasons = (messages as { sources: { reasons: Record<string, string> } }).sources.reasons;
         expect(SOURCE_REFUSALS.filter((r) => !(r in reasons))).toEqual([]);
+    });
+});
+
+describe('a live source’s staleness (CLAIM_EXPIRED)', () => {
+    const now = new Date('2026-11-21T12:00:00Z');
+    const ago = (minutes: number) => new Date(now.getTime() - minutes * 60_000);
+
+    it('is judged by its last sign of life, never by when it was uploaded or claimed', () => {
+        // Uploaded two hours ago, queued a minute ago: not stale.
+        expect(effectiveSourceState({ status: 'QUEUED', outcome: null, createdAt: ago(120), startedAt: null, heartbeatAt: ago(1) }, now)).toEqual({ status: 'QUEUED', outcome: null });
+        // Claimed two hours ago, a chunk read a minute ago: still running.
+        expect(effectiveSourceState({ status: 'RUNNING', outcome: null, createdAt: ago(180), startedAt: ago(120), heartbeatAt: ago(1) }, now)).toEqual({ status: 'RUNNING', outcome: null });
+        // No sign of life past the bound: its worker is gone.
+        expect(effectiveSourceState({ status: 'RUNNING', outcome: null, createdAt: ago(180), startedAt: ago(120), heartbeatAt: ago(31) }, now)).toEqual({ status: 'STOPPED', outcome: 'CLAIM_EXPIRED' });
+        // A finished row is never stale.
+        expect(effectiveSourceState({ status: 'DONE', outcome: 'OK', createdAt: ago(180), startedAt: ago(120), heartbeatAt: ago(100) }, now)).toEqual({ status: 'DONE', outcome: 'OK' });
     });
 });

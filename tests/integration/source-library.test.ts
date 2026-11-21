@@ -24,7 +24,7 @@ import { assembleSourceContext } from '@/app-layer/usecases/source-retrieval';
 import { getVectorRepository } from '@/app-layer/repositories/vector.repository';
 import { StubEmbeddingProvider } from '@/lib/ai/embeddings/stub-provider';
 import { stubMessagesFetch } from '@/lib/ai/model-stub';
-import { AppError } from '@/lib/errors/types';
+import { AppError, RateLimitedError } from '@/lib/errors/types';
 import type { FactExtractor, ExtractResult } from '@/lib/sources/extractor';
 import { defaultFactExtractor } from '@/lib/sources/model-seam';
 import { frontierOf, loadInterviewState, requireSession, type InterviewView } from '@/app-layer/usecases/interview-state';
@@ -251,6 +251,102 @@ describe('stopping cleanly, and resuming', () => {
     });
 });
 
+describe('an ingestion’s claim and its signs of life', () => {
+    it('ingests a source uploaded long before its cost was confirmed (never stale by its upload time)', async () => {
+        const owner = await createAccount();
+        const ctx = workspaceCtx(owner);
+        const bookId = (await createBook(ctx, { title: 'Old Upload' })).id;
+        const source = await uploadSource(ctx, { kind: 'book', bookId }, { bytes: longDraft(1), filename: 'old.txt' }, deps);
+        // Uploaded two hours ago; confirmed and dispatched now.
+        await prisma.source.update({ where: { id: source.id }, data: { createdAt: new Date(Date.now() - 2 * 60 * 60 * 1000) } });
+        expect(await getSource(ctx, source.id)).toMatchObject({ status: 'ESTIMATED' });
+        await dispatchIngestion(ctx, source.id, { confirmWorstCaseMicroUsd: source.worstCaseMicroUsd }, deps);
+        expect(await getSource(ctx, source.id)).toMatchObject({ status: 'QUEUED', outcome: null });
+        const r = await executeSourceIngest({ workspaceId: ctx.workspaceId, sourceId: source.id }, ingestDeps);
+        expect(r.outcome).toBe('OK');
+        expect(await getSource(ctx, source.id)).toMatchObject({ status: 'DONE', chunksDone: 1 });
+    });
+
+    it('a stale claim queued again belongs to its new worker: the old worker writes nothing more', async () => {
+        const owner = await createAccount();
+        const ctx = workspaceCtx(owner);
+        const bookId = (await createBook(ctx, { title: 'Two Workers' })).id;
+        const source = await uploadSource(ctx, { kind: 'book', bookId }, { bytes: longDraft(2), filename: 'two.txt' }, deps);
+        await dispatchIngestion(ctx, source.id, { confirmWorstCaseMicroUsd: source.worstCaseMicroUsd }, deps);
+
+        // Worker 1 is held inside its first call.
+        let releaseFirst!: () => void;
+        let firstInCall!: () => void;
+        const firstCalled = new Promise<void>((resolve) => (firstInCall = resolve));
+        const heldFirst = new Promise<void>((resolve) => (releaseFirst = resolve));
+        const slowFirst: FactExtractor = {
+            async extract(request, signal) {
+                firstInCall();
+                await heldFirst;
+                const r = await stubExtractor(ctx).extract(request, signal);
+                return { ...r, costMicroUsd: 1_000 };
+            },
+        };
+        const first = executeSourceIngest({ workspaceId: ctx.workspaceId, sourceId: source.id }, { ...ingestDeps, extractor: () => slowFirst });
+        await firstCalled;
+
+        // Its claim goes stale (no sign of life for an hour), the author resumes, and worker 2 claims it.
+        await prisma.source.update({ where: { id: source.id }, data: { heartbeatAt: new Date(Date.now() - 60 * 60 * 1000) } });
+        expect(await getSource(ctx, source.id)).toMatchObject({ status: 'STOPPED', outcome: 'CLAIM_EXPIRED' });
+        await dispatchIngestion(ctx, source.id, { confirmWorstCaseMicroUsd: source.worstCaseMicroUsd }, deps);
+        let releaseSecond!: () => void;
+        let secondInCall!: () => void;
+        const secondCalled = new Promise<void>((resolve) => (secondInCall = resolve));
+        const heldSecond = new Promise<void>((resolve) => (releaseSecond = resolve));
+        let secondCalls = 0;
+        const slowSecond: FactExtractor = {
+            async extract(request, signal) {
+                secondCalls++;
+                secondInCall();
+                await heldSecond;
+                const r = await stubExtractor(ctx).extract(request, signal);
+                return { ...r, costMicroUsd: 7 };
+            },
+        };
+        const second = executeSourceIngest({ workspaceId: ctx.workspaceId, sourceId: source.id }, { ...ingestDeps, extractor: () => slowSecond });
+        await secondCalled;
+
+        // Worker 1's call returns while worker 2 runs: nothing of it is written, and it stops.
+        releaseFirst();
+        expect(await first).toEqual({ ran: true, outcome: null });
+        expect(await getSource(ctx, source.id)).toMatchObject({ status: 'RUNNING', chunksDone: 0, factCount: 0, spentMicroUsd: 0 });
+
+        releaseSecond();
+        expect((await second).outcome).toBe('OK');
+        expect(secondCalls).toBe(2);
+        const done = await getSource(ctx, source.id);
+        expect(done).toMatchObject({ status: 'DONE', chunksDone: 2, spentMicroUsd: 14 });
+        expect((await listBookFacts(ctx, bookId, { status: 'ALL' })).facts.filter((f) => f.predicate === 'WANT')).toHaveLength(2);
+    });
+
+    it('stops PARTIAL when the model-call minute stays full, and never makes a call it did not charge (D17)', async () => {
+        const owner = await createAccount();
+        const ctx = workspaceCtx(owner);
+        const bookId = (await createBook(ctx, { title: 'Full Minute' })).id;
+        const source = await uploadSource(ctx, { kind: 'book', bookId }, { bytes: longDraft(1), filename: 'full.txt' }, deps);
+        await dispatchIngestion(ctx, source.id, { confirmWorstCaseMicroUsd: source.worstCaseMicroUsd }, deps);
+        let calls = 0;
+        const counting: FactExtractor = {
+            async extract(request, signal) {
+                calls++;
+                return stubExtractor(ctx).extract(request, signal);
+            },
+        };
+        const full = () => {
+            throw new RateLimitedError('full', { reason: 'MODEL_RATE_LIMITED', retryAfterMs: 60_000 });
+        };
+        const r = await executeSourceIngest({ workspaceId: ctx.workspaceId, sourceId: source.id }, { ...ingestDeps, extractor: () => counting, charge: full, sleep: async () => undefined });
+        expect(r.outcome).toBe('PARTIAL');
+        expect(calls).toBe(0);
+        expect(await getSource(ctx, source.id)).toMatchObject({ status: 'STOPPED', outcome: 'PARTIAL', chunksDone: 0 });
+    });
+});
+
 describe('a changed re-upload', () => {
     it('is the next version, superseding the old, and carries decisions over for the same passage', async () => {
         const owner = await createAccount();
@@ -267,6 +363,29 @@ describe('a changed re-upload', () => {
         const facts = (await listBookFacts(ctx, bookId, { status: 'ALL', sourceId: v2.id })).facts;
         expect(facts.find((f) => f.predicate === 'WANT')?.status).toBe('CONFIRMED');
         expect(facts.find((f) => f.subjectName === 'Ostrik')?.status).toBe('PENDING');
+    });
+
+    it('carries a decision only onto the same claim: another fact quoting the same passage starts pending', async () => {
+        const owner = await createAccount();
+        const ctx = workspaceCtx(owner);
+        const bookId = (await createBook(ctx, { title: 'Same Passage' })).id;
+        const passage = 'Mara served as captain and surgeon of the ship.';
+        const fact = (statement: string) => ({ subject: 'Mara', predicate: 'ROLE', object: '', statement, quote: passage, storyTimeFrom: '', storyTimeTo: '' });
+        const answering = (statement: string): FactExtractor => ({
+            async extract() {
+                return { ok: true, output: { facts: [fact(statement)] }, tokensUsed: 10, costMicroUsd: 1, callIds: [] };
+            },
+        });
+        const v1 = await uploadSource(ctx, { kind: 'book', bookId }, { bytes: new TextEncoder().encode(passage), filename: 'mara.txt' }, deps);
+        await ingest(ctx, v1.id, { extractor: () => answering('Mara served as captain.') });
+        const captain = (await listBookFacts(ctx, bookId)).facts[0];
+        expect(captain.statement).toBe('Mara served as captain.');
+        await decideFact(ctx, captain.id, 'CONFIRM');
+        const v2 = await uploadSource(ctx, { kind: 'book', bookId }, { bytes: new TextEncoder().encode(`${passage} The ship sailed at dawn.`), filename: 'mara.txt' }, deps);
+        // The same predicate, subject and quote — but a claim the author never confirmed.
+        await ingest(ctx, v2.id, { extractor: () => answering('Mara served as surgeon.') });
+        const surgeon = (await listBookFacts(ctx, bookId, { status: 'ALL', sourceId: v2.id })).facts[0];
+        expect(surgeon).toMatchObject({ statement: 'Mara served as surgeon.', status: 'PENDING' });
     });
 });
 

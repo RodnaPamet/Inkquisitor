@@ -48,9 +48,9 @@ export const EXTRACT_PROMPT: Readonly<PromptTemplate> = definePrompt({
 });
 
 /** A chunk as the extraction call's data blocks. */
-export function extractBlocks(input: { text: string; headingPath: readonly string[]; bookNames: readonly string[] }): AuthorDataBlock[] {
+export function extractBlocks(input: { text: string; headings: readonly string[]; bookNames: readonly string[] }): AuthorDataBlock[] {
     const blocks: AuthorDataBlock[] = [];
-    if (input.headingPath.length > 0) blocks.push({ label: 'passage.headings', text: input.headingPath.join(' › ') });
+    if (input.headings.length > 0) blocks.push({ label: 'passage.headings', text: input.headings.join(' › ') });
     blocks.push({ label: 'passage.text', text: input.text });
     if (input.bookNames.length > 0) blocks.push({ label: 'book-names', text: input.bookNames.join('\n') });
     return blocks;

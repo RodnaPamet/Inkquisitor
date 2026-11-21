@@ -41,6 +41,7 @@ const SOURCE_SELECT = {
     requestedById: true,
     createdAt: true,
     startedAt: true,
+    heartbeatAt: true,
     finishedAt: true,
     library: { select: LIBRARY_SELECT },
 } as const satisfies Prisma.SourceSelect;
@@ -144,30 +145,56 @@ export const SourceRepository = {
             select: { id: true },
         });
     },
-    /** Queue it (the author confirmed the cost): only from ESTIMATED or STOPPED, or a FAILED / stale row. */
-    async queue(db: Db, workspaceId: string, id: string, data: { budgetMicroUsd: number; promptVersion: string; requestedById: string }): Promise<number> {
+    /** Queue it (the author confirmed the cost): only from ESTIMATED or STOPPED, or a FAILED / stale row. Its heartbeat starts now: a queue left unclaimed past `STALE_INGEST_MS` reads CLAIM_EXPIRED. */
+    async queue(db: Db, workspaceId: string, id: string, data: { budgetMicroUsd: number; promptVersion: string; requestedById: string; now?: Date }): Promise<number> {
         const r = await db.source.updateMany({
             where: { workspaceId, id, status: { in: ['ESTIMATED', 'STOPPED', 'FAILED', 'QUEUED', 'RUNNING'] } },
-            data: { status: 'QUEUED', outcome: null, budgetMicroUsd: BigInt(data.budgetMicroUsd), promptVersion: data.promptVersion, requestedById: data.requestedById, startedAt: null, finishedAt: null },
+            data: {
+                status: 'QUEUED',
+                outcome: null,
+                budgetMicroUsd: BigInt(data.budgetMicroUsd),
+                promptVersion: data.promptVersion,
+                requestedById: data.requestedById,
+                startedAt: null,
+                heartbeatAt: data.now ?? new Date(),
+                finishedAt: null,
+            },
         });
         return r.count;
     },
-    /** QUEUED → RUNNING, once: of two workers, one claims it. */
-    async claim(db: Db, workspaceId: string, id: string, now: Date): Promise<boolean> {
-        const r = await db.source.updateMany({ where: { workspaceId, id, status: 'QUEUED' }, data: { status: 'RUNNING', startedAt: now } });
+    /**
+     * QUEUED → RUNNING, once: of two workers, one claims it. Returns the claim (its `startedAt`), which every
+     * later write of that worker names: a source queued again and claimed by another worker (a stale claim
+     * re-dispatched) no longer matches it, so the first worker writes nothing more.
+     */
+    async claim(db: Db, workspaceId: string, id: string, now: Date): Promise<Date | null> {
+        const r = await db.source.updateMany({ where: { workspaceId, id, status: 'QUEUED' }, data: { status: 'RUNNING', startedAt: now, heartbeatAt: now } });
+        return r.count === 1 ? now : null;
+    },
+    /** A sign of life from the claim's worker (between chunks, while it embeds or waits). */
+    async touch(db: Db, workspaceId: string, id: string, claim: Date): Promise<boolean> {
+        const r = await db.source.updateMany({ where: { workspaceId, id, status: 'RUNNING', startedAt: claim }, data: { heartbeatAt: new Date() } });
         return r.count === 1;
     },
-    /** A chunk's facts are in: the cursor, the counts and the spend move, while it is still RUNNING. */
-    async advance(db: Db, workspaceId: string, id: string, data: { chunksDone: number; facts: number; spentMicroUsd: number }): Promise<boolean> {
+    /** A chunk's facts are in: the cursor, the counts and the spend move, while it is still RUNNING under this claim. */
+    async advance(db: Db, workspaceId: string, id: string, claim: Date, data: { chunksDone: number; facts: number; spentMicroUsd: number }): Promise<boolean> {
         const r = await db.source.updateMany({
-            where: { workspaceId, id, status: 'RUNNING' },
-            data: { chunksDone: { increment: data.chunksDone }, factCount: { increment: data.facts }, spentMicroUsd: { increment: BigInt(Math.max(0, Math.round(data.spentMicroUsd))) } },
+            where: { workspaceId, id, status: 'RUNNING', startedAt: claim },
+            data: {
+                chunksDone: { increment: data.chunksDone },
+                factCount: { increment: data.facts },
+                spentMicroUsd: { increment: BigInt(Math.max(0, Math.round(data.spentMicroUsd))) },
+                heartbeatAt: new Date(),
+            },
         });
         return r.count === 1;
     },
-    /** End or pause it (from RUNNING or QUEUED, or any status for an enqueue failure / a stale claim). */
-    async finish(db: Db, workspaceId: string, id: string, data: { status: SourceStatus; outcome: string; metrics: Prisma.InputJsonValue; from: SourceStatus[]; finishedAt: Date }): Promise<boolean> {
-        const r = await db.source.updateMany({ where: { workspaceId, id, status: { in: data.from } }, data: { status: data.status, outcome: data.outcome, metrics: data.metrics, finishedAt: data.finishedAt } });
+    /** End or pause it (from RUNNING or QUEUED, or any status for an enqueue failure / a stale claim); a worker that claimed it names its claim. */
+    async finish(db: Db, workspaceId: string, id: string, data: { status: SourceStatus; outcome: string; metrics: Prisma.InputJsonValue; from: SourceStatus[]; finishedAt: Date; claim?: Date }): Promise<boolean> {
+        const r = await db.source.updateMany({
+            where: { workspaceId, id, status: { in: data.from }, ...(data.claim ? { startedAt: data.claim } : {}) },
+            data: { status: data.status, outcome: data.outcome, metrics: data.metrics, finishedAt: data.finishedAt },
+        });
         return r.count === 1;
     },
     async delete(db: Db, workspaceId: string, id: string): Promise<number> {

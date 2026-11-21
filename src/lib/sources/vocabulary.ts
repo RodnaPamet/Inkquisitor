@@ -66,7 +66,7 @@ export const SOURCE_OUTCOMES = [
 ] as const;
 export type SourceOutcome = (typeof SOURCE_OUTCOMES)[number];
 
-/** A RUNNING source older than this reads STOPPED CLAIM_EXPIRED (its worker is gone). */
+/** A QUEUED or RUNNING source whose heartbeat is older than this reads STOPPED CLAIM_EXPIRED (its worker is gone). */
 export const STALE_INGEST_MS = 30 * 60 * 1000;
 
 /** What a fact may state (the closed list the extraction's output schema offers). */
@@ -143,10 +143,18 @@ export function isLiveStatus(status: string): boolean {
     return status === 'QUEUED' || status === 'RUNNING';
 }
 
-/** A source as it effectively stands: a RUNNING or QUEUED row past `STALE_INGEST_MS` reads STOPPED CLAIM_EXPIRED. */
-export function effectiveSourceState(row: { status: string; outcome: string | null; startedAt: Date | string | null; createdAt: Date | string }, now: Date = new Date()): { status: SourceStatus; outcome: string | null } {
+/**
+ * A source as it effectively stands: a RUNNING or QUEUED row whose last sign of life (`heartbeatAt`: queued,
+ * claimed, or a step taken) is older than `STALE_INGEST_MS` reads STOPPED CLAIM_EXPIRED. Never the upload
+ * time: a source uploaded an hour before its ingestion was confirmed is not stale, and neither is a long
+ * ingestion that is still moving.
+ */
+export function effectiveSourceState(
+    row: { status: string; outcome: string | null; heartbeatAt?: Date | string | null; startedAt: Date | string | null; createdAt: Date | string },
+    now: Date = new Date(),
+): { status: SourceStatus; outcome: string | null } {
     if (isLiveStatus(row.status)) {
-        const since = new Date(row.startedAt ?? row.createdAt).getTime();
+        const since = new Date(row.heartbeatAt ?? row.startedAt ?? row.createdAt).getTime();
         if (now.getTime() - since > STALE_INGEST_MS) return { status: 'STOPPED', outcome: 'CLAIM_EXPIRED' };
     }
     return { status: row.status as SourceStatus, outcome: row.outcome };

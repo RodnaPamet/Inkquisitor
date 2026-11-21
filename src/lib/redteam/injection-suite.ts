@@ -420,7 +420,7 @@ export async function runInjectionCase(c: InjectionCase, seams: InjectionSeams):
     } else if (c.surface === 'SOURCE_UPLOAD') {
         // Phase 4.0: an uploaded draft whose passage carries the instruction, read for facts.
         const passage = { text: `${SCENE.character.name} keeps the Wennaway light alone after her brother drowns. ${c.text}`, headingPath: ['Chapter 1'] };
-        const r = await seams.extractor.extract({ data: extractBlocks({ text: passage.text, headingPath: passage.headingPath, bookNames: [SCENE.character.name, SCENE.setting.name] }), bookId: SCENE.bookId });
+        const r = await seams.extractor.extract({ data: extractBlocks({ text: passage.text, headings: passage.headingPath, bookNames: [SCENE.character.name, SCENE.setting.name] }), bookId: SCENE.bookId });
         outcome = r.ok ? 'OK' : r.failure;
         if (r.ok) {
             const v = validateFacts(r.output, passage);

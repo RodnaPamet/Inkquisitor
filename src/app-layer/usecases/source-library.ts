@@ -61,7 +61,7 @@ import { blocksText } from '@/lib/sources/document';
 import { parseSource, SourceRefusal, type ParseDeps } from '@/lib/sources/parse';
 import { EXTRACT_PROMPT_VERSION } from '@/lib/sources/prompt';
 import { extractionGate, type ExtractionGateVerdict } from '@/lib/sources/record-gate';
-import { sanitiseChunkForStorage, sanitiseSourceNameForStorage, SourceTextNotStorableError } from '@/lib/sources/storage';
+import { decodeHeadingPath, sanitiseChunkForStorage, sanitiseSourceNameForStorage, SourceTextNotStorableError } from '@/lib/sources/storage';
 import { CHUNKS_PER_SOURCE_MAX, effectiveSourceState, isLiveStatus, SOURCES_PER_LIBRARY_MAX, type SourceFormat, type SourceStatus } from '@/lib/sources/vocabulary';
 import { assertUploadClean } from './bible-import';
 import { requireBook } from './bible-common';
@@ -163,11 +163,11 @@ export async function uploadSource(ctx: WorkspaceRequestContext, target: SourceT
     }
     const drafts = chunkBlocks(parsed.blocks);
     if (drafts.length > CHUNKS_PER_SOURCE_MAX) throw new ValidationError('The file is too long to read as one source.', { reason: 'SOURCE_TOO_LONG' });
-    const chunks: Array<{ position: number; headingPath: string | null; text: string; startOffset: number; endOffset: number; tokenEstimate: number; headings: readonly string[] }> = [];
+    const chunks: Array<{ position: number; headingPath: string | null; text: string; startOffset: number; endOffset: number; tokenEstimate: number }> = [];
     for (const d of drafts) {
         try {
             const stored = sanitiseChunkForStorage({ text: d.text, headingPath: d.headingPath });
-            chunks.push({ position: chunks.length, headingPath: stored.headingPath, text: stored.text, startOffset: d.startOffset, endOffset: d.endOffset, tokenEstimate: Math.ceil(stored.text.length / 4), headings: d.headingPath });
+            chunks.push({ position: chunks.length, headingPath: stored.headingPath, text: stored.text, startOffset: d.startOffset, endOffset: d.endOffset, tokenEstimate: Math.ceil(stored.text.length / 4) });
         } catch (err) {
             // A chunk of nothing but markup holds no words: it is not a passage.
             if (!(err instanceof SourceTextNotStorableError)) throw err;
@@ -180,8 +180,8 @@ export async function uploadSource(ctx: WorkspaceRequestContext, target: SourceT
     const created = await runInWorkspaceContext(
         ctx,
         async (db) => {
-            const names = target.kind === 'book' ? (await bookNamesOf(db, ctx, target.bookId)).map((n) => n.name).join('\n') : '';
-            const cost = sourceCost(chunks.map((c) => ({ text: `${c.headings.join(' › ')}\n${c.text}`, namesText: names })));
+            const bookNames = target.kind === 'book' ? (await bookNamesOf(db, ctx, target.bookId)).map((n) => n.name) : [];
+            const cost = sourceCost(chunks.map((c) => ({ headings: decodeHeadingPath(c.headingPath), text: c.text, bookNames })));
             const library = await ensureLibrary(db, ctx, target);
             const existing = await SourceRepository.listForLibrary(db, ctx.workspaceId, library.id, LIBRARY_READ_MAX);
             if (existing.length >= SOURCES_PER_LIBRARY_MAX) throw new ConflictError('This library holds as many files as it can.', { reason: 'LIBRARY_FULL' });
@@ -292,7 +292,7 @@ export async function setSeriesOptIn(ctx: WorkspaceRequestContext, bookId: strin
 
 /** What the source's unextracted chunks will cost, expected and at most (µUSD). */
 async function remainingCost(db: PrismaTx, ctx: WorkspaceRequestContext, source: SourceRow): Promise<{ expected: number; worst: number; pending: number }> {
-    const names = source.library.scope === 'BOOK' && source.library.bookId ? (await bookNamesOf(db, ctx, source.library.bookId)).map((n) => n.name).join('\n') : '';
+    const bookNames = source.library.scope === 'BOOK' && source.library.bookId ? (await bookNamesOf(db, ctx, source.library.bookId)).map((n) => n.name) : [];
     let expected = 0;
     let worst = 0;
     let pending = 0;
@@ -302,7 +302,7 @@ async function remainingCost(db: PrismaTx, ctx: WorkspaceRequestContext, source:
         for (const c of page) {
             after = c.position;
             if (c.extractedAt) continue;
-            const one = chunkCost({ text: c.text, namesText: names });
+            const one = chunkCost({ headings: decodeHeadingPath(c.headingPath), text: c.text, bookNames });
             expected += one.expected;
             worst += one.worst;
             pending++;

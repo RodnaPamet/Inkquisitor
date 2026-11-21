@@ -91,7 +91,10 @@ model Source {
   /// Who uploaded it; NULL once that person is deleted.
   requestedById    String?
   createdAt        DateTime     @default(now())
+  /// When the current ingestion was claimed (QUEUED → RUNNING). It is also the claim's identity: a worker writes only while the row still names its own claim.
   startedAt        DateTime?
+  /// The ingestion's last sign of life: set when it is queued and claimed, and on every step it takes. A live row whose heartbeat is older than `STALE_INGEST_MS` reads CLAIM_EXPIRED.
+  heartbeatAt      DateTime?
   finishedAt       DateTime?
 
   library     SourceLibrary @relation(fields: [workspaceId, libraryId], references: [workspaceId, id], onDelete: Cascade)
