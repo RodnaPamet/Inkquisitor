@@ -665,7 +665,11 @@ async function acceptField(db: PrismaTx, ctx: WorkspaceRequestContext, bookId: s
     // The element's lock first, then the proposal read under it (a concurrent save of the element queues).
     await BibleElementRepository.lock(db, elementId);
     const p = await requirePending(db, ctx, bookId, sessionId, proposalId);
-    const element = await requireElement(db, ctx, bookId, elementId);
+    // A slot beat's element deleted while this waited for its lock is gone as the beat's field sees it (END_GONE), not a 404.
+    const element = await requireElement(db, ctx, bookId, elementId).catch((err: unknown) => {
+        if (p.targetProposalId && err instanceof NotFoundError) throw new ConflictError('The new entry this field belongs to has been deleted.', { reason: 'END_GONE' });
+        throw err;
+    });
     if (input.baseVersion === undefined) throw new ValidationError('An acceptance names the version it was reviewed against.', { reason: 'BASE_VERSION_REQUIRED' });
     const currentVersion = await BibleVersionRepository.latestNumber(db, ctx.workspaceId, element.id);
     if (currentVersion !== input.baseVersion) {

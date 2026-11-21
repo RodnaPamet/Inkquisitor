@@ -163,6 +163,30 @@ describe('accepting a field of the beat', () => {
         await deleteElement(at.ctx, at.bookId, made.elementId!);
         expect((await refusal(acceptProposal(at.ctx, at.bookId, at.sessionId, fields[0].id, { baseVersion: 1 }))).details.reason).toBe('END_GONE');
     });
+
+    it('an element deleted while the acceptance waits for its lock is END_GONE too, never a 404', async () => {
+        const at = await beatProposed();
+        const { fields } = await followUp(at);
+        const made = await acceptProposal(at.ctx, at.bookId, at.sessionId, at.beat.id, {});
+        let accepting: Promise<unknown> | null = null;
+        // A deletion holding the element's lock (as `deleteElement` does) while the acceptance has already read the beat.
+        await prisma.$transaction(
+            async (tx) => {
+                await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${'bible-element:' + made.elementId}))`;
+                accepting = acceptProposal(at.ctx, at.bookId, at.sessionId, fields[0].id, { baseVersion: 1 });
+                accepting.catch(() => undefined);
+                for (let i = 0; i < 400; i++) {
+                    const [row] = await tx.$queryRaw<Array<{ n: bigint }>>`SELECT count(*) AS n FROM pg_locks WHERE locktype = 'advisory' AND NOT granted`;
+                    if (Number(row.n) > 0) break;
+                    await new Promise((r) => setTimeout(r, 25));
+                }
+                await tx.$executeRaw`DELETE FROM "BibleElement" WHERE "id" = ${made.elementId}`;
+            },
+            { timeout: 20_000 },
+        );
+        const refused = await refusal(accepting!);
+        expect(refused).toMatchObject({ status: 409, details: { reason: 'END_GONE' } });
+    });
 });
 
 describe('the session runs to its end', () => {
