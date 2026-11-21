@@ -62,7 +62,7 @@ builds the help site and deploys it only on main when Pages is enabled;
 `postgres-image.yml` publishes `ghcr.io/rodnapamet/inkquisitor-postgres`
 (main only, weekly and on an upstream digest move; build, smoke, Trivy, then
 push); `evals.yml` (**Evals**, dispatch only, not a check) makes real-model
-pack evaluation records (and, with its `reconcile` and `research` inputs, the reconcile step's and the research agent's)
+pack evaluation records (and, with its `reconcile`, `research`, `rephrase` and `sources` inputs, the reconcile step's, the research agent's, the rephrase prompt's and source fact extraction's)
 on `secrets.ANTHROPIC_API_KEY` and uploads them as an artifact, committing
 nothing (`tests/unit/evals-workflow.test.ts`); `injection-redteam.yml`
 (**Injection red-team**, nightly once the repository variable
@@ -372,7 +372,7 @@ Phase 4.0 (the source library and ingestion, D23 and D26) added:
 prisma/schema/sources.prisma → SourceLibrary (a book's, or the workspace's series library), Source (a file kept as chunks), SourceChunk
                                (encrypted, a vector source), StoryFact (the 4.1 fact model), BookSeriesSource (opt-in), StoryFactOverride
 src/lib/sources/             → vocabulary (bounds, outcomes, THE predicate → field table; client-safe), parse (sniff + DOCX/EPUB/PDF/MD/TXT),
-                               document (blocks), chunk, pdf-text (+ scripts/pdf-text-worker.mjs), quote (THE span check), prompt
+                               document (blocks), chunk, parse-worker (THE bounded worker) with pdf-text and docx-text (+ scripts/{pdf,docx}-text-worker.mjs), quote (THE span check), prompt
                                (EXTRACT_PROMPT), schema, validate (THE fact rules), cost, extractor, model-seam.ts (THE wiring to 2.1),
                                record-gate (D11), view-token (bulk confirm), storage (sanitisers), api-client; evals/ (set, evaluation, record)
 src/app-layer/usecases/      → source-library (upload, list, remove, opt-in, dispatch), source-ingest (the job's work), source-facts
@@ -1258,32 +1258,51 @@ closed beta with an explicit operator flag (D5, amended 2026-11-19).
   `assertUploadClean`; the format SNIFFED from the bytes, the name only telling
   Markdown from text) and kept only as encrypted, sanitised chunks of about
   1–2k tokens cut along chapters and scenes (`chunkBlocks`); never the file. A
-  ZIP (DOCX, EPUB) is read only through `readZip`, an XML part declaring an
-  entity is refused `SOURCE_XML_REFUSED`, mammoth is handed a ZIP rebuilt from
-  what `readZip` accepted, and a PDF's text layer is read by
-  `scripts/pdf-text-worker.mjs` in a worker thread with a heap limit and a
-  deadline (no OCR: `SOURCE_NO_TEXT_LAYER`; the image copies the script). Every
+  ZIP (DOCX, EPUB) is read only through `readZip`; ANY entry (whatever its
+  name, UTF-8 or UTF-16) declaring an entity, or a DOCX part whose DOCTYPE has
+  an internal subset or an external DTD, is refused `SOURCE_XML_REFUSED`; an
+  EPUB's container and OPF are bounded (`EPUB_PACKAGE_MAX_BYTES`) before they
+  are parsed. The sniff asks a ZIP's magic first, then `%PDF-` at byte 0, then
+  text: a note or an archive that mentions `%PDF-` is never handed to the PDF
+  reader. Mammoth (over a ZIP rebuilt from what `readZip` accepted, images
+  never read) and the PDF reader run in `scripts/{docx,pdf}-text-worker.mjs`
+  through `parse-worker.ts`, never on the request's thread: a deadline, a heap
+  limit, the worker's heap AND external memory watched (decoded streams live
+  outside the heap), at most two at once; the image copies both scripts (no
+  OCR: `SOURCE_NO_TEXT_LAYER`). A heading past `HEADING_MAX_CHARS` is read as
+  a paragraph, so no chunk passes its bound. Every
   refusal is a `details.reason` in `SOURCE_REFUSALS` and `sources.reasons`. The
   file name travels in the `x-source-filename` header, never the URL. A library
   holds at most `SOURCES_PER_LIBRARY_MAX` (50) sources (LIBRARY_FULL); the same
   text twice is refused (SOURCE_DUPLICATE, a unique keyed hash); a CHANGED file
   under a held name is the next `version` superseding the newest (`supersedesId`),
-  and a fact of it quoting the same passage for the same claim carries the old
-  decision (`carriedFromFactId`). The upload stores the cost (`cost.ts`: expected
-  and at most) and sends nothing; INGESTION starts only when the author confirms
-  the "at most" (`confirmWorstCaseMicroUsd`; less than the remaining chunks'
-  worst case is 409 ESTIMATE_CHANGED), which becomes the job's BUDGET. The
+  and a fact of it making the SAME CLAIM (predicate, subject, object, statement
+  and quote, folded; `carryKey`) carries the old decision (`carriedFromFactId`);
+  a claim decided both ways carries nothing. The upload stores the cost
+  (`cost.ts`: expected, and at most — the first attempt over the very request
+  the call builds plus 2.1's one repair, so a repaired call is inside it) and
+  sends nothing; INGESTION starts only when the author confirms the "at most"
+  (`confirmWorstCaseMicroUsd`; less than the remaining chunks' worst case is 409
+  ESTIMATE_CHANGED), which becomes the job's BUDGET, checked before each chunk
+  with the same function over the same blocks. The
   `source-ingest` job (payload ids, `attempts: 1`) re-reads the requester's
   membership, embeds every chunk (`SourceChunk` is a vector source model, with
   the 2.0 delete and require-source triggers), then makes ONE fast-tier
   `callStructured` per chunk not yet read (`extractedAt` is the cursor:
-  resumable), charging `chargeModelCalls` and WAITING out a limited minute.
+  resumable), charging `chargeModelCalls` and WAITING out a limited minute (at
+  most `MODEL_RATE_WAIT_MAX_MS`, then STOPPED PARTIAL `MODEL_RATE_LIMITED`:
+  never a call that was not charged). A live source is stale (CLAIM_EXPIRED)
+  only when its last sign of life (`heartbeatAt`: queued, claimed, every step)
+  is older than `STALE_INGEST_MS`, never by its upload time; the claim
+  (`startedAt`) is named by every write of its worker, so a stale claim queued
+  again and claimed by another worker leaves the first writing nothing.
   CEILING, KILL_SWITCH, BUDGET, ABORTED and AI_UNAVAILABLE stop it STOPPED,
   resumable; a chunk's own failure leaves that chunk for a resume (PARTIAL); a
   guard refusal yields nothing for it. D11 applies (`sources/record-gate.ts`,
   503 SOURCE_FACTS_NOT_EVALUATED). Every fact cites an exact span `locateQuote`
   finds in its chunk (stored as the chunk's own slice) and passes
-  `validateFacts` (subject named in the passage, grounding, polarity, no copied
+  `validateFacts` (subject named in the passage, grounding — a story time
+  included, against the passage and its headings — polarity, no copied
   injection or prompt; D14: product-addressing text FLAGGED, never bulk-confirmed).
   NOTHING WRITES THE BIBLE: a fact is PENDING until the author decides
   (`bible.edit`; `bible.view` reads); only a CONFIRMED fact answers a field, and
