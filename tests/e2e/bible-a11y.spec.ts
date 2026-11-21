@@ -111,6 +111,20 @@ test('axe finds no WCAG 2.1 AA violation on the bible pages and dialogs', async 
     await page.goto(`/w/${slug}/deleted-books`);
     await expect(main.getByRole('heading', { level: 1, name: 'Recently deleted' })).toBeVisible();
     await expectNoAxeViolations(page, 'recently deleted');
+
+    // Phase 4.0: the source library's pages, empty (the stubbed-model spec walks them full).
+    await page.goto(`/w/${slug}/books/${bookId}/sources`);
+    await expect(main.getByRole('heading', { level: 1, name: 'Sources' })).toBeVisible();
+    await expectNoAxeViolations(page, 'book sources');
+    await page.goto(`/w/${slug}/books/${bookId}/facts`);
+    await expect(main.getByRole('heading', { level: 1, name: 'Facts' })).toBeVisible();
+    await expectNoAxeViolations(page, 'book facts');
+    await page.goto(`/w/${slug}/series`);
+    await expect(main.getByRole('heading', { level: 1, name: 'Series library' })).toBeVisible();
+    await expectNoAxeViolations(page, 'series library');
+    await page.goto(`/w/${slug}/series/facts`);
+    await expect(main.getByRole('heading', { level: 1, name: 'Series facts' })).toBeVisible();
+    await expectNoAxeViolations(page, 'series facts');
 });
 
 test('axe finds no WCAG 2.1 AA violation on the story maps, the type picker, the element sheet and the embedded maps (Phase 3.2)', async ({ page }) => {

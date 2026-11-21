@@ -38,6 +38,7 @@ export interface BooksListProps {
 }
 
 export function BooksList({ workspaceSlug, books, truncated = false, canEdit, canManageDeleted = false }: BooksListProps) {
+    const tSources = useTranslations('sources');
     const t = useTranslations('bible.books');
     const tStage = useTranslations('bible.stage');
     const router = useRouter();
@@ -62,9 +63,12 @@ export function BooksList({ workspaceSlug, books, truncated = false, canEdit, ca
         [t, tStage, workspaceSlug],
     );
 
-    const actions =
-        canEdit || canManageDeleted ? (
+    const actions = (
             <div className="flex flex-wrap items-center gap-tight">
+                <Link href={APP_ROUTES.series(workspaceSlug)} className={buttonVariants({ variant: 'secondary' })} id="series-library-link">
+                    <Library className="size-4" aria-hidden="true" />
+                    {tSources('seriesTitle')}
+                </Link>
                 {canManageDeleted ? (
                     <Link href={APP_ROUTES.deletedBooks(workspaceSlug)} className={buttonVariants({ variant: 'secondary' })} id="deleted-books-link">
                         <Trash2 className="size-4" aria-hidden="true" />
@@ -77,7 +81,7 @@ export function BooksList({ workspaceSlug, books, truncated = false, canEdit, ca
                     </Button>
                 ) : null}
             </div>
-        ) : null;
+        );
 
     return (
         <EntityListPage<BookView>

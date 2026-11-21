@@ -21,6 +21,14 @@ export const APP_ROUTES = {
     interviewReview: (workspaceSlug: string, bookId: string, sessionId: string) => `${bookPath(workspaceSlug, bookId)}/interviews/${encodeURIComponent(sessionId)}/review`,
     /** A book's research: briefs, runs, cited findings and the proposals they support (Phase 2.6). */
     research: (workspaceSlug: string, bookId: string) => `${bookPath(workspaceSlug, bookId)}/research`,
+    /** A book's source library: its drafts, notes and earlier books, and the series sources it draws on (Phase 4.0). */
+    bookSources: (workspaceSlug: string, bookId: string) => `${bookPath(workspaceSlug, bookId)}/sources`,
+    /** The facts a book's sources state, for the author to confirm (Phase 4.0, D23). */
+    bookFacts: (workspaceSlug: string, bookId: string) => `${bookPath(workspaceSlug, bookId)}/facts`,
+    /** The workspace's series library (Phase 4.0, D26). */
+    series: (workspaceSlug: string) => `/w/${encodeURIComponent(workspaceSlug)}/series`,
+    /** The series library's facts (Phase 4.0, D26). */
+    seriesFacts: (workspaceSlug: string) => `/w/${encodeURIComponent(workspaceSlug)}/series/facts`,
     /** One of a book's story maps (Phase 3.1): `kind` is its URL segment (`mapKindSlug`: relationship, plot, timeline). */
     storyMap: (workspaceSlug: string, bookId: string, kind: string) => `${bookPath(workspaceSlug, bookId)}/maps/${encodeURIComponent(kind)}`,
     /** A new interview, started with the setup in the query (`interviewSetupQuery`, `src/lib/interview/setup.ts`). */

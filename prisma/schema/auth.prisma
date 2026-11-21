@@ -53,6 +53,10 @@ model User {
   researchBriefs        ResearchBrief[]
   researchRuns          ResearchRun[]
   researchDecisions     ResearchProposal[]
+  /// Phase 4.0: sources uploaded, facts decided, overrides written.
+  sourcesUploaded       Source[]            @relation("SourceRequestedBy")
+  factDecisions         StoryFact[]         @relation("StoryFactDecidedBy")
+  factOverrides         StoryFactOverride[] @relation("StoryFactOverrideBy")
   /// Phase 3.1: story-map snapshots this person's saves wrote; the link is
   /// cleared (and the snapshot kept) when the person is deleted.
   mapSnapshots          MapSnapshot[]

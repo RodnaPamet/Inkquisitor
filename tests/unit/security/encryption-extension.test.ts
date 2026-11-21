@@ -189,6 +189,10 @@ describe('wiring', () => {
             ResearchEgress: ['text'],
             StoryMap: ['freeformJson'],
             MapSnapshot: ['snapshot'],
+            Source: ['filename'],
+            SourceChunk: ['text', 'headingPath'],
+            StoryFact: ['subjectName', 'objectLiteral', 'statement', 'quote', 'storyTimeFrom', 'storyTimeTo'],
+            StoryFactOverride: ['text'],
         });
         expect(compileManifest(ENCRYPTED_FIELDS).isEmpty).toBe(false);
     });

@@ -33,6 +33,8 @@ model Workspace {
   aiSpendMonths     AiSpendMonth[]
   aiReservations    AiSpendReservation[]
   interviewDefaults WorkspaceInterviewDefaults?
+  /// Phase 4.0: the workspace's source libraries (its series library, and every book's).
+  sourceLibraries   SourceLibrary[]
 }
 
 /// A person's role in a workspace. One per (workspace, user).

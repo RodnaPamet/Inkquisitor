@@ -8,13 +8,13 @@
   "set": {
     "hash": "sha256:ad1809b9c1cdc042698295913562c48dbcacf18a45719e91072fb3dc269b9adb"
   },
-  "promptVersion": "question-generation.3.3.0",
-  "promptHash": "sha256:e323d027ca3f08b1fe46492f832fe827fed195bfd4d96ebd0647fe1b143137b1",
+  "promptVersion": "question-generation.4.0.0",
+  "promptHash": "sha256:42cda40fa00f5332518e211d5ab5b32bbecc336aee826b82386064090ffdaec3",
   "generator": {
     "kind": "structural",
     "id": "structural-generator.1"
   },
-  "ranAt": "2026-11-20T19:57:00.114Z",
+  "ranAt": "2026-11-21T08:42:03.056Z",
   "answers": [
     {
       "caseId": "genre-specialist-01",

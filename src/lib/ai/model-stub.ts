@@ -435,6 +435,28 @@ export function stubFitAnswer(body: Record<string, unknown>): { proposals: Array
     return { proposals: [], noFit: findings.filter((f) => f.ref).map((f) => ({ finding: f.ref, reason: 'No entry in scope has an empty field it fits.' })) };
 }
 
+const STUB_NOT_SUBJECTS: ReadonlySet<string> = new Set(['She', 'He', 'It', 'They', 'The', 'A', 'An', 'In', 'On', 'At', 'But', 'And', 'Then', 'When', 'Every', 'This', 'That', 'There']);
+
+/**
+ * The stub's FACT EXTRACTION answer (Phase 4.0): each sentence of the passage
+ * that opens with a name (a capitalised word that is not a pronoun or an
+ * article) is one fact about that name, quoted whole — WANT when the sentence
+ * says the name wants something, OTHER otherwise. Pure.
+ */
+export function stubFactsAnswer(body: Record<string, unknown>): { facts: Array<Record<string, unknown>> } | null {
+    const passage = fencedBlocks(body).get('passage.text');
+    if (passage === undefined) return null;
+    const facts: Array<Record<string, unknown>> = [];
+    for (const sentence of passage.split(/(?<=[.!?])\s+|\n+/).map((x) => x.trim())) {
+        if (sentence.length < 20 || facts.length >= 6) continue;
+        const subject = /^[A-Z][a-z]+(?: [A-Z][a-z]+)?/.exec(sentence)?.[0];
+        if (!subject || STUB_NOT_SUBJECTS.has(subject.split(' ')[0])) continue;
+        const wants = /\bwants?\b/.test(sentence);
+        facts.push({ subject, predicate: wants ? 'WANT' : 'OTHER', object: '', statement: sentence, quote: sentence, storyTimeFrom: '', storyTimeTo: '' });
+    }
+    return { facts };
+}
+
 function sse(events: Array<Record<string, unknown>>): string {
     return events.map((e) => `event: ${String(e.type)}\ndata: ${JSON.stringify(e)}\n\n`).join('');
 }
@@ -478,7 +500,7 @@ export async function stubMessagesFetch(input: string | URL | Request, init?: Re
     const model = typeof body.model === 'string' ? body.model : 'stub-model';
     const gather = stubGatherEvents(body, model);
     if (gather) return new Response(sse(gather), { status: 200, headers: { 'content-type': 'text/event-stream' } });
-    const text = JSON.stringify(stubFindingsAnswer(body) ?? stubFitAnswer(body) ?? stubReconcileAnswer(body) ?? stubAnswer(body));
+    const text = JSON.stringify(stubFactsAnswer(body) ?? stubFindingsAnswer(body) ?? stubFitAnswer(body) ?? stubReconcileAnswer(body) ?? stubAnswer(body));
     return new Response(streamedMessage(model, text, { input_tokens: 1_500, output_tokens: Math.max(50, Math.ceil(text.length / 4)) }), {
         status: 200,
         headers: { 'content-type': 'text/event-stream' },

@@ -63,6 +63,7 @@ import { env } from '@/env';
 import { encodeJson, sanitiseQuestionForStorage } from '@/lib/interview/storage';
 import { STATUS_AFTER_STOP, type PersonaKey, type StopReason } from '@/lib/interview/vocabulary';
 import { PENDING_SUBJECT_ID, subjectIdOf } from '@/lib/interview/subjects';
+import { assembleSourceContext, type SourceContext } from './source-retrieval';
 import { challengeableOf, frontierOf, frontierStop, loadInterviewState, nextRoundNumber, stopDetailFor, type InterviewState } from './interview-state';
 import { defaultQuestionEmbedder, findQuestionNeighbours, questionRecord, upsertQuestionVectors, type QuestionEmbedder } from './question-embeddings';
 
@@ -212,7 +213,12 @@ export async function endSession(
 
 export type ClaimOutcome =
     | { kind: 'stopped'; reason: StopReason }
-    | { kind: 'claimed'; roundId: string; roundNumber: number; plan: RoundPlan; state: InterviewState };
+    | { kind: 'claimed'; roundId: string; roundNumber: number; plan: RoundPlan; state: InterviewState; sourceContext: SourceContext };
+
+/** The scope's plain elements (no relation, no element not yet created): what the retriever reads facts and passages for. */
+function scopeOf(state: InterviewState) {
+    return state.elements.filter((e) => !e.relation && !e.pending).map((e) => ({ elementId: e.elementId, kind: e.kind, name: e.name }));
+}
 
 function planOf(state: InterviewState, session: SessionRow): { frontier: FrontierResult; plan: RoundPlan } {
     const frontier = frontierOf(state, session.depth);
@@ -332,7 +338,11 @@ export async function claimRound(db: PrismaTx, ctx: WorkspaceRequestContext, ses
         // Resuming a paused session: it is active again, and its stop is history.
         await InterviewSessionRepository.update(db, ctx.workspaceId, session.id, { status: 'ACTIVE', stopReason: null, stopDetail: Prisma.DbNull, endedAt: null });
     }
-    return { kind: 'claimed', roundId: round.id, roundNumber, plan, state };
+    // Phase 4.0: the scope's confirmed source facts and its most relevant passages, read in the claim's own
+    // transaction (no extra round trip before the first question): lexical ranking only here, since a
+    // query embedding would be a provider call inside a transaction.
+    const sourceContext = await assembleSourceContext(db, ctx, session.bookId, scopeOf(state), null);
+    return { kind: 'claimed', roundId: round.id, roundNumber, plan, state, sourceContext };
 }
 
 /**
@@ -365,7 +375,7 @@ export async function generateClaimedRound(
     const generator = generatorOf(ctx, deps);
     const embedder = deps.embedder === undefined ? defaultQuestionEmbedder() : deps.embedder;
     const packs = deps.packs ?? getPacks();
-    const { state, plan } = claim;
+    const { state, plan, sourceContext } = claim;
     const known = new Set(state.asked.map((q) => q.id));
 
     let output: RoundOutput;
@@ -383,6 +393,7 @@ export async function generateClaimedRound(
                 sessionAnswers: state.promptAnswers,
                 asked: state.asked,
                 packs,
+                sourceContext,
                 // The cosine thresholds of the embedder's revision (issue #32 item 1): calibrated, configured, or the uncalibrated default.
                 cosineThresholds: embedder ? cosineThresholdsFor(embedder.revision, env.DEDUPE_COSINE_THRESHOLDS) : undefined,
             },

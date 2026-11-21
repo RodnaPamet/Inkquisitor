@@ -8,13 +8,13 @@
   "set": {
     "hash": "sha256:3e7e6bf7552eb5c48c78d46de197d790ad2587d83e1b16728c1b94fc0a3a0151"
   },
-  "promptVersion": "question-generation.3.3.0",
-  "promptHash": "sha256:e323d027ca3f08b1fe46492f832fe827fed195bfd4d96ebd0647fe1b143137b1",
+  "promptVersion": "question-generation.4.0.0",
+  "promptHash": "sha256:42cda40fa00f5332518e211d5ab5b32bbecc336aee826b82386064090ffdaec3",
   "generator": {
     "kind": "structural",
     "id": "structural-generator.1"
   },
-  "ranAt": "2026-11-20T19:56:58.499Z",
+  "ranAt": "2026-11-21T08:42:01.200Z",
   "answers": [
     {
       "caseId": "ruthless-editor-01",

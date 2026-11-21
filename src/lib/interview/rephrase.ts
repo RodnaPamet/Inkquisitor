@@ -41,7 +41,7 @@ import type { BibleKind } from '@/lib/bible/kinds';
 export const REPHRASES_PER_ROUND_MAX = 4;
 
 /** The rephrase prompt's version (rule 9): recorded on every call. 2.1's version shape. */
-export const REPHRASE_PROMPT_VERSION = 'question-rephrase.2.4.0';
+export const REPHRASE_PROMPT_VERSION = 'question-rephrase.4.0.0';
 export const REPHRASE_PROMPT_ID = 'interview.rephrase';
 export const REPHRASE_PURPOSE = 'interview.rephrase';
 

@@ -269,3 +269,42 @@ enum StoryMapKind {
   PLOT
   TIMELINE
 }
+
+/// Whose library a source is in (Phase 4.0, D26): a book's, or the workspace's series library.
+enum SourceLibraryScope {
+  BOOK
+  SERIES
+}
+
+/// What an uploaded source was read as (Phase 4.0, D26), sniffed from its bytes.
+enum SourceFormat {
+  DOCX
+  MARKDOWN
+  TXT
+  EPUB
+  PDF
+}
+
+/// Where a source's ingestion stands (Phase 4.0). ESTIMATED: read and chunked,
+/// its cost shown, waiting for the author to confirm. STOPPED: paused with a
+/// named reason (the ceiling, the kill switch, its budget), resumable.
+enum SourceStatus {
+  ESTIMATED
+  QUEUED
+  RUNNING
+  STOPPED
+  DONE
+  FAILED
+}
+
+/// A fact's decision (Phase 4.0, D23): only a CONFIRMED fact counts as answered.
+enum StoryFactStatus {
+  PENDING
+  CONFIRMED
+  REJECTED
+}
+
+/// Where a fact comes from (Phase 4.0). 4.1 adds the answer and the accepted version.
+enum StoryFactSourceKind {
+  SOURCE_CHUNK
+}

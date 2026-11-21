@@ -1,0 +1,343 @@
+/**
+ * ONE SOURCE INGESTION (Phase 4.0, D23): the body of the `source-ingest` job.
+ * The worker hands it `{ workspaceId, sourceId }`; nothing else crosses Redis.
+ * RESUMABLE: the cursor is each chunk's `extractedAt`, so a stopped, failed or
+ * crashed ingestion picks up at the first chunk not yet read.
+ *
+ *   1. CLAIM    the source in its workspace; anything but QUEUED is left alone.
+ *               The person who started it is read again from their CURRENT
+ *               membership: one who left or may no longer edit the bible stops
+ *               it REQUESTER_NOT_PERMITTED, nothing sent. So does a deployment
+ *               that can make no call (AI_UNAVAILABLE / KILL_SWITCH) or holds no
+ *               evaluation record it accepts (NOT_EVALUATED, D11). QUEUED →
+ *               RUNNING, conditionally.
+ *   2. EMBED    every chunk through the 2.0 vector store (`passage`), filed
+ *               under `SourceChunk` with its book (NULL for the series library).
+ *               A provider failure degrades: the chunks stay unembedded and
+ *               the retriever reads them lexically.
+ *   3. EXTRACT  one fast-tier call per chunk not yet read, outside every
+ *               transaction, in order. Before each: the BUDGET the author
+ *               confirmed (that chunk's worst case must still fit), the model
+ *               rate (`chargeModelCalls`: a limited minute is WAITED out, never
+ *               failed), the abort signal. 2.1 checks the monthly ceiling and
+ *               the kill switch before every call: CEILING and KILL_SWITCH stop
+ *               the ingestion cleanly, resumable. A chunk's own failure (a
+ *               timeout, the provider, an invalid answer) leaves that chunk for
+ *               a resume and goes on; a guard refusal reads the chunk as yielding
+ *               nothing. Each chunk's facts are validated (`validateFacts`: the
+ *               span verified, grounding, polarity, injection) and written in
+ *               one short transaction with its cursor and the spend.
+ *   4. FINISH   DONE `OK` when every chunk is read, else STOPPED `PARTIAL` (or
+ *               the stop's reason). Audited, counts and codes only.
+ *
+ * A fact's subject is linked to a book element when the book names exactly
+ * one element so (`nameKey`); a series fact is linked per book when it is
+ * read. A fact of a CHANGED re-upload that quotes the same passage for the
+ * same claim as a decided fact of the version it supersedes takes that
+ * decision (`carriedFromFactId`). Nothing here writes the bible.
+ */
+import { randomUUID } from 'node:crypto';
+import type { Prisma } from '@prisma/client';
+import type { WorkspaceRequestContext } from '@/app-layer/types';
+import { logEvent } from '@/app-layer/events/audit';
+import { MembershipRepository } from '@/app-layer/repositories/membership.repository';
+import { SourceChunkRepository, SourceRepository, StoryFactRepository, type SourceChunkRow, type SourceRow } from '@/app-layer/repositories/source.repository';
+import { getVectorRepository, type VectorRecord } from '@/app-layer/repositories/vector.repository';
+import { WorkspaceRepository } from '@/app-layer/repositories/workspace.repository';
+import { getEmbeddingProvider, MAX_EMBED_BATCH, vectorContentHash, type EmbeddingProvider } from '@/lib/ai/embeddings';
+import { runInWorkspaceContext } from '@/lib/db/rls-middleware';
+import { nameKey } from '@/lib/enrichment/validate';
+import { RateLimitedError } from '@/lib/errors/types';
+import type { PackRecordMode } from '@/lib/interview/pack-records-config';
+import { logger } from '@/lib/observability/logger';
+import { getPermissionsForRole } from '@/lib/permissions';
+import { chargeModelCalls } from '@/lib/security/model-call-rate-limit';
+import { chunkCost } from '@/lib/sources/cost';
+import type { FactExtractor } from '@/lib/sources/extractor';
+import { defaultFactExtractor } from '@/lib/sources/model-seam';
+import { extractBlocks } from '@/lib/sources/prompt';
+import { foldWithOrigins } from '@/lib/sources/quote';
+import { extractionGate, type ExtractionGateVerdict } from '@/lib/sources/record-gate';
+import { decodeHeadingPath, sanitiseFactForStorage } from '@/lib/sources/storage';
+import { validateFacts, type FactDraft } from '@/lib/sources/validate';
+import { effectiveSourceState, SOURCE_CHUNK_MODEL, type SourceOutcome } from '@/lib/sources/vocabulary';
+import { deploymentPackRecordMode } from './interview-packs';
+import { modelUnavailableReason } from './model-calls';
+import { bookNamesOf } from './source-library';
+
+export interface SourceIngestDeps {
+    extractor?: (ctx: WorkspaceRequestContext) => FactExtractor;
+    embedder?: () => EmbeddingProvider | null;
+    recordMode?: PackRecordMode;
+    gate?: () => ExtractionGateVerdict;
+    signal?: AbortSignal;
+    /** Waits out a limited minute (tests: instant). */
+    sleep?: (ms: number, signal?: AbortSignal) => Promise<void>;
+}
+
+interface IngestMetrics {
+    chunksRead: number;
+    chunksFailed: number;
+    guardRefused: number;
+    factsKept: number;
+    factsCarried: number;
+    drafted: number;
+    refusals: Record<string, number>;
+    failures: Record<string, number>;
+    callIds: string[];
+    embedded: number;
+    embedFailed: boolean;
+    errorCode?: string;
+}
+
+const CHUNK_PAGE = 20;
+/** At most this many call ids are kept in a source's metrics (the rest are counted). */
+const CALL_IDS_KEPT = 200;
+const STOPPING = new Set(['KILL_SWITCH', 'WORKSPACE_CEILING', 'AI_UNAVAILABLE', 'ABORTED']);
+
+function stopOutcome(failure: string): SourceOutcome {
+    if (failure === 'KILL_SWITCH') return 'KILL_SWITCH';
+    if (failure === 'WORKSPACE_CEILING') return 'CEILING';
+    if (failure === 'ABORTED') return 'ABORTED';
+    return 'AI_UNAVAILABLE';
+}
+
+function defaultSleep(ms: number, signal?: AbortSignal): Promise<void> {
+    return new Promise((resolve) => {
+        const timer = setTimeout(resolve, ms);
+        signal?.addEventListener('abort', () => {
+            clearTimeout(timer);
+            resolve();
+        }, { once: true });
+    });
+}
+
+function carryKey(predicate: string, subject: string, quote: string): string {
+    return `${predicate}|${nameKey(subject)}|${foldWithOrigins(quote).text}`;
+}
+
+async function finish(ctx: { workspaceId: string; requestId: string; userId?: string }, source: Pick<SourceRow, 'id' | 'library'>, outcome: SourceOutcome, metrics: Partial<IngestMetrics>, remaining: number): Promise<SourceOutcome> {
+    const status = outcome === 'OK' ? 'DONE' : outcome === 'INTERNAL' || outcome === 'ENQUEUE_FAILED' ? 'FAILED' : 'STOPPED';
+    const ended = await runInWorkspaceContext(ctx, (db) =>
+        SourceRepository.finish(db, ctx.workspaceId, source.id, { status, outcome, metrics: metrics as unknown as Prisma.InputJsonValue, from: ['QUEUED', 'RUNNING'], finishedAt: new Date() }),
+    );
+    if (ended) {
+        await logEvent(ctx, {
+            action: 'SOURCE_INGEST_FINISHED',
+            entityType: 'Source',
+            entityId: source.id,
+            details: { scope: source.library.scope, outcome, chunksRead: metrics.chunksRead ?? 0, chunksFailed: metrics.chunksFailed ?? 0, factsKept: metrics.factsKept ?? 0, remaining },
+        });
+    }
+    return outcome;
+}
+
+/** Embed every chunk of the source (step 2). Never throws for a provider condition. */
+async function embedChunks(ctx: WorkspaceRequestContext, source: SourceRow, provider: EmbeddingProvider | null, metrics: IngestMetrics): Promise<void> {
+    if (!provider) {
+        metrics.embedFailed = true;
+        return;
+    }
+    let after = -1;
+    for (;;) {
+        const page = await runInWorkspaceContext(ctx, (db) => SourceChunkRepository.listForSource(db, ctx.workspaceId, source.id, after, MAX_EMBED_BATCH));
+        if (page.length === 0) break;
+        after = page[page.length - 1].position;
+        const result = await provider.embed(page.map((c) => c.text), { inputType: 'passage' });
+        if (!result.ok) {
+            logger.warn('sources.embedding_failed', { component: 'sources', sourceId: source.id, reason: result.reason, count: page.length });
+            metrics.embedFailed = true;
+            return;
+        }
+        const records: VectorRecord[] = page.map((c, i) => ({
+            sourceModel: SOURCE_CHUNK_MODEL,
+            sourceId: c.id,
+            chunkIndex: 0,
+            embeddingRevision: provider.revision,
+            bookId: source.library.bookId,
+            contentHash: vectorContentHash(ctx.workspaceId, c.text),
+            embedding: result.vectors[i],
+        }));
+        await runInWorkspaceContext(ctx, (db) => getVectorRepository().upsert(db, ctx.workspaceId, records));
+        metrics.embedded += page.length;
+        if (page.length < MAX_EMBED_BATCH) break;
+    }
+}
+
+/** Run one ingestion (the job's body). */
+export async function executeSourceIngest(payload: { workspaceId: string; sourceId: string }, deps: SourceIngestDeps = {}): Promise<{ ran: boolean; outcome: SourceOutcome | null }> {
+    const scope = { workspaceId: payload.workspaceId, requestId: randomUUID() };
+    const metrics: IngestMetrics = { chunksRead: 0, chunksFailed: 0, guardRefused: 0, factsKept: 0, factsCarried: 0, drafted: 0, refusals: {}, failures: {}, callIds: [], embedded: 0, embedFailed: false };
+
+    // 1. The source, the requester's current standing, the deployment.
+    const claimed = await runInWorkspaceContext(scope, async (db) => {
+        const source = await SourceRepository.find(db, payload.workspaceId, payload.sourceId);
+        if (!source || source.status !== 'QUEUED') return { source: null, ctx: null };
+        const slug = await WorkspaceRepository.findSlug(db, payload.workspaceId);
+        const membership = source.requestedById ? await MembershipRepository.findForUser(db, payload.workspaceId, source.requestedById) : null;
+        if (!slug || !membership || !source.requestedById) return { source, ctx: null };
+        const ctx: WorkspaceRequestContext = {
+            requestId: scope.requestId,
+            userId: source.requestedById,
+            workspaceId: payload.workspaceId,
+            workspaceSlug: slug,
+            role: membership.role,
+            permissions: getPermissionsForRole(membership.role),
+        };
+        return { source, ctx };
+    });
+    const source = claimed.source;
+    if (!source) return { ran: false, outcome: null };
+    const remainingOf = () => source.chunkCount - source.chunksDone;
+    if (effectiveSourceState(source).outcome === 'CLAIM_EXPIRED') return { ran: true, outcome: await finish({ ...scope, userId: claimed.ctx?.userId }, source, 'CLAIM_EXPIRED', { errorCode: 'CLAIM_EXPIRED' }, remainingOf()) };
+    const ctx = claimed.ctx;
+    if (!ctx || !ctx.permissions.bible.edit) return { ran: true, outcome: await finish({ ...scope, userId: ctx?.userId }, source, 'REQUESTER_NOT_PERMITTED', {}, remainingOf()) };
+    const unavailable = modelUnavailableReason();
+    if (unavailable) return { ran: true, outcome: await finish(ctx, source, unavailable === 'AI_DISABLED' ? 'KILL_SWITCH' : 'AI_UNAVAILABLE', { errorCode: unavailable }, remainingOf()) };
+    const verdict = (deps.gate ?? (() => extractionGate(deps.recordMode ?? deploymentPackRecordMode())))();
+    if (!verdict.mounted) return { ran: true, outcome: await finish(ctx, source, 'NOT_EVALUATED', { errorCode: verdict.reason }, remainingOf()) };
+
+    const read = await runInWorkspaceContext(ctx, async (db) => {
+        if (!(await SourceRepository.claim(db, ctx.workspaceId, source.id, new Date()))) return null;
+        const names = source.library.scope === 'BOOK' && source.library.bookId ? await bookNamesOf(db, ctx, source.library.bookId) : [];
+        const carried = source.supersedesId ? await StoryFactRepository.listDecidedForSource(db, ctx.workspaceId, source.supersedesId, 2_000) : [];
+        return { names, carried };
+    });
+    if (!read) return { ran: false, outcome: null };
+    const namesText = read.names.map((n) => n.name).join('\n');
+    const byNameKey = new Map<string, string | null>();
+    for (const n of read.names) {
+        const key = nameKey(n.name);
+        byNameKey.set(key, byNameKey.has(key) ? null : n.id);
+    }
+    const linkOf = (name: string | null): string | null => (name ? (byNameKey.get(nameKey(name)) ?? null) : null);
+    const carriedBy = new Map(read.carried.map((f) => [carryKey(f.predicate, f.subjectName, f.quote), f] as const));
+
+    try {
+        // 2. Embed (only on a first pass: a resume's chunks are embedded already, and an upsert of the same text writes nothing).
+        if (source.chunksDone === 0) await embedChunks(ctx, source, deps.embedder ? deps.embedder() : (() => { const p = getEmbeddingProvider(); return p.ok ? p.provider : null; })(), metrics);
+
+        // 3. Extract, chunk by chunk.
+        const extractor = (deps.extractor ?? defaultFactExtractor)(ctx);
+        const sleep = deps.sleep ?? defaultSleep;
+        let spent = Number(source.spentMicroUsd);
+        const budget = Number(source.budgetMicroUsd);
+        let after = -1;
+        for (;;) {
+            const page = await runInWorkspaceContext(ctx, (db) => SourceChunkRepository.listForSource(db, ctx.workspaceId, source.id, after, CHUNK_PAGE));
+            if (page.length === 0) break;
+            for (const chunk of page) {
+                after = chunk.position;
+                if (chunk.extractedAt) continue;
+                if (deps.signal?.aborted) return { ran: true, outcome: await finish(ctx, source, 'ABORTED', metrics, await pendingOf(ctx, source.id)) };
+                const headings = decodeHeadingPath(chunk.headingPath);
+                const worst = chunkCost({ text: chunk.text, namesText }).worst;
+                if (spent + worst > budget) return { ran: true, outcome: await finish(ctx, source, 'BUDGET', metrics, await pendingOf(ctx, source.id)) };
+                await waitForModelRate(ctx.workspaceId, sleep, deps.signal);
+                const result = await extractor.extract({ data: extractBlocks({ text: chunk.text, headingPath: headings, bookNames: read.names.map((n) => n.name) }), bookId: source.library.bookId }, deps.signal);
+                spent += result.costMicroUsd;
+                if (metrics.callIds.length < CALL_IDS_KEPT) metrics.callIds.push(...result.callIds);
+                if (!result.ok) {
+                    metrics.failures[result.failure] = (metrics.failures[result.failure] ?? 0) + 1;
+                    if (STOPPING.has(result.failure)) {
+                        await runInWorkspaceContext(ctx, (db) => SourceRepository.advance(db, ctx.workspaceId, source.id, { chunksDone: 0, facts: 0, spentMicroUsd: result.costMicroUsd }));
+                        return { ran: true, outcome: await finish(ctx, source, stopOutcome(result.failure), { ...metrics, errorCode: result.errorCode }, await pendingOf(ctx, source.id)) };
+                    }
+                    const yieldsNothing = result.failure === 'GUARD_REFUSED';
+                    if (yieldsNothing) metrics.guardRefused++;
+                    else metrics.chunksFailed++;
+                    const still = await persistChunk(ctx, source, chunk, [], yieldsNothing, result.costMicroUsd);
+                    if (!still) return { ran: true, outcome: null };
+                    continue;
+                }
+                const validation = validateFacts(result.output, { text: chunk.text, headingPath: headings });
+                metrics.drafted += validation.drafted;
+                for (const [code, n] of Object.entries(validation.refusals)) metrics.refusals[code] = (metrics.refusals[code] ?? 0) + (n ?? 0);
+                const rows = validation.facts.map((draft) => factRow(ctx, source, chunk, sanitiseFactForStorage(draft), linkOf, carriedBy));
+                const still = await persistChunk(ctx, source, chunk, rows, true, result.costMicroUsd);
+                if (!still) return { ran: true, outcome: null };
+                metrics.chunksRead++;
+                metrics.factsKept += rows.length;
+                metrics.factsCarried += rows.filter((r) => r.carriedFromFactId !== null).length;
+            }
+            if (page.length < CHUNK_PAGE) break;
+        }
+        const remaining = await pendingOf(ctx, source.id);
+        return { ran: true, outcome: await finish(ctx, source, remaining === 0 ? 'OK' : 'PARTIAL', metrics, remaining) };
+    } catch (err) {
+        logger.error('sources.ingest_failed', { component: 'sources', sourceId: source.id, error: err instanceof Error ? err.name : 'unknown' });
+        return { ran: true, outcome: await finish(ctx, source, 'INTERNAL', { ...metrics, errorCode: 'INTERNAL' }, remainingOf()) };
+    }
+}
+
+async function pendingOf(ctx: WorkspaceRequestContext, sourceId: string): Promise<number> {
+    return runInWorkspaceContext(ctx, (db) => SourceChunkRepository.countPending(db, ctx.workspaceId, sourceId));
+}
+
+/** The workspace's model-call minute (D17): a limited minute is waited out, never failed — the job has nowhere to send a 429. */
+async function waitForModelRate(workspaceId: string, sleep: (ms: number, signal?: AbortSignal) => Promise<void>, signal?: AbortSignal): Promise<void> {
+    for (let attempt = 0; attempt < 30; attempt++) {
+        try {
+            chargeModelCalls(workspaceId, 1);
+            return;
+        } catch (err) {
+            if (!(err instanceof RateLimitedError)) throw err;
+            const retry = Number((err.details as { retryAfterMs?: unknown } | undefined)?.retryAfterMs ?? 1_000);
+            await sleep(Math.min(60_000, Math.max(250, retry)), signal);
+            if (signal?.aborted) return;
+        }
+    }
+}
+
+type FactInsert = Parameters<typeof StoryFactRepository.createMany>[2][number];
+
+function factRow(
+    ctx: WorkspaceRequestContext,
+    source: SourceRow,
+    chunk: SourceChunkRow,
+    draft: FactDraft,
+    linkOf: (name: string | null) => string | null,
+    carriedBy: ReadonlyMap<string, { id: string; status: 'PENDING' | 'CONFIRMED' | 'REJECTED'; decidedById: string | null; decidedAt: Date | null }>,
+): FactInsert {
+    const carried = carriedBy.get(carryKey(draft.predicate, draft.subjectName, draft.quote));
+    const book = source.library.scope === 'BOOK';
+    return {
+        sourceId: source.id,
+        chunkId: chunk.id,
+        position: draft.position,
+        subjectName: draft.subjectName,
+        subjectElementId: book ? linkOf(draft.subjectName) : null,
+        predicate: draft.predicate,
+        objectElementId: book ? linkOf(draft.objectLiteral) : null,
+        objectLiteral: draft.objectLiteral,
+        statement: draft.statement,
+        quote: draft.quote,
+        quoteStart: draft.quoteStart,
+        quoteEnd: draft.quoteEnd,
+        storyTimeFrom: draft.storyTimeFrom,
+        storyTimeTo: draft.storyTimeTo,
+        flags: draft.flags,
+        status: carried && carried.status !== 'PENDING' ? carried.status : 'PENDING',
+        decidedById: carried && carried.status !== 'PENDING' ? carried.decidedById : null,
+        decidedAt: carried && carried.status !== 'PENDING' ? (carried.decidedAt ?? new Date()) : null,
+        carriedFromFactId: carried && carried.status !== 'PENDING' ? carried.id : null,
+    };
+}
+
+/**
+ * One chunk's result, in one short transaction: its facts, its cursor (when it
+ * is read) and the spend, while the source is still RUNNING (a removed source
+ * or a stale claim writes nothing). Returns whether the source still runs.
+ */
+async function persistChunk(ctx: WorkspaceRequestContext, source: SourceRow, chunk: SourceChunkRow, rows: FactInsert[], read: boolean, costMicroUsd: number): Promise<boolean> {
+    return runInWorkspaceContext(ctx, async (db) => {
+        await SourceRepository.lock(db, source.id);
+        const now = await SourceRepository.find(db, ctx.workspaceId, source.id);
+        if (!now || now.status !== 'RUNNING') return false;
+        if (read) {
+            if (!(await SourceChunkRepository.markExtracted(db, ctx.workspaceId, chunk.id, new Date()))) return true;
+            await StoryFactRepository.createMany(db, ctx.workspaceId, rows);
+        }
+        return SourceRepository.advance(db, ctx.workspaceId, source.id, { chunksDone: read ? 1 : 0, facts: read ? rows.length : 0, spentMicroUsd: costMicroUsd });
+    });
+}

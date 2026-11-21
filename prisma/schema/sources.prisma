@@ -1,0 +1,232 @@
+// ─────────────────────────────────────────────────────────────────
+//  The source library (Phase 4.0, decisions D23 and D26): the author's own
+//  manuscripts, drafts, notes and earlier books, read into chunks, embedded,
+//  and mined for StoryFacts the author confirms one by one.
+//
+//  A LIBRARY is a book's (scope BOOK, `bookId` set) or the workspace's series
+//  library (scope SERIES, no book; one per workspace, a partial unique index
+//  in the migration). A book OPTS IN to the series sources it draws on
+//  (`BookSeriesSource`), and may OVERRIDE an inherited fact for itself
+//  (`StoryFactOverride`): the book's own answer wins for that book, the series
+//  fact stays as it is for every other.
+//
+//  NO FILE IS STORED (the 1.3 rule): an upload is read, virus-scanned and
+//  parsed in the request, and only its extracted, encrypted chunks are kept.
+//  Re-uploading a changed file under the same name is a NEW `Source` that
+//  supersedes the old one (`supersedesId`, `version`); the old one keeps its
+//  facts until the author removes it, and a fact of the new one quoting the
+//  same passage for the same claim carries the old decision over
+//  (`carriedFromFactId`). The same content twice in one library is refused.
+//
+//  NOTHING HERE CHANGES THE BIBLE (rule 1). A fact is PENDING until the author
+//  confirms or rejects it; only a CONFIRMED fact counts as answered for the
+//  question engine (rule 5, D23), and only through the explicit predicate →
+//  field table in `src/lib/sources/vocabulary.ts`.
+//
+//  EVERY MODEL HERE IS WORKSPACE-SCOPED (FORCE RLS, `workspace_isolation`,
+//  `superuser_bypass`), and AUTHOR TEXT IS ENCRYPTED AT REST
+//  (`src/lib/security/encrypted-fields.ts`): a source's file name, a chunk's
+//  text and heading path, a fact's subject, object, statement, quote and
+//  story times, an override's text. A source holds counts, codes and amounts.
+//
+//  `StoryFact` is the 4.1 fact model, defined here (D23): 4.1 extends it to
+//  facts drawn from answers and accepted bible versions by adding source kinds
+//  and their columns, never a second fact table.
+// ─────────────────────────────────────────────────────────────────
+
+/// A book's library, or the workspace's series library.
+model SourceLibrary {
+  id          String             @id @default(cuid())
+  workspaceId String
+  scope       SourceLibraryScope
+  /// BOOK: the book (CHECK: set exactly for BOOK). SERIES: NULL.
+  bookId      String?
+  createdAt   DateTime           @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  book      Book?     @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  sources   Source[]
+
+  @@unique([workspaceId, id])
+  /// One library per book (a SERIES row's NULL book is distinct; the series
+  /// library's own uniqueness is a partial index in the migration).
+  @@unique([workspaceId, bookId])
+  @@index([bookId])
+}
+
+/// One uploaded file, kept as its extracted chunks, and its ingestion.
+model Source {
+  id               String       @id @default(cuid())
+  workspaceId      String
+  libraryId        String
+  /// The file's name as uploaded (encrypted, sanitised).
+  filename         String
+  format           SourceFormat
+  /// The upload's size in bytes, before extraction.
+  byteLength       Int
+  /// The keyed hash (`workspaceSubkey`) of the extracted text: the same content twice in one library is refused.
+  contentHash      String
+  /// 1 for a first upload; the superseded source's + 1 for a changed re-upload of the same file name.
+  version          Int          @default(1)
+  /// The source this one replaced (a changed file under the same name), NULL otherwise. No foreign key: removing the old one keeps the new.
+  supersedesId     String?
+  status           SourceStatus @default(ESTIMATED)
+  /// How the last ingestion ended or paused, a code (CHECK; `SOURCE_OUTCOMES`).
+  outcome          String?
+  chunkCount       Int
+  /// Chunks whose facts have been extracted (the job's resumable cursor counts them).
+  chunksDone       Int          @default(0)
+  factCount        Int          @default(0)
+  /// What extraction of every chunk is expected to cost, and at most costs, micro-US-dollars.
+  estimateMicroUsd BigInt
+  worstCaseMicroUsd BigInt
+  /// The spend the author confirmed for the current ingestion (the BUDGET stop), micro-US-dollars.
+  budgetMicroUsd   BigInt       @default(0)
+  /// What extraction has cost so far, micro-US-dollars.
+  spentMicroUsd    BigInt       @default(0)
+  /// Counts and codes only (refusals by code, AiCallLog ids). Never text.
+  metrics          Json?
+  /// The extraction prompt's version (rule 9), set when ingestion is dispatched.
+  promptVersion    String?
+  /// Who uploaded it; NULL once that person is deleted.
+  requestedById    String?
+  createdAt        DateTime     @default(now())
+  startedAt        DateTime?
+  finishedAt       DateTime?
+
+  library     SourceLibrary @relation(fields: [workspaceId, libraryId], references: [workspaceId, id], onDelete: Cascade)
+  requestedBy User?         @relation("SourceRequestedBy", fields: [requestedById], references: [id], onDelete: SetNull)
+  chunks      SourceChunk[]
+  facts       StoryFact[]
+  optIns      BookSeriesSource[]
+
+  @@unique([workspaceId, id])
+  /// A library's sources, newest first (the Sources and Series pages).
+  @@index([workspaceId, libraryId, createdAt])
+  @@index([requestedById])
+}
+
+/// A passage of a source: about 1–2k tokens, cut along chapters and scenes.
+model SourceChunk {
+  id            String    @id @default(cuid())
+  workspaceId   String
+  sourceId      String
+  /// Its place in the source, 0-based.
+  position      Int
+  /// The chapter and scene headings above it, a JSON array of strings (encrypted), or NULL.
+  headingPath   String?
+  /// The passage (encrypted, sanitised). The span offsets of every fact refer to it.
+  text          String
+  /// Where it starts and ends in the source's extracted text, in characters.
+  startOffset   Int
+  endOffset     Int
+  /// Its length in tokens, estimated from its characters (the cost estimate's input).
+  tokenEstimate Int
+  /// When its facts were extracted (the job's cursor); NULL until then.
+  extractedAt   DateTime?
+  createdAt     DateTime  @default(now())
+
+  source Source      @relation(fields: [workspaceId, sourceId], references: [workspaceId, id], onDelete: Cascade)
+  facts  StoryFact[]
+
+  @@unique([workspaceId, id])
+  /// A source's chunks in order (and one chunk a position).
+  @@unique([workspaceId, sourceId, position])
+}
+
+/// A fact about the story, drawn from a source, waiting for the author (rule 1, D23).
+model StoryFact {
+  id               String              @id @default(cuid())
+  workspaceId      String
+  sourceKind       StoryFactSourceKind @default(SOURCE_CHUNK)
+  sourceId         String
+  chunkId          String
+  /// Its place among its chunk's facts.
+  position         Int
+  /// Who or what it is about, as the source names it (encrypted).
+  subjectName      String
+  /// The bible element it is about, when linked (a book library's fact whose subject the book names exactly once); NULL otherwise.
+  subjectElementId String?
+  /// What is stated, a code from the closed list (CHECK; `FACT_PREDICATES`).
+  predicate        String
+  /// The element it relates the subject to, when linked; NULL otherwise.
+  objectElementId  String?
+  /// The object as the source states it (encrypted), or NULL.
+  objectLiteral    String?
+  /// The fact as one plain sentence (encrypted).
+  statement        String
+  /// The exact words of the chunk it rests on (encrypted), and where they are in the chunk's text (verified by code).
+  quote            String
+  quoteStart       Int
+  quoteEnd         Int
+  /// When in the story it holds, as the source says (encrypted), or NULL.
+  storyTimeFrom    String?
+  storyTimeTo      String?
+  /// When it was stated (extracted).
+  statedAt         DateTime            @default(now())
+  /// When a later fact replaced it (4.1's invalidation); NULL while it stands.
+  supersededAt     DateTime?
+  status           StoryFactStatus     @default(PENDING)
+  /// What the author is warned of (D14 applied): POSSIBLE_INSTRUCTION.
+  flags            String[]            @default([])
+  decidedById      String?
+  decidedAt        DateTime?
+  /// The superseded source's fact whose decision this one carried over.
+  carriedFromFactId String?
+  createdAt        DateTime            @default(now())
+
+  source        Source              @relation(fields: [workspaceId, sourceId], references: [workspaceId, id], onDelete: Cascade)
+  chunk         SourceChunk         @relation(fields: [workspaceId, chunkId], references: [workspaceId, id], onDelete: Cascade)
+  subjectElement BibleElement?      @relation("StoryFactSubject", fields: [subjectElementId], references: [id], onDelete: SetNull)
+  objectElement BibleElement?       @relation("StoryFactObject", fields: [objectElementId], references: [id], onDelete: SetNull)
+  decidedBy     User?               @relation("StoryFactDecidedBy", fields: [decidedById], references: [id], onDelete: SetNull)
+  overrides     StoryFactOverride[]
+
+  @@unique([workspaceId, id])
+  /// A source's facts by status, in chunk order (the Facts page).
+  @@index([workspaceId, sourceId, status, chunkId, position])
+  /// A chunk's facts.
+  @@index([workspaceId, chunkId])
+  @@index([subjectElementId])
+  @@index([objectElementId])
+  @@index([decidedById])
+}
+
+/// A book drawing on one of the series library's sources (D26: per-book opt-in).
+model BookSeriesSource {
+  workspaceId String
+  bookId      String
+  sourceId    String
+  createdAt   DateTime @default(now())
+
+  book   Book   @relation(fields: [workspaceId, bookId], references: [workspaceId, id], onDelete: Cascade)
+  source Source @relation(fields: [workspaceId, sourceId], references: [workspaceId, id], onDelete: Cascade)
+
+  @@id([bookId, sourceId])
+  /// A book's opted-in series sources.
+  @@index([workspaceId, bookId])
+  @@index([workspaceId, sourceId])
+}
+
+/// A book's own answer in place of an inherited series fact, for that book only (D26).
+model StoryFactOverride {
+  id          String   @id @default(cuid())
+  workspaceId String
+  bookId      String
+  factId      String
+  /// The book's own answer (encrypted, sanitised).
+  text        String
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  book      Book      @relation(fields: [workspaceId, bookId], references: [workspaceId, id], onDelete: Cascade)
+  fact      StoryFact @relation(fields: [workspaceId, factId], references: [workspaceId, id], onDelete: Cascade)
+  createdBy User?     @relation("StoryFactOverrideBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@unique([workspaceId, id])
+  /// One override per book and fact.
+  @@unique([workspaceId, bookId, factId])
+  @@index([workspaceId, factId])
+  @@index([createdById])
+}

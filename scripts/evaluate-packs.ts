@@ -16,6 +16,12 @@
  *       sets (src/lib/enrichment/evals/evaluation-record.json). Re-run after
  *       editing the sets, the reconcile prompt or its output schema.
  *
+ *   npm run packs:evaluate -- --sources [--no-packs]
+ *       also source fact extraction's set (Phase 4.0): the reference
+ *       extractor's record beside the set (src/lib/sources/evals/
+ *       evaluation-record.json). Re-run after editing the set, the extraction
+ *       prompt or its output schema.
+ *
  *   npm run packs:evaluate -- --research [--no-packs]
  *       also the research agent's evaluation sets (Phase 2.6): the
  *       deterministic researcher's record is written beside the sets
@@ -70,6 +76,33 @@ import { REFERENCE_RECONCILER_ID, referenceReconciler } from '../src/lib/enrichm
 import { meteredReconciler, reconcilerWithinRunMonth, RECONCILE_RECORD_RELATIVE, REPHRASE_RECORD_RELATIVE, runReconcileEvaluation, runRephraseEvaluation } from '../src/lib/interview/evals/run-evaluations';
 import { STRUCTURAL_REPHRASER_ID, structuralRephraser } from '../src/lib/interview/evals/rephrase-evaluation';
 import { modelJudge, structuralJudge, type Judge } from '../src/lib/evals/judge';
+import { writeFileSync, mkdirSync } from 'node:fs';
+import type { FactExtractor } from '../src/lib/sources/extractor';
+import { checkExtractionRecord, EXTRACTION_RECORD_FORMAT, extractionPromptHash, modelExtractionAnswers, structuralExtractionRecord } from '../src/lib/sources/evals/evaluation';
+import { extractionEvalSet } from '../src/lib/sources/evals/eval-set';
+import { EXTRACT_PROMPT_VERSION } from '../src/lib/sources/prompt';
+
+/** Where the structural extraction record is written (beside the set), relative to the repository. */
+const SOURCES_RECORD_RELATIVE = 'src/lib/sources/evals/evaluation-record.json';
+
+/** Source fact extraction's set (4.0): the record written to `file` and checked as the gate checks it. */
+async function runSourcesEvaluation(extractor: FactExtractor | null, modelId: string | null, file: string): Promise<{ passed: boolean; detail: string }> {
+    const record = extractor
+        ? {
+              format: EXTRACTION_RECORD_FORMAT,
+              set: { ...extractionEvalSet },
+              promptVersion: EXTRACT_PROMPT_VERSION,
+              promptHash: extractionPromptHash(),
+              generator: { kind: 'model' as const, id: modelId ?? 'model' },
+              ranAt: new Date().toISOString(),
+              answers: await modelExtractionAnswers(extractor),
+          }
+        : structuralExtractionRecord();
+    mkdirSync(path.dirname(file), { recursive: true });
+    writeFileSync(file, JSON.stringify(record, null, 2) + '\n');
+    const check = checkExtractionRecord(record);
+    return check.ok ? { passed: true, detail: `${check.grades.length} cases` } : { passed: false, detail: check.reason };
+}
 import { runJudge } from '../src/lib/interview/evals/run-evaluations';
 import type { Researcher } from '../src/lib/research/researcher';
 import { checkResearchRecord, modelAnswersWith, researchPromptHash, RESEARCH_RECORD_FORMAT, structuralRecord } from '../src/lib/research/evals/evaluation';
@@ -110,7 +143,7 @@ function fail(message: string, code: number): never {
 }
 
 /** The wired model generator in a throwaway workspace, and what it closes. */
-async function modelGenerator(): Promise<{ generator: QuestionGenerator; reconciler: Reconciler; researcher: Researcher; judge: Judge; id: string; reconcilerId: string; rephraserId: string; close: () => Promise<void> }> {
+async function modelGenerator(): Promise<{ generator: QuestionGenerator; reconciler: Reconciler; researcher: Researcher; extractor: FactExtractor; extractorId: string; judge: Judge; id: string; reconcilerId: string; rephraserId: string; close: () => Promise<void> }> {
     if (!process.env.ANTHROPIC_API_KEY?.trim()) fail('ANTHROPIC_API_KEY is not set: a model run never falls back to the structural generator', 2);
     if (!process.env.DATABASE_URL) fail('a model run needs DATABASE_URL (a migrated database: the call ledger and the spend ceiling live there)', 2);
     const budget = (() => {
@@ -160,7 +193,10 @@ async function modelGenerator(): Promise<{ generator: QuestionGenerator; reconci
     const { callStructured } = await import('../src/app-layer/usecases/model-calls');
     // The judge's calls go through the same ledger and ceiling as the run's (2.1), in the same throwaway workspace.
     const judge = modelJudge((input) => callStructured(ctx, { ...input, bookId: null }));
-    return { generator, reconciler, researcher, judge, id, reconcilerId: modelForTier(RECONCILE_PROMPT.tier), rephraserId: modelForTier(REPHRASE_PROMPT.tier), close: () => prisma.$disconnect() };
+    const { defaultFactExtractor } = await import('../src/lib/sources/model-seam');
+    const { EXTRACT_PROMPT } = await import('../src/lib/sources/prompt');
+    const extractor = defaultFactExtractor(ctx);
+    return { generator, reconciler, researcher, extractor, extractorId: modelForTier(EXTRACT_PROMPT.tier), judge, id, reconcilerId: modelForTier(RECONCILE_PROMPT.tier), rephraserId: modelForTier(REPHRASE_PROMPT.tier), close: () => prisma.$disconnect() };
 }
 
 async function main(): Promise<void> {
@@ -209,7 +245,13 @@ async function main(): Promise<void> {
             const file = args.out ? path.join(path.resolve(args.out), 'research', 'evaluation-record.json') : path.resolve(RESEARCH_RECORD_RELATIVE);
             research = await runResearchEvaluation(model?.researcher ?? null, model?.reconcilerId ?? null, file);
         }
+        let sources = null;
+        if (args.sources) {
+            const file = args.out ? path.join(path.resolve(args.out), 'sources', 'evaluation-record.json') : path.resolve(SOURCES_RECORD_RELATIVE);
+            sources = await runSourcesEvaluation(model?.extractor ?? null, model?.extractorId ?? null, file);
+        }
         for (const line of summaryLines(results, coverage, model ? spent : null, reconcile)) out(line);
+        if (sources) out(`Sources: ${sources.passed ? 'passed' : 'NOT passed'} (${sources.detail}).`);
         if (research) out(`Research: ${research.passed ? 'passed' : 'NOT passed'} (${research.detail}).`);
         if (judgeReport) out(`Judge (${judgeReport.basis}): ${judgeReport.status}; ${judgeReport.failures.length} failing items; ${judgeReport.behaviours.map((b) => `${b.behaviour} ${b.passRate === null ? 'not judged' : `${(b.passRate * 100).toFixed(0)}%`}`).join(', ')}.`);
         if (rephrase) out(`Rephrase: ${rephrase.passed ? 'passed' : 'NOT passed'}; ${rephrase.cases - rephrase.failedCases.length}/${rephrase.cases} cases pass${rephrase.refusal ? ` (${rephrase.refusal})` : ''}; ${rephrase.ungraded} ungraded behaviours.`);
@@ -219,6 +261,7 @@ async function main(): Promise<void> {
             (!coverage || coverage.status === 'NOT_ASSESSED' || coverage.passed === coverage.sessions.length) &&
             (!reconcile || reconcile.passed) &&
             (!research || research.passed) &&
+            (!sources || sources.passed) &&
             (!rephrase || rephrase.passed);
         process.exitCode = ok ? 0 : 1;
     } finally {

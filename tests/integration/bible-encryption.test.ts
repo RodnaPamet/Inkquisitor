@@ -33,6 +33,12 @@ import { executeResearchRun } from '@/app-layer/usecases/research-run';
 import { saveStoryMap } from '@/app-layer/usecases/story-maps';
 import type { Researcher } from '@/lib/research/researcher';
 import { CLEAN_SCAN, MOUNTED_GATE } from '../helpers/research';
+import { dispatchIngestion, setSeriesOptIn, uploadSource } from '@/app-layer/usecases/source-library';
+import { executeSourceIngest } from '@/app-layer/usecases/source-ingest';
+import { decideFact, listBookFacts, setFactOverride } from '@/app-layer/usecases/source-facts';
+import { defaultFactExtractor } from '@/lib/sources/model-seam';
+import { StubEmbeddingProvider } from '@/lib/ai/embeddings/stub-provider';
+import { fakeAnthropic } from '../helpers/fake-anthropic';
 import { setFakeApiKey } from '../helpers/fake-anthropic';
 
 afterAll(() => prisma.$disconnect());
@@ -167,7 +173,27 @@ beforeAll(async () => {
     });
     const map = await prisma.storyMap.findFirstOrThrow({ where: { bookId: book.id, kind: 'RELATIONSHIP' }, select: { id: true } });
     Object.assign(ids, { StoryMap: map.id });
-});
+
+    // The source library (Phase 4.0): a series source whose name, heading and passage carry the mark, a fact
+    // drawn from it with every text field marked, confirmed, and the book's override of it.
+    const sentence = `Falconer ${MARK} wants the hawk ${MARK} trained by spring.`;
+    const series = await uploadSource(ctx, { kind: 'series' }, { bytes: new TextEncoder().encode(`Chapter ${MARK}\n\n${sentence}`), filename: `book-one-${MARK}.txt` }, { scan: CLEAN_SCAN });
+    const extraction = fakeAnthropic([
+        { kind: 'text', text: JSON.stringify({ facts: [{ subject: 'Falconer', predicate: 'WANT', object: `the hawk ${MARK}`, statement: sentence, quote: sentence, storyTimeFrom: `winter ${MARK}`, storyTimeTo: `spring ${MARK}` }] }) },
+    ]);
+    const undoFakeKey = setFakeApiKey();
+    try {
+        await dispatchIngestion(ctx, series.id, { confirmWorstCaseMicroUsd: series.worstCaseMicroUsd }, { enqueue: async () => undefined });
+        expect((await executeSourceIngest({ workspaceId: ctx.workspaceId, sourceId: series.id }, { extractor: (c) => defaultFactExtractor(c, { fetch: extraction.fetch }), embedder: () => new StubEmbeddingProvider() })).outcome).toBe('OK');
+    } finally {
+        undoFakeKey();
+    }
+    await setSeriesOptIn(ctx, book.id, series.id, true);
+    const fact = (await listBookFacts(ctx, book.id)).facts[0];
+    await decideFact(ctx, fact.id, 'CONFIRM');
+    await setFactOverride(ctx, book.id, fact.id, { text: `Our own ${MARK} answer.` });
+    Object.assign(ids, { Source: series.id, Book: book.id });
+}, 60_000);
 
 /** The raw stored values of `field` on every row of `model` this suite wrote, read as the owner. */
 async function rawValues(model: string, field: string): Promise<string[]> {
@@ -177,8 +203,10 @@ async function rawValues(model: string, field: string): Promise<string[]> {
     const byBrief = model === 'ResearchSource';
     const byMap = model === 'MapSnapshot';
     const byRelation = model === 'BibleRelationField' || model === 'BibleRelationVersion';
-    const where = byElement ? `"elementId" = $1` : bySession ? `"sessionId" = $1` : byRun ? `"runId" = $1` : byBrief ? `"briefId" = $1` : byMap ? `"mapId" = $1` : byRelation ? `"relationId" = $1` : `"id" = $1`;
-    const id = byElement ? ids.BibleElement : bySession ? ids.Session : byRun ? ids.Run : byBrief ? ids.ResearchBrief : byMap ? ids.StoryMap : byRelation ? ids.BibleRelation : ids[model];
+    const bySource = model === 'SourceChunk' || model === 'StoryFact';
+    const byBook = model === 'StoryFactOverride';
+    const where = byElement ? `"elementId" = $1` : bySession ? `"sessionId" = $1` : byRun ? `"runId" = $1` : byBrief ? `"briefId" = $1` : byMap ? `"mapId" = $1` : byRelation ? `"relationId" = $1` : bySource ? `"sourceId" = $1` : byBook ? `"bookId" = $1` : `"id" = $1`;
+    const id = byElement ? ids.BibleElement : bySession ? ids.Session : byRun ? ids.Run : byBrief ? ids.ResearchBrief : byMap ? ids.StoryMap : byRelation ? ids.BibleRelation : bySource ? ids.Source : byBook ? ids.Book : ids[model];
     const rows = await prisma.$queryRawUnsafe<Array<{ v: string | null }>>(`SELECT "${field}" AS v FROM "${model}" WHERE ${where}`, id);
     return rows.map((r) => r.v).filter((v): v is string => v !== null);
 }
@@ -226,6 +254,16 @@ it('the manifest covers the bible, interview and research author text the briefs
             'ResearchEgress.text',
             'StoryMap.freeformJson',
             'MapSnapshot.snapshot',
+            'Source.filename',
+            'SourceChunk.text',
+            'SourceChunk.headingPath',
+            'StoryFact.subjectName',
+            'StoryFact.objectLiteral',
+            'StoryFact.statement',
+            'StoryFact.quote',
+            'StoryFact.storyTimeFrom',
+            'StoryFact.storyTimeTo',
+            'StoryFactOverride.text',
         ].sort(),
     );
 });

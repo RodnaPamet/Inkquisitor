@@ -95,6 +95,10 @@ COPY --from=builder /app/src/lib/interview/packs ./src/lib/interview/packs
 # time from <cwd>/fonts/noto-sans (src/lib/pdf/fonts.ts); the working
 # directory is /app.
 COPY --from=builder /app/fonts ./fonts
+# The PDF text worker (Phase 4.0): plain ESM Node runs as a worker thread to
+# read an uploaded PDF's text layer under a heap limit and a deadline
+# (src/lib/sources/pdf-text.ts reads it from <cwd>/scripts).
+COPY --from=builder /app/scripts/pdf-text-worker.mjs ./scripts/pdf-text-worker.mjs
 
 RUN chmod +x ./scripts/entrypoint.sh && chown -R nextjs:nodejs /app
 

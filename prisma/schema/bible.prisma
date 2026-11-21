@@ -62,6 +62,10 @@ model Book {
   aiCalls           AiCallLog[]
   /// Phase 2.6: the book's research briefs (and through them its runs).
   researchBriefs    ResearchBrief[]
+  /// Phase 4.0: the book's source library, its opted-in series sources and its fact overrides.
+  sourceLibraries   SourceLibrary[]
+  seriesSources     BookSeriesSource[]
+  factOverrides     StoryFactOverride[]
   /// Phase 3.1: the book's story maps, at most one of each kind.
   storyMaps         StoryMap[]
   /// Phase 3.3: the history of the book's relations (it outlives each relation).
@@ -110,6 +114,9 @@ model BibleElement {
   enrichmentProposals EnrichmentProposal[]
   /// Phase 2.6: research proposals for this element's fields.
   researchProposals   ResearchProposal[]
+  /// Phase 4.0: source facts linked to this element.
+  factsAbout          StoryFact[] @relation("StoryFactSubject")
+  factsAsObject       StoryFact[] @relation("StoryFactObject")
   /// Phase 3.1: where this element is drawn on the book's story maps; the
   /// nodes go with the element.
   mapNodes            MapNode[]
