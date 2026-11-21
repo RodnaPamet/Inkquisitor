@@ -99,4 +99,55 @@ describe('the layout worker', () => {
         expect(result.positions).toEqual(computeAutoLayout(nodes, [], 'LR').positions);
         expect(port.terminate).toHaveBeenCalled();
     });
+
+    /** A fake worker whose reply to the job is `answer(id)` (or none at all). */
+    function fakePort(answer: ((id: number) => unknown) | null) {
+        const port = {
+            onmessage: null as null | ((e: { data: unknown }) => void),
+            onerror: null,
+            onmessageerror: null,
+            terminate: jest.fn(),
+            postMessage: (m: { id: number }) => {
+                if (answer) setTimeout(() => port.onmessage?.({ data: answer(m.id) }), 0);
+            },
+        };
+        return port;
+    }
+
+    it('a worker that never answers is not waited on for ever: the layout runs on the main thread', async () => {
+        const nodes = mapOf(5, 4).nodes.map((n) => ({ id: n.elementId, position: { x: n.x, y: n.y } }));
+        const port = fakePort(null);
+        const result = await layoutOffMainThread({ nodes, edges: [], direction: 'LR' }, async () => port as never, 20);
+        expect(result.thread).toBe('main');
+        expect(result.positions).toEqual(computeAutoLayout(nodes, [], 'LR').positions);
+        expect(port.terminate).toHaveBeenCalled();
+    });
+
+    it.each([
+        ['a position that is not a number', { el0: { x: Number.NaN, y: 0 } }],
+        ['a position past the finite', { el0: { x: Number.POSITIVE_INFINITY, y: 0 } }],
+        ['a node the job did not hold', { 'shape:elsewhere': { x: 1, y: 2 } }],
+        ['no positions at all', null],
+        ['a list', [{ x: 1, y: 2 }]],
+    ])('a reply carrying %s is not applied: the main thread lays out instead', async (_what, positions) => {
+        const nodes = mapOf(5, 4).nodes.map((n) => ({ id: n.elementId, position: { x: n.x, y: n.y } }));
+        const result = await layoutOffMainThread({ nodes, edges: [], direction: 'TB' }, async () => fakePort((id) => ({ id, positions })) as never);
+        expect(result.thread).toBe('main');
+        expect(result.positions).toEqual(computeAutoLayout(nodes, [], 'TB').positions);
+    });
+
+    it.each([
+        ['no data', null],
+        ['a string', 'lay out everything'],
+        ['nodes that are not nodes', { id: 3, nodes: [{ id: 1, position: { x: 0, y: 0 } }], edges: [], direction: 'LR' }],
+        ['a position that is not a number', { id: 4, nodes: [{ id: 'a', position: { x: 'far', y: 0 } }], edges: [], direction: 'LR' }],
+        ['an unknown direction', { id: 5, nodes: [], edges: [], direction: 'RL' }],
+        ['edges that are not edges', { id: 6, nodes: [], edges: [{ source: 1 }], direction: 'LR' }],
+        ['a selection that is not ids', { id: 7, nodes: [], edges: [], direction: 'LR', nodeIds: 'a' }],
+    ])('the worker checks a message before it reads it: %s is answered as failed (or not at all), never thrown', (_what, data) => {
+        const { scope, posted } = workerScope();
+        expect(() => scope.onmessage!({ data: data as never })).not.toThrow();
+        const id = (data as { id?: unknown } | null)?.id;
+        expect(posted).toEqual(typeof id === 'number' ? [{ id, failed: true, worker: LAYOUT_WORKER_MARKER }] : []);
+    });
 });
