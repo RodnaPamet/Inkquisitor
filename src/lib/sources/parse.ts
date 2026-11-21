@@ -33,14 +33,16 @@
  * refused the same. Mammoth is handed a ZIP REBUILT from the entries `readZip`
  * accepted, so it reads nothing that was not checked, and it never inlines an
  * image (a photo is not text, and as a data URI it would count against the
- * text bound). The PDF worker has a heap limit and a deadline; the other
- * readers are bounded by their input, which these limits bound. A text past
+ * text bound). Mammoth and the PDF reader each run in a bounded worker thread
+ * (`parse-worker.ts`: a deadline, a heap limit, the worker's memory watched,
+ * two at once), never on the request's thread; the other readers are bounded
+ * by their input, which these limits bound. A text past
  * `SOURCE_TEXT_MAX_CHARS` is refused `SOURCE_TOO_LONG`.
  */
-import mammoth from 'mammoth';
 import { Parser } from 'htmlparser2';
 import { readZip, writeZip, ZipRefusal, type ZipLimits } from '@/lib/archive/zip';
 import { blocksFromHtml, blocksFromMarkdown, blocksFromPlainText, type DocBlock } from './document';
+import { readDocxHtml, type DocxHtmlResult } from './docx-text';
 import { readPdfText, type PdfTextResult } from './pdf-text';
 import { SOURCE_TEXT_MAX_CHARS, type SourceFormat, type SourceRefusalReason } from './vocabulary';
 
@@ -69,6 +71,8 @@ export interface ParsedSource {
 export interface ParseDeps {
     /** The PDF reader (tests: a fake; omitted: the bounded worker). */
     readPdf?: (bytes: Uint8Array) => Promise<PdfTextResult>;
+    /** The DOCX reader over the rebuilt ZIP (tests: a fake; omitted: mammoth in the bounded worker). */
+    readDocx?: (zip: Uint8Array) => Promise<DocxHtmlResult>;
 }
 
 const ZIP_MAGIC = [0x50, 0x4b, 0x03, 0x04];
@@ -173,21 +177,13 @@ function decodeURIComponentSafe(s: string): string | null {
     }
 }
 
-/** Mammoth never reads or inlines an image: an `<img>` with no source, which the block reader ignores. */
-const NO_IMAGES = mammoth.images.imgElement(async () => ({ src: '' }));
-
-async function parseDocx(entries: Map<string, Uint8Array>): Promise<DocBlock[]> {
+async function parseDocx(entries: Map<string, Uint8Array>, deps: ParseDeps): Promise<DocBlock[]> {
     assertNoEntityDeclarations(entries, { dtd: true });
-    const rebuilt = writeZip(entries);
-    let html: string;
-    try {
-        const result = await mammoth.convertToHtml({ buffer: Buffer.from(rebuilt.buffer, rebuilt.byteOffset, rebuilt.byteLength) }, { convertImage: NO_IMAGES });
-        html = result.value ?? '';
-    } catch {
-        throw new SourceRefusal('SOURCE_PARSE_FAILED');
-    }
-    assertTextBound(html);
-    return blocksFromHtml(html);
+    // Mammoth reads the ZIP rebuilt from what `readZip` accepted, in the bounded worker (`docx-text.ts`), never on this thread.
+    const result = await (deps.readDocx ?? readDocxHtml)(writeZip(entries));
+    if (!result.ok) throw new SourceRefusal(result.reason);
+    assertTextBound(result.html);
+    return blocksFromHtml(result.html);
 }
 
 function parseEpub(entries: Map<string, Uint8Array>): DocBlock[] {
@@ -262,7 +258,7 @@ export async function parseSource(bytes: Uint8Array, filename: string, deps: Par
             blocks = await parsePdf(bytes, deps);
             break;
         case 'DOCX':
-            blocks = await parseDocx(sniffed.entries!);
+            blocks = await parseDocx(sniffed.entries!, deps);
             break;
         case 'EPUB':
             blocks = parseEpub(sniffed.entries!);
