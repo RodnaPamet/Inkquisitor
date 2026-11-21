@@ -24,6 +24,7 @@ import { APP_ROUTES } from '@/lib/app-routes';
 import type { StoryMapView } from '@/lib/canvas/api-client';
 import { deriveLaneLayout, participantsByEvent } from '@/lib/canvas/lanes';
 import { mapKindSlug, type StoryMapKindValue } from '@/lib/canvas/map-kinds';
+import { truncateGraphemes } from '@/lib/text/truncate';
 
 export interface StoryMapPreviewProps {
     workspaceSlug: string;
@@ -38,7 +39,8 @@ export interface StoryMapPreviewProps {
 const PAD = 24;
 const NAME_MAX = 26;
 
-const short = (s: string) => (s.length > NAME_MAX ? `${s.slice(0, NAME_MAX - 1)}…` : s);
+/** At most NAME_MAX characters, cut between grapheme clusters (an emoji is never split into a `�`). */
+const short = (s: string) => truncateGraphemes(s, NAME_MAX);
 
 export function StoryMapPreview({ workspaceSlug, bookId, mapKind, map, currentElementId, kindLabels }: StoryMapPreviewProps) {
     const t = useTranslations('canvas');

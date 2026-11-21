@@ -34,7 +34,7 @@
  */
 import type { Editor, TLShapeId } from 'tldraw';
 
-import { STORY_EDGE_BINDING_TYPE, edgeEndpointIds, type StoryEdgeBinding } from './story-edge-binding';
+import { STORY_EDGE_BINDING_TYPE, bindingIdForRelation, edgeEndpointIds, type StoryEdgeBinding } from './story-edge-binding';
 import { STORY_EDGE_SHAPE_TYPE, edgeLineGeometry, shapeIdForRelation } from './story-edge-shape';
 import { STORY_NODE_SHAPE_TYPE } from './story-node-shape';
 import { validateEdge, type EdgeRefusal, type KnownRelation } from './edge-validation';
@@ -159,10 +159,16 @@ export function drawRelationEdge(
     const fromId = shapeIdOf(relation.sourceElementId);
     const toId = shapeIdOf(relation.targetElementId);
     if (!fromId || !toId) return false;
+    // The binding takes the id the rows give it (`bindingIdForRelation`), as a
+    // loaded edge's does: one relation, one binding, found by id (3.H), and a
+    // relation already drawn is not drawn twice.
+    const bindingId = bindingIdForRelation(relation.relationId);
+    if (editor.getBinding(bindingId as never)) return false;
     editor.run(
         () => {
             editor.createBindings([
                 {
+                    id: bindingId,
                     type: STORY_EDGE_BINDING_TYPE,
                     fromId: fromId as TLShapeId,
                     toId: toId as TLShapeId,
@@ -308,10 +314,11 @@ export function installEdgeLineRemovesEdge(
     const offDelete = editor.sideEffects.registerAfterDeleteHandler('shape', (shape, source) => {
         if (shape.type !== STORY_EDGE_SHAPE_TYPE) return;
         const relationId = (shape.props as { relationId?: unknown }).relationId;
-        const bindings = editor.store
-            .allRecords()
-            .filter((r) => r.typeName === 'binding' && (r as { type?: string }).type === STORY_EDGE_BINDING_TYPE && (r as unknown as StoryEdgeBinding).props.relationId === relationId)
-            .map((r) => r as unknown as StoryEdgeBinding);
+        // By id, never a scan of the store: a node with many edges, or a
+        // selection of hundreds, deletes a line per edge (3.H). Every edge's
+        // binding carries `bindingIdForRelation`'s id, loaded or drawn.
+        const own = typeof relationId === 'string' ? (editor.getBinding(bindingIdForRelation(relationId) as never) as StoryEdgeBinding | undefined) : undefined;
+        const bindings = own && own.type === STORY_EDGE_BINDING_TYPE ? [own] : [];
         if (source === 'user' && typeof relationId === 'string' && bindings[0]) {
             const p = bindings[0].props;
             removed.set(relationId, { relationId, sourceElementId: p.sourceElementId, targetElementId: p.targetElementId });

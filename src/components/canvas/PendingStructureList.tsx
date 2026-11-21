@@ -23,11 +23,19 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { useToast } from '@/components/ui/hooks';
 import { StatusBadge } from '@/components/ui/status-badge';
-import { NewRelationCard, ProposalFlags, ProposalSources, ProposedFields } from '@/components/enrichment/StructuralProposals';
+import { NewRelationCard, ProposalFlags, ProposalSources, ProposedFields, SlotPlacement } from '@/components/enrichment/StructuralProposals';
 import { APP_ROUTES } from '@/lib/app-routes';
 import { BibleApiError } from '@/lib/bible/api-client';
 import type { AcceptedStructure } from '@/lib/canvas/structure-preview';
-import { enrichmentApi, type CitedAnswerView, type NewElementProposalView, type NewRelationProposalView, type PendingStructureResult, type PendingStructureView } from '@/lib/enrichment/api-client';
+import {
+    enrichmentApi,
+    type CitedAnswerView,
+    type NewElementProposalView,
+    type NewRelationProposalView,
+    type PendingStructureResult,
+    type PendingStructureView,
+    type SlotPlacement as SlotPlacementChoice,
+} from '@/lib/enrichment/api-client';
 
 export interface PendingStructureListProps {
     workspaceSlug: string;
@@ -44,7 +52,7 @@ export interface PendingStructureListProps {
 }
 
 /** The refusals worded in `enrichment.errors` that mean the list is out of date: read it again. */
-const RELOAD_ON: ReadonlySet<string> = new Set(['PROPOSAL_DECIDED', 'PROPOSAL_STALE', 'RELATION_EXISTS', 'END_NOT_CREATED', 'END_GONE', 'ELEMENT_EXISTS']);
+const RELOAD_ON: ReadonlySet<string> = new Set(['PROPOSAL_DECIDED', 'PROPOSAL_STALE', 'RELATION_EXISTS', 'END_NOT_CREATED', 'END_GONE', 'ELEMENT_EXISTS', 'SLOT_CHANGED', 'ORDER_STALE']);
 
 function NewElementItem({
     p,
@@ -61,7 +69,7 @@ function NewElementItem({
     canEdit: boolean;
     busy: boolean;
     kindLabel: string;
-    onAccept: (p: NewElementProposalView) => Promise<boolean>;
+    onAccept: (p: NewElementProposalView, placement?: SlotPlacementChoice) => Promise<boolean>;
     onReject: (id: string) => Promise<void>;
     reviewHref: string;
 }) {
@@ -81,19 +89,18 @@ function NewElementItem({
             </div>
             <ProposalFlags id={p.id} flags={p.flags} />
             {p.summary ? <p className="whitespace-pre-wrap text-sm text-content-default">{p.summary}</p> : null}
-            {p.slot ? (
-                <p className="text-sm text-content-muted" data-testid="slot-placement">
-                    {t('slotPlacement', { a: p.slot.afterName, b: p.slot.beforeName })}
-                </p>
-            ) : null}
+            {p.slot ? <SlotPlacement proposalId={p.id} slot={p.slot} pending canEdit={canEdit} busy={busy} onPlace={(placement) => onAccept(p, placement)} /> : null}
             <ProposedFields fields={p.fields} title={t('firstFields')} />
             <ProposalSources ids={p.citedAnswerIds} answers={answers} />
             <div className="flex flex-wrap items-center gap-tight">
                 {canEdit ? (
                     <>
-                        <Button variant="primary" icon={<Check className="size-4" aria-hidden="true" />} loading={busy} onClick={() => void onAccept(p)} aria-label={tc('acceptAria', { name: p.name })} id={`accept-${p.id}`}>
-                            {t('accept')}
-                        </Button>
+                        {/* A changed slot (D25): its own two choices accept it; this one would be refused. */}
+                        {p.slot?.changed ? null : (
+                            <Button variant="primary" icon={<Check className="size-4" aria-hidden="true" />} loading={busy} onClick={() => void onAccept(p)} aria-label={tc('acceptAria', { name: p.name })} id={`accept-${p.id}`}>
+                                {t('accept')}
+                            </Button>
+                        )}
                         <Button variant="secondary" icon={<X className="size-4" aria-hidden="true" />} disabled={busy} onClick={() => void onReject(p.id)} aria-label={tc('rejectAria', { name: p.name })} id={`reject-${p.id}`}>
                             {t('reject')}
                         </Button>
@@ -143,7 +150,7 @@ export function PendingStructureList({ workspaceSlug, bookId, canEdit, kindLabel
     }, [workspaceSlug, bookId, apply]);
 
     const decide = useCallback(
-        async (p: PendingStructureView, action: 'accept' | 'reject'): Promise<boolean> => {
+        async (p: PendingStructureView, action: 'accept' | 'reject', placement?: SlotPlacementChoice): Promise<boolean> => {
             setBusy(true);
             const ids = { slug: workspaceSlug, bookId, sessionId: p.sessionId };
             try {
@@ -151,13 +158,16 @@ export function PendingStructureList({ workspaceSlug, bookId, canEdit, kindLabel
                     await enrichmentApi.reject(ids, p.id);
                     toast.success(te('rejected'));
                 } else {
-                    const { decision } = await enrichmentApi.accept(ids, p.id, {});
+                    const { decision } = await enrichmentApi.accept(ids, p.id, placement ? { placement } : {});
                     if (p.kind === 'NEW_ELEMENT' && decision.elementId) {
-                        toast.success(te('acceptedNew', { name: p.name }));
+                        toast.success(decision.placed === false ? te('acceptedUnplaced', { name: p.name }) : te('acceptedNew', { name: p.name }));
                         onAccepted?.({ kind: 'NEW_ELEMENT', elementId: decision.elementId, name: p.name, elementKind: p.newKind, filledFieldCount: p.fields.length });
-                    } else if (p.kind === 'NEW_RELATION' && decision.relationId && p.from.elementId && p.to.elementId) {
+                    } else if (p.kind === 'NEW_RELATION' && decision.relationId) {
                         toast.success(te('acceptedRelation'));
-                        onAccepted?.({ kind: 'NEW_RELATION', relationId: decision.relationId, sourceElementId: p.from.elementId, targetElementId: p.to.elementId, label: p.label });
+                        // The ends the SERVER created it between (#53 item 3): the list's copy of an end accepted
+                        // elsewhere may still read "not created", and the edge must be drawn all the same.
+                        const ends = decision.relationEnds ?? (p.from.elementId && p.to.elementId ? { fromElementId: p.from.elementId, toElementId: p.to.elementId } : null);
+                        if (ends) onAccepted?.({ kind: 'NEW_RELATION', relationId: decision.relationId, sourceElementId: ends.fromElementId, targetElementId: ends.toElementId, label: p.label });
                     }
                 }
                 await load();
@@ -216,7 +226,7 @@ export function PendingStructureList({ workspaceSlug, bookId, canEdit, kindLabel
                             canEdit={canEdit}
                             busy={busy}
                             kindLabel={kindLabels[p.newKind] ?? p.newKind}
-                            onAccept={(q) => decide({ ...q, sessionId: p.sessionId }, 'accept')}
+                            onAccept={(q, placement) => decide({ ...q, sessionId: p.sessionId }, 'accept', placement)}
                             onReject={() => decide(p, 'reject').then(() => undefined)}
                             reviewHref={APP_ROUTES.interviewReview(workspaceSlug, bookId, p.sessionId)}
                         />

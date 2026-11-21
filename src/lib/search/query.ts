@@ -27,6 +27,8 @@ import { SEARCH_QUERY_MAX_CHARS, SEARCH_QUERY_MAX_PHRASES, SEARCH_QUERY_MAX_WORD
 export interface QueryTerm {
     surface: string;
     stem: string;
+    /** Porter2's own stem when the irregular table gave `stem` (Phase 3.H): the term matches words of either. */
+    regularStem: string | null;
     /** The case-kept form when the query word is capitalised: an exact-case match ranks higher. */
     exact: string | null;
 }
@@ -83,7 +85,7 @@ export function parseQuery(raw: string, analyzer: Analyzer): QueryParse {
             if (tokens.length === 1) exactWords.push(tokens[0].surface);
             else if (tokens.length > 1) phrases.push({ surfaces: tokens.map((t) => t.surface) });
         } else {
-            for (const t of tokens) unquoted.push({ surface: t.surface, stem: t.stem, exact: t.exact });
+            for (const t of tokens) unquoted.push({ surface: t.surface, stem: t.stem, regularStem: t.regularStem, exact: t.exact });
         }
     }
     if (words > SEARCH_QUERY_MAX_WORDS) return { ok: false, reason: 'QUERY_TOO_MANY_TERMS' };

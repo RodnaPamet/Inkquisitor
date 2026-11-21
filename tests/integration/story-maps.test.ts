@@ -59,7 +59,7 @@ describe('a map nobody has saved', () => {
         expect(map).toMatchObject({ kind: 'RELATIONSHIP', version: 0, nodes: [], edges: [], freeform: [] });
         expect(map.relations.map((r) => r.relationId)).toEqual([book.rel]);
         expect(await prisma.storyMap.count({ where: { bookId: book.bookId } })).toBe(0);
-        expect(await listMapSnapshots(ctx, book.bookId, 'relationship')).toEqual({ snapshots: [], truncated: false });
+        expect(await listMapSnapshots(ctx, book.bookId, 'relationship')).toEqual({ snapshots: [], truncated: false, nextBefore: null });
     });
 
     it('an unknown kind and a deleted or foreign book are 404', async () => {
@@ -410,11 +410,12 @@ describe('author text in the freeform layer', () => {
         // A snapshot carrying one (written before the rule) is not restored over the live map either.
         await saveStoryMap(ctx, book.bookId, 'relationship', { expectedVersion: 0, nodes: [node(book.a)], edges: [], freeform: [] });
         const map = (await mapRow(book.bookId))!;
+        // The version first, then its snapshot, as every product path writes them (3.H: a snapshot names the map's current version).
         await runInWorkspaceContext(ctx, async (db) => {
+            await db.storyMap.update({ where: { id: map.id }, data: { version: 2 } });
             await db.mapSnapshot.create({
                 data: { workspaceId: ctx.workspaceId, mapId: map.id, version: 2, nodeCount: 1, edgeCount: 0, snapshot: JSON.stringify({ nodes: [node(book.a)], edges: [], freeform: [note(`shape:${book.a}`, 'x')] }) },
             });
-            await db.storyMap.update({ where: { id: map.id }, data: { version: 2 } });
         });
         const r = await refusal(restoreMapSnapshot(ctx, book.bookId, 'relationship', 2, { expectedVersion: 2 }));
         expect(r).toMatchObject({ status: 400, reason: 'FREEFORM_REFUSED', details: { problem: 'RESERVED_ID' } });

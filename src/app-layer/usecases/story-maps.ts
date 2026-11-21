@@ -43,6 +43,17 @@
  * opinion about an order the bible keeps. Moving a card is an order move
  * (`bible-order.ts`), not a map save.
  *
+ * LOCK ORDER (Phase 3.H, issue #50 item 2). A save and a restore take the
+ * map's lock, then the story-order lock of every ordered kind the map draws
+ * (`lockMapOrders`), before they write a node. A node's foreign key takes a
+ * KEY SHARE lock on its element's row, and a rank change (a move, a bundle
+ * import's re-rank) takes that row FOR UPDATE: the rank is in a unique index.
+ * Holding the order's lock first makes a save queue behind an import that
+ * re-ranks beats instead of locking their rows in the opposite order (which
+ * Postgres aborts as a deadlock, 40P01, and the author saw as a 500). The
+ * book's lock order is map → names → order → element → relation
+ * (CLAUDE.md, "Lock order").
+ *
  * Permissions: `bible.view` reads, `bible.edit` saves and restores — the
  * canvas and the bible are one dataset.
  */
@@ -50,7 +61,7 @@ import type { BibleElementKind, StoryMapKind } from '@prisma/client';
 import type { WorkspaceRequestContext } from '@/app-layer/types';
 import { logEvent } from '@/app-layer/events/audit';
 import { assertPermission } from '@/app-layer/policies/permission.policy';
-import { BibleFieldRepository } from '@/app-layer/repositories/bible.repository';
+import { BibleElementRepository, BibleFieldRepository } from '@/app-layer/repositories/bible.repository';
 import {
     MapBibleReads,
     MapEdgeRepository,
@@ -61,9 +72,10 @@ import {
 import { MapRestoreInput, MapSaveInput } from '@/app-layer/schemas/canvas';
 import { VersionNumberParam } from '@/app-layer/schemas/bible';
 import { decodeFieldValue } from '@/lib/bible/field-values';
+import { isOrderedKind } from '@/lib/bible/kinds';
 import { getFieldDef, getRelationType, getTemplate } from '@/lib/bible/templates';
 import { assertFreeformIdsFree, parseStoredFreeform, sanitiseFreeformForStorage } from '@/lib/canvas/freeform';
-import { MAX_MAP_EDGES, MAX_MAP_NODES, SNAPSHOT_LIST_MAX } from '@/lib/canvas/limits';
+import { MAX_MAP_EDGES, MAX_MAP_NODES, SNAPSHOT_PAGE_SIZE } from '@/lib/canvas/limits';
 import { deriveLaneLayout, participantsByEvent, type ActOption, type LaneNodeInput } from '@/lib/canvas/lanes';
 import { MAP_ELEMENT_KINDS, STORY_MAP_KINDS, mapKindFromSlug, mapLayoutMode, mapTakesKind, type StoryMapKindValue } from '@/lib/canvas/map-kinds';
 import { parseMapState, serialiseMapState, type MapEdgeRow, type MapNodeRow, type MapState } from '@/lib/canvas/map-state';
@@ -505,6 +517,11 @@ function mapReferenceGone(err: unknown): never {
     throw err;
 }
 
+/** The story-order locks of the ordered kinds a map draws, after its own lock (the header's LOCK ORDER). */
+async function lockMapOrders(db: PrismaTx, bookId: string, kind: StoryMapKindValue): Promise<void> {
+    for (const k of MAP_ELEMENT_KINDS[kind]) if (isOrderedKind(k)) await BibleElementRepository.lockOrder(db, bookId, k as BibleElementKind);
+}
+
 export async function saveStoryMap(ctx: WorkspaceRequestContext, bookId: string, kindSlug: string, input: unknown): Promise<StoryMapSaveResult> {
     await assertPermission(ctx, 'bible.edit');
     const kind = kindOf(kindSlug);
@@ -516,6 +533,7 @@ export async function saveStoryMap(ctx: WorkspaceRequestContext, bookId: string,
         return await runInWorkspaceContext(ctx, async (db) => {
             await requireBook(db, ctx, bookId);
             await StoryMapRepository.lock(db, bookId, kind);
+            await lockMapOrders(db, bookId, kind);
             const map = await StoryMapRepository.find(db, ctx.workspaceId, bookId, kind);
             assertExpectedVersion(map, parsed.expectedVersion);
             await assertReferences(db, ctx, bookId, kind, state);
@@ -538,21 +556,35 @@ async function requireMap(db: PrismaTx, ctx: WorkspaceRequestContext, bookId: st
     return map;
 }
 
-export async function listMapSnapshots(
-    ctx: WorkspaceRequestContext,
-    bookId: string,
-    kindSlug: string,
-): Promise<{ snapshots: MapSnapshotMetaView[]; truncated: boolean }> {
+/** One page of a map's history: `nextBefore` reads the page after it (null on the last). */
+export interface MapSnapshotPage {
+    snapshots: MapSnapshotMetaView[];
+    /** True when older snapshots exist than this page holds. */
+    truncated: boolean;
+    /** The `before` that reads the next, older page; null when this page is the last. */
+    nextBefore: number | null;
+}
+
+/**
+ * A page of the map's history, newest first: at most `SNAPSHOT_PAGE_SIZE`
+ * rows below `before` (a version; absent for the newest page). Every version
+ * stays reachable however many saves a map has, and a read never grows with
+ * them (3.H: restore after 200 saves).
+ */
+export async function listMapSnapshots(ctx: WorkspaceRequestContext, bookId: string, kindSlug: string, beforeParam?: unknown): Promise<MapSnapshotPage> {
     await assertPermission(ctx, 'bible.view');
     const kind = kindOf(kindSlug);
+    const before = beforeParam === undefined || beforeParam === null || beforeParam === '' ? undefined : VersionNumberParam.parse(beforeParam);
     return runInWorkspaceContext(ctx, async (db) => {
         await requireBook(db, ctx, bookId);
         const map = await StoryMapRepository.find(db, ctx.workspaceId, bookId, kind);
         // A map nobody has saved has no history: an empty list, not a 404.
-        if (!map) return { snapshots: [], truncated: false };
-        const rows = await MapSnapshotRepository.list(db, ctx.workspaceId, map.id, SNAPSHOT_LIST_MAX + 1);
+        if (!map) return { snapshots: [], truncated: false, nextBefore: null };
+        const rows = await MapSnapshotRepository.list(db, ctx.workspaceId, map.id, SNAPSHOT_PAGE_SIZE + 1, before);
+        const page = rows.slice(0, SNAPSHOT_PAGE_SIZE);
+        const truncated = rows.length > SNAPSHOT_PAGE_SIZE;
         return {
-            snapshots: rows.slice(0, SNAPSHOT_LIST_MAX).map((r) => ({
+            snapshots: page.map((r) => ({
                 version: r.version,
                 nodeCount: r.nodeCount,
                 edgeCount: r.edgeCount,
@@ -561,7 +593,8 @@ export async function listMapSnapshots(
                 createdAt: r.createdAt.toISOString(),
                 createdByName: r.createdBy?.name ?? null,
             })),
-            truncated: rows.length > SNAPSHOT_LIST_MAX,
+            truncated,
+            nextBefore: truncated ? page[page.length - 1].version : null,
         };
     });
 }
@@ -610,6 +643,7 @@ export async function restoreMapSnapshot(
         return await runInWorkspaceContext(ctx, async (db) => {
             await requireBook(db, ctx, bookId);
             await StoryMapRepository.lock(db, bookId, kind);
+            await lockMapOrders(db, bookId, kind);
             const map = await requireMap(db, ctx, bookId, kind);
             assertExpectedVersion(map, expectedVersion);
             const row = await MapSnapshotRepository.find(db, ctx.workspaceId, map.id, version);

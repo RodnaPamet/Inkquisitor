@@ -353,6 +353,18 @@ src/components/search/BookSearch.tsx → the board's search box and highlighted 
 tests/fixtures/snowball/     → Snowball's English voc.txt / output.txt (BSD-3), golden-pin.json
 ```
 
+Phase 3.H (hardening the canvas, story order and canvas interviews) added:
+
+```
+src/lib/canvas/auto-layout-off-thread.ts, auto-layout-worker.ts, auto-layout-worker-factory.ts → dagre in a Web Worker (main-thread fallback)
+src/components/canvas/StoryMapListView.tsx → the map as a list: every canvas action by keyboard and screen reader
+prisma/migrations/…_canvas_hardening → a snapshot names the map's current version; one cascade-marker setting
+scripts/bundle-budget.json   → per-route first-load budget (gzipped JS + CSS), held by scripts/check-build.js
+tests/helpers/random-graph.ts → seeded random maps for the round-trip property tests
+src/app-layer/usecases/story-slot.ts → a BETWEEN slot: how it changed, where its beat may go, the beat it holds (D25)
+src/lib/text/truncate.ts     → truncateGraphemes: display text cut between grapheme clusters
+```
+
 ## Rules every change obeys
 
 These are `docs/ROADMAP.md` section 3, restated. The roadmap is authoritative
@@ -1099,6 +1111,47 @@ closed beta with an explicit operator flag (D5, amended 2026-11-19).
   tldraw, outside the canvas boundary) is the record, and what is accepted there
   is added to that map through its own save. The relations pack and the reconcile
   prompt follow D11; after editing either, re-run their records.
+- **Hardening the canvas (Phase 3.H).** THE ROUND TRIP is a property:
+  seeded random graphs (`tests/helpers/random-graph.ts`, mulberry32, no
+  dependency) through rows → tldraw → rows, the canonical state and each
+  derived layout, in pure code and through a live store. AT THE BOUNDS (500
+  nodes, 1,500 edges) work is counted, never timed: the serializer's duplicate
+  check is linear, an edge's binding is found by its id
+  (`bindingIdForRelation`, which `drawRelationEdge` now gives every binding),
+  never by a scan of the store, and a save or view sends the same number of
+  statements at 500 nodes as at 50 (`canvas-hardening.test.ts`). ARRANGE runs
+  dagre in a Web Worker (`layoutOffMainThread`; the main thread only when no
+  worker can run): the worker is a chunk of its own, made per job and
+  terminated, carries ids and numbers only, and loads no other script — its
+  response has the static assets' `default-src 'none'`, so `next.config.mjs`
+  keeps its chunk (`story-map-layout`) out of Next's splitting and
+  `check-build.js` refuses an `importScripts` in it or the worker in any first
+  load. THE BUNDLE BUDGET: every route's first-load JS and CSS, gzipped, is
+  held to `scripts/bundle-budget.json` (recorded size + `BUDGET_HEADROOM`, 10 %);
+  a route over it, without one, or a budget for a gone route fails Build. To
+  raise one deliberately: build, `node scripts/check-build.js --no-build
+  --record-budget`, commit the file and say in the pull request what grew and
+  why; never widen the headroom. THE LIST VIEW (`StoryMapListView`, the map
+  page's Canvas / List toggle) is every canvas action as named buttons —
+  open, remove from map, earlier / later, relate (two choices, then the type
+  picker), question or remove a relation, grill a selection — acting through
+  the same editor and handlers, so it saves through the same autosave and
+  version lock; a new canvas action gets its list equivalent and joins the
+  keyboard E2E (`tests/e2e/canvas-hardening.spec.ts`). HISTORY is read a page
+  at a time (`SNAPSHOT_PAGE_SIZE`, `?before=<version>`, `nextBefore`), so every
+  version stays reachable; a restore with unsaved canvas edits says so and
+  saves them first (`beforeRestore`). A snapshot must name the map's CURRENT
+  version (trigger `map_snapshot_names_current_version`, every role: write the
+  version, then its snapshot); a bible deletion's once-per-transaction marker
+  is ONE setting (`inkquisitor.map_cascade`), never one named per map. Stored
+  rich text is proved renderable before it is restored (`restoreFreeform`);
+  one that is not keeps its words as plain text. `sanitizePlainText` keeps a
+  `<` that never closes (`if a<b then c` stays whole) and parses before it
+  decodes; what a browser would read as markup is still stripped, and the
+  result is idempotent (an exported value imports back as itself). The D1
+  guard also refuses the watermark reached without its class name (its
+  `SEE-LICENSE` suffix, its `data-debug` / `data-mobile` attributes, a class
+  substring selector, a link to tldraw, the word in a stylesheet).
 - **Word search (Phase 3.4; D21).** OPTION A, DECRYPT AND SCAN: `searchBook`
   reads one book through `runInWorkspaceContext` (the encryption extension
   decrypts it), turns every source into plain text, and ranks it in memory
@@ -1106,7 +1159,8 @@ closed beta with an explicit operator flag (D5, amended 2026-11-19).
   blind index or cache that outlives the request (option B, a blind index, is
   deferred). Searched: an element's name, custom label, summary, every stored
   field (rich text through `HtmlTextReader`, never a tag-stripping pattern,
-  with a break between blocks; a list's items; a choice's label; not a scale)
+  with a break between blocks, and a phrase never matches across one; a
+  list's items; a choice's label; not a scale)
   and its relation notes (both ends), and the book's title and logline; not
   answers, research, versions or proposals yet. A plain-text source is never
   parsed as HTML again. THE STEMMER is `porter2Stem`, Snowball English
@@ -1114,7 +1168,8 @@ closed beta with an explicit operator flag (D5, amended 2026-11-19).
   vocabulary and output (`tests/fixtures/snowball/`); a change that moves a
   stem moves `PORTER2_VERSION` and re-pins `golden-pin.json`. The irregular
   table takes only forms that are almost always that lemma (no left, saw,
-  rose, fell…). It is NOT the question engine's `stem()` in
+  rose, fell…), and a word it changes keeps its Porter2 stem too
+  (`regularStem`: "broken" finds "brokenly"). It is NOT the question engine's `stem()` in
   `src/lib/interview/text.ts`, which grounding and dedupe depend on: neither
   imports the other (`tests/guards/search-stemmer-separate.test.ts`). Every
   word has a surface form (folded: NFKC, `'`, diacritics, possessive) and a
@@ -1126,7 +1181,9 @@ closed beta with an explicit operator flag (D5, amended 2026-11-19).
   last two characters and its irregular forms); keep that sound — the golden
   test checks the two-character property, and the rank test compares results
   with skipping off. Every read and the results are bounded
-  (`vocabulary.ts`), and a cut is named (`coverage.cut`, `truncated`), never
+  (`vocabulary.ts`; every encrypted text — summaries, fields, relation notes
+  and fields — is sized by stored bytes first and decrypted a bounded chunk at
+  a time, Phase 3.H), and a cut is named (`coverage.cut`, `truncated`), never
   silent. PRIVACY: the query is author text — the route is a POST with a JSON
   body, never `?q=` (Next's own request span records `http.target` with the
   query string, a proxy's access log the URI), the page never puts it in its
@@ -1135,6 +1192,50 @@ closed beta with an explicit operator flag (D5, amended 2026-11-19).
   highlight offsets; the client renders `<mark>` as React text. `bible.view`
   searches. Cost is linear in the book: the load test holds it to its own
   `WORD_SEARCH_P95_BOUND_MS`, and `book-search-work.test.ts` to counted work.
+- **Story order, slots and locks (Phase 3.H; D25).** LOCK ORDER, for the whole
+  book, is: (bundle import) → map → names → order → element → relation. Take
+  them in that order and never one after a later one: a map save and restore
+  take the order locks of the kinds the map draws right after the map's
+  (`lockMapOrders`: a node's foreign key takes a KEY SHARE on its element's
+  row, a rank change takes it FOR UPDATE); a bible deletion takes the map locks
+  before the element's (`deleteElement`); `removeRelation` takes the map locks,
+  then the relation's. A rank is placed only by `rankForTarget`
+  (`bible-order.ts`): named neighbours must be placed (409 ORDER_STALE). The
+  story order is ONE FREE ORDER per book and kind, the rank alone (D25 as the
+  owner amended it): a beat in Act 2 may stand before one in Act 1, the plot
+  board's act lanes each show their beats in that rank order, and 4.2 reads
+  before and after from the rank alone, never act first. With no neighbour
+  named a placed element keeps its rank (a beat moved into another act, an
+  empty one included, changes only its act) and an unplaced one goes to the end
+  of the order. A spent gap
+  REBALANCES the whole order (`rebalancedRanks`, under the order's lock, one
+  `BIBLE_ORDER_REBALANCED` audit row, no version: no place relative to another
+  moves) and is placed again. AUDIT LAST: a placement writes its rows (the
+  rebalance's, the element's rank) before the transaction's first audit row
+  (`recordRebalance` after them; a slot's beat reserves its place with
+  `reserveOrderPlaceTx` before it is created), because the audit lock is held
+  to commit and a writer holding a beat's row appends one too (40P01). A whole-order read is `readPlacedOrder` (409
+  ORDER_SCOPE_TOO_LARGE past `ORDER_SCOPE_MAX`, never a cut read); the import's
+  ORDER_TAKEN check asks for the ranks it writes (`holdersOfRanks`). A slot's
+  beat (`story-slot.ts`, kept off the dials' import graph) is placed as proposed
+  only while its slot stands (`slotChangeOf`); otherwise 409 SLOT_CHANGED
+  (`change`: NEIGHBOUR_GONE, NEIGHBOUR_UNPLACED, NEIGHBOUR_MOVED, GAP_FILLED) and
+  the author names `placement: { after, before }` or `{ unplaced: true }`; the
+  view's `slot.changed` and `slot.choices` drive `SlotPlacement`, which replaces
+  Accept. A gap holds one beat (`slotBeat` / `slotTakenBy`: pending, or accepted and
+  still there): reconcile refuses a second (`SLOT_TAKEN`), and the session GOES
+  ON WITH IT (D25 as amended): later rounds ask about the beat's own fields, the
+  subject still the beat not yet created (`aboutPending`, its name the beat's),
+  what its proposal fills (and, once accepted, what its element holds) counted
+  as stored (rule 5) and never challenged; reconcile proposes those fields as
+  ADD-only FIELD proposals naming the beat's proposal (`targetProposalId`, no
+  element, no base version; anything but ADD refused `SLOT_BEAT_ADD_ONLY`),
+  accepted only after the beat (409 END_NOT_CREATED; a rejected beat or a
+  deleted element 409 END_GONE), each writing one version of the created
+  element naming its answers, never in bulk. The session ends when its frontier
+  is empty. An accepted link returns `relationEnds`, which the map list draws
+  from. Display text is cut with `truncateGraphemes` (`src/lib/text/truncate.ts`),
+  never a UTF-16 slice.
 - **Sanitising author text.** Every author-text write sanitises at the
   usecase layer before it is stored: plain text through `plainLine` /
   `plainBlock` (`src/lib/bible/text.ts`, over `sanitizePlainText`), rich text
@@ -1293,6 +1394,10 @@ has the design. Reach for the primitives, never hand-roll a replacement:
   `tests/helpers/repo-files.ts`, never a hand-written skip list.
 - Write tests that fail when the behaviour regresses, not tests that pin the
   shape of a diff.
+- No test's verdict rests on a wall clock it does not control: a suite that
+  counts bcrypt compares hashes at bcrypt's lowest cost (the production cost is
+  pinned by `passwords.test.ts`); at cost 12, thirteen compares in one test ran
+  past Jest's 5 s under load (`credentials-lockout`, 3.H).
 
 ## Implementation notes
 

@@ -16,7 +16,10 @@
  *                fields of its kind's template, nothing stored, and the slot's
  *                act already answered by the slot itself. A question about it
  *                is stored under the slot's earlier neighbour with
- *                `Question.aboutPending`.
+ *                `Question.aboutPending`. Once a round has proposed the beat
+ *                (Phase 3.H, D25 as amended), it is still this subject: it
+ *                takes the beat's name, and what the beat holds counts as
+ *                stored, so later rounds ask about its remaining fields.
  *
  * So a `FieldRef` (`frontier.ts`) addresses a relation field by its relation's
  * id and a pending field by `PENDING_SUBJECT_ID`, and every rule keyed on a
@@ -53,6 +56,12 @@ export interface PendingSubject {
     beforeName: string;
     /** The act lane the two neighbours share (an option value of the kind's `act` field), or null. */
     act: string | null;
+    /**
+     * Phase 3.H (D25 as amended): the name of the beat an earlier round of the
+     * session proposed for the slot, once it has one (author text, sent only
+     * as data). The session goes on asking about that beat's own fields.
+     */
+    proposedName?: string;
 }
 
 /** How a relation subject is named on a page: "A — label — B". */

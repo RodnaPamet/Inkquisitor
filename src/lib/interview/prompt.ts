@@ -285,7 +285,9 @@ export function questionDataBlocks(input: PromptInput): AuthorDataBlock[] {
                 ...(e.relation
                     ? { relation: { from: { kind: e.relation.fromKind, name: e.relation.fromName }, label: e.relation.label, to: { kind: e.relation.toKind, name: e.relation.toName } } }
                     : {}),
-                ...(e.pending ? { not_yet_created: { kind: e.pending.kind, between: [e.pending.afterName, e.pending.beforeName] } } : {}),
+                ...(e.pending
+                    ? { not_yet_created: { kind: e.pending.kind, between: [e.pending.afterName, e.pending.beforeName], ...(e.pending.proposedName ? { proposed_as: e.pending.proposedName } : {}) } }
+                    : {}),
                 fields: e.fields.map(fieldView),
                 already_answered_never_ask_afresh: Object.fromEntries(e.stored.map((s) => [s.key, s.value])),
             }),

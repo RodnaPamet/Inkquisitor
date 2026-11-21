@@ -6,10 +6,16 @@
  * (`src/lib/canvas/canvas-auto-layout.ts`) is pure; this is the half that
  * reads nodes and edges out of a store and writes positions back, in SHAPE
  * id space (the ids `updateShapes` needs).
+ *
+ * OFF THE MAIN THREAD (Phase 3.H): the layout itself runs in a Web Worker
+ * (`layoutOffMainThread`), so arranging a full map does not freeze the
+ * canvas; the store is read before and written after, on the main thread.
+ * A node removed while the worker ran is not written back.
  */
 import type { Editor, TLShapeId } from 'tldraw';
 
-import { computeAutoLayout, type AutoLayoutDirection, type LayoutEdge, type LayoutNode } from '@/lib/canvas/canvas-auto-layout';
+import type { AutoLayoutDirection, LayoutEdge, LayoutNode } from '@/lib/canvas/canvas-auto-layout';
+import { layoutOffMainThread, type LayoutWorkerFactory } from '@/lib/canvas/auto-layout-off-thread';
 import { STORY_EDGE_BINDING_TYPE } from './story-edge-binding';
 import { STORY_NODE_SHAPE_TYPE } from './story-node-shape';
 
@@ -46,9 +52,11 @@ export function selectedNodeIds(editor: Editor): Set<string> {
     return new Set((editor.getSelectedShapes() as unknown as StoreShape[]).filter((s) => s.type === STORY_NODE_SHAPE_TYPE).map((s) => s.id));
 }
 
-/** Write positions back in ONE `updateShapes` call: one store operation, one undo step. */
+/** Write positions back in ONE `updateShapes` call: one store operation, one undo step. A node no longer on the canvas is skipped. */
 export function applyLayout(editor: Editor, positions: Record<string, { x: number; y: number }>): number {
-    const updates = Object.entries(positions).map(([id, p]) => ({ id: id as TLShapeId, type: STORY_NODE_SHAPE_TYPE, x: p.x, y: p.y }));
+    const updates = Object.entries(positions)
+        .filter(([id]) => editor.getShape(id as TLShapeId) !== undefined)
+        .map(([id, p]) => ({ id: id as TLShapeId, type: STORY_NODE_SHAPE_TYPE, x: p.x, y: p.y }));
     if (updates.length === 0) return 0;
     editor.updateShapes(updates as never);
     return updates.length;
@@ -57,13 +65,23 @@ export function applyLayout(editor: Editor, positions: Record<string, { x: numbe
 export type AutoLayoutScope = 'all' | 'selection';
 
 /**
- * Lay the map out and apply it; returns how many nodes moved. A selection of
+ * Lay the map out and apply it; answers how many nodes moved, and where the
+ * layout ran (null when nothing was laid out). A selection of
  * fewer than two nodes is not arranged (one node laid out alone is flung to
- * its own origin).
+ * its own origin). The layout runs in a worker where there is one
+ * (`createWorker`, the browser's by default), and the positions are applied
+ * as one store operation (one undo step) when it answers.
  */
-export function runAutoLayout(editor: Editor, direction: AutoLayoutDirection, scope: AutoLayoutScope = 'all'): number {
+export async function runAutoLayout(
+    editor: Editor,
+    direction: AutoLayoutDirection,
+    scope: AutoLayoutScope = 'all',
+    options: { createWorker?: LayoutWorkerFactory } = {},
+): Promise<{ moved: number; thread: 'worker' | 'main' | null }> {
     const filter = scope === 'selection' ? selectedNodeIds(editor) : undefined;
-    if (filter && filter.size < 2) return 0;
-    const { positions } = computeAutoLayout(layoutNodesFrom(editor), layoutEdgesFrom(editor), direction, filter);
-    return applyLayout(editor, positions);
+    if (filter && filter.size < 2) return { moved: 0, thread: null };
+    const job = { nodes: layoutNodesFrom(editor), edges: layoutEdgesFrom(editor), direction, ...(filter ? { nodeIds: [...filter] } : {}) };
+    const { positions, thread } = await layoutOffMainThread(job, options.createWorker);
+    editor.markHistoryStoppingPoint('arrange');
+    return { moved: applyLayout(editor, positions), thread };
 }

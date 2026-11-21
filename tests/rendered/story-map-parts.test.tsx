@@ -77,6 +77,7 @@ const SNAPSHOTS = {
         { version: 1, nodeCount: 1, edgeCount: 0, restoredFromVersion: null, fromBibleDeletion: false, createdAt: '2026-11-20T08:00:00.000Z', createdByName: null },
     ],
     truncated: false,
+    nextBefore: null,
 };
 
 function history(over: Partial<React.ComponentProps<typeof CanvasHistorySidebar>> = {}) {
@@ -137,7 +138,7 @@ describe('CanvasHistorySidebar', () => {
     });
 
     it('a map nobody has saved says so', async () => {
-        mockFetch({ [`GET ${MAP}/snapshots`]: { json: { snapshots: [], truncated: false } } });
+        mockFetch({ [`GET ${MAP}/snapshots`]: { json: { snapshots: [], truncated: false, nextBefore: null } } });
         history({ currentVersion: 0 });
         expect(await screen.findByTestId('canvas-history-empty')).toHaveTextContent('No saves yet');
     });

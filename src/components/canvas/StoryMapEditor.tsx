@@ -41,6 +41,7 @@ import type { Editor, TLShapeId } from 'tldraw';
 
 import { Button } from '@/components/ui/button';
 import { Combobox, type ComboboxOption } from '@/components/ui/combobox';
+import { ToggleGroup } from '@/components/ui/toggle-group';
 import { useToast, useToastWithUndo } from '@/components/ui/hooks';
 import { WorkspaceShell } from '@/components/layout/WorkspaceShell';
 import { BIBLE_API, BibleApiError, bibleFetch, reasonOf, type CreatedRelationView, type ElementListItemView, type OrderMoveResult } from '@/lib/bible/api-client';
@@ -68,6 +69,7 @@ import { ElementSheet, type SheetOrderControls } from './ElementSheet';
 import { MapConflictNotice } from './MapConflictNotice';
 import { RelationTypePicker } from './RelationTypePicker';
 import { StoryMapCanvas } from './StoryMapCanvas';
+import { StoryMapListView, type ListEdge, type ListGroup, type ListNode } from './StoryMapListView';
 import { addElementNode } from './tldraw/add-element-node';
 import { drawRelationEdge, type RelationRequest } from './tldraw/arrow-to-edge';
 import { runAutoLayout } from './tldraw/auto-layout-host';
@@ -76,6 +78,8 @@ import type { KnownRelation } from './tldraw/edge-validation';
 import { placeCards, showNodes } from './tldraw/lane-host';
 import type { FreeformRecord } from './tldraw/serializer';
 import { STORY_NODE_SHAPE_TYPE } from './tldraw/story-node-shape';
+import { STORY_EDGE_BINDING_TYPE, type StoryEdgeBinding } from './tldraw/story-edge-binding';
+import { shapeIdForRelation } from './tldraw/story-edge-shape';
 
 export interface StoryMapEditorProps {
     workspaceSlug: string;
@@ -230,7 +234,7 @@ export default function StoryMapEditor({
         onError,
         enabled: canEdit && conflict === null,
     });
-    const { markClean, markDirty, rebase, saveNow } = autosave;
+    const { markClean, markDirty, rebase, saveNow, currentVersion } = autosave;
     const saveNowRef = useRef(saveNow);
     useEffect(() => {
         saveNowRef.current = saveNow;
@@ -265,15 +269,26 @@ export default function StoryMapEditor({
         setCanvasKey((k) => k + 1);
     }, [workspaceSlug, bookId, kindSlug, markClean, rebase]);
 
-    /** The author's explicit choice: save these edits over the newer version. */
+    /**
+     * The author's explicit choice: save these edits over the newer version.
+     * The save waits for the render that clears the conflict: autosave is held
+     * while a conflict stands, so a save sent in the same tick was refused
+     * by the held queue and nothing was saved (found in 3.H's two-tab E2E).
+     */
+    const saveMineQueued = useRef(false);
     const saveMine = useCallback(async () => {
         let base = conflict?.currentVersion ?? null;
         if (base === null) base = (await bibleFetch<{ map: StoryMapView }>(MAP_API.map(workspaceSlug, bookId, kindSlug))).map.version;
         rebase(base);
         setVersion(base);
+        saveMineQueued.current = true;
         setConflict(null);
-        await saveNow();
-    }, [conflict, workspaceSlug, bookId, kindSlug, rebase, saveNow]);
+    }, [conflict, workspaceSlug, bookId, kindSlug, rebase]);
+    useEffect(() => {
+        if (!saveMineQueued.current || conflict !== null) return;
+        saveMineQueued.current = false;
+        void saveNow();
+    }, [conflict, saveNow]);
 
     const addElement = useCallback(
         (element: Pick<ElementListItemView, 'id' | 'name' | 'kind' | 'customLabel' | 'filledFieldCount' | 'orderRank'>) => {
@@ -503,6 +518,13 @@ export default function StoryMapEditor({
         // `diff` is in the list so the names are read again when a comparison opens.
     }, [map, editor, diff]); // eslint-disable-line react-hooks/exhaustive-deps
 
+    /** Before a restore: save what the debounce still holds (issue #45, item 2); the version it reached, or null. */
+    const saveBeforeRestore = useCallback(async () => {
+        const result = await saveNow();
+        return result.ok ? currentVersion() : null;
+    }, [saveNow, currentVersion]);
+    const pendingEdits = canEdit && conflict === null && (autosave.status === 'pending' || autosave.status === 'saving' || autosave.status === 'error');
+
     const onRestored = useCallback(
         (result: MapRestoreResult) => {
             setHistoryOpen(false);
@@ -517,6 +539,103 @@ export default function StoryMapEditor({
             setCanvasKey((k) => k + 1);
         },
         [toast, t, markClean, rebase],
+    );
+
+    // Arrange: dagre runs in a worker (3.H), so the canvas stays live while it does; the surface says where it ran.
+    const [arranging, setArranging] = useState(false);
+    const [layoutThread, setLayoutThread] = useState<'worker' | 'main' | null>(null);
+    const arrange = useCallback(
+        async (direction: 'LR' | 'TB') => {
+            if (!editor) return;
+            setArranging(true);
+            try {
+                const { thread } = await runAutoLayout(editor, direction);
+                if (mounted.current && thread) setLayoutThread(thread);
+            } finally {
+                if (mounted.current) setArranging(false);
+            }
+        },
+        [editor],
+    );
+
+    // ─── The list view (3.H): every canvas action by keyboard and screen reader ──
+    // It reads the LIVE store (what the canvas holds now, saved or not) and acts
+    // through the same handlers as the canvas, so both are one map.
+    const [view, setView] = useState<'canvas' | 'list'>('canvas');
+    const [storeTick, setStoreTick] = useState(0);
+    useEffect(() => {
+        if (!editor || view !== 'list') return;
+        return editor.store.listen(() => setStoreTick((n) => n + 1), { scope: 'document' });
+    }, [editor, view]);
+    const listGraph = useMemo((): { nodes: ListNode[]; edges: ListEdge[] } | null => {
+        if (!editor || view !== 'list') return null;
+        const nodes: ListNode[] = [];
+        for (const s of editor.getCurrentPageShapes()) {
+            if (s.type !== STORY_NODE_SHAPE_TYPE) continue;
+            const p = s.props as { elementId: string; name: string; kindLabel: string; badgeLabel: string; detail?: string };
+            nodes.push({ elementId: p.elementId, name: p.name, kindLabel: p.kindLabel, badgeLabel: p.badgeLabel, detail: p.detail ?? '' });
+        }
+        const edges: ListEdge[] = editor.store
+            .allRecords()
+            .filter((r) => r.typeName === 'binding' && (r as { type?: string }).type === STORY_EDGE_BINDING_TYPE)
+            .map((r) => {
+                const props = (r as unknown as StoryEdgeBinding).props;
+                const line = editor.getShape(shapeIdForRelation(props.relationId));
+                const label = (line?.props as { label?: string } | undefined)?.label ?? relationLabels.get(props.relationId) ?? '';
+                return { relationId: props.relationId, sourceElementId: props.sourceElementId, targetElementId: props.targetElementId, label };
+            });
+        return { nodes, edges };
+        // `storeTick` re-reads the store after each change.
+    }, [editor, view, storeTick, relationLabels]); // eslint-disable-line react-hooks/exhaustive-deps
+    const listGroups: ListGroup[] | null = useMemo(() => {
+        if (!lanes || !listGraph) return null;
+        const groups: ListGroup[] = lanes.bands
+            .filter((b) => b.role !== 'character')
+            .map((b) => ({ key: b.key, label: b.label, elementIds: (lanes.sequences.get(b.key) ?? []).map((n) => n.elementId) }));
+        const placed = new Set(groups.flatMap((g) => g.elementIds));
+        const fresh = listGraph.nodes.filter((n) => !placed.has(n.elementId)).map((n) => n.elementId);
+        return fresh.length > 0 ? [...groups, { key: 'just-added', label: t('list.justAdded'), elementIds: fresh }] : groups;
+    }, [lanes, listGraph, t]);
+    const removeNode = useCallback(
+        (elementId: string) => {
+            if (!editor) return;
+            const shape = editor.getCurrentPageShapes().find((s) => s.type === STORY_NODE_SHAPE_TYPE && (s.props as { elementId?: string }).elementId === elementId);
+            if (shape) editor.deleteShapes([shape.id]);
+        },
+        [editor],
+    );
+    const removeEdge = useCallback(
+        (edge: ListEdge) => {
+            // The same path as deleting the line on the canvas: the edge goes, and the relation through the undo toast.
+            if (editor?.getShape(shapeIdForRelation(edge.relationId))) editor.deleteShapes([shapeIdForRelation(edge.relationId)]);
+        },
+        [editor],
+    );
+    const relate = useCallback(
+        (fromElementId: string, toElementId: string) => {
+            if (!editor) return;
+            const drawn = new Set(listGraph?.edges.map((e) => e.relationId) ?? []);
+            const existing = relationsRef.current.find(
+                (r) => !drawn.has(r.relationId) && ((r.sourceElementId === fromElementId && r.targetElementId === toElementId) || (r.sourceElementId === toElementId && r.targetElementId === fromElementId)),
+            );
+            // A relation the book holds and the map does not draw yet is drawn; otherwise the type picker creates one.
+            if (existing) {
+                if (drawRelationEdge(editor, existing, relationLabels.get(existing.relationId) ?? '')) markDirty();
+                return;
+            }
+            onNeedsRelation({ arrowId: '', fromElementId, toElementId });
+        },
+        [editor, listGraph, relationLabels, markDirty, onNeedsRelation],
+    );
+    const canMoveInList = useCallback((elementId: string, direction: 'earlier' | 'later') => (lanes ? stepMove(lanes, elementId, direction) !== null : false), [lanes]);
+    const moveInList = useCallback(
+        (elementId: string, direction: 'earlier' | 'later') => {
+            if (!lanes) return;
+            const move = stepMove(lanes, elementId, direction);
+            const node = nodeOf(elementId);
+            if (move && node) void sendMove(move, node.element.versionNumber);
+        },
+        [lanes, nodeOf, sendMove],
     );
 
     const onMap = useMemo(() => new Set(map.nodes.map((n) => n.elementId)), [map]);
@@ -537,6 +656,16 @@ export default function StoryMapEditor({
             ) : null}
             <WorkspaceShell.Toolbar>
                 <div className="flex flex-wrap items-center gap-tight" data-testid="map-toolbar">
+                    <ToggleGroup
+                        size="sm"
+                        ariaLabel={t('view.label')}
+                        selected={view}
+                        selectAction={(v) => setView(v === 'list' ? 'list' : 'canvas')}
+                        options={[
+                            { value: 'canvas', label: t('view.canvas'), id: 'map-view-canvas' },
+                            { value: 'list', label: t('view.list'), id: 'map-view-list' },
+                        ]}
+                    />
                     {canEdit ? (
                         <AddElementPicker workspaceSlug={workspaceSlug} bookId={bookId} kinds={MAP_ELEMENT_KINDS[mapKind]} onMap={onMap} kindLabels={kindLabels} onPick={addElement} />
                     ) : null}
@@ -553,10 +682,10 @@ export default function StoryMapEditor({
                     {canEdit && mapKind === 'PLOT' ? <BetweenPicker slots={slots} onPick={askBetween} /> : null}
                     {canEdit && layoutMode === 'free' ? (
                         <>
-                            <Button variant="secondary" size="sm" disabled={!editor} onClick={() => editor && runAutoLayout(editor, 'LR')} data-testid="map-arrange-lr">
+                            <Button variant="secondary" size="sm" disabled={!editor || arranging} onClick={() => void arrange('LR')} data-testid="map-arrange-lr">
                                 {t('toolbar.arrangeLR')}
                             </Button>
-                            <Button variant="secondary" size="sm" disabled={!editor} onClick={() => editor && runAutoLayout(editor, 'TB')} data-testid="map-arrange-tb">
+                            <Button variant="secondary" size="sm" disabled={!editor || arranging} onClick={() => void arrange('TB')} data-testid="map-arrange-tb">
                                 {t('toolbar.arrangeTB')}
                             </Button>
                         </>
@@ -584,7 +713,22 @@ export default function StoryMapEditor({
             </WorkspaceShell.Toolbar>
             <WorkspaceShell.Body>
                 {/* `isolate`: tldraw's own z-indexes stay inside the canvas, so a dialog opened over it (the type picker, the sheet) is never under its toolbar. */}
-                <div className="relative isolate h-[70vh] min-h-96 w-full overflow-hidden rounded-md border border-border-default md:h-full" data-testid="story-map-surface" data-map-version={version} data-map-kind={mapKind}>
+                {view === 'list' && listGraph ? (
+                    <StoryMapListView
+                        nodes={listGraph.nodes}
+                        edges={listGraph.edges}
+                        groups={layoutMode === 'derived' ? listGroups : null}
+                        canEdit={canEdit}
+                        onOpen={setOpenElementId}
+                        onRemoveNode={removeNode}
+                        onRemoveEdge={removeEdge}
+                        onRelate={relate}
+                        onGrill={grill}
+                        {...(layoutMode === 'derived' ? { canMove: canMoveInList, onMove: moveInList } : {})}
+                    />
+                ) : null}
+                {/* In the list view the canvas stays mounted (it IS the map the list acts on), out of sight and out of the tab order. */}
+                <div className={`relative isolate h-[70vh] min-h-96 w-full overflow-hidden rounded-md border border-border-default md:h-full${view === 'list' ? ' hidden' : ''}`} data-testid="story-map-surface" data-map-version={version} data-map-kind={mapKind} data-layout-thread={layoutThread ?? undefined}>
                     {seed.nodes.length === 0 && seed.freeform.length === 0 && map.nodes.length === 0 ? (
                         <p className="pointer-events-none absolute left-1/2 top-4 z-10 -translate-x-1/2 text-sm text-content-muted">{t(`page.emptyOf.${mapKind}`)}</p>
                     ) : null}
@@ -662,6 +806,8 @@ export default function StoryMapEditor({
                 }}
                 onRestored={onRestored}
                 onConflict={onConflict}
+                pendingEdits={pendingEdits}
+                beforeRestore={saveBeforeRestore}
             />
             {diff ? (
                 <CanvasDiffOverlay

@@ -47,6 +47,8 @@ export interface MapAutosaveApi extends CanvasAutosaveApi {
     saveNow: () => Promise<FlushResult>;
     /** Name a new base version (after a reload, or to save over a newer version on purpose). */
     rebase: (version: number) => void;
+    /** The version the last save landed at (or the base named), read now rather than at the last render. */
+    currentVersion: () => number;
 }
 
 export function useMapAutosave({ editor, workspaceSlug, bookId, kind, version, onConflict, onSaved, onError, enabled = true, delayMs }: UseMapAutosaveOptions): MapAutosaveApi {
@@ -82,5 +84,6 @@ export function useMapAutosave({ editor, workspaceSlug, bookId, kind, version, o
     const rebase = useCallback((next: number) => {
         versionRef.current = next;
     }, []);
-    return useMemo(() => ({ ...autosave, saveNow, rebase }), [autosave, saveNow, rebase]);
+    const currentVersion = useCallback(() => versionRef.current, []);
+    return useMemo(() => ({ ...autosave, saveNow, rebase, currentVersion }), [autosave, saveNow, rebase, currentVersion]);
 }

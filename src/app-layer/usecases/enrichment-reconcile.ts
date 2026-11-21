@@ -66,6 +66,7 @@ import { AiUnavailableError, type AiUnavailableReason } from '@/lib/ai/errors';
 import { decodeFieldValue, type FieldValue } from '@/lib/bible/field-values';
 import type { BibleKind } from '@/lib/bible/kinds';
 import { getRelationType, getTemplate, relationFieldDefs } from '@/lib/bible/templates';
+import { slotBeat } from './story-slot';
 import { PENDING_SUBJECT_ID, relationSubjectName, subjectIdOf, type RelationSubject } from '@/lib/interview/subjects';
 import { defaultReconciler } from '@/lib/enrichment/model-seam';
 import { BOOK_ELEMENTS_IN_PROMPT_MAX, RECONCILE_PROMPT_VERSION } from '@/lib/enrichment/prompt';
@@ -248,11 +249,15 @@ export async function loadRoundInput(db: PrismaTx, ctx: WorkspaceRequestContext,
         });
     }
 
-    // The BETWEEN slot's element not yet created, when the round asked about it and both neighbours remain.
+    // The BETWEEN slot's element not yet created, when the round asked about it and both neighbours remain. A slot
+    // that already holds its beat (a pending or accepted proposal, Phase 3.H) takes no second one (SLOT_TAKEN), and
+    // the session goes on with it (D25 as amended): the subject carries the beat's name and what it already holds,
+    // and its ADDs become field proposals for that beat (`targetProposalId`), waiting for it.
     const relationEnds = await relationEndsOf(db, ctx, session);
     let slot: ReconcileRoundInput['slot'] = null;
     if (session.scope === 'BETWEEN' && session.slotKind && relationEnds.length === 2) {
-        slot = { kind: session.slotKind as BibleKind };
+        const beat = await slotBeat(db, ctx, session);
+        slot = { kind: session.slotKind as BibleKind, ...(beat ? { taken: true, beatProposalId: beat.proposalId } : {}) };
         if (questions.some((q) => q.aboutPending)) {
             const targeted = targetedOf(PENDING_SUBJECT_ID);
             const after = relationEnds.find((e) => e.elementId === session.slotAfterElementId)!;
@@ -260,11 +265,11 @@ export async function loadRoundInput(db: PrismaTx, ctx: WorkspaceRequestContext,
             elements.push({
                 elementId: PENDING_SUBJECT_ID,
                 kind: slot.kind,
-                name: `${after.name} → … → ${before.name}`,
+                name: beat && beat.name !== '' ? beat.name : `${after.name} → … → ${before.name}`,
                 customLabel: null,
-                stored: new Map(),
+                stored: beat?.fields ?? new Map(),
                 scopeKeys: getTemplate(slot.kind).fields.filter((f) => targeted.has(f.key)).map((f) => f.key),
-                pending: { afterName: after.name, beforeName: before.name },
+                pending: { afterName: after.name, beforeName: before.name, ...(beat ? { proposedName: beat.name } : {}) },
             });
         }
     }
@@ -533,6 +538,36 @@ async function persistRun(
                     newKind: null,
                     newName: null,
                     newSummary: null,
+                    flags: [...draft.flags],
+                },
+                draft.citedAnswerIds,
+            );
+        } else if (draft.toSlotBeat) {
+            // A further field of the slot's beat an earlier round proposed (Phase 3.H, D25 as amended): it names the
+            // beat's proposal and waits for it, with no element and no base version yet; ADD only (the CHECK holds both).
+            const beatProposalId = now.slot?.beatProposalId;
+            if (!beatProposalId) {
+                refuse('PENDING_WITHOUT_ELEMENT');
+                continue;
+            }
+            const text = sanitiseProposalForStorage(draft, subject.kind);
+            await EnrichmentProposalRepository.create(
+                db,
+                ctx.workspaceId,
+                {
+                    bookId: session.bookId,
+                    sessionId: session.id,
+                    roundId: round.id,
+                    kind: 'FIELD',
+                    elementId: null,
+                    fieldKey: draft.fieldKey,
+                    operation: draft.operation,
+                    proposedValue: text.proposedValue,
+                    baseVersion: null,
+                    newKind: null,
+                    newName: null,
+                    newSummary: null,
+                    targetProposalId: beatProposalId,
                     flags: [...draft.flags],
                 },
                 draft.citedAnswerIds,

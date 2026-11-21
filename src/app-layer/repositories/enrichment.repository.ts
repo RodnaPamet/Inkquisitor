@@ -56,6 +56,7 @@ export const PROPOSAL_SELECT = {
     newToElementId: true,
     newFromProposalId: true,
     newToProposalId: true,
+    targetProposalId: true,
     createdRelationId: true,
     flags: true,
     status: true,
@@ -92,6 +93,8 @@ export interface ProposalWrite {
     newToElementId?: string | null;
     newFromProposalId?: string | null;
     newToProposalId?: string | null;
+    /** Phase 3.H (D25 as amended): a FIELD proposal for the slot's beat not yet created, by its NEW_ELEMENT proposal. */
+    targetProposalId?: string | null;
 }
 
 export const ReconcileRunRepository = {
@@ -162,12 +165,36 @@ export const EnrichmentProposalRepository = {
     },
 
     /** The names of the book's PENDING new-element proposals (decrypted: compared in code). */
+    /**
+     * The session's proposals of a beat for its BETWEEN slot that still hold it
+     * (Phase 3.H, issue #53 item 1): one PENDING, or accepted with the element
+     * it created. At most a few a session; `take` bounds it.
+     */
+    slotHolders(db: Db, workspaceId: string, sessionId: string, take: number) {
+        return db.enrichmentProposal.findMany({
+            where: { workspaceId, sessionId, kind: 'NEW_ELEMENT', fillsSlot: true, status: { in: ['PENDING', 'ACCEPTED', 'EDITED_ACCEPTED'] } },
+            orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+            take,
+            select: { id: true, status: true, createdElementId: true, newName: true, proposedValue: true },
+        });
+    },
+
     pendingNewElementNames(db: Db, workspaceId: string, bookId: string, take: number) {
         return db.enrichmentProposal.findMany({
             where: { workspaceId, bookId, status: 'PENDING', kind: 'NEW_ELEMENT' },
             orderBy: { createdAt: 'asc' },
             take,
             select: { newName: true },
+        });
+    },
+
+    /** The other PENDING proposals for one field of a slot's beat, named by the beat's proposal (Phase 3.H). */
+    pendingForSlotBeatField(db: Db, workspaceId: string, targetProposalId: string, fieldKey: string, exceptId: string, take: number) {
+        return db.enrichmentProposal.findMany({
+            where: { workspaceId, targetProposalId, fieldKey, status: 'PENDING', id: { not: exceptId } },
+            orderBy: { createdAt: 'asc' },
+            take,
+            select: { id: true },
         });
     },
 

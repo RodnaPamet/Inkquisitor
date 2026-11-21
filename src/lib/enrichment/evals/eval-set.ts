@@ -111,9 +111,12 @@ const caseShape = {
      * the case's element. RELATION: a relation of `relation.type` from the
      * case's element (the declaring end) to `relation.toName`; its fields are
      * the type's. SLOT: a BETWEEN session's element not yet created, of the
-     * case's kind, between its two `ends` (each `neighbour`).
+     * case's kind, between its two `ends` (each `neighbour`). SLOT_BEAT (Phase
+     * 3.H, D25 as amended): the same slot once an earlier round proposed its
+     * beat (named `elementName`): `bibleState` holds what the beat's proposal
+     * fills, and the round's ADDs are further fields of that beat.
      */
-    subject: z.enum(['ELEMENT', 'RELATION', 'SLOT']).optional(),
+    subject: z.enum(['ELEMENT', 'RELATION', 'SLOT', 'SLOT_BEAT']).optional(),
     relation: z.object({ type: z.string(), toKind: z.enum(BIBLE_KINDS), toName: z.string().min(1) }).strict().optional(),
     /** Phase 3.3: elements a new relation may join besides the case's own (a selection's others, a slot's neighbours). */
     ends: z.array(z.object({ ref: z.string().regex(/^e\d+$/), kind: z.enum(BIBLE_KINDS), name: z.string().min(1), neighbour: z.boolean().optional() }).strict()).optional(),
@@ -158,12 +161,13 @@ export type ReconcileEvalCase = z.infer<typeof EnrichmentCaseSchema> & { attack?
 
 /**
  * The core keys a case's `bibleState` names: its element kind's (ELEMENT), its
- * relation type's (RELATION), or its kind's but the act the slot gives (SLOT).
+ * relation type's (RELATION), or its kind's but the act the slot gives (SLOT,
+ * SLOT_BEAT).
  */
 export function caseCoreKeys(c: Pick<ReconcileEvalCase, 'kind' | 'subject' | 'relation'>): string[] {
     if (c.subject === 'RELATION' && c.relation) return relationFieldDefs(c.kind as BibleKind, c.relation.type).filter((f) => f.required).map((f) => f.key);
     const core = getTemplate(c.kind as BibleKind).fields.filter((f) => f.required).map((f) => f.key);
-    return c.subject === 'SLOT' ? core.filter((k) => k !== 'act') : core;
+    return c.subject === 'SLOT' || c.subject === 'SLOT_BEAT' ? core.filter((k) => k !== 'act') : core;
 }
 
 /** The rules a case holds beyond its shape (5.2, 5.3): every problem, by case id. */
@@ -172,7 +176,7 @@ export function caseProblems(c: ReconcileEvalCase, set: 'enrichment' | 'adversar
     const core = caseCoreKeys(c);
     if ((c.subject === 'RELATION') !== (c.relation !== undefined)) problems.push(`${c.id}: a relation case names its relation, and only it does`);
     if (c.relation && !getRelationType(c.kind as BibleKind, c.relation.type)) problems.push(`${c.id}: ${c.kind} declares no ${c.relation.type}`);
-    if (c.subject === 'SLOT' && (c.ends?.filter((e) => e.neighbour).length ?? 0) !== 2) problems.push(`${c.id}: a slot case names its two neighbours`);
+    if ((c.subject === 'SLOT' || c.subject === 'SLOT_BEAT') && (c.ends?.filter((e) => e.neighbour).length ?? 0) !== 2) problems.push(`${c.id}: a slot case names its two neighbours`);
     const refs = new Set(['self', ...(c.ends ?? []).map((e) => e.ref), ...c.expect.newElements.map((_n, i) => `new.${i + 1}`)]);
     for (const r of c.expect.newRelations ?? []) {
         if (!refs.has(r.from) || !refs.has(r.to)) problems.push(`${c.id}: a new relation's end is not one of the case's`);

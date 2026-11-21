@@ -3,7 +3,7 @@
  * a key strictly between two others, of the stored shape; `placeRank` puts an
  * element between the neighbours the author saw and never on another's rank.
  */
-import { FIRST_RANK, ORDER_RANK_MAX, ORDER_RANK_PATTERN, compareRanks, isRank, placeRank, rankBetween, RankExhaustedError } from '@/lib/bible/story-order';
+import { FIRST_RANK, ORDER_RANK_MAX, ORDER_RANK_PATTERN, compareRanks, isRank, placeRank, rankBetween, rebalancedRanks, RankExhaustedError } from '@/lib/bible/story-order';
 
 /** A small deterministic generator, so a failure is reproducible. */
 function random(seed: number) {
@@ -118,5 +118,54 @@ describe('placeRank', () => {
     it('says the gap is spent rather than throwing', () => {
         const tight = ['i', `i${'0'.repeat(ORDER_RANK_MAX - 2)}1`];
         expect(placeRank(tight, { after: 'i', before: tight[1] })).toEqual({ ok: false, reason: 'ORDER_RANK_EXHAUSTED' });
+    });
+});
+
+describe('rebalancedRanks (Phase 3.H, issue #50 item 7)', () => {
+    it.each([1, 2, 35, 36, 37, 500, 1_295, 1_296, 10_000])('gives %i short ranks, strictly ascending, of the stored shape', (n) => {
+        const ranks = rebalancedRanks(n);
+        expect(ranks).toHaveLength(n);
+        expect(ranks.every(isRank)).toBe(true);
+        for (let i = 1; i < n; i++) expect(compareRanks(ranks[i - 1], ranks[i])).toBe(-1);
+        // A few characters, whatever the order's length: the space is opened up again.
+        expect(Math.max(...ranks.map((r) => r.length))).toBeLessThanOrEqual(Math.ceil(Math.log(37 * (n + 1)) / Math.log(36)));
+    });
+
+    it('is deterministic, and empty for an empty order', () => {
+        expect(rebalancedRanks(50)).toEqual(rebalancedRanks(50));
+        expect(rebalancedRanks(0)).toEqual([]);
+        expect(() => rebalancedRanks(-1)).toThrow(RangeError);
+    });
+
+    it('a spent gap has room again after a rebalance: every neighbour pair takes many more inserts', () => {
+        // Spend one gap to the bound by splitting it again and again.
+        const order = ['i', 'j'];
+        let lower = 'i';
+        let spent = false;
+        for (let i = 0; i < 1_000 && !spent; i++) {
+            const d = placeRank(order, { after: lower, before: null });
+            if (!d.ok) {
+                expect(d.reason).toBe('ORDER_RANK_EXHAUSTED');
+                spent = true;
+            } else {
+                order.push(d.rank);
+                lower = d.rank;
+            }
+        }
+        expect(spent).toBe(true);
+        const sorted = [...order].sort(compareRanks);
+        // Rebalanced in the same order, the same gap (after the element that had spent it) is open again.
+        const fresh = rebalancedRanks(sorted.length);
+        const at = sorted.indexOf(lower);
+        let after = fresh[at];
+        for (let i = 0; i < 100; i++) {
+            const d = placeRank(fresh, { after, before: null });
+            expect(d.ok).toBe(true);
+            if (d.ok) {
+                fresh.push(d.rank);
+                fresh.sort(compareRanks);
+                after = d.rank;
+            }
+        }
     });
 });

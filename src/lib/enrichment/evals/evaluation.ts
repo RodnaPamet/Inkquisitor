@@ -68,7 +68,7 @@ import { ReconcileOutputSchema } from '../schema';
 import { promptContentHash } from '@/lib/ai/prompt-hash';
 import { runReconcileStep, type ReconcileRoundInput, type RoundAnswerInput } from '../reconcile';
 import type { ReconcileCallResult, Reconciler } from '../reconciler';
-import { addressesTheProduct, nameKey, paragraphsToHtml, valueAsText, type ProposalDraft, type RelationEndRef } from '../validate';
+import { addressesTheProduct, nameKey, paragraphsToHtml, valueAsText, type FieldProposalDraft, type ProposalDraft, type RelationEndRef } from '../validate';
 import { bulkEligible } from '../review-rules';
 
 export { nameKey };
@@ -128,7 +128,7 @@ function storedValueOf(c: ReconcileEvalCase, key: string, value: string | string
 
 /** The id the round gives a case's subject (Phase 3.3: the slot's element is `PENDING_SUBJECT_ID`). */
 function subjectIdOfCase(c: ReconcileEvalCase): string {
-    return c.subject === 'SLOT' ? PENDING_SUBJECT_ID : evalElementId(c);
+    return c.subject === 'SLOT' || c.subject === 'SLOT_BEAT' ? PENDING_SUBJECT_ID : evalElementId(c);
 }
 
 /** A case's end reference as the output names it: `self` is its element, `e<N>` one of its ends, `new.<N>` unchanged. */
@@ -179,6 +179,17 @@ export function roundInputOf(c: ReconcileEvalCase): ReconcileRoundInput {
     if (c.subject === 'SLOT') {
         const [after, before] = ends.filter((e) => e.neighbour);
         return { ...base, elements: [{ ...element, pending: { afterName: after.name, beforeName: before.name } }], relationEnds: ends, existingRelations: [], slot: { kind } };
+    }
+    if (c.subject === 'SLOT_BEAT') {
+        // The slot's beat an earlier round proposed (Phase 3.H): named, holding `bibleState`, the slot not offered again.
+        const [after, before] = ends.filter((e) => e.neighbour);
+        return {
+            ...base,
+            elements: [{ ...element, pending: { afterName: after.name, beforeName: before.name, proposedName: c.elementName } }],
+            relationEnds: ends,
+            existingRelations: [],
+            slot: { kind, taken: true, beatProposalId: `${evalElementId(c)}-beat` },
+        };
     }
     const relationEnds = ends.length > 0 ? [{ elementId, kind, name: c.elementName }, ...ends] : [];
     return { ...base, elements: [element], relationEnds, existingRelations: [], slot: null };
@@ -303,7 +314,7 @@ export function gradeCase(c: ReconcileEvalCase, proposals: readonly ProposalDraf
     const adversarial = c.attack !== undefined;
     // A slot case's operations arrive as the slot's new element's first fields (Phase 3.3), each an ADD citing what it cites.
     const slot = proposals.find((p) => p.kind === 'NEW_ELEMENT' && p.fillsSlot);
-    const slotFields =
+    const slotFields: Array<readonly [string, FieldProposalDraft]> =
         slot && slot.kind === 'NEW_ELEMENT'
             ? slot.fields.map((f) => [f.key, { kind: 'FIELD' as const, elementId: PENDING_SUBJECT_ID, fieldKey: f.key, operation: 'ADD' as const, value: f.value, citedAnswerIds: slot.citedAnswerIds, flags: slot.flags }] as const)
             : [];

@@ -63,8 +63,12 @@ import {
     type RelationFieldProposalView,
     type ReviewIds,
     type SessionReviewView,
+    type SlotPlacement as SlotPlacementChoice,
 } from '@/lib/enrichment/api-client';
-import { NewRelationCard, ProposalFlags, ProposalSources, ProposedFields, proposalStatusVariant } from './StructuralProposals';
+import { NewRelationCard, ProposalFlags, ProposalSources, ProposedFields, proposalStatusVariant, SlotPlacement } from './StructuralProposals';
+
+/** The refusals after which the page reads the review again: it is out of date (Phase 3.H adds a changed slot and a stale order). */
+const RELOAD_ON: ReadonlySet<string> = new Set(['VERSION_CONFLICT', 'PROPOSAL_OUTDATED', 'PROPOSAL_STALE', 'PROPOSAL_DECIDED', 'BULK_INELIGIBLE', 'RELATION_EXISTS', 'END_NOT_CREATED', 'END_GONE', 'SLOT_CHANGED', 'ORDER_STALE']);
 
 export interface SessionReviewProps {
     workspaceSlug: string;
@@ -115,7 +119,14 @@ function FieldProposalCard({ p, answers, canEdit, actions, scaleOf, workspaceSlu
     const subject =
         p.kind === 'RELATION_FIELD'
             ? { href: APP_ROUTES.bibleElement(workspaceSlug, bookId, p.relation.from.id), name: t('relationAria', { from: p.relation.from.name, label: p.relation.label, to: p.relation.to.name }), testId: 'relation-field-proposal' }
-            : { href: APP_ROUTES.bibleElement(workspaceSlug, bookId, p.elementId), name: p.elementName, testId: 'field-proposal' };
+            : {
+                  // A slot beat's field (Phase 3.H) links to its beat: the element once created, the beat's proposal before.
+                  href: p.elementId !== null ? APP_ROUTES.bibleElement(workspaceSlug, bookId, p.elementId) : `#proposal-${p.slotBeat?.proposalId ?? p.id}`,
+                  name: p.elementName,
+                  testId: 'field-proposal',
+              };
+    // A slot beat's field waits for its beat (the server holds the same rule: END_NOT_CREATED, END_GONE).
+    const waitsFor = p.kind === 'FIELD' && p.slotBeat !== null && p.slotBeat.state !== 'CREATED' ? p.slotBeat : null;
     const [editing, setEditing] = useState(false);
     const [draft, setDraft] = useState<FieldValue | null>(p.proposedValue);
     const pending = p.status === 'PENDING';
@@ -147,6 +158,11 @@ function FieldProposalCard({ p, answers, canEdit, actions, scaleOf, workspaceSlu
                 </div>
             </div>
             {pending ? <ProposalFlags id={p.id} flags={p.flags} /> : null}
+            {pending && waitsFor ? (
+                <p className="rounded-md border border-border-default bg-bg-subtle p-3 text-sm text-content-default" data-testid="proposal-waits">
+                    {waitsFor.state === 'PENDING' ? t('beatFieldWaits', { name: waitsFor.name }) : t('beatFieldGone')}
+                </p>
+            ) : null}
             {pending && changed ? (
                 <p className="rounded-md border border-border-default bg-bg-subtle p-3 text-sm text-content-default" data-testid="proposal-changed">
                     {t('changedSince', { base: p.baseVersion, current: p.currentVersion })}
@@ -184,6 +200,7 @@ function FieldProposalCard({ p, answers, canEdit, actions, scaleOf, workspaceSlu
                         </>
                     ) : (
                         <>
+                            {waitsFor ? null : (
                             <Button
                                 variant="primary"
                                 icon={<Check className="size-4" aria-hidden="true" />}
@@ -194,7 +211,8 @@ function FieldProposalCard({ p, answers, canEdit, actions, scaleOf, workspaceSlu
                             >
                                 {t('accept')}
                             </Button>
-                            {p.operation !== 'REMOVE' ? (
+                            )}
+                            {p.operation !== 'REMOVE' && !waitsFor ? (
                                 <Button
                                     variant="secondary"
                                     icon={<Pencil className="size-4" aria-hidden="true" />}
@@ -241,7 +259,7 @@ function NewElementCard({
     canEdit: boolean;
     busy: boolean;
     kindLabel: string;
-    onAccept: (p: NewElementProposalView, edit?: { name: string; summary: string | null }) => Promise<boolean>;
+    onAccept: (p: NewElementProposalView, edit?: { name: string; summary: string | null }, placement?: SlotPlacementChoice) => Promise<boolean>;
     onReject: (id: string) => Promise<void>;
     workspaceSlug: string;
     bookId: string;
@@ -267,11 +285,7 @@ function NewElementCard({
             </div>
             {pending ? <ProposalFlags id={p.id} flags={p.flags} /> : null}
             {p.summary && !editing ? <p className="whitespace-pre-wrap text-sm text-content-default">{p.summary}</p> : null}
-            {p.slot && pending ? (
-                <p className="text-sm text-content-muted" data-testid="slot-placement">
-                    {t('slotPlacement', { a: p.slot.afterName, b: p.slot.beforeName })}
-                </p>
-            ) : null}
+            {p.slot ? <SlotPlacement proposalId={p.id} slot={p.slot} pending={pending} canEdit={canEdit} busy={busy} onPlace={(placement) => onAccept(p, editing ? { name, summary: summary.trim() === '' ? null : summary } : undefined, placement)} /> : null}
             <ProposedFields fields={p.fields} title={t('firstFields')} />
             {p.createdElementId ? (
                 <Link href={APP_ROUTES.bibleElement(workspaceSlug, bookId, p.createdElementId)} className="text-sm text-content-emphasis hover:underline">
@@ -297,7 +311,7 @@ function NewElementCard({
                                 variant="primary"
                                 icon={<Check className="size-4" aria-hidden="true" />}
                                 loading={busy}
-                                disabled={name.trim() === ''}
+                                disabled={name.trim() === '' || Boolean(p.slot?.changed)}
                                 onClick={async () => {
                                     if (await onAccept(p, { name, summary: summary.trim() === '' ? null : summary })) setEditing(false);
                                 }}
@@ -311,9 +325,12 @@ function NewElementCard({
                         </>
                     ) : (
                         <>
-                            <Button variant="primary" icon={<Check className="size-4" aria-hidden="true" />} loading={busy} onClick={() => void onAccept(p)} id={`accept-${p.id}`}>
-                                {t('accept')}
-                            </Button>
+                            {/* A changed slot (D25): its own two choices accept it; this one would be refused. */}
+                            {p.slot?.changed ? null : (
+                                <Button variant="primary" icon={<Check className="size-4" aria-hidden="true" />} loading={busy} onClick={() => void onAccept(p)} id={`accept-${p.id}`}>
+                                    {t('accept')}
+                                </Button>
+                            )}
                             <Button variant="secondary" icon={<Pencil className="size-4" aria-hidden="true" />} onClick={() => setEditing(true)} id={`edit-${p.id}`}>
                                 {t('edit')}
                             </Button>
@@ -356,7 +373,7 @@ export function SessionReview({ workspaceSlug, book, review: initial, canEdit, k
             } catch (err) {
                 toast.error(errorText(err));
                 const reason = err instanceof BibleApiError ? err.reason : null;
-                if (reason === 'VERSION_CONFLICT' || reason === 'PROPOSAL_OUTDATED' || reason === 'PROPOSAL_STALE' || reason === 'PROPOSAL_DECIDED' || reason === 'BULK_INELIGIBLE' || reason === 'RELATION_EXISTS' || reason === 'END_NOT_CREATED' || reason === 'END_GONE') await reload();
+                if (reason !== null && RELOAD_ON.has(reason)) await reload();
                 return false;
             } finally {
                 setBusy(false);
@@ -374,11 +391,11 @@ export function SessionReview({ workspaceSlug, book, review: initial, canEdit, k
             });
             return t('accepted');
         });
-    const acceptNew = (p: NewElementProposalView, edit?: { name: string; summary: string | null }) =>
+    const acceptNew = (p: NewElementProposalView, edit?: { name: string; summary: string | null }, placement?: SlotPlacementChoice) =>
         run(async () => {
             const name = edit?.name ?? p.name;
-            await enrichmentApi.accept(ids, p.id, edit ? { name: edit.name, summary: edit.summary } : {});
-            return t('acceptedNew', { name });
+            const { decision } = await enrichmentApi.accept(ids, p.id, { ...(edit ? { name: edit.name, summary: edit.summary } : {}), ...(placement ? { placement } : {}) });
+            return decision.placed === false ? t('acceptedUnplaced', { name }) : t('acceptedNew', { name });
         });
     const acceptRelation = (p: NewRelationProposalView) =>
         run(async () => {

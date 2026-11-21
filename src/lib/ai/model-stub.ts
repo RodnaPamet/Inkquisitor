@@ -241,6 +241,8 @@ interface StubAnswer {
  * the slot's new element, named by the first four words of the first answer
  * about it, and a `causes` link from the earlier neighbour to it and from it to
  * the later one, each in an answer's own words. Validation judges all of it.
+ * A later round about the beat already proposed (Phase 3.H: its block names
+ * `proposed_as`, and no slot is sent) gets only the ADDs above.
  */
 export function stubReconcileAnswer(body: Record<string, unknown>): { operations: Array<Record<string, unknown>>; newElements: Array<Record<string, unknown>>; newRelations: Array<Record<string, unknown>> } | null {
     const blocks = fencedBlocks(body);
@@ -286,6 +288,9 @@ export function stubReconcileAnswer(body: Record<string, unknown>): { operations
     } catch {
         ends = [];
     }
+    // A later round of "What happens between these?" (Phase 3.H): the beat is already proposed, so its fields are the
+    // operations above (further fields of that beat), and the neighbours get no link of their own.
+    const aboutProposedBeat = [...blocks].some(([label, text]) => label.startsWith('element.') && text.includes('"proposed_as"'));
     let slot: { kind?: unknown } | null = null;
     try {
         slot = blocks.has('slot') ? (JSON.parse(blocks.get('slot')!) as { kind?: unknown }) : null;
@@ -301,7 +306,7 @@ export function stubReconcileAnswer(body: Record<string, unknown>): { operations
             newRelations.push({ fromElementId: ends[0].elementId, toElementId: 'new.1', type: 'causes', note: null, fields: [{ key: 'mechanism', value: words(1).answer }], cites: [words(1).answerId] });
             newRelations.push({ fromElementId: 'new.1', toElementId: ends[1].elementId, type: 'causes', note: null, fields: [{ key: 'mechanism', value: words(2).answer }], cites: [words(2).answerId] });
         }
-    } else if (ends.length >= 2 && answered.length > 0) {
+    } else if (ends.length >= 2 && answered.length > 0 && !aboutProposedBeat) {
         newRelations.push({
             fromElementId: ends[0].elementId,
             toElementId: ends[1].elementId,

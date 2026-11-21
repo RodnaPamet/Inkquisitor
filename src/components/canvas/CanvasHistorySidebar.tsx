@@ -9,6 +9,16 @@
  * (docs/carve-manifest.md), on the UI platform's `<Sheet>` and `<Modal>`
  * (inflect's AsidePanel and ConfirmDialog are not carried). A reader sees the
  * history and Compare, never Restore.
+ *
+ * Paged (3.H): the newest page first, and "Show older" reads the page below
+ * the last row shown, so every version stays reachable and no read grows with
+ * the map's age.
+ *
+ * Unsaved edits (issue #45, item 2): a restore replaces the canvas, so edits
+ * still waiting in the autosave debounce would be lost without a word. The
+ * host says whether any are pending (`pendingEdits`); the confirmation then
+ * says they will be saved first, and `beforeRestore` saves them (the restore
+ * names the version that save reached). A save that fails stops the restore.
  */
 import { useEffect, useState } from 'react';
 import { useTranslations } from 'next-intl';
@@ -18,7 +28,7 @@ import { Button } from '@/components/ui/button';
 import { Modal } from '@/components/ui/modal';
 import { Sheet } from '@/components/ui/sheet';
 import { BibleApiError, bibleFetch } from '@/lib/bible/api-client';
-import { MAP_API, type MapRestoreResult, type MapSnapshotMetaView } from '@/lib/canvas/api-client';
+import { MAP_API, type MapRestoreResult, type MapSnapshotMetaView, type MapSnapshotPage } from '@/lib/canvas/api-client';
 
 export interface CanvasHistorySidebarProps {
     workspaceSlug: string;
@@ -34,6 +44,13 @@ export interface CanvasHistorySidebarProps {
     onRestored: (result: MapRestoreResult) => void;
     /** A restore refused because the map moved on (409); the host shows its conflict notice. */
     onConflict: (currentVersion: number | null) => void;
+    /** True while edits are waiting to be saved (the confirmation says they will be saved first). */
+    pendingEdits?: boolean;
+    /**
+     * Save the pending edits before a restore; answers the map's version after
+     * it, or null when the save failed (the restore is then not sent).
+     */
+    beforeRestore?: () => Promise<number | null>;
 }
 
 export function CanvasHistorySidebar({
@@ -47,24 +64,27 @@ export function CanvasHistorySidebar({
     onDiffRequest,
     onRestored,
     onConflict,
+    pendingEdits = false,
+    beforeRestore,
 }: CanvasHistorySidebarProps) {
     const t = useTranslations('canvas.history');
     const [rows, setRows] = useState<MapSnapshotMetaView[] | null>(null);
-    const [truncated, setTruncated] = useState(false);
+    const [nextBefore, setNextBefore] = useState<number | null>(null);
+    const [loadingOlder, setLoadingOlder] = useState(false);
     const [loadFailed, setLoadFailed] = useState(false);
     const [confirming, setConfirming] = useState<number | null>(null);
     const [restoring, setRestoring] = useState<number | null>(null);
-    const [restoreFailed, setRestoreFailed] = useState(false);
+    const [restoreFailed, setRestoreFailed] = useState<false | 'restore' | 'unsaved'>(false);
 
     // Re-read on every version the map reaches, so a save lands at the top.
     useEffect(() => {
         if (!open) return;
         let cancelled = false;
-        bibleFetch<{ snapshots: MapSnapshotMetaView[]; truncated: boolean }>(MAP_API.snapshots(workspaceSlug, bookId, kind))
+        bibleFetch<MapSnapshotPage>(MAP_API.snapshotPage(workspaceSlug, bookId, kind, null))
             .then((body) => {
                 if (cancelled) return;
                 setRows(body.snapshots);
-                setTruncated(body.truncated);
+                setNextBefore(body.nextBefore);
                 setLoadFailed(false);
             })
             .catch(() => {
@@ -75,13 +95,37 @@ export function CanvasHistorySidebar({
         };
     }, [open, workspaceSlug, bookId, kind, currentVersion]);
 
+    async function loadOlder() {
+        if (nextBefore === null) return;
+        setLoadingOlder(true);
+        try {
+            const body = await bibleFetch<MapSnapshotPage>(MAP_API.snapshotPage(workspaceSlug, bookId, kind, nextBefore));
+            setRows((prev) => [...(prev ?? []), ...body.snapshots.filter((r) => !(prev ?? []).some((p) => p.version === r.version))]);
+            setNextBefore(body.nextBefore);
+        } catch {
+            setLoadFailed(true);
+        } finally {
+            setLoadingOlder(false);
+        }
+    }
+
     async function restore(version: number) {
         setRestoring(version);
         setRestoreFailed(false);
         try {
+            // Edits waiting in the debounce are saved first, or the restore would drop them unsaid.
+            let expectedVersion = currentVersion;
+            if (pendingEdits && beforeRestore) {
+                const saved = await beforeRestore();
+                if (saved === null) {
+                    setRestoreFailed('unsaved');
+                    return;
+                }
+                expectedVersion = saved;
+            }
             const result = await bibleFetch<MapRestoreResult>(MAP_API.restore(workspaceSlug, bookId, kind, version), {
                 method: 'POST',
-                body: { expectedVersion: currentVersion },
+                body: { expectedVersion },
             });
             onRestored(result);
         } catch (err) {
@@ -89,7 +133,7 @@ export function CanvasHistorySidebar({
                 const details = err.details as { currentVersion?: unknown } | null;
                 onConflict(typeof details?.currentVersion === 'number' ? details.currentVersion : null);
             } else {
-                setRestoreFailed(true);
+                setRestoreFailed('restore');
             }
         } finally {
             setRestoring(null);
@@ -153,10 +197,14 @@ export function CanvasHistorySidebar({
                                 })}
                             </ul>
                         )}
-                        {truncated ? <p className="text-xs text-content-muted">{t('truncated')}</p> : null}
+                        {nextBefore !== null && rows !== null ? (
+                            <Button variant="secondary" size="sm" onClick={() => void loadOlder()} disabled={loadingOlder} data-testid="canvas-history-older">
+                                {loadingOlder ? t('loading') : t('older')}
+                            </Button>
+                        ) : null}
                         {restoreFailed ? (
                             <p className="text-sm text-content-error" role="alert">
-                                {t('restoreFailed')}
+                                {restoreFailed === 'unsaved' ? t('restoreUnsavedFailed') : t('restoreFailed')}
                             </p>
                         ) : null}
                     </div>
@@ -169,9 +217,9 @@ export function CanvasHistorySidebar({
                         if (!next) setConfirming(null);
                     }}
                     title={t('confirmTitle', { version: confirming })}
-                    description={t('confirmBody')}
+                    description={pendingEdits ? t('confirmBodyPending') : t('confirmBody')}
                 >
-                    <Modal.Header title={t('confirmTitle', { version: confirming })} description={t('confirmBody')} />
+                    <Modal.Header title={t('confirmTitle', { version: confirming })} description={pendingEdits ? t('confirmBodyPending') : t('confirmBody')} />
                     <Modal.Footer>
                         <Modal.Actions>
                             <Button variant="secondary" onClick={() => setConfirming(null)}>

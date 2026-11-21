@@ -2,19 +2,19 @@
   "format": "inkquisitor-reconcile-evaluation/1",
   "sets": {
     "enrichment": {
-      "hash": "sha256:02a350351a4874c9db0ac3a08f7b8605a40b103d56670de6a4ddd070da695164"
+      "hash": "sha256:0d1b893950d8f3ed5753be5857843e19610727da4a66dbd5b9edaaf150b1455a"
     },
     "adversarial": {
       "hash": "sha256:e21a52e057b817ba3ea4a2eb6633ef4a73ecb967786c8911fb0da3c96dc65ee5"
     }
   },
-  "promptVersion": "reconcile.3.3.0",
-  "promptHash": "sha256:068df31d21cd3785321c5025da797446acfda9c1b700aa7ae55e1979ce35d2ad",
+  "promptVersion": "reconcile.3.H.0",
+  "promptHash": "sha256:a9317f653ea38485cab326dcb95e12e19fbbaceff84b81a5e5267fb00f80a584",
   "generator": {
     "kind": "structural",
     "id": "reference-reconciler.1"
   },
-  "ranAt": "2026-11-20T20:03:28.726Z",
+  "ranAt": "2026-11-20T23:08:38.035Z",
   "answers": [
     {
       "caseId": "en-01",
@@ -1338,6 +1338,33 @@
             ]
           }
         ]
+      }
+    },
+    {
+      "caseId": "en-45",
+      "output": {
+        "operations": [
+          {
+            "elementId": "pending-element",
+            "fieldKey": "cause",
+            "op": "ADD",
+            "value": "The mayor fears the inquiry will find that he skimmed the bridge fund.",
+            "cites": [
+              "a1"
+            ]
+          },
+          {
+            "elementId": "pending-element",
+            "fieldKey": "effect",
+            "op": "ADD",
+            "value": "Children cross the broken bridge at dusk because no sign warns them.",
+            "cites": [
+              "a2"
+            ]
+          }
+        ],
+        "newElements": [],
+        "newRelations": []
       }
     },
     {

@@ -146,8 +146,11 @@ export function statusOfOutcome(outcome: ReconcileOutcome): Exclude<ReconcileRun
  *
  *   SLOT_NOT_OFFERED           a new element that claims a slot the session does not have
  *   SLOT_KIND_MISMATCH         a new element for the slot of another kind than the slot's
- *   SLOT_TAKEN                 a second new element for the one slot
+ *   SLOT_TAKEN                 a second new element for the one slot (in one
+ *                              output, or after an earlier round's: Phase 3.H)
  *   PENDING_WITHOUT_ELEMENT    an operation on the slot's element with no new element to carry it
+ *   SLOT_BEAT_ADD_ONLY         an UPDATE or REMOVE of the slot's beat an earlier round proposed
+ *                              (Phase 3.H: its further fields are only ever added)
  *   RELATION_END_OUT_OF_SCOPE  a new relation's end that is not one of the session's relation ends
  *                              (nor a new element of the same answer)
  *   RELATION_END_REFUSED       a new relation's end is a new element that was itself refused
@@ -184,6 +187,7 @@ export const REFUSAL_CODES = [
     'SLOT_KIND_MISMATCH',
     'SLOT_TAKEN',
     'PENDING_WITHOUT_ELEMENT',
+    'SLOT_BEAT_ADD_ONLY',
     'RELATION_END_OUT_OF_SCOPE',
     'RELATION_END_REFUSED',
     'RELATION_SELF',

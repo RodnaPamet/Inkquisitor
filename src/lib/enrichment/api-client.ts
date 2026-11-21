@@ -17,6 +17,7 @@ import type {
     PendingStructureView,
     RelationFieldProposalView,
     SessionReviewView,
+    SlotView,
 } from '@/app-layer/usecases/enrichment-review';
 import type { ReconcileRunView } from '@/app-layer/usecases/enrichment-reconcile';
 
@@ -31,7 +32,11 @@ export type {
     ReconcileRunView,
     RelationFieldProposalView,
     SessionReviewView,
+    SlotView,
 };
+
+/** Phase 3.H (D25): where a beat proposed for a changed slot goes. */
+export type SlotPlacement = { unplaced: true } | { after: string | null; before: string | null };
 
 /** Phase 3.3: the book's pending new elements and relations (a story map's ghosts and their list). */
 export interface PendingStructureResult {
@@ -65,6 +70,7 @@ export interface AcceptBody {
     value?: FieldValue | null;
     name?: string;
     summary?: string | null;
+    placement?: SlotPlacement;
 }
 
 export const enrichmentApi = {
