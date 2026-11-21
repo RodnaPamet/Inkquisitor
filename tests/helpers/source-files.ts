@@ -4,6 +4,7 @@
  * spine) and a PDF (pdfkit, with or without a text layer). Built in memory;
  * nothing is read from disk or the network.
  */
+import * as zlib from 'node:zlib';
 import PDFDocument from 'pdfkit';
 import { writeZip } from '@/lib/archive/zip';
 
@@ -69,4 +70,29 @@ export function makePdf(pages: readonly string[] | null): Promise<Uint8Array> {
         }
         doc.end();
     });
+}
+
+/**
+ * A small PDF whose one content stream INFLATES to `inflatedMb` megabytes of
+ * whitespace (a decompression bomb: the file is a fraction of a megabyte).
+ */
+export function makePdfStreamBomb(inflatedMb: number): Uint8Array {
+    const content = zlib.deflateSync(Buffer.concat([Buffer.from('BT\n'), Buffer.alloc(inflatedMb * 1024 * 1024, 0x20), Buffer.from('\nET\n')]), { level: 9 });
+    const objects = [
+        '<< /Type /Catalog /Pages 2 0 R >>',
+        '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+        '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << >> >>',
+    ];
+    const parts: Buffer[] = [Buffer.from('%PDF-1.4\n%\xe2\xe3\xcf\xd3\n', 'latin1')];
+    const offsets: number[] = [];
+    const length = () => parts.reduce((n, b) => n + b.length, 0);
+    objects.forEach((o, i) => {
+        offsets.push(length());
+        parts.push(Buffer.from(`${i + 1} 0 obj\n${o}\nendobj\n`));
+    });
+    offsets.push(length());
+    parts.push(Buffer.from(`4 0 obj\n<< /Length ${content.length} /Filter /FlateDecode >>\nstream\n`), content, Buffer.from('\nendstream\nendobj\n'));
+    const xref = length();
+    parts.push(Buffer.from(`xref\n0 5\n0000000000 65535 f \n${offsets.map((o) => `${String(o).padStart(10, '0')} 00000 n \n`).join('')}trailer\n<< /Size 5 /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`));
+    return new Uint8Array(Buffer.concat(parts));
 }
