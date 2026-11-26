@@ -50,6 +50,20 @@ describe('the evaluation (rule 9, D11)', () => {
         expect(checkContinuityRecord(forged)).toMatchObject({ ok: false, reason: 'STRUCTURAL_OUTPUT_AS_MODEL' });
         expect(checkContinuityRecord({ ...structural, promptHash: `sha256:${'0'.repeat(64)}` })).toMatchObject({ ok: false, reason: 'PROMPT_CHANGED' });
     });
+
+    it('a faithful model record passes although its empty case equals the reference (#63)', () => {
+        const structural = structuralContinuityRecord(new Date('2026-11-26T00:00:00Z'));
+        // A correct model: every pair named the other way round (the same pair), and nothing where nothing is wrong (cc-05).
+        const answers = structural.answers.map((a) => {
+            const out = a.output as { contradictions: Array<{ first: number; second: number; kind: string }> };
+            return { caseId: a.caseId, output: { contradictions: out.contradictions.map((x) => ({ first: x.second, second: x.first, kind: x.kind })) } };
+        });
+        const model = { ...structural, generator: { kind: 'model', id: 'claude-opus-5-5' }, answers };
+        const empty = answers.find((a) => a.caseId === 'cc-05')!;
+        expect(JSON.stringify(empty)).toBe(JSON.stringify(structural.answers.find((a) => a.caseId === 'cc-05')));
+        expect(checkContinuityRecord(model)).toMatchObject({ ok: true });
+        expect(continuityGateVerdict(model, 'model')).toMatchObject({ mounted: true, recordKind: 'model' });
+    });
 });
 
 describe('a bible fact call’s threads', () => {

@@ -28,6 +28,7 @@ import type {
     QuestionMode,
     QuestionOrigin,
 } from '@prisma/client';
+import { PENDING_SUBJECT_ID } from '@/lib/interview/subjects';
 
 type Db = Prisma.TransactionClient;
 
@@ -369,28 +370,40 @@ export const QuestionRepository = {
      * holds, each pair once however many questions hold it (no text is read):
      * the exact-repeat lookup beyond the bounded read of earlier questions.
      */
-    async findExactRepeats(db: Db, workspaceId: string, bookId: string, probes: ReadonlyArray<{ elementId: string; dedupeKey: string; relation?: boolean; pairElementId?: string }>) {
+    async findExactRepeats(
+        db: Db,
+        workspaceId: string,
+        bookId: string,
+        probes: ReadonlyArray<{ elementId: string; dedupeKey: string; relation?: boolean; pairElementId?: string; pendingIn?: { sessionId: string } }>,
+    ) {
         if (probes.length === 0) return [];
         // Phase 3.3: a relation's probe names the relation (its subject id); an element's matches only questions about the element itself.
         // Phase 4.4: a pair's probe names its first element and its second (`pairElementId`); it is answered under the pair's subject id.
+        // 4.H-a (#66 item 3): a probe for a BETWEEN slot's beat not yet created (`pendingIn`) names the slot's anchor
+        // (`elementId`) and the session: it matches that session's earlier questions about the beat, answered under
+        // `PENDING_SUBJECT_ID`. Another session's beat after the same anchor is another beat.
         const rows = await db.question.groupBy({
-            by: ['elementId', 'relationId', 'pairElementId', 'dedupeKey'],
+            by: ['elementId', 'relationId', 'pairElementId', 'aboutPending', 'dedupeKey'],
             where: {
                 workspaceId,
                 bookId,
-                aboutPending: false,
                 OR: probes.map((p) =>
-                    p.relation
-                        ? { relationId: p.elementId, dedupeKey: p.dedupeKey }
-                        : p.pairElementId
-                          ? { elementId: p.elementId, pairElementId: p.pairElementId, dedupeKey: p.dedupeKey }
-                          : { elementId: p.elementId, relationId: null, pairElementId: null, dedupeKey: p.dedupeKey },
+                    p.pendingIn
+                        ? { aboutPending: true, sessionId: p.pendingIn.sessionId, elementId: p.elementId, dedupeKey: p.dedupeKey }
+                        : p.relation
+                          ? { aboutPending: false, relationId: p.elementId, dedupeKey: p.dedupeKey }
+                          : p.pairElementId
+                            ? { aboutPending: false, elementId: p.elementId, pairElementId: p.pairElementId, dedupeKey: p.dedupeKey }
+                            : { aboutPending: false, elementId: p.elementId, relationId: null, pairElementId: null, dedupeKey: p.dedupeKey },
                 ),
             },
             orderBy: [{ elementId: 'asc' }, { dedupeKey: 'asc' }],
             take: probes.length * 2,
         });
-        return rows.map((r) => ({ elementId: r.relationId ?? (r.pairElementId ? `pair:${r.elementId}:${r.pairElementId}` : r.elementId), dedupeKey: r.dedupeKey }));
+        return rows.map((r) => ({
+            elementId: r.aboutPending ? PENDING_SUBJECT_ID : (r.relationId ?? (r.pairElementId ? `pair:${r.elementId}:${r.pairElementId}` : r.elementId)),
+            dedupeKey: r.dedupeKey,
+        }));
     },
 
     /**
@@ -398,7 +411,15 @@ export const QuestionRepository = {
      * answer to it was ever ANSWERED — what the deepening ladder and the pair questions read to know which layers and
      * angles the book already holds. Codes and ids only; bounded.
      */
-    listGeneratorHistory(db: Db, workspaceId: string, bookId: string, subjects: { elementIds: readonly string[]; relationIds: readonly string[] }, take: number) {
+    listGeneratorHistory(
+        db: Db,
+        workspaceId: string,
+        bookId: string,
+        subjects: { elementIds: readonly string[]; relationIds: readonly string[] },
+        take: number,
+        /** 4.H-a (#66 item 6): the page after this row (newest first: `createdAt` then `id`, both descending). */
+        before?: { createdAt: Date; id: string },
+    ) {
         const or: Prisma.QuestionWhereInput[] = [];
         if (subjects.elementIds.length > 0) {
             or.push({ generator: 'LADDER', elementId: { in: [...subjects.elementIds] }, relationId: null, aboutPending: false });
@@ -406,12 +427,14 @@ export const QuestionRepository = {
         }
         if (subjects.relationIds.length > 0) or.push({ generator: 'LADDER', relationId: { in: [...subjects.relationIds] } });
         if (or.length === 0) return Promise.resolve([]);
+        const page: Prisma.QuestionWhereInput = before ? { OR: [{ createdAt: { lt: before.createdAt } }, { createdAt: before.createdAt, id: { lt: before.id } }] } : {};
         return db.question.findMany({
-            where: { workspaceId, bookId, angle: { not: null }, OR: or },
+            where: { workspaceId, bookId, angle: { not: null }, AND: [{ OR: or }, page] },
             orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
             take,
             select: {
                 id: true,
+                createdAt: true,
                 sessionId: true,
                 elementId: true,
                 relationId: true,

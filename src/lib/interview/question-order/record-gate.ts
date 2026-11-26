@@ -30,3 +30,10 @@ export function questionOrderGate(mode: PackRecordMode, record: unknown = commit
     }
     return v;
 }
+
+/** The start-up line about a tie-break that will not run, or null. Codes, never text. */
+export function questionOrderGateReport(mode: PackRecordMode): string | null {
+    const v = questionOrderGate(mode);
+    if (v.mounted) return null;
+    return `the interview tie-break has no evaluation record this deployment accepts (${v.reason}): rounds keep the code's order (NOT_EVALUATED).`;
+}

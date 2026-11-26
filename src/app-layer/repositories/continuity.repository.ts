@@ -19,7 +19,7 @@ type Db = PrismaTx;
 
 // ─── The nightly check ─────────────────────────────────────────────
 
-const CHECK_SELECT = { id: true, bookId: true, coveredThrough: true, passTarget: true, passCursor: true, lastRunAt: true, lastOutcome: true } as const satisfies Prisma.ContinuityCheckSelect;
+const CHECK_SELECT = { id: true, bookId: true, coveredThrough: true, passTarget: true, passCursor: true, lastRunAt: true, lastOutcome: true, pageFailures: true, parkedSubjects: true } as const satisfies Prisma.ContinuityCheckSelect;
 export type ContinuityCheckRow = Prisma.ContinuityCheckGetPayload<{ select: typeof CHECK_SELECT }>;
 
 export const ContinuityCheckRepository = {
@@ -29,7 +29,12 @@ export const ContinuityCheckRepository = {
     async ensure(db: Db, workspaceId: string, bookId: string): Promise<ContinuityCheckRow> {
         return db.continuityCheck.upsert({ where: { workspaceId_bookId: { workspaceId, bookId } }, create: { workspaceId, bookId }, update: {}, select: CHECK_SELECT });
     },
-    async save(db: Db, workspaceId: string, bookId: string, data: { coveredThrough?: Date | null; passTarget: Date | null; passCursor: string | null; lastRunAt: Date; lastOutcome: ContinuityOutcome }): Promise<void> {
+    async save(
+        db: Db,
+        workspaceId: string,
+        bookId: string,
+        data: { coveredThrough?: Date | null; passTarget: Date | null; passCursor: string | null; lastRunAt: Date; lastOutcome: ContinuityOutcome; pageFailures?: number; parkedSubjects?: number },
+    ): Promise<void> {
         await db.continuityCheck.updateMany({ where: { workspaceId, bookId }, data });
     },
 };
@@ -47,6 +52,7 @@ const RUN_SELECT = {
     subjectsRemaining: true,
     callsMade: true,
     costMicroUsd: true,
+    metrics: true,
     createdAt: true,
     startedAt: true,
     finishedAt: true,
@@ -54,8 +60,9 @@ const RUN_SELECT = {
 export type ContinuityRunRow = Prisma.ContinuityRunGetPayload<{ select: typeof RUN_SELECT }>;
 
 export const ContinuityRunRepository = {
-    async create(db: Db, workspaceId: string, bookId: string): Promise<{ id: string }> {
-        return db.continuityRun.create({ data: { workspaceId, bookId, status: 'QUEUED' }, select: { id: true } });
+    /** A QUEUED run for the night `nightKey` names (4.H-a: one a book a night, the partial unique index answering P2002). */
+    async create(db: Db, workspaceId: string, bookId: string, nightKey: string | null = null): Promise<{ id: string }> {
+        return db.continuityRun.create({ data: { workspaceId, bookId, status: 'QUEUED', nightKey }, select: { id: true } });
     },
     async find(db: Db, workspaceId: string, id: string): Promise<ContinuityRunRow | null> {
         return db.continuityRun.findFirst({ where: { workspaceId, id }, select: RUN_SELECT });
@@ -133,9 +140,9 @@ export const ContinuityDiscovery = {
      * never hold back another's one. Within a workspace (and among workspaces in one round) the book checked least
      * recently comes first: a book stays due while its pass is under way (and, without an evaluation record, for as
      * long as that lasts), so an order fixed by id would hand the same books every night's places and never reach
-     * the rest.
+     * the rest. A book with a run already dispatched for THIS night (`nightKey`, 4.H-a) is never due a second time.
      */
-    async listDueBooks(db: PrismaClient, data: { take: number; staleBefore: Date; workspaceIds?: readonly string[] }): Promise<DueBook[]> {
+    async listDueBooks(db: PrismaClient, data: { take: number; staleBefore: Date; nightKey: string; workspaceIds?: readonly string[] }): Promise<DueBook[]> {
         const scope = data.workspaceIds ? Prisma.sql`AND b."workspaceId" = ANY(${[...data.workspaceIds]}::text[])` : Prisma.empty;
         return db.$queryRaw<DueBook[]>(Prisma.sql`
             SELECT "workspaceId", "bookId" FROM (
@@ -156,6 +163,9 @@ export const ContinuityDiscovery = {
                   AND NOT EXISTS (SELECT 1 FROM "ContinuityRun" r
                                   WHERE r."workspaceId" = b."workspaceId" AND r."bookId" = b."id"
                                     AND r."status" IN ('QUEUED', 'RUNNING') AND r."createdAt" > ${data.staleBefore})
+                  -- 4.H-a (#62 item 4): a book that already had a run dispatched for this night is not queued again.
+                  AND NOT EXISTS (SELECT 1 FROM "ContinuityRun" r
+                                  WHERE r."workspaceId" = b."workspaceId" AND r."bookId" = b."id" AND r."nightKey" = ${data.nightKey})
             ) due
             ORDER BY rn, "lastRunAt" ASC NULLS FIRST, "workspaceId", "bookId"
             LIMIT ${data.take}`);
@@ -486,7 +496,7 @@ export async function decideLaterAnswersOf(db: Db, workspaceId: string, bookId: 
         where: { workspaceId, status: 'DECIDE_LATER', question: { bookId, aboutPending: false } },
         orderBy: [{ createdAt: 'desc' }, { id: 'asc' }],
         take,
-        select: { id: true, questionId: true, revision: true, sessionId: true, createdAt: true, question: { select: { id: true, elementId: true, relationId: true, targetsFieldKeys: true, text: true } } },
+        select: { id: true, questionId: true, revision: true, sessionId: true, createdAt: true, question: { select: { id: true, elementId: true, relationId: true, pairElementId: true, targetsFieldKeys: true, text: true } } },
     });
     const questionIds = [...new Set(rows.map((r) => r.questionId))];
     const revisions = questionIds.length === 0 ? [] : await db.answer.findMany({ where: { workspaceId, questionId: { in: questionIds } }, orderBy: { revision: 'desc' }, take: questionIds.length * 21, select: { questionId: true, revision: true, status: true } });

@@ -77,7 +77,7 @@ function SourceCard({ source, slug, canEdit, onChanged, onRemove }: { source: So
     const expected = quoted?.expected ?? source.estimateMicroUsd;
     const live = isLiveStatus(source.status);
     const remaining = source.chunkCount - source.chunksDone;
-    const startable = canEdit && !live && remaining > 0;
+    const startable = canEdit && !live && (remaining > 0 || source.awaitsEmbedding);
 
     useEffect(() => {
         if (!live) return;
@@ -119,7 +119,11 @@ function SourceCard({ source, slug, canEdit, onChanged, onRemove }: { source: So
             <p className="text-sm text-content-muted">
                 {t('summary', { format: source.format, chunks: source.chunkCount, done: source.chunksDone, facts: source.factCount, kb: Math.max(1, Math.round(source.byteLength / 1024)) })}
             </p>
-            {source.outcome && source.outcome !== 'OK' ? <p className="text-sm text-content-muted">{t.has(`outcome.${source.outcome}`) ? t(`outcome.${source.outcome}`) : t('outcome.generic')}</p> : null}
+            {source.awaitsEmbedding ? (
+                <p className="text-sm text-content-muted">{t('outcome.EMBEDDING_FAILED')}</p>
+            ) : source.outcome && source.outcome !== 'OK' ? (
+                <p className="text-sm text-content-muted">{t.has(`outcome.${source.outcome}`) ? t(`outcome.${source.outcome}`) : t('outcome.generic')}</p>
+            ) : null}
             {live ? (
                 <p className="text-sm text-content-muted" role="status" aria-live="polite">
                     {t('progress', { done: source.chunksDone, total: source.chunkCount })}

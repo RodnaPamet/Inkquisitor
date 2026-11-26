@@ -820,6 +820,7 @@
             "titleKind": "Grill me: every {kind}",
             "titleBook": "Grill me: the whole book",
             "titleSelection": "Grill me: {count, plural, one {# entry} other {# entries}} from the map",
+            "titleStale": "Grill me on what changed: {name}",
             "titleBetween": "What happens between {a} and {b}?",
             "round": "Round {number}",
             "roundOf": "Round {number} of up to {budget}",
@@ -1608,6 +1609,7 @@
         "summary": "{format} · {kb} KB · {done} of {chunks} passages read · {facts} facts",
         "outcome": {
             "PARTIAL": "Some passages could not be read this time; read the rest again to resume.",
+            "EMBEDDING_FAILED": "Every passage was read, but indexing them for search failed; resume to index them again (no model call).",
             "CEILING": "Stopped: the workspace's monthly AI spending limit was reached. Resume next month or after raising it.",
             "KILL_SWITCH": "Stopped: AI features are switched off in this deployment. Resume once they are back.",
             "BUDGET": "Stopped: the next passage would cost more than the amount you confirmed. Resume to confirm a new amount.",
@@ -1743,8 +1745,11 @@
             "lastRun": "Last run {when}: {outcome}",
             "covered": "{covered} subjects checked, {remaining} left for later nights, {facts} facts read.",
             "passUnderWay": "A check of a large change is under way; it continues tomorrow night.",
+            "factsCut": "This book holds more facts than one night’s check reads: only {read} of {total} were checked, so the check is not complete.",
+            "parked": "{count, plural, one {# subject was} other {# subjects were}} passed over after failing night after night (too large for one check, or never answered in a usable way); the check is not complete.",
             "outcome": {
                 "OK": "every fact checked",
+                "OK_INCOMPLETE": "the pass finished, but not every fact was checked",
                 "PAGED": "part checked, the rest goes on tomorrow",
                 "NO_FACTS": "no facts to check",
                 "NOTHING_NEW": "nothing changed since the last check",
@@ -1868,6 +1873,7 @@
         "decideLater": {
             "title": "Decide later",
             "from": "You chose to decide later · {element}",
+            "fromPair": "You chose to decide later · {first} and {second}",
             "contradictions": "{count, plural, one {# contradiction is still unresolved (above).} other {# contradictions are still unresolved (above).}}"
         },
         "stale": {

@@ -7,10 +7,11 @@
  * the code reads it at.
  */
 import * as fs from 'node:fs';
+import * as os from 'node:os';
 import * as path from 'node:path';
 import { readDocxHtml, DOCX_TEXT_LIMITS, docxWorkerPath } from '@/lib/sources/docx-text';
 import { parseSource } from '@/lib/sources/parse';
-import { _parseWorkerSlots, PARSE_WORKERS_MAX } from '@/lib/sources/parse-worker';
+import { _parseWorkerSlots, PARSE_WORKERS_MAX, runParseWorker } from '@/lib/sources/parse-worker';
 import { PDF_TEXT_LIMITS, pdfWorkerPath, readPdfText } from '@/lib/sources/pdf-text';
 import { makeDocx, makePdf, makePdfStreamBomb } from '../../helpers/source-files';
 
@@ -61,4 +62,43 @@ describe('the parse workers', () => {
             expect(runner).toContain(`COPY --from=builder /app/${relative} ./${relative}`);
         }
     });
+});
+
+describe('the memory watchdog of a worker held in a native call (4.H-a, #57 item 7)', () => {
+    const script = path.join(REPO_ROOT, 'tests/fixtures/workers/native-spike-worker.mjs');
+    let dir: string;
+    beforeAll(() => {
+        dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ink-spike-'));
+    });
+    afterAll(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+    /** Ends the child the fixture started (a terminated worker stays in its native call until the call ends). */
+    function endChild(pidFile: string): void {
+        const pid = Number(fs.readFileSync(pidFile, 'utf8').trim());
+        if (Number.isInteger(pid) && pid > 0) {
+            try {
+                process.kill(pid, 'SIGKILL');
+            } catch {
+                // already gone
+            }
+        }
+    }
+
+    // It runs first: the worker the next test stops stays in its native call until the call ends, and the output that
+    // call then copies would count against a worker measured after it.
+    it('a worker that only waits in a native call (no memory) is not stopped by the stall alone', async () => {
+        const pidFile = path.join(dir, 'wait.pid');
+        const outcome = await runParseWorker(script, { bytes: 1, holdSeconds: 1, pidFile }, { timeoutMs: 45_000, heapMb: 64, memoryMb: 160 });
+        expect(outcome).toEqual({ kind: 'message', message: { ok: true, length: 1 } });
+    }, 60_000);
+
+    it('is stopped by the process’s memory while its heap read cannot be answered, long before its deadline', async () => {
+        const pidFile = path.join(dir, 'spike.pid');
+        // 384 MB collected inside one blocking spawn, then held there: the worker never answers a heap read.
+        const outcome = await runParseWorker(script, { bytes: 384 * 1024 * 1024, holdSeconds: 60, pidFile }, { timeoutMs: 45_000, heapMb: 64, memoryMb: 160 });
+        endChild(pidFile);
+        // Before 4.H-a the parent was blind until the deadline: TIMEOUT, never MEMORY.
+        expect(outcome).toEqual({ kind: 'MEMORY' });
+        expect(_parseWorkerSlots()).toEqual({ running: 0, waiting: 0 });
+    }, 60_000);
 });

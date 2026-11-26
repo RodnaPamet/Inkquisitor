@@ -41,6 +41,11 @@ model ContinuityCheck {
   passCursor     String?
   lastRunAt      DateTime?
   lastOutcome    String?
+  /// 4.H-a (#62 item 3): the nights in a row the page at the cursor failed (a call over budget, a failed call).
+  pageFailures   Int       @default(0)
+  /// 4.H-a: subjects of the pass (or, once it completes, of the last pass) passed over after
+  /// `CONTINUITY_PAGE_FAILURES_MAX` failed nights. Counted, shown, never silent.
+  parkedSubjects Int       @default(0)
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
@@ -72,6 +77,9 @@ model ContinuityRun {
   promptVersion     String?
   /// Counts and codes only (refusals by code, AiCallLog ids). Never text.
   metrics           Json?
+  /// 4.H-a (#62 item 4): the night it was dispatched for (`continuityNightKey`). One run a book a night: a partial
+  /// unique index in the migration (Prisma cannot spell it; never add a `@@unique` for it). NULL before 4.H-a.
+  nightKey          String?
   createdAt         DateTime  @default(now())
   startedAt         DateTime?
   finishedAt        DateTime?

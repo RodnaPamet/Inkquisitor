@@ -8,7 +8,7 @@ import type { WorkspaceRequestContext } from '@/app-layer/types';
 import { createElement, updateElement } from '@/app-layer/usecases/bible-elements';
 import { executeBibleFactExtraction } from '@/app-layer/usecases/bible-facts';
 import { FactExtractionRepository } from '@/app-layer/repositories/fact-layer.repository';
-import { runInWorkspaceContext } from '@/lib/db/rls-middleware';
+import { runInWorkspaceContext, runWithoutRls } from '@/lib/db/rls-middleware';
 import type { FactExtractor } from '@/lib/sources/extractor';
 import { setFakeApiKey } from './fake-anthropic';
 
@@ -63,4 +63,26 @@ export async function seedFactLayer(ctx: WorkspaceRequestContext, bookId: string
     await updateElement(ctx, bookId, el.id, { summary: `${name} is 13 years old. ${name} keeps the lock at Harrow Weir.`, baseVersion: 1 });
     await extractPending(ctx, bookId, ageExtractor(name));
     return { elementId: el.id };
+}
+
+/**
+ * `count` copies of one stored fact, made in the database (4.H-a: a subject or a book past a read's bound). Every
+ * column is copied as stored — the encrypted ones as their ciphertext, so the copies decrypt in the fact's workspace —
+ * but the id and the claim key (fresh), the time it was written (now), and, when given, the predicate and how much EARLIER each copy was stated.
+ */
+export async function cloneFact(factId: string, count: number, opts: { predicate?: string; statedEarlierMs?: number } = {}): Promise<void> {
+    await runWithoutRls({ reason: 'test' }, async (db) => {
+        const cols = (await db.$queryRaw<Array<{ column_name: string }>>`SELECT column_name FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = 'StoryFact'`).map((c) => c.column_name);
+        const value = (c: string): string => {
+            if (c === 'id') return `'clone' || md5(random()::text || g::text)`;
+            if (c === 'createdAt') return 'now()';
+            if (c === 'dedupeKey') return `md5(random()::text || g::text) || md5(g::text || random()::text)`;
+            if (c === 'predicate' && opts.predicate) return `'${opts.predicate.replace(/[^A-Z_]/g, '')}'`;
+            if (c === 'statedAt' && opts.statedEarlierMs !== undefined) return `"statedAt" - make_interval(secs => ${Math.max(0, Math.floor(opts.statedEarlierMs / 1000))} + g)`;
+            return `"${c}"`;
+        };
+        const list = cols.map((c) => `"${c}"`).join(', ');
+        const select = cols.map(value).join(', ');
+        await db.$executeRawUnsafe(`INSERT INTO "StoryFact" (${list}) SELECT ${select} FROM "StoryFact", generate_series(1, $2::int) AS g WHERE id = $1`, factId, count);
+    });
 }

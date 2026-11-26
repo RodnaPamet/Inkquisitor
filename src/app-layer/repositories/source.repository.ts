@@ -576,6 +576,16 @@ export const BibleFactRepository = {
     async listLiveOwnedBy(db: Db, workspaceId: string, bookId: string, owner: { elementId: string } | { relationId: string }, take: number): Promise<BibleFactRow[]> {
         return db.storyFact.findMany({ where: { workspaceId, bookId, ...BIBLE_KINDS, supersededAt: null, ...owner }, orderBy: [{ statedAt: 'asc' }, { id: 'asc' }], take, select: BIBLE_FACT_SELECT });
     },
+    /**
+     * A book's live bible facts holding any of these claim keys (4.H-a, #60 item 1): the resolve's other side read BY
+     * KEY, so a claim held past `LIVE_FACTS_READ_MAX` is still found (and gets provenance) instead of an insert that
+     * hits `StoryFact_one_live_claim`. At most one live fact per key (that index), so bounded by the keys.
+     */
+    async listLiveByKeys(db: Db, workspaceId: string, bookId: string, keys: readonly string[]): Promise<BibleFactRow[]> {
+        const unique = [...new Set(keys)];
+        if (unique.length === 0) return [];
+        return db.storyFact.findMany({ where: { workspaceId, bookId, ...BIBLE_KINDS, supersededAt: null, dedupeKey: { in: unique } }, take: unique.length, select: BIBLE_FACT_SELECT });
+    },
     /** A book's live bible facts (the retriever's ranked pool), newest first. */
     async listLiveForBook(db: Db, workspaceId: string, bookId: string, take: number): Promise<BibleFactRow[]> {
         return db.storyFact.findMany({ where: { workspaceId, bookId, ...BIBLE_KINDS, supersededAt: null }, orderBy: [{ statedAt: 'desc' }, { id: 'asc' }], take, select: BIBLE_FACT_SELECT });

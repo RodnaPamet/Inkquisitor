@@ -170,6 +170,20 @@ it('the side panel fills as answers arrive: pending enrichment, the answer read-
     expect(screen.getByTestId('session-progress')).toHaveTextContent('1 of 1 answered');
 });
 
+it('a "Grill me on what changed" session has its own heading, never the canvas’s "entries from the map" (4.H-a, #62 item 5)', () => {
+    mockFetch({});
+    const stale = interview({ roundStatus: null });
+    stale.session = { ...stale.session, scope: 'SELECTION', targetElementId: null, scopeElementIds: ['el_1'], staleFlagId: 'flag_1' };
+    const { unmount } = mount({ kind: 'existing', interview: stale });
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Grill me on what changed: Aurel Pask');
+    expect(screen.queryByText(/from the map/)).toBeNull();
+    unmount();
+    const canvas = interview({ roundStatus: null });
+    canvas.session = { ...canvas.session, scope: 'SELECTION', targetElementId: null, scopeElementIds: ['el_1'], staleFlagId: null };
+    mount({ kind: 'existing', interview: canvas });
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(/^Grill me: .*from the map$/);
+});
+
 it('a session that asked nothing reads "not assessed", never a percentage (rule 6)', () => {
     mockFetch({});
     mount({ kind: 'existing', interview: interview({ roundStatus: null }) });

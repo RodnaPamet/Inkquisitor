@@ -108,6 +108,8 @@ export interface LiveFact extends ResolvableFact {
     readonly quote: string;
     /** Owned by the entry being extracted (an earlier version of it): only these may be NO_LONGER_STATED. */
     readonly sameOwner: boolean;
+    /** A bible fact's own version (the one that first stated it); NULL for a source fact. 4.H-a: never its own provenance. */
+    readonly versionId?: string | null;
 }
 
 export interface ResolutionPlan {

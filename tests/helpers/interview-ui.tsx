@@ -88,6 +88,7 @@ export function interview(over: { questions?: QuestionView[]; status?: Interview
             generatorsOff: [],
             minorAccepted: false,
             stressTestId: null,
+            staleFlagId: null,
             createdAt: '2026-11-19T10:00:00.000Z',
             endedAt: null,
         },

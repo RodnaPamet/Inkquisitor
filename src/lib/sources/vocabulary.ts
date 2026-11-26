@@ -161,3 +161,16 @@ export function effectiveSourceState(
     }
     return { status: row.status as SourceStatus, outcome: row.outcome };
 }
+
+/**
+ * The metrics code a source finishes with when every passage was read but its embedding failed (4.H-a, #60 item 6):
+ * it is STOPPED `PARTIAL`, so the author can resume it, and a resume with nothing left to read re-embeds only.
+ */
+export const EMBEDDING_FAILED = 'EMBEDDING_FAILED';
+
+/** Is this source waiting only for its passages to be embedded again (every chunk read, the embedding failed)? */
+export function awaitsEmbedding(row: { status: string; outcome: string | null; metrics?: unknown }): boolean {
+    if (row.status !== 'STOPPED' || row.outcome !== 'PARTIAL') return false;
+    const m = row.metrics as { errorCode?: unknown } | null | undefined;
+    return !!m && typeof m === 'object' && m.errorCode === EMBEDDING_FAILED;
+}

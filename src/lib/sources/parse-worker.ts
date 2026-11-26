@@ -8,7 +8,22 @@
  *   memory     the worker's JavaScript heap is capped by `resourceLimits`, and
  *              the parent reads its heap AND external memory (typed arrays a
  *              decoder fills live outside the heap) every `MEMORY_POLL_MS`,
- *              terminating it past `memoryMb` (`MEMORY`)
+ *              terminating it past `memoryMb` (`MEMORY`). That read is
+ *              answered by the worker's own thread at its next interrupt point,
+ *              so a worker held in one native call (a synchronous inflate, a
+ *              spawn collecting output) cannot answer it, and before 4.H-a the
+ *              parent was blind until the call returned — or until the
+ *              deadline, if it never did (#57 item 7). Now, while a read has
+ *              gone unanswered for `MEMORY_STALL_MS`, the parent also reads the
+ *              PROCESS's resident memory, synchronously, needing nothing of the
+ *              worker, and terminates it when the process has grown past
+ *              `memoryMb` since the worker came online (the worker's thread
+ *              itself stops only once its native call returns: the slot and
+ *              the answer are freed at once). The residual window is one
+ *              poll (or one stall) of allocation: the readers are pure
+ *              JavaScript decoders (pdf.js's inflate, JSZip over a ZIP
+ *              `readZip` already bounded), which allocate a piece at a time at
+ *              interrupt points, so no single allocation is unbounded.
  *   slots      at most `PARSE_WORKERS_MAX` workers run in a process at once; a
  *              further file waits its turn inside its own deadline
  *
@@ -36,6 +51,8 @@ export type ParseWorkerOutcome = { kind: 'message'; message: unknown } | { kind:
 export const PARSE_WORKERS_MAX = 2;
 /** How often the parent reads a running worker's memory. */
 export const MEMORY_POLL_MS = 50;
+/** A heap read unanswered this long means the worker is held in a native call: the process's memory is read instead (4.H-a). */
+export const MEMORY_STALL_MS = 250;
 
 /** A worker script's path: `<cwd>/scripts/<name>`, as the fonts are read from `<cwd>/fonts`. */
 export function parseWorkerPath(name: 'pdf-text-worker.mjs' | 'docx-text-worker.mjs', cwd: string = process.cwd()): string {
@@ -103,10 +120,21 @@ export async function runParseWorker(scriptPath: string, workerData: Record<stri
                 resolve(outcome);
             };
             const memoryBytes = limits.memoryMb * 1024 * 1024;
-            let reading = false;
+            // The process's resident memory once this worker is up (its own isolate counted in): what a stalled worker is
+            // measured against. Until it is online, nothing is measured from outside.
+            let baselineRss: number | null = null;
+            worker.once('online', () => {
+                baselineRss = process.memoryUsage.rss();
+            });
+            let readingSince: number | null = null;
             const poll = setInterval(() => {
-                if (reading || settled) return;
-                reading = true;
+                if (settled) return;
+                if (readingSince !== null) {
+                    // A read still unanswered: the worker is in a native call. Its memory is read from outside it.
+                    if (baselineRss !== null && performance.now() - readingSince >= MEMORY_STALL_MS && process.memoryUsage.rss() - baselineRss > memoryBytes) done({ kind: 'MEMORY' });
+                    return;
+                }
+                readingSince = performance.now();
                 worker
                     .getHeapStatistics()
                     .then((h) => {
@@ -114,7 +142,7 @@ export async function runParseWorker(scriptPath: string, workerData: Record<stri
                     })
                     .catch(() => undefined)
                     .finally(() => {
-                        reading = false;
+                        readingSince = null;
                     });
             }, MEMORY_POLL_MS);
             if (deadline.aborted) onDeadline();

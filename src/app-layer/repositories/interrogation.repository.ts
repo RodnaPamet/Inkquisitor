@@ -223,14 +223,16 @@ export async function bookVersionMark(db: Db, workspaceId: string, bookId: strin
 }
 
 /**
- * Per kind: relations with an element of the kind at one end, live facts about the kind's elements, and other
+ * Per kind: relations with an element of the kind at one end or both (a relation between two of its elements counts
+ * ONCE, #63), live facts about the kind's elements, and other
  * elements whose accepted versions cite answers about the kind's elements (a gap hunt's signals).
  */
 export async function gapSignals(db: Db, workspaceId: string, bookId: string): Promise<Array<{ kind: string; relations: number; facts: number; citations: number }>> {
     return db.$queryRaw<Array<{ kind: string; relations: number; facts: number; citations: number }>>`
         SELECT k.kind::text AS kind,
-            (SELECT count(*)::int FROM "BibleRelation" r JOIN "BibleElement" e ON e.id IN (r."fromElementId", r."toElementId")
-                WHERE r."workspaceId" = ${workspaceId} AND r."bookId" = ${bookId} AND e.kind = k.kind) AS relations,
+            (SELECT count(*)::int FROM "BibleRelation" r
+                WHERE r."workspaceId" = ${workspaceId} AND r."bookId" = ${bookId}
+                  AND EXISTS (SELECT 1 FROM "BibleElement" e WHERE e.id IN (r."fromElementId", r."toElementId") AND e.kind = k.kind)) AS relations,
             (SELECT count(*)::int FROM "StoryFact" f JOIN "BibleElement" e ON e.id = f."subjectElementId"
                 WHERE f."workspaceId" = ${workspaceId} AND f."bookId" = ${bookId} AND f."supersededAt" IS NULL AND e.kind = k.kind) AS facts,
             (SELECT count(DISTINCT v."elementId")::int FROM "BibleEntryVersion" v

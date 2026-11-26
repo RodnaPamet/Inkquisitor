@@ -42,11 +42,11 @@ export interface RegisterNodeSeams {
 }
 
 async function loadServices() {
-    const [sentinel, packs, mount, reconcileGate, telemetry, sentry, mailer, shutdown] = await Promise.all([
+    const [sentinel, packs, mount, recordGates, telemetry, sentry, mailer, shutdown] = await Promise.all([
         import('@/lib/security/encryption-sentinel'),
         import('@/lib/interview/packs'),
         import('@/lib/interview/pack-mount'),
-        import('@/lib/enrichment/record-gate'),
+        import('@/lib/evals/record-gate-reports'),
         import('@/lib/observability/instrumentation'),
         import('@/lib/observability/sentry'),
         import('@/lib/mailer'),
@@ -56,8 +56,8 @@ async function loadServices() {
         runEncryptionSentinel: sentinel.runEncryptionSentinel,
         loadQuestionPacks: packs.getPacks,
         packMountReport: async () => mountReport(await mount.packMounts(packs.getPacks(), mount.packRecordModeOf(process.env))),
-        /** Phase 2.5: the reconcile step's D11 gate, read the packs' way. */
-        reconcileGateReport: () => reconcileGate.reconcileGateReport(mount.packRecordModeOf(process.env)),
+        /** Every model feature's D11 gate (2.5's reconcile first; all of them since 4.H-a, #63), read the packs' way. */
+        recordGateReports: () => recordGates.recordGateReports(mount.packRecordModeOf(process.env)),
         initTelemetry: telemetry.initTelemetry,
         initSentry: sentry.initSentry,
         initMailerFromEnv: mailer.initMailerFromEnv,
@@ -121,8 +121,7 @@ export async function registerNode(seams: RegisterNodeSeams = {}): Promise<void>
     if (isProductionServer(process.env)) {
         const line = await services.packMountReport();
         if (line) report(`[startup] WARN: ${line}`);
-        const reconcile = await services.reconcileGateReport();
-        if (reconcile) report(`[startup] WARN: ${reconcile}`);
+        for (const gate of await services.recordGateReports()) report(`[startup] WARN: ${gate}`);
     }
 
     await services.initTelemetry();

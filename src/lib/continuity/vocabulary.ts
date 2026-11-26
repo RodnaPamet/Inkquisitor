@@ -158,6 +158,25 @@ export const CONTINUITY_DISPATCH_MAX = 500;
 /** A QUEUED or RUNNING run with no sign of life for this long was lost: the next night queues the book again. */
 export const STALE_CONTINUITY_RUN_MS = 6 * 60 * 60 * 1000;
 
+/**
+ * THE NIGHT A DISPATCH IS FOR (4.H-a, #62 item 4): the UTC date twelve hours before it, `YYYY-MM-DD`. The schedule
+ * fires at 02:23 UTC, so a night's dispatch and any repeat of it before 14:00 UTC the next day share one key, and a
+ * book is queued at most once a night (`ContinuityRun.nightKey`, a partial unique index): a second dispatch queues
+ * nothing for a book mid-pass (or any book) already queued that night.
+ */
+export function continuityNightKey(at: Date): string {
+    return new Date(at.getTime() - 12 * 60 * 60 * 1000).toISOString().slice(0, 10);
+}
+
+/**
+ * A PAGE THAT CAN NEVER SUCCEED (4.H-a, #62 item 3): the page at the pass's cursor that failed this many nights in a
+ * row — every call of it over the per-call budget (CALL_OVER_BUDGET) or failing (an answer that is always invalid, a
+ * provider that always refuses it) — is PASSED OVER: the cursor moves past its subjects, which are counted
+ * (`ContinuityCheck.parkedSubjects`) and shown on the Continuity page, so the pass goes on and the book is never
+ * reported fully checked in silence. A night that gets past the page resets the count.
+ */
+export const CONTINUITY_PAGE_FAILURES_MAX = 3;
+
 /** The kinds of fact the continuity check reads (4.1's bible kinds, the author's explanations, confirmed book-library source facts). */
 export const CONTINUITY_FACT_KINDS = ['BIBLE_VERSION', 'RELATION_VERSION', 'AUTHOR_RESOLUTION', 'SOURCE_CHUNK'] as const;
 

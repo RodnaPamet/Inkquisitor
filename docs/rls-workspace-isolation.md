@@ -58,6 +58,41 @@ vector for a question that does not exist (`vector_embedding_require_source`).
 With no workspace bound, `app_user` sees nothing: the policy compares with
 `NULL` and fails closed.
 
+## Vectors are derivatives of encrypted text (Phase 4.H-a)
+
+Every vector in `VectorEmbedding` is computed from author text whose only
+stored copy is an ENCRYPTED column of its source row: a question's text
+(`Question`), an answer's (`Answer`), a source passage (`SourceChunk`), an
+element's name and summary (`BibleElement`) and a fact's statement
+(`StoryFact`). The vector table holds no text, only the vector, a keyed
+content hash (`vectorContentHash`, under the workspace's subkey) and the key
+naming the source row. A vector is therefore treated as a derivative of that
+encrypted column, with its privacy and its lifetime:
+
+- it is computed inside the deployment (the 2.0 embedding provider; no
+  external embedding service exists, `docs/sub-processors.md`), never sent
+  anywhere, never logged, and searched only through the vector seam inside a
+  workspace transaction (`app_user`, RLS in force) with the book's allowed set
+  inside the query (`within`, 4.1);
+- it lives exactly as long as its source row: each source table's migration
+  attaches `vector_embedding_delete_with_source('<Model>')`, so the row's
+  deletion — by its usecase or by any cascade above it (an element, a source,
+  a session, a book's purge, a workspace) — deletes its vectors in the same
+  transaction, and `vector_embedding_require_source` refuses a vector for a row
+  that is gone or being deleted. `tests/integration/embedding-deletion.test.ts`
+  proves it for every model a migration attaches the trigger to (read from the
+  migrations, so a new vector source model fails there until it is covered);
+- an encrypted-at-rest column's re-encryption (a data-key rotation) does not
+  touch its vectors: they are not ciphertext, and they carry nothing a key
+  could unlock. Changing the text re-embeds it (the fact layer's
+  `EmbeddingTask`, the interview's question and answer embedding).
+
+Retrieval isolation — a book's context never holds another book's or another
+workspace's text, at the query level and under RLS — is proved surface by
+surface (the retriever, the stress test, the gap hunt, the question engine's
+generators) in `tests/integration/retrieval-isolation.test.ts`.
+
+
 ## Adding a workspace-scoped model
 
 1. Give the model a `workspaceId String` and an `@@index` that leads with it,

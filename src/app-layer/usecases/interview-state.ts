@@ -637,6 +637,8 @@ export interface SessionSummaryView {
     minorAccepted: boolean;
     /** Phase 4.3 (D29): the stress test whose weak points this session questions, or null. */
     stressTestId: string | null;
+    /** Phase 4.2 (D28): the stale flag a "Grill me on what changed" session questions, or null (4.H-a: its own heading). */
+    staleFlagId: string | null;
     createdAt: string;
     endedAt: string | null;
 }
@@ -666,6 +668,7 @@ export function sessionSummaryView(s: SessionRow, targetElementName: string | nu
         generatorsOff: s.generatorsOff ?? [],
         minorAccepted: s.minorAccepted,
         stressTestId: s.stressTestId,
+        staleFlagId: s.staleFlagId,
         createdAt: s.createdAt.toISOString(),
         endedAt: s.endedAt ? s.endedAt.toISOString() : null,
     };
