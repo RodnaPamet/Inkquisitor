@@ -457,6 +457,7 @@ Phase 4.H-a (hardening Phase 4: correctness and isolation, D31) added:
 prisma/migrations/…_phase4_hardening → ContinuityRun.nightKey (one run a book a night), ContinuityCheck.pageFailures / parkedSubjects,
                                Answer (workspaceId, id), composite keys for Question.storyFactId and StoryFact.decidedByAnswerId
 src/lib/evals/record-gate-reports.ts → every model feature's D11 gate report, written at start (GATE_REPORTS, #63)
+src/app-layer/jobs/workspace-isolation.ts → servedWorkspace: one workspace's failure in a multi-workspace job is skipped, logged, counted
 tests/fixtures/workers/native-spike-worker.mjs → a parse worker held in one native call (the memory watchdog's test)
 tests/integration/{fact-layer,continuity,questioning}-hardening, retrieval-isolation, embedding-deletion; tests/rendered/phase4-not-assessed
 ```
@@ -1691,7 +1692,8 @@ closed beta with an explicit operator flag (D5, amended 2026-11-19).
   answer is never valid (INVALID_OUTPUT, PROMPT_INVALID — never a timeout or an
   outage), counts a failed night (`pageFailures`); after
   `CONTINUITY_PAGE_FAILURES_MAX` (3) in a row its subjects are PASSED OVER
-  (cursor past them, `parkedSubjects`, reset when a new pass starts). The
+  (cursor past them, `parkedSubjects`, reset when a new pass starts); a page
+the guard refused is passed over at once and counted there too. The
   Continuity page's `nightly.complete` is true only for a finished pass with
   nothing cut (`factsCut`, the last run's metrics), nothing passed over and at
   least one live fact; the page never says "every fact checked" otherwise. A
@@ -1709,7 +1711,15 @@ closed beta with an explicit operator flag (D5, amended 2026-11-19).
   composite `(workspaceId, id)` keys whose deletion sets only the id NULL
   (`SET NULL (col)` in the migration; the Prisma relation says `NoAction`,
   which Prisma cannot spell otherwise). The gap hunt counts a relation between
-  two elements of one kind once. EVERY D11 GATE is reported at start
+  two elements of one kind once. A JOB THAT SERVES EVERY WORKSPACE (the
+  fact-layer and continuity dispatchers) runs each workspace's part through
+  `servedWorkspace` (`src/app-layer/jobs/workspace-isolation.ts`): a throw there
+  — a data key that will not unwrap is `WorkspaceKeyUnavailableError`, code
+  `WORKSPACE_KEY_UNAVAILABLE` — is logged with ids and a code (never the
+  message), counted (`job.workspace.skipped`) and skipped, and every other
+  workspace is served; discovery reads distinct workspaces
+  (`listDueWorkspaces` groups by workspace), so one workspace's backlog never
+  fills a tick. A new multi-workspace job does the same. EVERY D11 GATE is reported at start
   (`recordGateReports`): a new gate joins `GATE_REPORTS`
   (`tests/unit/platform/startup-record-gates.test.ts`). A model record's
   "copied reference" check refuses only when EVERY case whose reference names

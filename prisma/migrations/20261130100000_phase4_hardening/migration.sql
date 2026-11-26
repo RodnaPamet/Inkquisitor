@@ -4,8 +4,8 @@
 --                                 by a partial unique index, so a second dispatch in one night queues nothing
 --                                 for a book that already has one (NULL for runs made before 4.H-a)
 --   ContinuityCheck.pageFailures  the nights in a row the page at the pass's cursor failed (#62 item 3)
---   ContinuityCheck.parkedSubjects subjects of the pass passed over after `CONTINUITY_PAGE_FAILURES_MAX`
---                                 failed nights, counted and shown on the Continuity page (never silent)
+--   ContinuityCheck.parkedSubjects subjects of the pass passed over unchecked (after `CONTINUITY_PAGE_FAILURES_MAX`
+--                                 failed nights, or refused by the guard), counted and shown on the Continuity page
 --   Answer (workspaceId, id)      unique, so a cross-row key can name an answer with its workspace
 --   Question.storyFactId,         composite (workspaceId, id) foreign keys like every other cross-row key
 --   StoryFact.decidedByAnswerId   (#66 item 4): a question names a fact of its own workspace, and a fact an

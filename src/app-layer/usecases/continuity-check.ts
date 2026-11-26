@@ -470,6 +470,9 @@ export async function executeContinuityCheck(payload: { workspaceId: string; run
                     // night stops, but the pass resumes PAST this page, its subjects counted as refused, never retried
                     // for ever behind it (4.0's rule: a refused chunk yields nothing).
                     metrics.guardRefusedSubjects = (metrics.guardRefusedSubjects ?? 0) + call.subjectKeys.length;
+                    // Passed over unchecked, so counted with the pass's passed-over subjects (4.H-a): the pass that
+                    // finishes past them is never "every fact checked" (rule 6).
+                    page.parkedSubjects = (page.parkedSubjects ?? 0) + call.subjectKeys.length;
                     counts.subjectsRemaining -= call.subjectKeys.length;
                     return await finish(outcome, claim, { passTarget, passCursor: call.subjectKeys[call.subjectKeys.length - 1] });
                 }

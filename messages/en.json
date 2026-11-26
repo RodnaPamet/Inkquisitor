@@ -1746,7 +1746,7 @@
             "covered": "{covered} subjects checked, {remaining} left for later nights, {facts} facts read.",
             "passUnderWay": "A check of a large change is under way; it continues tomorrow night.",
             "factsCut": "This book holds more facts than one night’s check reads: only {read} of {total} were checked, so the check is not complete.",
-            "parked": "{count, plural, one {# subject was} other {# subjects were}} passed over after failing night after night (too large for one check, or never answered in a usable way); the check is not complete.",
+            "parked": "{count, plural, one {# subject was} other {# subjects were}} passed over (too large for one check, never answered in a usable way night after night, or refused by the safety check); the check is not complete.",
             "outcome": {
                 "OK": "every fact checked",
                 "OK_INCOMPLETE": "the pass finished, but not every fact was checked",

@@ -115,6 +115,23 @@ describe('a page that can never succeed (#62 item 3)', () => {
         expect((await getContinuityPage(ctx, bookId)).nightly).toMatchObject({ parkedSubjects: 1, complete: false });
     });
 
+    it('a page the guard refused is passed over at once, counted with the passed-over subjects: the finished pass is not complete', async () => {
+        const ctx = workspaceCtx(await createAccount());
+        const bookId = (await createBook(ctx, { title: 'Refused' })).id;
+        await ageFacts(ctx, bookId, ['Ada', 'Bo']);
+        const onePage = { callsPerNight: 1, factsPerCall: 1 };
+        let calls = 0;
+        const refusesFirst = (): ContinuityChecker => ({
+            extract: async (r) => (calls++ === 0 ? { ok: false, failure: 'GUARD_REFUSED', errorCode: 'GUARD', tokensUsed: 10, costMicroUsd: 10, callIds: [] } : quiet().extract(r)),
+        });
+        expect(await runNight(ctx, { checker: refusesFirst, ...onePage })).toEqual(['GUARD_REFUSED']);
+        expect(await checkState(bookId)).toMatchObject({ parkedSubjects: 1 });
+        expect(await runNight(ctx, { checker: refusesFirst, ...onePage })).toEqual(['OK']);
+        // Before this was counted, the pass ended "every fact checked" with one subject never checked.
+        const page = await getContinuityPage(ctx, bookId);
+        expect(page.nightly).toMatchObject({ outcome: 'OK', parkedSubjects: 1, complete: false });
+    });
+
     it('a timeout is not the page’s fault: it is never counted against the page', async () => {
         const ctx = workspaceCtx(await createAccount());
         const bookId = (await createBook(ctx, { title: 'Flaky' })).id;

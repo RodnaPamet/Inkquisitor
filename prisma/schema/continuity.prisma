@@ -43,8 +43,8 @@ model ContinuityCheck {
   lastOutcome    String?
   /// 4.H-a (#62 item 3): the nights in a row the page at the cursor failed (a call over budget, a failed call).
   pageFailures   Int       @default(0)
-  /// 4.H-a: subjects of the pass (or, once it completes, of the last pass) passed over after
-  /// `CONTINUITY_PAGE_FAILURES_MAX` failed nights. Counted, shown, never silent.
+  /// 4.H-a: subjects of the pass (or, once it completes, of the last pass) passed over unchecked: after
+  /// `CONTINUITY_PAGE_FAILURES_MAX` failed nights, or refused by the guard. Counted, shown, never silent.
   parkedSubjects Int       @default(0)
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt

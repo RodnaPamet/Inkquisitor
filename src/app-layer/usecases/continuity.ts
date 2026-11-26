@@ -141,7 +141,7 @@ export interface ContinuityPage {
          * rest were not checked, so no pass over this book is ever reported complete while it holds more.
          */
         factsCut: boolean;
-        /** 4.H-a (#62 item 3): subjects of the pass (or the last complete one) passed over after failing night after night. */
+        /** 4.H-a (#62 item 3): subjects of the pass (or the last complete one) passed over unchecked: a page that failed night after night, or one the guard refused. */
         parkedSubjects: number;
         /** Every live fact checked: a complete pass, nothing cut, nothing passed over (rule 6: never claimed otherwise). */
         complete: boolean;
