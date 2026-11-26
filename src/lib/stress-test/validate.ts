@@ -139,11 +139,12 @@ export function validateWeakPoints(raw: unknown, input: { shown: ReadonlyMap<str
         if ([title, ...questions].some((t) => inventsName(t, input.text))) return refuse('INVENTS_NAME');
         const tags = [...new Set(item.cites.map((c) => c.trim().toUpperCase()))];
         if (tags.length === 0) return refuse('NO_CITATION');
+        // EVERY tag is resolved, the ones past the kept bound too: an unknown tag anywhere refuses the whole weak point.
         const citations: ShownRef[] = [];
-        for (const tag of tags.slice(0, CITES_PER_WEAK_POINT_MAX)) {
+        for (const tag of tags) {
             const ref = TAG.test(tag) ? input.shown.get(tag) : undefined;
             if (!ref) return refuse('UNKNOWN_CITATION');
-            citations.push(ref);
+            if (citations.length < CITES_PER_WEAK_POINT_MAX) citations.push(ref);
         }
         const key = `${item.kind}:${normaliseText(title)}`;
         if (seen.has(key)) return refuse('DUPLICATE');

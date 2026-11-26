@@ -270,7 +270,8 @@ export async function runGapHunt(ctx: WorkspaceRequestContext, bookId: string, i
         await GapHuntRepository.pruneForBook(db, ctx.workspaceId, bookId, GAP_HUNTS_LISTED_MAX);
         // AUDIT LAST.
         await logEvent(ctx, { action: 'GAP_HUNT_RUN', entityType: 'GapHunt', entityId: row.id, details: { bookId, ranked: reason === null, unrankedReason: reason, candidates: read.candidates.length, picks: picks.length } }, { db });
-        const stored = await GapHuntRepository.latestForBook(db, ctx.workspaceId, bookId);
+        // The hunt THIS request stored (never "the newest", which a concurrent run may have written since).
+        const stored = await GapHuntRepository.find(db, ctx.workspaceId, bookId, row.id);
         return viewOfRow(stored!, read);
     });
 }

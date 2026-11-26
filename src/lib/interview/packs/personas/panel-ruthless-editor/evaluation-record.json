@@ -3,7 +3,7 @@
   "pack": {
     "name": "persona-panel-ruthless-editor",
     "version": 1,
-    "contentHash": "sha256:6af0e23a1696b7275b7600a8953511b4753cf5b003a0485bf847a26c9d57bf7a"
+    "contentHash": "sha256:a77e39687348e47d3c98f7ca2e5d82673d4fe09a9fe9623bf7a3128c151b0a7c"
   },
   "set": {
     "hash": "sha256:5e441ec993bd65e4a23306961aa7b1dd166e2b5106612534a74cba844613cff2"
@@ -14,7 +14,7 @@
     "kind": "structural",
     "id": "structural-generator.1"
   },
-  "ranAt": "2026-11-26T15:23:17.233Z",
+  "ranAt": "2026-11-26T17:44:24.120Z",
   "answers": [
     {
       "caseId": "panel-ruthless-editor-01",

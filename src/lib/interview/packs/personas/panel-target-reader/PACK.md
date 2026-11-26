@@ -5,7 +5,7 @@ persona: panel-target-reader
 description: "Questions from a reader of the whole book: what its opening promises, where attention is held or lost across it, and what a reader carries away. One voice of the book-level panel."
 ---
 
-# Target Reader
+# Panel: Target Reader
 
 ## Voice
 

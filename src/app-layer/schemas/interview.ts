@@ -9,7 +9,7 @@ import { BIBLE_KINDS } from '@/lib/bible/kinds';
 import { RAW_INPUT_FACTOR } from '@/lib/bible/field-values';
 import { DETAIL, DIAL_MAX, DIAL_MIN } from '@/lib/interview/dials';
 import { OPTION_MAX } from '@/lib/interview/candidates';
-import { INTERVIEW_SCOPES, PERSONA_KEYS } from '@/lib/interview/vocabulary';
+import { INTERVIEW_SCOPES, PANEL_PERSONA_KEYS, PERSONA_KEYS, isPanelPersona } from '@/lib/interview/vocabulary';
 import { PERSONAS_PER_SESSION_MAX } from '@/lib/interview/dial-settings';
 
 const id = z.string().min(1).max(64);
@@ -22,6 +22,20 @@ const personaList = z
     .refine((list) => new Set(list).size === list.length, { message: 'A persona is named at most once.' });
 
 /**
+ * Phase 4.3 (D29): the book-level panel's personas are the PANEL, never one voice among others. A session's list
+ * holds all three of them and nothing else, or none of them: mixed with the six of 2.3 (or cut short) it would not
+ * be the panel the setup sheet's preset offers, and a panel voice beside its namesake (Target Reader and Panel: Target
+ * Reader) would put two groups in the session asking from the same side of the page.
+ */
+const sessionPersonaList = personaList.refine(
+    (list) => !list.some(isPanelPersona) || (list.length === PANEL_PERSONA_KEYS.length && PANEL_PERSONA_KEYS.every((k) => list.includes(k))),
+    { message: 'The panel’s personas question a book together, all three and no other.' },
+);
+
+/** Defaults never carry the panel (D29): it is offered only through the setup sheet's preset. */
+const defaultsPersonaList = personaList.refine((list) => !list.some(isPanelPersona), { message: 'The panel’s personas are never a default.' });
+
+/**
  * The dials, each optional: a key left out (or null) passes the dial on to
  * the layer below (session → book → workspace → code default). `personaKeys:
  * []` is a setting — no persona — not an absence.
@@ -29,7 +43,7 @@ const personaList = z
 const dialFields = {
     depth: dial.nullish(),
     detail: dial.nullish(),
-    personaKeys: personaList.nullish(),
+    personaKeys: sessionPersonaList.nullish(),
     offerRecommended: z.boolean().nullish(),
     preferChoice: z.boolean().nullish(),
 };
@@ -93,7 +107,7 @@ export type AnswerInput = z.infer<typeof AnswerInput>;
  * A layer of interview defaults (workspace or book), replaced whole: each dial
  * a value, or left out / null to pass it on to the layer below.
  */
-export const InterviewDefaultsInput = z.object(dialFields).strict();
+export const InterviewDefaultsInput = z.object({ ...dialFields, personaKeys: defaultsPersonaList.nullish() }).strict();
 export type InterviewDefaultsInput = z.infer<typeof InterviewDefaultsInput>;
 
 export const CloseRoundInput = z.object({ skipUnanswered: z.boolean().optional() }).strict();

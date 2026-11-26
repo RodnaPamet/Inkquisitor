@@ -720,15 +720,15 @@
                 "summary": "The promises your genre makes, and where you depart on purpose."
             },
             "panel-target-reader": {
-                "name": "Target Reader",
+                "name": "Panel: Target Reader",
                 "summary": "The panel's reader of the whole book: what its opening promises and what a reader carries away."
             },
             "panel-ruthless-editor": {
-                "name": "Ruthless Editor",
+                "name": "Panel: Ruthless Editor",
                 "summary": "The panel's editor of the whole book: what carries weight, what would collapse without it."
             },
             "panel-genre-specialist": {
-                "name": "Genre Specialist",
+                "name": "Panel: Genre Specialist",
                 "summary": "The panel's genre voice: the promises the whole book makes to readers of its genre."
             }
         },

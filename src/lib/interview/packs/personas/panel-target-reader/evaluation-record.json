@@ -3,7 +3,7 @@
   "pack": {
     "name": "persona-panel-target-reader",
     "version": 1,
-    "contentHash": "sha256:97aef71bf365c67fd5e74729a21dec8c3a5c5ac7a95528cd1ebbabb47c2f6a05"
+    "contentHash": "sha256:21b5d3a8a5af482aa14b8e2edbdf0c0970dd416a058da62b3baedc033e09bb21"
   },
   "set": {
     "hash": "sha256:ea3ff32d96255e10d71187416c01bf9b9279b3bf9e906f00b0fc3198f81ccb33"
@@ -14,7 +14,7 @@
     "kind": "structural",
     "id": "structural-generator.1"
   },
-  "ranAt": "2026-11-26T15:23:16.976Z",
+  "ranAt": "2026-11-26T17:44:23.780Z",
   "answers": [
     {
       "caseId": "panel-target-reader-01",

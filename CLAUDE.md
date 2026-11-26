@@ -1555,7 +1555,10 @@ closed beta with an explicit operator flag (D5, amended 2026-11-19).
   as the model's. On demand only, never scheduled; a book keeps its newest
   `GAP_HUNTS_LISTED_MAX`. THE PANEL is the three `panel-*` persona packs,
   offered only by the setup sheet's Panel preset (`panelSetup` /
-  `isPanelSetup` in `setup.ts`), never in the picker or the defaults; a
+  `isPanelSetup` in `setup.ts`), never in the picker or the defaults (the
+  defaults' schema and CHECK refuse a panel key; a session's list names all
+  three panel personas or none of them, so no panel voice sits beside its
+  namesake); a
   persona pack may carry its own `situations.json` (`personaSituations`,
   hashed and scanned like the shared one). Questions are grouped by
   `groupByPersona` on the session and review pages. COMPACTION
@@ -1563,7 +1566,9 @@ closed beta with an explicit operator flag (D5, amended 2026-11-19).
   (`buildSessionState`: scope, pinned packs, every earlier answer and accepted
   change verbatim, refusals by code) beside the model's summary fenced as model
   text; never move any of those into the summary. The summary is an ordinary
-  `callStructured` call (ceiling, kill switch, budget, D11, guard), stored once
+  `callStructured` call (ceiling, kill switch, D11, guard, the round's signal),
+  made only when the session's token budget takes its worst case
+  (`compactionCallWorstTokens`) beside the round it serves, stored once
   per session and range; any failure leaves the round uncompacted.
   `COMPACTION_ON_BY_DEFAULT` is false until 4.4. All three prompts follow D11
   with their own records; after editing a set, prompt or schema, re-run

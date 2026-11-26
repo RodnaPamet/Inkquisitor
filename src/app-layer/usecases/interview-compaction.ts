@@ -13,7 +13,9 @@
  *      must exist (D11), the model-call minute is charged (a limited minute
  *      skips, never waits a round), and 2.1 holds the call to the monthly
  *      ceiling and the kill switch, guard-scans and fences its data, and records
- *      it in `AiCallLog`. Its tokens are charged to the session's budget. The
+ *      it in `AiCallLog`. The session's token budget must take the call's worst
+ *      case beside the round it serves BEFORE it is sent (else no compaction),
+ *      and its tokens are charged to that budget. The
  *      summary is validated (`validateRoundsSummary`) and stored once,
  *      sanitised and encrypted.
  *   4. The state block is built BY CODE from the session's own record: the
@@ -33,7 +35,8 @@ import { RateLimitedError } from '@/lib/errors/types';
 import { buildSessionState, compactedThrough, compactionSkip, DEFAULT_COMPACTION, summaryRequestBlocks, type AcceptedChange, type CompactedSession, type CompactionSettings, type RoundAnswer } from '@/lib/interview/compaction';
 import { compactionGate } from '@/lib/interview/compaction-gate';
 import { COMPACTION_PROMPT_VERSION, sanitiseSummaryForStorage, validateRoundsSummary } from '@/lib/interview/compaction-prompt';
-import { defaultRoundsSummarizer, type RoundsSummarizer } from '@/lib/interview/compaction-seam';
+import { compactionCallWorstTokens, defaultRoundsSummarizer, type RoundsSummarizer } from '@/lib/interview/compaction-seam';
+import { nextRoundTokens } from '@/lib/interview/dial-settings';
 import { parsePackPins } from '@/lib/interview/pack-mount';
 import type { PackRecordMode } from '@/lib/interview/pack-records-config';
 import { logger } from '@/lib/observability/logger';
@@ -49,6 +52,8 @@ export interface CompactionDeps {
     summarizer?: (ctx: WorkspaceRequestContext) => RoundsSummarizer;
     packRecordMode?: PackRecordMode;
     charge?: (workspaceId: string, calls: number) => void;
+    /** The round's signal (a streamed request's client gone): no summary call is started, and one in flight is cut. */
+    signal?: AbortSignal;
 }
 
 /** Proposals and runs a state block reads at most. */
@@ -83,14 +88,18 @@ export async function compactedSessionFor(
         if (summary === null) {
             if (modelUnavailableReason()) return undefined;
             if (!compactionGate(deps.packRecordMode ?? deploymentPackRecordMode()).mounted) return undefined;
+            if (deps.signal?.aborted) return undefined;
+            const blocks = summaryRequestBlocks(answers, through);
+            // THE SESSION'S BUDGET, before anything is sent (2.H): the round this compaction serves must still fit beside
+            // the summary call's worst case, or the round goes uncompacted.
+            if (session.tokensUsed + nextRoundTokens(session.personaKeys.length) + compactionCallWorstTokens(blocks) > session.tokenBudget) return undefined;
             try {
                 (deps.charge ?? chargeModelCalls)(ctx.workspaceId, 1);
             } catch (err) {
                 if (err instanceof RateLimitedError) return undefined;
                 throw err;
             }
-            const blocks = summaryRequestBlocks(answers, through);
-            const result = await (deps.summarizer ?? ((c: WorkspaceRequestContext) => defaultRoundsSummarizer(c)))(ctx).extract({ data: blocks, bookId: session.bookId });
+            const result = await (deps.summarizer ?? ((c: WorkspaceRequestContext) => defaultRoundsSummarizer(c)))(ctx).extract({ data: blocks, bookId: session.bookId }, deps.signal);
             if (result.tokensUsed > 0) await runInWorkspaceContext(ctx, (db) => InterviewSessionRepository.addTokens(db, ctx.workspaceId, session.id, result.tokensUsed));
             if (!result.ok) return undefined;
             const v = validateRoundsSummary(result.output, { text: blocks.map((b) => b.text).join('\n'), answers: answers.map((a) => a.answer ?? '').filter((t) => t !== '') });

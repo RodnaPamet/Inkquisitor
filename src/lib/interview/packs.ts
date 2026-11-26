@@ -309,10 +309,11 @@ export const PERSONA_DISPLAY_NAMES: Readonly<Record<PersonaKey, string>> = {
     'devils-advocate': "Devil's Advocate",
     'target-reader': 'Target Reader',
     'genre-specialist': 'Genre Specialist',
-    // Phase 4.3 (D29): the book-level panel's voices, named as the roadmap names them.
-    'panel-target-reader': 'Target Reader',
-    'panel-ruthless-editor': 'Ruthless Editor',
-    'panel-genre-specialist': 'Genre Specialist',
+    // Phase 4.3 (D29): the book-level panel's voices. Shown with a "Panel:" prefix (owner decision, 2026-11-26), so a
+    // panel voice is never mistaken for its namesake among the six personas above.
+    'panel-target-reader': 'Panel: Target Reader',
+    'panel-ruthless-editor': 'Panel: Ruthless Editor',
+    'panel-genre-specialist': 'Panel: Genre Specialist',
 };
 
 export const PERSONA_FIXED_BULLETS = [

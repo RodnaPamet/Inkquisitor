@@ -20,7 +20,9 @@
  * THE REFERENCE TESTER answers each case from its reference answer: a
  * structural record proves the set, the product's rules and the grader agree end
  * to end, and nothing about a model, so production refuses it (D11); a model
- * record holding the reference answers is refused STRUCTURAL_OUTPUT_AS_MODEL.
+ * record holding the reference answer for EVERY case whose reference keeps a
+ * weak point is refused STRUCTURAL_OUTPUT_AS_MODEL (a faithful model answers an
+ * empty case exactly as the reference does, so one coinciding case is no sign).
  */
 import { z } from 'zod';
 import { combinedPromptHash, promptContentHash } from '@/lib/ai/prompt-hash';
@@ -98,6 +100,12 @@ function referenceAnswer(c: StressTestEvalCase): StressTestRecord['answers'][num
     return { caseId: c.id, output: c.reference };
 }
 
+/** Does this case's reference answer name at least one weak point? */
+function referenceKeepsSomething(c: StressTestEvalCase): boolean {
+    const r = c.reference as { weakPoints?: unknown } | null;
+    return Array.isArray(r?.weakPoints) && r.weakPoints.length > 0;
+}
+
 export function checkStressTestRecord(raw: unknown): StressTestRecordCheck {
     const parsed = StressTestRecordSchema.safeParse(raw);
     if (!parsed.success) return { ok: false, reason: 'MALFORMED', detail: parsed.error.issues.map((i) => i.path.join('.')).join(', ') };
@@ -108,11 +116,22 @@ export function checkStressTestRecord(raw: unknown): StressTestRecordCheck {
     const byCase = new Map(record.answers.map((a) => [a.caseId, a] as const));
     const missing = stressTestCases.filter((c) => !byCase.has(c.id)).map((c) => c.id);
     if (missing.length > 0) return { ok: false, reason: 'CASES_MISSING', detail: missing.join(', ') };
+    // A model that finds nothing where the reference finds nothing answers exactly as the reference does: one coinciding
+    // case is what a faithful model does (2.5's rule). A model record is refused only when EVERY case whose reference
+    // keeps a weak point holds the reference answer.
+    let worded = 0;
+    let coinciding = 0;
     for (const c of stressTestCases) {
         const recorded = JSON.stringify(byCase.get(c.id));
         const reference = JSON.stringify(referenceAnswer(c));
         if (record.generator.kind === 'structural' && recorded !== reference) return { ok: false, reason: 'STRUCTURAL_MISMATCH', detail: c.id };
-        if (record.generator.kind === 'model' && recorded === reference) return { ok: false, reason: 'STRUCTURAL_OUTPUT_AS_MODEL', detail: c.id };
+        if (referenceKeepsSomething(c)) {
+            worded++;
+            if (recorded === reference) coinciding++;
+        }
+    }
+    if (record.generator.kind === 'model' && worded > 0 && coinciding === worded) {
+        return { ok: false, reason: 'STRUCTURAL_OUTPUT_AS_MODEL', detail: 'every case with a weak point holds the reference tester\'s answer, recorded as a model\'s' };
     }
     const grades = stressTestCases.map((c) => gradeStressTestCase(c, byCase.get(c.id)!.output));
     const failed = grades.filter((g) => !g.passed);

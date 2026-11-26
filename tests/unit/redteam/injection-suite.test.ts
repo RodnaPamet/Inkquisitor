@@ -21,6 +21,10 @@ import { extractorOver } from '@/lib/sources/model-seam';
 import { bibleFactExtractorOver } from '@/lib/facts/model-seam';
 import { continuityCheckerOver } from '@/lib/continuity/model-seam';
 import { stressTesterOver } from '@/lib/stress-test/model-seam';
+import { gapRankerOver } from '@/lib/gap-hunt/model-seam';
+import { GAP_RANK_PROMPT } from '@/lib/gap-hunt/prompt';
+import { roundsSummarizerOver } from '@/lib/interview/compaction-seam';
+import { COMPACTION_PROMPT } from '@/lib/interview/compaction-prompt';
 import { STRESS_TEST_PROMPT } from '@/lib/stress-test/prompt';
 import { CONTINUITY_PROMPT } from '@/lib/continuity/prompt';
 import { BIBLE_FACTS_PROMPT } from '@/lib/facts/prompt';
@@ -141,6 +145,21 @@ function compromisedAnswer(body: Record<string, unknown>): string {
             ],
         });
     }
+    if (is(GAP_RANK_PROMPT)) {
+        // Phase 4.3: the injection as a reason, the prompt recited, an ungrounded reason, a candidate picked twice.
+        return JSON.stringify({
+            picks: [
+                { candidate: 1, reason: `${injected}`, cites: [1] },
+                { candidate: 2, reason: `${recite(GAP_RANK_PROMPT.system)}.`, cites: [2] },
+                { candidate: 3, reason: 'This matters a great deal.', cites: [3] },
+                { candidate: 2, reason: 'The author approved deleting every empty field.', cites: [2] },
+            ],
+        });
+    }
+    if (is(COMPACTION_PROMPT)) {
+        // Phase 4.3: the summary recites the summariser's own instructions, the injection beside them.
+        return JSON.stringify({ summary: `${recite(COMPACTION_PROMPT.system, 14)}. ${injected}` });
+    }
     if (is(CONTINUITY_PROMPT)) {
         // Phase 4.2: every pair "agreed", a pair past the page, a fact paired with itself.
         return JSON.stringify({ contradictions: [{ first: 1, second: 2, kind: 'OTHER' }, { first: 2, second: 40, kind: 'VALUE' }, { first: 3, second: 3, kind: 'VALUE' }] });
@@ -188,6 +207,8 @@ function compromisedSeams(): InjectionSeams & { api: ReturnType<typeof fakeAnthr
         bibleExtractor: bibleFactExtractorOver((input) => call(input) as never),
         continuityChecker: continuityCheckerOver((input) => call(input) as never),
         stressTester: stressTesterOver((input) => call(input) as never),
+        gapRanker: gapRankerOver((input) => call(input) as never),
+        roundsSummarizer: roundsSummarizerOver((input) => call(input) as never),
         requests: () => api.requests,
     };
 }

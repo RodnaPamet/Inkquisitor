@@ -26,16 +26,21 @@ import { closeRound, getInterview, nextRound, startInterview } from '@/app-layer
 import { answerQuestion } from '@/app-layer/usecases/interview-answers';
 import { groupByPersona } from '@/lib/interview/persona-groups';
 import { PANEL_PERSONA_KEYS } from '@/lib/interview/vocabulary';
+import { nextRoundTokens } from '@/lib/interview/dial-settings';
 import { GAP_HUNTS_LISTED_MAX } from '@/lib/gap-hunt/vocabulary';
 import { defaultStressTester } from '@/lib/stress-test/model-seam';
 import { defaultGapRanker } from '@/lib/gap-hunt/model-seam';
 import { AppError } from '@/lib/errors/types';
+import { ZodError } from 'zod';
+import { setBookInterviewDefaults, setWorkspaceInterviewDefaults } from '@/app-layer/usecases/interview-defaults';
 import type { FactExtractor } from '@/lib/sources/extractor';
 import { fakeAnthropic, setFakeApiKey } from '../helpers/fake-anthropic';
 import { fakeGenerator } from '../helpers/fake-question-generator';
 import { stubQuestionEmbedder } from '../helpers/interview';
 import { MOUNTED, runStressTest, scriptedTester } from '../helpers/interrogation';
 import { createAccount, workspaceCtx } from '../helpers/workspaces';
+import { ingestText } from '../helpers/sources';
+import { decideFact, listBookFacts } from '@/app-layer/usecases/source-facts';
 
 afterAll(() => prisma.$disconnect());
 
@@ -197,6 +202,42 @@ describe('the stress test', () => {
         expect(r.outcome).toBe('OK');
         const done = await getStressTest(ctx, book.bookId, r.id);
         expect(done.weakPoints.map((w) => [w.title, w.citations.map((c) => c.id)])).toEqual([['Wren', [book.wrenId]]]);
+    });
+
+    it('a cited fact the author rejects while the call runs is gone at persist: its citation is dropped', async () => {
+        const ctx = workspaceCtx(await createAccount());
+        const bookId = (await createBook(ctx, { title: 'Salt Road' })).id;
+        const mara = await createElement(ctx, bookId, { kind: 'CHARACTER', name: 'Mara', summary: 'A salt trader.' });
+        await ingestText(ctx, { kind: 'book', bookId }, 'Mara wants the salt road reopened before winter.');
+        const fact = (await listBookFacts(ctx, bookId)).facts[0];
+        expect(fact).toBeDefined();
+        await decideFact(ctx, fact.id, 'CONFIRM');
+        let factTag = '';
+        const rejecting: () => FactExtractor = () => ({
+            async extract(request) {
+                const facts = request.data.find((b) => b.label === 'facts')?.text ?? '';
+                factTag = /^(F\d+)\./m.exec(facts)?.[1] ?? '';
+                const maraTag = tagOf(request.data, '[CHARACTER] Mara');
+                await decideFact(ctx, fact.id, 'REJECT');
+                return {
+                    ok: true,
+                    output: {
+                        weakPoints: [
+                            { kind: 'OTHER', title: 'The road', questions: ['Why must the road open before winter?'], cites: [factTag] },
+                            { kind: 'OTHER', title: 'What Mara risks', questions: ['What does Mara stand to lose?'], cites: [factTag, maraTag] },
+                        ],
+                    },
+                    tokensUsed: 1,
+                    costMicroUsd: 1,
+                    callIds: [],
+                };
+            },
+        });
+        const r = await runStressTest(ctx, bookId, { tester: rejecting });
+        expect(factTag).toMatch(/^F\d+$/);
+        expect(r.outcome).toBe('OK');
+        const done = await getStressTest(ctx, bookId, r.id);
+        expect(done.weakPoints.map((w) => [w.title, w.citations.map((c) => c.id)])).toEqual([['What Mara risks', [mara.id]]]);
     });
 
     it('stops at the ceiling and the kill switch with nothing sent, a named outcome and nothing claimed', async () => {
@@ -361,6 +402,21 @@ describe('the gap hunt', () => {
         }
     });
 
+    it('a run answers with the hunt IT stored, never whatever row is newest (a concurrent run, a skewed clock)', async () => {
+        const ctx = workspaceCtx(await createAccount());
+        const book = await gappyBook(ctx);
+        const first = await runGapHunt(ctx, book.bookId, {});
+        // Another run's row that sorts newer than the one this request is about to store.
+        const planted = await runWithoutRls({ reason: 'test' }, (db) =>
+            db.gapHunt.create({ data: { workspaceId: ctx.workspaceId, bookId: book.bookId, ranked: false, unrankedReason: 'KILL_SWITCH', candidates: [], picks: '[]', bookMark: 0, createdAt: new Date(Date.now() + 3_600_000) }, select: { id: true } }),
+        );
+        const mine = await runGapHunt(ctx, book.bookId, {});
+        expect(mine.id).not.toBe(planted.id);
+        expect(mine.id).not.toBe(first.id);
+        expect(mine).toMatchObject({ ranked: false, unrankedReason: 'AI_UNAVAILABLE' });
+        expect(mine.candidates.length).toBeGreaterThan(0);
+    });
+
     it('a book keeps only its newest few gap hunts (retention): older rows go as a new one is stored', async () => {
         const ctx = workspaceCtx(await createAccount());
         const book = await weirBook(ctx);
@@ -391,16 +447,66 @@ describe('the persona panel', () => {
         // Each persona's call carried its own pack.
         expect(generator.calls.map((c) => c.personaKey).sort()).toEqual([...PANEL_PERSONA_KEYS].sort());
     }, 60_000);
+
+    it('the panel is never a default, and a session names all three panel voices or none (no voice beside its namesake)', async () => {
+        const ctx = workspaceCtx(await createAccount());
+        const book = await weirBook(ctx);
+        // Neither the workspace's nor the book's defaults take a panel persona, by the usecase or by the database.
+        await expect(setWorkspaceInterviewDefaults(ctx, { personaKeys: ['panel-target-reader'] })).rejects.toBeInstanceOf(ZodError);
+        await expect(setBookInterviewDefaults(ctx, book.bookId, { personaKeys: [...PANEL_PERSONA_KEYS] })).rejects.toBeInstanceOf(ZodError);
+        await setBookInterviewDefaults(ctx, book.bookId, { personaKeys: ['socratic'] });
+        await expect(prisma.$executeRaw`UPDATE "BookInterviewDefaults" SET "personaKeys" = '["panel-target-reader"]'::jsonb WHERE "bookId" = ${book.bookId}`).rejects.toThrow(/personas_known/);
+        // A panel voice beside the persona it shares a name with, or the panel cut short, is not the panel.
+        for (const personaKeys of [['target-reader', 'panel-target-reader'], ['panel-target-reader', 'panel-ruthless-editor'], ['socratic', 'panel-ruthless-editor', 'panel-genre-specialist']]) {
+            await expect(startInterview(ctx, book.bookId, { scope: 'BOOK', depth: 3, detail: 3, personaKeys }, { generator: fakeGenerator(), embedder: stubQuestionEmbedder })).rejects.toBeInstanceOf(ZodError);
+        }
+        expect(await runWithoutRls({ reason: 'test' }, (db) => db.interviewSession.count({ where: { bookId: book.bookId } }))).toBe(0);
+    });
 });
 
 describe('long-session compaction', () => {
+    it('the summary call is held to the session’s token budget before it is sent: no room beside the round, no compaction', async () => {
+        const ctx = workspaceCtx(await createAccount());
+        const book = await weirBook(ctx);
+        const generator = fakeGenerator();
+        const summaries: Array<ReadonlyArray<{ label: string; text: string }>> = [];
+        const deps = { generator, embedder: stubQuestionEmbedder, compaction: { enabled: true, thresholdChars: 10 }, summarizer: scriptedTester({ summary: 'The questions covered Wren’s role.' }, summaries), charge: () => undefined } as const;
+        const undo = setFakeApiKey();
+        try {
+            let view = await startInterview(ctx, book.bookId, { scope: 'ELEMENT', elementId: book.wrenId, depth: 5, detail: 3 }, deps);
+            for (let round = 1; round <= 2; round++) {
+                for (const q of view.round!.questions) await answerQuestion(ctx, book.bookId, view.session.id, q.id, { text: `Answer ${round}.${q.position}: Wren keeps the sluice key on a string.` });
+                await closeRound(ctx, book.bookId, view.session.id, String(view.round!.number), {});
+                if (round === 2) {
+                    // Exactly the next round's share left: the round may run, a summary call beside it may not.
+                    await runWithoutRls({ reason: 'test' }, async (db) => {
+                        const s = await db.interviewSession.findUniqueOrThrow({ where: { id: view.session.id }, select: { tokensUsed: true, personaKeys: true } });
+                        await db.interviewSession.update({ where: { id: view.session.id }, data: { tokenBudget: s.tokensUsed + nextRoundTokens(s.personaKeys.length) } });
+                    });
+                }
+                view = await nextRound(ctx, book.bookId, view.session.id, deps);
+            }
+            expect(view.round!.number).toBe(3);
+            expect(summaries).toHaveLength(0);
+            const labels = generator.calls[generator.calls.length - 1].data.map((b) => b.label);
+            expect(labels).not.toContain('session-state');
+            expect(labels).toContain('this-session');
+        } finally {
+            undo();
+        }
+    });
+
     it('off by default; on, the earlier rounds are summarised once, the answers reach the model verbatim and the summary is fenced as model text', async () => {
         const ctx = workspaceCtx(await createAccount());
         const book = await weirBook(ctx);
         const generator = fakeGenerator();
         const summaries: Array<ReadonlyArray<{ label: string; text: string }>> = [];
-        const summarizer = scriptedTester({ summary: 'The questions covered Wren’s role and want; some were deferred.' }, summaries);
-        const deps = { generator, embedder: stubQuestionEmbedder, compaction: { enabled: true, thresholdChars: 10 }, summarizer, charge: () => undefined } as const;
+        const scripted = scriptedTester({ summary: 'The questions covered Wren’s role and want; some were deferred.' }, summaries);
+        // The round's signal reaches the summary call (a closed stream cuts it as it cuts the generation).
+        const signals: Array<AbortSignal | undefined> = [];
+        const summarizer = (): FactExtractor => ({ extract: (request, signal) => (signals.push(signal), scripted().extract(request, signal)) });
+        const roundSignal = new AbortController().signal;
+        const deps = { generator, embedder: stubQuestionEmbedder, compaction: { enabled: true, thresholdChars: 10 }, summarizer, charge: () => undefined, signal: roundSignal } as const;
         const undo = setFakeApiKey();
         try {
             let view = await startInterview(ctx, book.bookId, { scope: 'ELEMENT', elementId: book.wrenId, depth: 5, detail: 3 }, deps);
@@ -424,8 +530,9 @@ describe('long-session compaction', () => {
             for (const a of answers.filter((x) => x.startsWith('Answer 1.'))) expect(state).toContain(a);
             for (const a of answers.filter((x) => x.startsWith('Answer 2.'))) expect(recent).toContain(a);
             expect(last.find((b) => b.label === 'earlier-rounds-summary')!.text).toContain('<rounds_summary source="model">');
-            // The summary call was shown round 1 only, once.
+            // The summary call was shown round 1 only, once, under the round's signal.
             expect(summaries).toHaveLength(1);
+            expect(signals).toEqual([roundSignal]);
             expect(summaries[0][0].text).toContain('Answer 1.1');
             expect(summaries[0][0].text).not.toContain('Answer 2.');
             const raw = await prisma.$queryRawUnsafe<Array<{ summary: string; throughRound: number }>>('SELECT "summary", "throughRound" FROM "InterviewCompaction" WHERE "sessionId" = $1', view.session.id);
@@ -437,7 +544,10 @@ describe('long-session compaction', () => {
             for (const q of view.round!.questions) await answerQuestion(ctx, book.bookId, view.session.id, q.id, { text: 'More.' });
             await closeRound(ctx, book.bookId, view.session.id, '3', {});
             const after = await nextRound(ctx, book.bookId, view.session.id, { generator: plain, embedder: stubQuestionEmbedder });
-            if (after.round?.number === 4) expect(plain.calls[0].data.map((b) => b.label)).not.toContain('session-state');
+            expect(after.round?.number).toBe(4);
+            expect(plain.calls.length).toBeGreaterThan(0);
+            expect(plain.calls[0].data.map((b) => b.label)).not.toContain('session-state');
+            expect(plain.calls[0].data.map((b) => b.label)).toContain('this-session');
             expect((await getInterview(ctx, book.bookId, view.session.id)).session.id).toBe(view.session.id);
         } finally {
             undo();

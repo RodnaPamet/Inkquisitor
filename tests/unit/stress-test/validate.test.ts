@@ -4,7 +4,7 @@
  */
 import { buildStressInput, shownText, type StressInputSources } from '@/lib/stress-test/input';
 import { isOneQuestion, rewritesText, validateWeakPoints } from '@/lib/stress-test/validate';
-import { STRESS_INPUT_CHAR_BUDGET, WEAK_POINTS_MAX } from '@/lib/stress-test/vocabulary';
+import { CITES_PER_WEAK_POINT_MAX, STRESS_INPUT_CHAR_BUDGET, WEAK_POINTS_MAX } from '@/lib/stress-test/vocabulary';
 
 const canon: StressInputSources = {
     book: { title: 'The Weir', logline: 'A lock-keeper’s daughter keeps a village alive.' },
@@ -41,6 +41,19 @@ describe('citations', () => {
             expect([bad, v.weakPoints]).toEqual([bad, []]);
             expect(v.refusals.UNKNOWN_CITATION).toBe(1);
         }
+    });
+
+    it('an unknown tag past the citations kept still refuses the whole weak point (every tag is checked)', () => {
+        const many: StressInputSources = { ...canon, elements: Array.from({ length: 10 }, (_, i) => ({ id: `el-${i + 1}`, kind: 'CHARACTER', name: `Keeper ${i + 1}`, summary: null })), totals: { ...canon.totals, elements: 10 } };
+        const big = buildStressInput(many, STRESS_INPUT_CHAR_BUDGET);
+        const cites = Array.from({ length: CITES_PER_WEAK_POINT_MAX }, (_, i) => `E${i + 1}`);
+        const ok = validateWeakPoints({ weakPoints: [wp({ title: 'The keepers', questions: ['Why do they keep the light?'], cites: [...cites, 'E9'] })] }, { shown: big.shown, text: shownText(big) });
+        // Nine shown tags: kept, the citations cut to the bound.
+        expect(ok.weakPoints).toHaveLength(1);
+        expect(ok.weakPoints[0].citations).toHaveLength(CITES_PER_WEAK_POINT_MAX);
+        const v = validateWeakPoints({ weakPoints: [wp({ title: 'The keepers', questions: ['Why do they keep the light?'], cites: [...cites, 'E99'] })] }, { shown: big.shown, text: shownText(big) });
+        expect(v.weakPoints).toEqual([]);
+        expect(v.refusals).toEqual({ UNKNOWN_CITATION: 1 });
     });
 
     it('refuses a weak point citing nothing', () => {

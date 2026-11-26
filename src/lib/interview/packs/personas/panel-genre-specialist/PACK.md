@@ -5,7 +5,7 @@ persona: panel-genre-specialist
 description: "Practical questions about the promises the whole book makes to readers of its genre: what its shape leads them to expect, and where it departs on purpose. One voice of the book-level panel."
 ---
 
-# Genre Specialist
+# Panel: Genre Specialist
 
 ## Voice
 

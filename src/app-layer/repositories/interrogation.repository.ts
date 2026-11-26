@@ -150,6 +150,9 @@ export const GapHuntRepository = {
         if (old.length === 0) return 0;
         return (await db.gapHunt.deleteMany({ where: { workspaceId, id: { in: old.map((r) => r.id) } } })).count;
     },
+    async find(db: Db, workspaceId: string, bookId: string, id: string): Promise<GapHuntRow | null> {
+        return db.gapHunt.findFirst({ where: { workspaceId, bookId, id }, select: GAP_SELECT });
+    },
     async latestForBook(db: Db, workspaceId: string, bookId: string): Promise<GapHuntRow | null> {
         return db.gapHunt.findFirst({ where: { workspaceId, bookId }, orderBy: [{ createdAt: 'desc' }, { id: 'asc' }], select: GAP_SELECT });
     },
@@ -189,7 +192,8 @@ export async function canonCounts(db: Db, workspaceId: string, bookId: string, s
 
 /**
  * Which of these cited rows still stand, as `TYPE:id` (a stress test checks again at persist): the book's elements
- * and open-or-closed threads, live facts, and chunks of the sources the book draws on.
+ * and open-or-closed threads, its live confirmed facts (its own, or of the sources it draws on), and chunks of the
+ * sources the book draws on.
  */
 export async function existingRefs(db: Db, workspaceId: string, bookId: string, refs: ReadonlyArray<{ type: string; id: string }>, sourceIds: readonly string[]): Promise<Set<string>> {
     const ids = (type: string) => [...new Set(refs.filter((r) => r.type === type).map((r) => r.id))];
@@ -199,7 +203,12 @@ export async function existingRefs(db: Db, workspaceId: string, bookId: string, 
     const threads = ids('THREAD');
     const passages = ids('PASSAGE');
     if (elements.length > 0) for (const r of await db.bibleElement.findMany({ where: { workspaceId, bookId, id: { in: elements } }, take: elements.length, select: { id: true } })) out.add(`ELEMENT:${r.id}`);
-    if (facts.length > 0) for (const r of await db.storyFact.findMany({ where: { workspaceId, id: { in: facts }, supersededAt: null }, take: facts.length, select: { id: true } })) out.add(`FACT:${r.id}`);
+    // A fact still stands when it is live, CONFIRMED (a source fact the author has since rejected is gone from the canon)
+    // and still the book's: its own, or of a source the book still draws on (`canonCounts`' reading).
+    if (facts.length > 0) {
+        const where = { workspaceId, id: { in: facts }, supersededAt: null, status: 'CONFIRMED' as const, OR: [{ bookId }, ...(sourceIds.length > 0 ? [{ sourceId: { in: [...sourceIds] } }] : [])] };
+        for (const r of await db.storyFact.findMany({ where, take: facts.length, select: { id: true } })) out.add(`FACT:${r.id}`);
+    }
     if (threads.length > 0) for (const r of await db.storyThread.findMany({ where: { workspaceId, bookId, id: { in: threads } }, take: threads.length, select: { id: true } })) out.add(`THREAD:${r.id}`);
     if (passages.length > 0 && sourceIds.length > 0) {
         for (const r of await db.sourceChunk.findMany({ where: { workspaceId, id: { in: passages }, sourceId: { in: [...sourceIds] } }, take: passages.length, select: { id: true } })) out.add(`PASSAGE:${r.id}`);

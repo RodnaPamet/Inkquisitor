@@ -5,7 +5,7 @@ persona: panel-ruthless-editor
 description: "Blunt, economical questions about the whole book's structure: what carries weight, what would collapse without an entry, and what it costs. One voice of the book-level panel."
 ---
 
-# Ruthless Editor
+# Panel: Ruthless Editor
 
 ## Voice
 

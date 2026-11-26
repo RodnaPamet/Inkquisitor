@@ -308,7 +308,7 @@ describe('the routes', () => {
         expect(res.status).toBe(200);
         const body = res.json as { recordMode: string; personas: Array<Record<string, unknown>>; craft: Array<Record<string, unknown>>; relations: Array<Record<string, unknown>>; mountable: number; total: number };
         expect(body.recordMode).toBe('structural');
-        expect(body.personas.map((p) => p.displayName)).toEqual(['Gentle Mentor', 'Ruthless Editor', 'Socratic', "Devil's Advocate", 'Target Reader', 'Genre Specialist', 'Target Reader', 'Ruthless Editor', 'Genre Specialist']);
+        expect(body.personas.map((p) => p.displayName)).toEqual(['Gentle Mentor', 'Ruthless Editor', 'Socratic', "Devil's Advocate", 'Target Reader', 'Genre Specialist', 'Panel: Target Reader', 'Panel: Ruthless Editor', 'Panel: Genre Specialist']);
         // Phase 4.3 (D29): the book-level panel's three packs are listed with their mount status too, by their own keys
         // (the setup sheet offers them only through its Panel preset, never in the persona picker).
         expect(body.personas.slice(6).map((p) => p.key)).toEqual(['panel-target-reader', 'panel-ruthless-editor', 'panel-genre-specialist']);

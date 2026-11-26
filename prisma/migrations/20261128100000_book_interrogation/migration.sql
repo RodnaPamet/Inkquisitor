@@ -6,7 +6,7 @@
 --                                  unranked, with the reason), and the next three sessions
 --   InterviewCompaction            a long session's summary of its earlier rounds' questions
 --   InterviewSession.stressTestId  an interview started from a stress test's weak points
---   persona CHECKs                 the three book-level panel personas join the closed list
+--   persona CHECK                  the three book-level panel personas join a session's closed list (never the defaults')
 --
 -- Every new table is workspace-scoped: FORCE RLS, `workspace_isolation`, `superuser_bypass`;
 -- each cascades with its book (or its session), so the 30-day book purge takes it.
@@ -169,18 +169,9 @@ ALTER TABLE "GapHunt" ADD CONSTRAINT "GapHunt_money_not_negative" CHECK ("costMi
 
 ALTER TABLE "InterviewCompaction" ADD CONSTRAINT "InterviewCompaction_through_positive" CHECK ("throughRound" >= 1);
 
--- ─── The persona CHECKs: the panel joins the closed list ─────────────────
-CREATE OR REPLACE FUNCTION interview_persona_list_ok(list jsonb) RETURNS boolean
-LANGUAGE sql
-IMMUTABLE
-AS $$
-    SELECT jsonb_typeof(list) = 'array'
-        AND jsonb_array_length(list) <= 3
-        AND list <@ '["gentle-mentor", "ruthless-editor", "socratic", "devils-advocate", "target-reader", "genre-specialist", "panel-target-reader", "panel-ruthless-editor", "panel-genre-specialist"]'::jsonb
-        AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements(list) AS e WHERE jsonb_typeof(e) <> 'string')
-        AND jsonb_array_length(list) = (SELECT count(DISTINCT e) FROM jsonb_array_elements(list) AS e);
-$$;
-
+-- ─── The persona CHECK: the panel joins the session's closed list ─────────
+-- Only a SESSION may name the panel. The defaults' CHECK (`interview_persona_list_ok`, 2.3) is left as it was: the
+-- panel is offered only through the setup sheet's preset, never as a workspace's or a book's default (D29).
 ALTER TABLE "InterviewSession" DROP CONSTRAINT "InterviewSession_personas_known";
 ALTER TABLE "InterviewSession" ADD CONSTRAINT "InterviewSession_personas_known"
     CHECK (
