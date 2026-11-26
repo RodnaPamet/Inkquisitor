@@ -46,7 +46,7 @@ import { isPersonaKey } from '@/lib/interview/vocabulary';
 import type { ReconcileAttention } from '@/app-layer/usecases/enrichment-review';
 import { useInterviewErrorMessage, useStopMessage } from './messages';
 import { QuestionCard, type QuestionCardHandle } from './QuestionCard';
-import { groupByPersona, groupsNeedHeadings } from '@/lib/interview/persona-groups';
+import { CODE_WORDED_GROUP, groupByPersona, groupsNeedHeadings } from '@/lib/interview/persona-groups';
 import { RoundFieldsPanel, type FieldNaming } from './RoundFieldsPanel';
 import { useInterviewStream } from './use-interview-stream';
 
@@ -133,10 +133,14 @@ export function InterviewSession(props: InterviewSessionProps) {
         [workspaceSlug, book.id],
     );
 
-    /** Run one streamed round (or the start), then take the interview as stored. */
+    /**
+     * Run one streamed round (or the start), then take the interview as stored. `keepNotice`: the round that follows a
+     * finished one keeps its notice (Phase 4.4: a session goes on with follow-ups, so how many changes the finished round
+     * proposed must stay in view beside the next round).
+     */
     const runStream = useCallback(
-        async (url: string, body: unknown, knownSessionId: string | null) => {
-            setNotice(null);
+        async (url: string, body: unknown, knownSessionId: string | null, keepNotice = false) => {
+            if (!keepNotice) setNotice(null);
             const final = await stream.run(url, body, (event) => {
                 // A new session's own address, as soon as its row exists: a reload resumes it.
                 if (event.type !== 'started') return;
@@ -202,9 +206,10 @@ export function InterviewSession(props: InterviewSessionProps) {
         });
     }
 
-    async function nextRound() {
+    /** The next round; `goOn` is the author's choice to go on past the minor questions (Phase 4.4, D30: a VALUE_FELL pause). */
+    async function nextRound(goOn = false) {
         if (!ids) return;
-        await runStream(INTERVIEW_API.nextRoundStream(ids.slug, ids.bookId, ids.sessionId), {}, ids.sessionId);
+        await runStream(INTERVIEW_API.nextRoundStream(ids.slug, ids.bookId, ids.sessionId), goOn ? { goOn: true } : {}, ids.sessionId);
     }
 
     /**
@@ -255,7 +260,7 @@ export function InterviewSession(props: InterviewSessionProps) {
             }
             noteReconcileRuns(reconcile ? [reconcile] : []);
             // Straight on to the next round, unless the session ended.
-            if (interview.session.status === 'ACTIVE') await runStream(INTERVIEW_API.nextRoundStream(ids.slug, ids.bookId, ids.sessionId), {}, ids.sessionId);
+            if (interview.session.status === 'ACTIVE') await runStream(INTERVIEW_API.nextRoundStream(ids.slug, ids.bookId, ids.sessionId), {}, ids.sessionId, true);
         } catch (err) {
             toast.error(errorMessage(reasonOf(err), statusOf(err), err instanceof BibleApiError ? err.details : undefined));
         } finally {
@@ -315,7 +320,8 @@ export function InterviewSession(props: InterviewSessionProps) {
                   : null;
 
     const personaName = (key: string | null) => (key && isPersonaKey(key) ? tPersona(`${key}.name`) : null);
-    const personaGroups = groupByPersona(questions);
+    // Phase 4.4 (D30): code-worded questions are their own group: no persona asked them, and no pack either.
+    const personaGroups = groupByPersona(questions, (q) => (q.origin === 'GENERATOR' ? CODE_WORDED_GROUP : q.personaKey));
     const grouped = groupsNeedHeadings(personaGroups);
     const displayed = personaGroups.flatMap((g) => g.items);
     const about = (q: { elementId: string; subjectId?: string; targetsFieldKeys: readonly string[] }) => {
@@ -342,7 +348,15 @@ export function InterviewSession(props: InterviewSessionProps) {
                             {tStatus(session.status)}
                         </StatusBadge>
                     ) : null}
-                    {round && session ? <span className="text-xs text-content-muted">{t('roundOf', { number: round.number, budget: session.roundBudget })}</span> : null}
+                    {round && session ? (
+                        <span className="text-xs text-content-muted">
+                            {session.length.mode === 'ROUNDS'
+                                ? t('roundOf', { number: round.number, budget: session.length.rounds })
+                                : session.length.mode === 'QUESTIONS'
+                                  ? t('roundOfQuestions', { number: round.number, questions: session.length.questions })
+                                  : t('roundOpenEnded', { number: round.number })}
+                        </span>
+                    ) : null}
                     <span className="text-xs text-content-muted" aria-label={t('progressAria')} data-testid="session-progress">
                         {progressText}
                     </span>
@@ -438,10 +452,10 @@ export function InterviewSession(props: InterviewSessionProps) {
                 <div className="space-y-default" data-testid="round-questions" data-round={round?.number}>
                     {/* Phase 4.3 (D29): a round worded by several personas (a panel) is grouped by who asked. */}
                     {personaGroups.map((g) => (
-                        <section key={g.personaKey ?? 'none'} className="space-y-default" aria-labelledby={grouped ? `asked-by-${g.personaKey ?? 'none'}` : undefined} data-testid={grouped ? 'persona-group' : undefined} data-persona={g.personaKey ?? undefined}>
+                        <section key={g.personaKey ?? 'none'} className="space-y-default" aria-labelledby={grouped ? `asked-by-${g.personaKey === CODE_WORDED_GROUP ? 'code-worded' : (g.personaKey ?? 'none')}` : undefined} data-testid={grouped ? 'persona-group' : undefined} data-persona={g.personaKey && g.personaKey !== CODE_WORDED_GROUP ? g.personaKey : undefined}>
                             {grouped ? (
-                                <h2 id={`asked-by-${g.personaKey ?? 'none'}`} className="text-sm font-semibold text-content-emphasis">
-                                    {g.personaKey ? t('askedBy', { name: personaName(g.personaKey) ?? g.personaKey }) : t('askedByNone')}
+                                <h2 id={`asked-by-${g.personaKey === CODE_WORDED_GROUP ? 'code-worded' : (g.personaKey ?? 'none')}`} className="text-sm font-semibold text-content-emphasis">
+                                    {g.personaKey === CODE_WORDED_GROUP ? t('askedByCode') : g.personaKey ? t('askedBy', { name: personaName(g.personaKey) ?? g.personaKey }) : t('askedByNone')}
                                 </h2>
                             ) : null}
                             {g.items.map((q) => {
@@ -490,6 +504,19 @@ export function InterviewSession(props: InterviewSessionProps) {
                                 {unanswered > 0 ? t('closeRoundSkipRest') : t('closeRound')}
                             </Button>
                         </>
+                    ) : !ended && !view?.generatingRound && session.status === 'PAUSED' && session.stopReason === 'VALUE_FELL' ? (
+                        // Phase 4.4 (D30): every question left is minor. The author decides whether to go on; the session never pads.
+                        <div role="group" aria-labelledby="value-fell-prompt" className="flex flex-wrap items-center gap-tight" data-testid="value-fell">
+                            <p id="value-fell-prompt" className="text-sm text-content-default">
+                                {t('valueFellPrompt')}
+                            </p>
+                            <Button variant="primary" onClick={() => void nextRound(true)} id="round-go-on">
+                                {t('goOn')}
+                            </Button>
+                            <Button variant="secondary" onClick={() => setStopOpen(true)} id="round-finish-here">
+                                {t('finishHere')}
+                            </Button>
+                        </div>
                     ) : !ended && !view?.generatingRound ? (
                         <Button variant="primary" onClick={() => void nextRound()} id="round-next">
                             {session.status === 'PAUSED' ? t('continue') : t('nextRound')}

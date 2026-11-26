@@ -34,6 +34,10 @@
  *       evaluation-record.json). Re-run after editing the set, the continuity
  *       prompt or its output schema.
  *
+ *   npm run packs:evaluate -- --question-order [--no-packs]
+ *       also the interview tie-break's set (Phase 4.4, D30 item 4): its record
+ *       beside it (src/lib/interview/question-order/evals/).
+ *
  *   npm run packs:evaluate -- --book-level [--no-packs]
  *       also the book-level interrogation sets (Phase 4.3, D29): the stress
  *       test's, the gap hunt ranking's and the long-session rounds summary's,
@@ -117,6 +121,31 @@ import { gapHuntEvalSet } from '../src/lib/gap-hunt/evals/eval-set';
 import { GAP_RANK_PROMPT_VERSION } from '../src/lib/gap-hunt/prompt';
 import { checkCompactionRecord, COMPACTION_RECORD_FORMAT, compactionEvalSet, compactionPromptHash, modelCompactionAnswers, structuralCompactionRecord } from '../src/lib/interview/evals/compaction-evaluation';
 import { COMPACTION_PROMPT_VERSION } from '../src/lib/interview/compaction-prompt';
+import { checkQuestionOrderRecord, modelQuestionOrderAnswers, QUESTION_ORDER_RECORD_FORMAT, questionOrderPromptHash, structuralQuestionOrderRecord } from '../src/lib/interview/question-order/evals/evaluation';
+import { questionOrderEvalSet } from '../src/lib/interview/question-order/evals/eval-set';
+import { QUESTION_ORDER_PROMPT_VERSION } from '../src/lib/interview/question-order/prompt';
+
+/** Where the structural tie-break record is written (beside the set), relative to the repository. */
+const QUESTION_ORDER_RECORD_RELATIVE = 'src/lib/interview/question-order/evals/evaluation-record.json';
+
+/** The interview tie-break's set (4.4): the record written to `file` and checked as the gate checks it. */
+async function runQuestionOrderEvaluation(orderer: FactExtractor | null, modelId: string | null, file: string): Promise<{ passed: boolean; detail: string }> {
+    const record = orderer
+        ? {
+              format: QUESTION_ORDER_RECORD_FORMAT,
+              set: { ...questionOrderEvalSet },
+              promptVersion: QUESTION_ORDER_PROMPT_VERSION,
+              promptHash: questionOrderPromptHash(),
+              generator: { kind: 'model' as const, id: modelId ?? 'model' },
+              ranAt: new Date().toISOString(),
+              answers: await modelQuestionOrderAnswers(orderer),
+          }
+        : structuralQuestionOrderRecord();
+    mkdirSync(path.dirname(file), { recursive: true });
+    writeFileSync(file, JSON.stringify(record, null, 2) + '\n');
+    const check = checkQuestionOrderRecord(record);
+    return { passed: check.ok, detail: check.ok ? 'passed' : `${check.reason}: ${check.detail}` };
+}
 
 /** The book-level interrogation sets (4.3): each record written beside its set (or under --out) and checked as its gate checks it. */
 async function runBookLevelEvaluations(
@@ -250,7 +279,7 @@ function fail(message: string, code: number): never {
 }
 
 /** The wired model generator in a throwaway workspace, and what it closes. */
-async function modelGenerator(): Promise<{ generator: QuestionGenerator; reconciler: Reconciler; researcher: Researcher; extractor: FactExtractor; extractorId: string; bibleExtractor: FactExtractor; bibleExtractorId: string; continuityChecker: FactExtractor; continuityCheckerId: string; stressTester: FactExtractor; stressTesterId: string; gapRanker: FactExtractor; gapRankerId: string; summarizer: FactExtractor; summarizerId: string; judge: Judge; id: string; reconcilerId: string; rephraserId: string; close: () => Promise<void> }> {
+async function modelGenerator(): Promise<{ generator: QuestionGenerator; reconciler: Reconciler; researcher: Researcher; extractor: FactExtractor; extractorId: string; bibleExtractor: FactExtractor; bibleExtractorId: string; continuityChecker: FactExtractor; continuityCheckerId: string; stressTester: FactExtractor; stressTesterId: string; gapRanker: FactExtractor; gapRankerId: string; summarizer: FactExtractor; summarizerId: string; orderer: FactExtractor; ordererId: string; judge: Judge; id: string; reconcilerId: string; rephraserId: string; close: () => Promise<void> }> {
     if (!process.env.ANTHROPIC_API_KEY?.trim()) fail('ANTHROPIC_API_KEY is not set: a model run never falls back to the structural generator', 2);
     if (!process.env.DATABASE_URL) fail('a model run needs DATABASE_URL (a migrated database: the call ledger and the spend ceiling live there)', 2);
     const budget = (() => {
@@ -315,6 +344,8 @@ async function modelGenerator(): Promise<{ generator: QuestionGenerator; reconci
     const { GAP_RANK_PROMPT } = await import('../src/lib/gap-hunt/prompt');
     const { defaultRoundsSummarizer } = await import('../src/lib/interview/compaction-seam');
     const { COMPACTION_PROMPT } = await import('../src/lib/interview/compaction-prompt');
+    const { defaultQuestionOrderer } = await import('../src/lib/interview/question-order/model-seam');
+    const { QUESTION_ORDER_PROMPT } = await import('../src/lib/interview/question-order/prompt');
     const book = {
         stressTester: defaultStressTester(ctx),
         stressTesterId: modelForTier(STRESS_TEST_PROMPT.tier),
@@ -322,6 +353,8 @@ async function modelGenerator(): Promise<{ generator: QuestionGenerator; reconci
         gapRankerId: modelForTier(GAP_RANK_PROMPT.tier),
         summarizer: defaultRoundsSummarizer(ctx),
         summarizerId: modelForTier(COMPACTION_PROMPT.tier),
+        orderer: defaultQuestionOrderer(ctx),
+        ordererId: modelForTier(QUESTION_ORDER_PROMPT.tier),
     };
     return { ...book, generator, reconciler, researcher, extractor, extractorId: modelForTier(EXTRACT_PROMPT.tier), bibleExtractor, bibleExtractorId: modelForTier(BIBLE_FACTS_PROMPT.tier), continuityChecker, continuityCheckerId: modelForTier(CONTINUITY_PROMPT.tier), judge, id, reconcilerId: modelForTier(RECONCILE_PROMPT.tier), rephraserId: modelForTier(REPHRASE_PROMPT.tier), close: () => prisma.$disconnect() };
 }
@@ -388,8 +421,14 @@ async function main(): Promise<void> {
             continuity = await runContinuityEvaluation(model?.continuityChecker ?? null, model?.continuityCheckerId ?? null, file);
         }
         const bookLevel = args.bookLevel ? await runBookLevelEvaluations(model, args.out ? path.resolve(args.out) : null) : null;
+        let questionOrder = null;
+        if (args.questionOrder) {
+            const file = args.out ? path.join(path.resolve(args.out), 'question-order', 'evaluation-record.json') : path.resolve(QUESTION_ORDER_RECORD_RELATIVE);
+            questionOrder = await runQuestionOrderEvaluation(model?.orderer ?? null, model?.ordererId ?? null, file);
+        }
         for (const line of summaryLines(results, coverage, model ? spent : null, reconcile)) out(line);
         for (const b of bookLevel ?? []) out(`${b.name}: ${b.passed ? 'passed' : 'NOT passed'} (${b.detail}).`);
+        if (questionOrder) out(`Question order: ${questionOrder.passed ? 'passed' : 'NOT passed'} (${questionOrder.detail}).`);
         if (continuity) out(`Continuity: ${continuity.passed ? 'passed' : 'NOT passed'} (${continuity.detail}).`);
         if (bibleFacts) out(`Bible facts: ${bibleFacts.passed ? 'passed' : 'NOT passed'} (${bibleFacts.detail}).`);
         if (sources) out(`Sources: ${sources.passed ? 'passed' : 'NOT passed'} (${sources.detail}).`);
@@ -406,6 +445,7 @@ async function main(): Promise<void> {
             (!bibleFacts || bibleFacts.passed) &&
             (!continuity || continuity.passed) &&
             (!bookLevel || bookLevel.every((b) => b.passed)) &&
+            (!questionOrder || questionOrder.passed) &&
             (!rephrase || rephrase.passed);
         process.exitCode = ok ? 0 : 1;
     } finally {

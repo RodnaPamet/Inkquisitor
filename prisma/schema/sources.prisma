@@ -206,6 +206,9 @@ model StoryFact {
   flags            String[]            @default([])
   decidedById      String?
   decidedAt        DateTime?
+  /// Phase 4.4 (D30): the interview answer the decision came from (a source question answered yes or no);
+  /// NULL for a decision made on the Facts page, and cleared when the author decides there again.
+  decidedByAnswerId String?
   /// The superseded source's fact whose decision this one carried over.
   carriedFromFactId String?
   /// Phase 4.2 (D28), AUTHOR_RESOLUTION: the contradiction the author resolved as "both true", this fact being their explanation.
@@ -222,6 +225,9 @@ model StoryFact {
   subjectElement  BibleElement?         @relation("StoryFactSubject", fields: [subjectElementId], references: [id], onDelete: SetNull)
   objectElement   BibleElement?         @relation("StoryFactObject", fields: [objectElementId], references: [id], onDelete: SetNull)
   decidedBy       User?                 @relation("StoryFactDecidedBy", fields: [decidedById], references: [id], onDelete: SetNull)
+  decidedByAnswer Answer?               @relation("StoryFactDecidedByAnswer", fields: [decidedByAnswerId], references: [id], onDelete: SetNull)
+  /// Phase 4.4: source questions that asked about it.
+  questions       Question[]            @relation("QuestionStoryFact")
   invalidatedBy   StoryFact?            @relation("StoryFactInvalidatedBy", fields: [invalidatedByFactId], references: [id], onDelete: SetNull)
   invalidated     StoryFact[]           @relation("StoryFactInvalidatedBy")
   resolvesProposal StoryFactProposal?   @relation("StoryFactResolution", fields: [workspaceId, resolvesProposalId], references: [workspaceId, id], onDelete: Cascade)
@@ -231,6 +237,8 @@ model StoryFact {
   proposalsAsNewer StoryFactProposal[]  @relation("StoryFactProposalNewer")
 
   @@unique([workspaceId, id])
+  /// Phase 4.4: the foreign key's index (an answer's deletion sets it NULL).
+  @@index([decidedByAnswerId])
   /// A source's facts by status, in chunk order (the Facts page).
   @@index([workspaceId, sourceId, status, chunkId, position])
   /// A chunk's facts.

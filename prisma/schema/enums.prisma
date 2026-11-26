@@ -100,6 +100,12 @@ enum InterviewStopReason {
   GUARD_REFUSED
   /// A pack the session pinned changed since it started (Phase 2.3).
   PACK_CHANGED
+  /// Phase 4.4 (D23, D30): a QUESTIONS session asked the number the author chose.
+  QUESTION_BUDGET
+  /// Phase 4.4 (D30): every question left is minor (its value score below the floor); paused until the author says go on.
+  VALUE_FELL
+  /// Phase 4.4: an open-ended session reached the most questions one session holds (the bounded reads' limit).
+  SESSION_LIMIT
 }
 
 /// A round's life: GENERATING while its questions are being made (a claim:
@@ -136,6 +142,28 @@ enum QuestionOrigin {
   MODEL
   PACK_FALLBACK
   REPHRASE
+  /// Phase 4.4 (D30): worded by code from a question generator's template (a source's quote, a ladder layer, a pair).
+  GENERATOR
+}
+
+/// Phase 4.4 (D23, D30): which question generator proposed a question. The
+/// frontier is one generator among several; code validates, deduplicates and
+/// orders every candidate whichever proposed it.
+enum QuestionGenerator {
+  FRONTIER
+  LADDER
+  RELATIONS
+  SOURCES
+  CONTINUITY
+}
+
+/// Phase 4.4 (D23): how long a session runs, the author's choice: a number of
+/// rounds, a number of questions, or until the author stops (bounded by the
+/// session's token budget, the monthly ceiling, the kill switch and the author).
+enum InterviewLengthMode {
+  ROUNDS
+  QUESTIONS
+  UNTIL_STOPPED
 }
 
 /// What the author did with a question.

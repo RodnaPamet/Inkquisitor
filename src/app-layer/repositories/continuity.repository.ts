@@ -259,6 +259,22 @@ export const StoryThreadRepository = {
     async count(db: Db, workspaceId: string, bookId: string): Promise<number> {
         return db.storyThread.count({ where: { workspaceId, bookId } });
     },
+    /** Phase 4.4: which of these threads are still OPEN (a continuity question's persist). */
+    async openAmong(db: Db, workspaceId: string, bookId: string, ids: readonly string[]): Promise<string[]> {
+        if (ids.length === 0) return [];
+        const rows = await db.storyThread.findMany({ where: { workspaceId, bookId, id: { in: [...ids] }, state: 'OPEN' }, take: ids.length, select: { id: true } });
+        return rows.map((r) => r.id);
+    },
+    /** Phase 4.4: a book's OPEN threads about these elements (the continuity generator's open threads), oldest first. */
+    async listOpenAbout(db: Db, workspaceId: string, bookId: string, elementIds: readonly string[], take: number): Promise<Array<{ id: string; kind: string; title: string; subjectElementId: string | null }>> {
+        if (elementIds.length === 0) return [];
+        return db.storyThread.findMany({
+            where: { workspaceId, bookId, state: 'OPEN', subjectElementId: { in: [...elementIds] } },
+            orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+            take,
+            select: { id: true, kind: true, title: true, subjectElementId: true },
+        });
+    },
     async find(db: Db, workspaceId: string, bookId: string, id: string): Promise<StoryThreadRow | null> {
         return db.storyThread.findFirst({ where: { workspaceId, bookId, id }, select: THREAD_SELECT });
     },

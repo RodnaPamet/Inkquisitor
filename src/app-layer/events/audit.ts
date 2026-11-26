@@ -93,7 +93,9 @@ export type AuditAction =
     | 'STRESS_TEST_REQUESTED'
     | 'STRESS_TEST_FINISHED'
     | 'GAP_HUNT_RUN'
-    | 'INTERVIEW_COMPACTED';
+    | 'INTERVIEW_COMPACTED'
+    /** Phase 4.4 (D30): the author chose to go on past the minor questions. */
+    | 'INTERVIEW_MINOR_ACCEPTED';
 
 export interface AuditEventPayload {
     action: AuditAction;

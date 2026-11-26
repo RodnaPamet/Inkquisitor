@@ -65,6 +65,9 @@ import { factSubjectsAndPredicates, StressWeakPointRepository } from '@/app-laye
 import { decodeWeakPointQuestions } from '@/lib/stress-test/storage';
 import { WEAK_POINTS_MAX } from '@/lib/stress-test/vocabulary';
 import { fieldAnsweredBy } from '@/lib/sources/vocabulary';
+import { generatorsOn } from '@/lib/interview/dial-settings';
+import { SOURCE_YES } from '@/lib/interview/generators/wording';
+import { lengthOf, type SessionLength } from '@/lib/interview/session-length';
 
 /** At most this many elements a kind or book session questions (a larger scope is cut, and says so). */
 export const SCOPE_ELEMENTS_MAX = 60;
@@ -73,13 +76,14 @@ export const SCOPE_RELATIONS_MAX = 60;
 /** Stored relation fields read per relation (a type declares at most four). */
 const FIELDS_PER_RELATION = 10;
 /**
- * Questions of a session read at most: six rounds of at most eight and a
- * challenge, each with up to `REPHRASES_PER_ROUND_MAX` rephrases (Phase 2.4;
- * tests/unit/interview/session-bounds.test.ts holds the product under it).
+ * Questions of a session read at most (Phase 4.4: the most one session holds). Since the fixed six-round limit went
+ * (D23), a session stops SESSION_LIMIT before a round could take it past this read: a round holds at most its cap,
+ * one challenge and `REPHRASES_PER_ROUND_MAX` rephrases (`ROUND_QUESTIONS_WORST`), and the claim refuses a round that
+ * could pass it (tests/unit/interview/session-bounds.test.ts holds the bounds to each other).
  */
-export const SESSION_QUESTIONS_MAX = 80;
-/** Answer rows of a session read at most (every revision). */
-export const SESSION_ANSWERS_MAX = 2_000;
+export const SESSION_QUESTIONS_MAX = 480;
+/** Answer rows of a session read at most (every revision of every question). */
+export const SESSION_ANSWERS_MAX = 9_600;
 /** Earlier sessions' questions about the scope's elements read for deduplication. */
 export const BOOK_QUESTIONS_MAX = 500;
 /** A session's latest rounds read (the open or generating one is always the newest). */
@@ -199,6 +203,56 @@ async function relationStoredText(db: PrismaTx, ctx: WorkspaceRequestContext, re
     return stored;
 }
 
+/**
+ * How an answer counts on the frontier (Phase 4.4): as its question's targets, except a SOURCE question's (D30,
+ * item 2). That one decides a fact rather than answering a field: yes satisfies the field the fact answers (the fact
+ * is confirmed when the round closes, and answers it from then on); no, a skip or "decide later" leaves the field as
+ * it was, open to the frontier's own question.
+ */
+export function sourceAnswerFact(q: Pick<QuestionRow, 'generator' | 'targetsFieldKeys'>, a: Pick<AnswerRow, 'status' | 'choice'>): { status: AnswerStatus; targets: string[] } | null {
+    if (q.generator !== 'SOURCES') return { status: a.status, targets: q.targetsFieldKeys };
+    if (a.status === 'ANSWERED' && a.choice === SOURCE_YES && q.targetsFieldKeys.length > 0) return { status: 'ANSWERED', targets: q.targetsFieldKeys };
+    return null;
+}
+
+/** Relations the RELATIONS generator brings into a KIND or BOOK session at most (Phase 4.4). */
+export const ADDED_RELATIONS_MAX = 20;
+
+/**
+ * Phase 4.4 (D30, item 3): in a KIND or BOOK session with the relations generator on, the relations BETWEEN two of the
+ * scope's elements are subjects too, so their empty fields are asked (and their answered ones followed up). Only a
+ * session that pinned the relations pack at its start (every 4.4 session with the generator on does): a session from
+ * before 4.4 never pinned it, and a subject whose pack it never pinned would pause it PACK_CHANGED.
+ */
+async function addedRelationSubjects(db: PrismaTx, ctx: WorkspaceRequestContext, session: SessionRow, elementIds: readonly string[]): Promise<RoundElement[]> {
+    if ((session.scope !== 'KIND' && session.scope !== 'BOOK') || elementIds.length < 2) return [];
+    if (!generatorsOn(session.generatorsOff ?? []).has('RELATIONS')) return [];
+    if (!(parsePackPins(session.packPins) ?? []).some((p) => p.name === 'relations')) return [];
+    const between = await BibleRelationRepository.listBetween(db, ctx.workspaceId, session.bookId, elementIds, ADDED_RELATIONS_MAX);
+    if (between.length === 0) return [];
+    const rows = await BibleRelationRepository.listByIdsWithEnds(db, ctx.workspaceId, session.bookId, between.map((r) => r.id));
+    const stored = await relationStoredText(db, ctx, rows.map((r) => r.id));
+    return rows.map((r) => ({ ...relationSubjectOf(r, stored.get(r.id) ?? new Map()), addedByRelations: true }));
+}
+
+function relationSubjectOf(
+    r: { id: string; type: string; fromElementId: string; toElementId: string; from: { kind: BibleKind; name: string }; to: { kind: BibleKind; name: string } },
+    storedText: Map<string, string>,
+): RoundElement {
+    const relation: RelationSubject = {
+        relationId: r.id,
+        type: r.type,
+        label: getRelationType(r.from.kind, r.type)?.label ?? r.type,
+        fromElementId: r.fromElementId,
+        toElementId: r.toElementId,
+        fromKind: r.from.kind,
+        toKind: r.to.kind,
+        fromName: r.from.name,
+        toName: r.to.name,
+    };
+    return { elementId: r.id, kind: r.from.kind, name: relationSubjectName(relation), customLabel: null, fields: relationFieldDefs(r.from.kind, r.type), storedText, relation };
+}
+
 /** A SELECTION's relations as subjects (Phase 3.3): each with its type's relation fields and its stored values. One deleted since is not asked about. */
 async function relationSubjects(db: PrismaTx, ctx: WorkspaceRequestContext, session: SessionRow): Promise<RoundElement[]> {
     if (session.scope !== 'SELECTION' || session.scopeRelationIds.length === 0) return [];
@@ -284,7 +338,7 @@ export async function loadInterviewState(db: PrismaTx, ctx: WorkspaceRequestCont
         fields: getTemplate(e.kind).fields,
         storedText: stored.get(e.id) ?? new Map(),
     }));
-    const relationRows = await relationSubjects(db, ctx, session);
+    const relationRows = [...(await relationSubjects(db, ctx, session)), ...(await addedRelationSubjects(db, ctx, session, ids))];
     elements.push(...relationRows);
     const pending = await pendingSubject(db, ctx, session);
     if (pending) elements.push(pending.element);
@@ -297,7 +351,8 @@ export async function loadInterviewState(db: PrismaTx, ctx: WorkspaceRequestCont
         const a = latest.get(q.id);
         if (!a) continue;
         const subject = subjectIdOf(q);
-        answerFacts.push({ status: a.status, targets: q.targetsFieldKeys.map((fieldKey) => ({ elementId: subject, fieldKey })) });
+        const fact = sourceAnswerFact(q, a);
+        if (fact) answerFacts.push({ ...fact, targets: fact.targets.map((fieldKey) => ({ elementId: subject, fieldKey })) });
         promptAnswers.push({
             answerId: a.id,
             elementId: subject,
@@ -505,6 +560,10 @@ export interface QuestionView {
     replacesQuestionId: string | null;
     /** The guard flagged the call that worded it (Phase 2.4): the UI marks it. */
     reviewRequired: boolean;
+    /** Phase 4.4 (D30): the generator that proposed it, its layer or angle, and the fact a source question decides. */
+    generator: QuestionRow['generator'];
+    angle: string | null;
+    storyFactId: string | null;
     answer: {
         revision: number;
         status: AnswerStatus;
@@ -537,6 +596,9 @@ export function questionView(q: QuestionRow, a: AnswerRow | undefined): Question
         dependsOnQuestionIds: q.dependsOnQuestionIds,
         replacesQuestionId: q.replacesQuestionId,
         reviewRequired: q.reviewRequired,
+        generator: q.generator,
+        angle: q.angle,
+        storyFactId: q.storyFactId,
         answer: a
             ? { revision: a.revision, status: a.status, text: a.text, choice: a.choice, scale: a.scale, acceptedRecommendation: a.acceptedRecommendation }
             : null,
@@ -564,8 +626,15 @@ export interface SessionSummaryView {
     status: SessionRow['status'];
     stopReason: SessionRow['stopReason'];
     stopDetail: Prisma.JsonValue;
-    roundBudget: number;
+    /** Phase 4.4 (D23): the session's length — a ROUNDS session's rounds, a QUESTIONS session's questions, or until stopped. */
+    length: SessionLength;
+    /** A ROUNDS session's rounds; null otherwise. */
+    roundBudget: number | null;
     roundsRun: number;
+    /** Phase 4.4 (D30): the generators switched off for the session. */
+    generatorsOff: string[];
+    /** Phase 4.4 (D30): the author chose to go on past the minor questions. */
+    minorAccepted: boolean;
     /** Phase 4.3 (D29): the stress test whose weak points this session questions, or null. */
     stressTestId: string | null;
     createdAt: string;
@@ -591,8 +660,11 @@ export function sessionSummaryView(s: SessionRow, targetElementName: string | nu
         status: s.status,
         stopReason: s.stopReason,
         stopDetail: s.stopDetail,
+        length: lengthOf(s),
         roundBudget: s.roundBudget,
         roundsRun: s.roundsRun,
+        generatorsOff: s.generatorsOff ?? [],
+        minorAccepted: s.minorAccepted,
         stressTestId: s.stressTestId,
         createdAt: s.createdAt.toISOString(),
         endedAt: s.endedAt ? s.endedAt.toISOString() : null,

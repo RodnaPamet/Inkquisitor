@@ -335,6 +335,12 @@ export const FactProposalRepository = {
     async listPendingByReason(db: Db, workspaceId: string, bookId: string, reason: 'CONTRADICTED' | 'NO_LONGER_STATED', take: number): Promise<FactProposalRow[]> {
         return db.storyFactProposal.findMany({ where: { workspaceId, bookId, status: 'PENDING', reason }, orderBy: [{ createdAt: 'desc' }, { id: 'asc' }], take, select: PROPOSAL_SELECT });
     },
+    /** Phase 4.4: which of these proposals are still PENDING (a continuity question's persist). */
+    async pendingAmong(db: Db, workspaceId: string, bookId: string, ids: readonly string[]): Promise<string[]> {
+        if (ids.length === 0) return [];
+        const rows = await db.storyFactProposal.findMany({ where: { workspaceId, bookId, id: { in: [...ids] }, status: 'PENDING' }, take: ids.length, select: { id: true } });
+        return rows.map((r) => r.id);
+    },
     async countPendingByReason(db: Db, workspaceId: string, bookId: string): Promise<{ contradicted: number; noLongerStated: number }> {
         const rows = await db.storyFactProposal.groupBy({ by: ['reason'], where: { workspaceId, bookId, status: 'PENDING' }, _count: { _all: true }, orderBy: { reason: 'asc' }, take: 4 });
         const of = (r: string) => rows.find((x) => x.reason === r)?._count._all ?? 0;

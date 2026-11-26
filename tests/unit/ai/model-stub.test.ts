@@ -4,7 +4,7 @@
  */
 import { productionConfigProblems, productionConfigWarnings } from '@/lib/startup-checks';
 import { aiUnavailableReason, stubModelActive } from '@/lib/ai/config';
-import { isLoopbackUrl, stubAnswer, stubGapRankAnswer, stubMessagesFetch, stubModelProblems, stubRoundsSummaryAnswer, stubStressTestAnswer } from '@/lib/ai/model-stub';
+import { isLoopbackUrl, stubAnswer, stubGapRankAnswer, stubMessagesFetch, stubQuestionOrderAnswer, stubModelProblems, stubRoundsSummaryAnswer, stubStressTestAnswer } from '@/lib/ai/model-stub';
 import { buildStressInput, shownText } from '@/lib/stress-test/input';
 import { validateWeakPoints } from '@/lib/stress-test/validate';
 import { computeGapCandidates } from '@/lib/gap-hunt/candidates';
@@ -12,6 +12,8 @@ import { gapRankBlocks } from '@/lib/gap-hunt/prompt';
 import { validateGapPicks } from '@/lib/gap-hunt/validate';
 import { getTemplate } from '@/lib/bible/templates';
 import { validateRoundsSummary } from '@/lib/interview/compaction-prompt';
+import { questionOrderBlocks } from '@/lib/interview/question-order/prompt';
+import { validateQuestionOrder } from '@/lib/interview/question-order/validate';
 import { validateCandidate, candidateFrom, GeneratedQuestionsSchema } from '@/lib/interview/candidates';
 
 const longValue = (seed: string) => `${seed}-`.repeat(8);
@@ -170,6 +172,19 @@ describe('the stub’s book-level answers (Phase 4.3), each kept whole by the pr
         const v = validateGapPicks(out, { candidates, text: blocks.map((b) => b.text).join('\n') });
         expect(v.refusals).toEqual({});
         expect(v.picks.map((p) => p.n)).toEqual([1, 2, 3]);
+    });
+
+    it('the tie-break: the tied candidates in the order shown, a permutation the validator accepts', () => {
+        const lines = [
+            { kind: 'Character', name: 'Ada', field: 'Role', what: 'an empty field' },
+            { kind: 'Character', name: 'Bram', field: 'Role', what: 'an empty field' },
+            { kind: 'Character', name: 'Cass', field: 'Want', what: 'a follow-up on an answered field', held: 'She wants the light.' },
+        ];
+        const out = stubQuestionOrderAnswer(body('OPEN', Object.fromEntries(questionOrderBlocks(lines).map((b) => [b.label, b.text]))));
+        expect(out).toEqual({ order: [1, 2, 3] });
+        expect(validateQuestionOrder(out, 3)).toEqual({ ok: true, order: [1, 2, 3] });
+        // Another prompt's request is not answered as a tie-break.
+        expect(stubQuestionOrderAnswer(body('OPEN', { candidates: 'c1. x' }))).toBeNull();
     });
 
     it('the rounds summary: one sentence that quotes no answer', () => {

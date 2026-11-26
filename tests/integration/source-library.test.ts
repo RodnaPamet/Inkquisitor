@@ -137,9 +137,10 @@ describe('a book’s source, from upload to the frontier', () => {
         expect(after.asks.length).toBeGreaterThan(0);
         expect(after.asks).not.toContain('want');
         expect(after.answeredBy.want).toBe('source-facts');
-        // The next round's questions are drawn from that frontier: none asks it.
+        // The next round's questions are drawn from that frontier: none asks it (Phase 4.4: a code-worded follow-up on the
+        // confirmed want is the ladder's, deepening what the fact answered; the frontier never asks it).
         const next = await startInterview(ctx, bookId, { scope: 'ELEMENT', elementId: wrenId, depth: 5, detail: 3 }, { generator: fakeGenerator(), embedder });
-        expect(next.round!.questions.flatMap((q) => q.targetsFieldKeys)).not.toContain('want');
+        expect(next.round!.questions.filter((q) => q.origin !== 'GENERATOR').flatMap((q) => q.targetsFieldKeys)).not.toContain('want');
 
         // Rejecting it again puts the field back.
         await decideFact(ctx, want!.id, 'REJECT');

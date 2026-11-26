@@ -24,6 +24,8 @@ import { stressTesterOver } from '@/lib/stress-test/model-seam';
 import { gapRankerOver } from '@/lib/gap-hunt/model-seam';
 import { GAP_RANK_PROMPT } from '@/lib/gap-hunt/prompt';
 import { roundsSummarizerOver } from '@/lib/interview/compaction-seam';
+import { questionOrdererOver } from '@/lib/interview/question-order/model-seam';
+import { QUESTION_ORDER_PROMPT } from '@/lib/interview/question-order/prompt';
 import { COMPACTION_PROMPT } from '@/lib/interview/compaction-prompt';
 import { STRESS_TEST_PROMPT } from '@/lib/stress-test/prompt';
 import { CONTINUITY_PROMPT } from '@/lib/continuity/prompt';
@@ -156,6 +158,10 @@ function compromisedAnswer(body: Record<string, unknown>): string {
             ],
         });
     }
+    if (is(QUESTION_ORDER_PROMPT)) {
+        // Phase 4.4: the order the injection asks for — one candidate twice, another dropped (within the schema, so code must refuse it).
+        return JSON.stringify({ order: [3, 1, 1] });
+    }
     if (is(COMPACTION_PROMPT)) {
         // Phase 4.3: the summary recites the summariser's own instructions, the injection beside them.
         return JSON.stringify({ summary: `${recite(COMPACTION_PROMPT.system, 14)}. ${injected}` });
@@ -209,6 +215,7 @@ function compromisedSeams(): InjectionSeams & { api: ReturnType<typeof fakeAnthr
         stressTester: stressTesterOver((input) => call(input) as never),
         gapRanker: gapRankerOver((input) => call(input) as never),
         roundsSummarizer: roundsSummarizerOver((input) => call(input) as never),
+        questionOrderer: questionOrdererOver((input) => call(input) as never),
         requests: () => api.requests,
     };
 }

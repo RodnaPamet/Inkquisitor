@@ -142,6 +142,21 @@ export interface Candidate {
     recommendationBasis: { fieldKeys: string[]; answerIds: string[] } | null;
     rationale: string | null;
     personaKey: string | null;
+    /**
+     * Phase 4.4 (D30): a question a generator other than the frontier proposed and code worded — which generator, what
+     * it rests on (ids and codes), its value score. Absent on a model's question; never read from model output.
+     */
+    generated?: GeneratedMeta;
+}
+
+/** What a code-worded question carries about the generator that proposed it (ids and codes, never text). */
+export interface GeneratedMeta {
+    generator: 'FRONTIER' | 'LADDER' | 'RELATIONS' | 'SOURCES' | 'CONTINUITY';
+    value: number;
+    angle?: string;
+    pairElementId?: string;
+    storyFactId?: string;
+    continuityRef?: string;
 }
 
 export function candidateFrom(q: GeneratedQuestion, personaKey: string | null): Candidate {
@@ -264,6 +279,16 @@ function targetsProblem(c: Candidate, ctx: ValidationContext): DropReason | null
         if (!ctx.assignments.has(ref) || ctx.assignments.get(ref) !== c.personaKey) return 'NOT_ASSIGNED';
     }
     return null;
+}
+
+/** The question-text rules (non-empty, bounded, one question mark, at the end), for any text code or model wrote. */
+export function questionTextProblem(text: string): DropReason | null {
+    return textProblem({ text } as Candidate);
+}
+
+/** The option rules for a CHOICE / EITHER_OR question's options (code's own as well as the model's). */
+export function questionOptionsProblem(kind: QuestionKind, options: string[] | null): boolean {
+    return optionsProblem({ kind, options, scaleLabels: null } as Candidate);
 }
 
 function textProblem(c: Candidate): DropReason | null {

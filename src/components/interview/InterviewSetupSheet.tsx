@@ -17,6 +17,11 @@
  * Phase 4.3 (D29): the PANEL preset (`panelSetup`) questions the book with the
  * book-level panel — Target Reader, Ruthless Editor and Genre Specialist — in
  * place of the persona picker; its questions are grouped by who asked.
+ *
+ * Phase 4.4 (D23, D30): the SESSION LENGTH — a number of rounds, a number of
+ * questions, or until the author stops (each a choice of a few numbers, never a
+ * free number field) — and the QUESTION GENERATORS, each a checkbox, all on by
+ * default; the last one on cannot be switched off (`withGenerator`).
  */
 import { useEffect, useId, useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -27,8 +32,21 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Sheet } from '@/components/ui/sheet';
 import { ToggleGroup } from '@/components/ui/toggle-group';
 import { APP_ROUTES } from '@/lib/app-routes';
-import { interviewSetupQuery, isPanelSetup, loadSetupOptions, panelSetup, previewEffects, type InterviewSetup, type InterviewTarget, type SetupOptions, type SetupSource } from '@/lib/interview/setup';
-import type { PersonaKey } from '@/lib/interview/vocabulary';
+import {
+    interviewSetupQuery,
+    isPanelSetup,
+    loadSetupOptions,
+    panelSetup,
+    previewEffects,
+    sessionLengthFrom,
+    withGenerator,
+    type InterviewSetup,
+    type InterviewTarget,
+    type SetupOptions,
+    type SetupSource,
+} from '@/lib/interview/setup';
+import { QUESTION_GENERATORS, type PersonaKey } from '@/lib/interview/vocabulary';
+import type { SessionLength } from '@/lib/interview/session-length';
 
 export interface InterviewSetupSheetProps {
     open: boolean;
@@ -41,6 +59,10 @@ export interface InterviewSetupSheetProps {
 }
 
 const DIAL_OPTIONS = ['1', '2', '3', '4', '5'].map((v) => ({ value: v, label: v }));
+/** Phase 4.4 (D23): the numbers a ROUNDS or QUESTIONS session may be given here (the API takes any within its bounds). */
+const ROUND_COUNTS = ['2', '4', '6', '10', '20'].map((v) => ({ value: v, label: v }));
+const QUESTION_COUNTS = ['10', '20', '40', '80', '150'].map((v) => ({ value: v, label: v }));
+const LENGTH_MODES: readonly SessionLength['mode'][] = ['ROUNDS', 'QUESTIONS', 'UNTIL_STOPPED'];
 
 export function InterviewSetupSheet({ open, setOpen, workspaceSlug, bookId, target, title }: InterviewSetupSheetProps) {
     const t = useTranslations('interview.setup');
@@ -83,11 +105,12 @@ export function InterviewSetupSheet({ open, setOpen, workspaceSlug, bookId, targ
 
     const effects = options && setup ? previewEffects(options, setup) : null;
     /** "Default from this book / the workspace", while the dial still holds that default. */
-    const sourceNote = (key: keyof InterviewSetup): string | null => {
+    const sourceNote = (key: Exclude<keyof InterviewSetup, 'length'>): string | null => {
         if (!options || !setup) return null;
         const source: SetupSource = options.sources[key];
         if (source === 'code') return null;
-        const same = key === 'personaKeys' ? setup.personaKeys.join(',') === options.defaults.personaKeys.join(',') : setup[key] === options.defaults[key];
+        const same =
+            key === 'personaKeys' || key === 'generatorsOff' ? setup[key].join(',') === options.defaults[key].join(',') : setup[key] === options.defaults[key];
         return same ? t(source === 'book' ? 'sourceBook' : 'sourceWorkspace') : null;
     };
     const refusalText = (code: string | null) => t.has(`packRefusal.${code}`) ? t(`packRefusal.${code}`) : t('packRefusal.generic');
@@ -115,7 +138,7 @@ export function InterviewSetupSheet({ open, setOpen, workspaceSlug, bookId, targ
                             <p className="text-xs text-content-muted">{t('depthHelp')}</p>
                             <ToggleGroup ariaLabel={t('depth')} options={DIAL_OPTIONS} selected={String(setup.depth)} selectAction={(v) => change('depth', Number(v))} />
                             <p id={`${ids}-depth-preview`} className="text-sm text-content-default" data-testid="depth-preview" aria-live="polite">
-                                {t(`depthPreview.${setup.depth}`, { rounds: effects.roundBudget })}
+                                {t(`depthPreview.${setup.depth}`, { layers: effects.ladderLayers })}
                             </p>
                             <SourceNote text={sourceNote('depth')} />
                         </div>
@@ -129,6 +152,69 @@ export function InterviewSetupSheet({ open, setOpen, workspaceSlug, bookId, targ
                                 {t(`detailPreview.${setup.detail}`, { cap: effects.roundCap })}
                             </p>
                             <SourceNote text={sourceNote('detail')} />
+                        </div>
+                        <div role="group" aria-labelledby={`${ids}-length`} aria-describedby={`${ids}-length-preview`} className="space-y-tight" data-testid="session-length">
+                            <p id={`${ids}-length`} className="text-sm font-medium text-content-emphasis">
+                                {t('length.title')}
+                            </p>
+                            <p className="text-xs text-content-muted">{t('length.help')}</p>
+                            <RadioGroup
+                                aria-labelledby={`${ids}-length`}
+                                value={setup.length.mode}
+                                onValueChange={(v) => change('length', sessionLengthFrom(v as SessionLength['mode'], v === 'QUESTIONS' ? 20 : 4))}
+                            >
+                                {LENGTH_MODES.map((mode) => (
+                                    <div key={mode} className="flex items-center gap-tight">
+                                        <RadioGroupItem id={`${ids}-len-${mode}`} value={mode} />
+                                        <label htmlFor={`${ids}-len-${mode}`} className="text-sm text-content-emphasis">
+                                            {t(`length.mode.${mode}`)}
+                                        </label>
+                                    </div>
+                                ))}
+                            </RadioGroup>
+                            {setup.length.mode === 'ROUNDS' ? (
+                                <ToggleGroup ariaLabel={t('length.rounds')} options={ROUND_COUNTS} selected={String(setup.length.rounds)} selectAction={(v) => change('length', sessionLengthFrom('ROUNDS', Number(v)))} />
+                            ) : setup.length.mode === 'QUESTIONS' ? (
+                                <ToggleGroup ariaLabel={t('length.questions')} options={QUESTION_COUNTS} selected={String(setup.length.questions)} selectAction={(v) => change('length', sessionLengthFrom('QUESTIONS', Number(v)))} />
+                            ) : null}
+                            <p id={`${ids}-length-preview`} className="text-sm text-content-default" data-testid="length-preview" aria-live="polite">
+                                {setup.length.mode === 'ROUNDS'
+                                    ? t('length.preview.ROUNDS', { rounds: setup.length.rounds })
+                                    : setup.length.mode === 'QUESTIONS'
+                                      ? t('length.preview.QUESTIONS', { questions: setup.length.questions })
+                                      : t('length.preview.UNTIL_STOPPED')}
+                            </p>
+                        </div>
+                        <div role="group" aria-labelledby={`${ids}-generators`} className="space-y-tight" data-testid="generator-toggles">
+                            <p id={`${ids}-generators`} className="text-sm font-medium text-content-emphasis">
+                                {t('generators.title')}
+                            </p>
+                            <p className="text-xs text-content-muted">{t('generators.help')}</p>
+                            <ul className="space-y-tight">
+                                {QUESTION_GENERATORS.map((g) => {
+                                    const on = !setup.generatorsOff.includes(g);
+                                    const last = on && setup.generatorsOff.length === QUESTION_GENERATORS.length - 1;
+                                    return (
+                                        <li key={g} className="flex items-start gap-tight">
+                                            <Checkbox
+                                                id={`${ids}-gen-${g}`}
+                                                checked={on}
+                                                disabled={last}
+                                                onCheckedChange={(v) => setSetup((s) => (s ? withGenerator(s, g, v === true) : s))}
+                                                aria-describedby={`${ids}-gen-${g}-summary`}
+                                                className="mt-0.5"
+                                            />
+                                            <label htmlFor={`${ids}-gen-${g}`} className="text-sm">
+                                                <span className="font-medium text-content-emphasis">{t(`generators.${g}.name`)}</span>
+                                                <span id={`${ids}-gen-${g}-summary`} className="block text-xs text-content-muted">
+                                                    {t(`generators.${g}.summary`)}
+                                                </span>
+                                            </label>
+                                        </li>
+                                    );
+                                })}
+                            </ul>
+                            <SourceNote text={sourceNote('generatorsOff')} />
                         </div>
                         <div role="group" aria-labelledby={`${ids}-panel`} className="space-y-tight" data-testid="panel-preset">
                             <p id={`${ids}-panel`} className="text-sm font-medium text-content-emphasis">

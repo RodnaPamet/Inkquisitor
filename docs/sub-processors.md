@@ -14,7 +14,7 @@ bible, interview answers, research briefs, and (from Phase 5) the manuscript.
 
 | Party | What it receives | When | Terms |
 |---|---|---|---|
-| Anthropic (Claude API, Messages endpoint only) | Author text in fenced data blocks; the product's own prompts; the model's answers | Every model feature: interview questions (2.2; since 4.0 with the author's confirmed source facts and relevant passages of their own drafts as context; since 4.2 a "grill me on what changed" session also carries the upstream entry before and after its change; since 4.3 a session started from a stress test also carries its weak points' labels and questions), rephrasing (2.4), enrichment (2.5), research findings and fit (2.6), source fact extraction (4.0: each passage of an uploaded draft, its headings and the book's element names), bible fact extraction (4.1: the text of each accepted bible entry that changed, automatically, with the facts already recorded about it and the book's element names; since 4.2 also the book's open promises, clues and open questions, so it can propose new ones and say one was paid off), the nightly continuity check (4.2: the statements of a changed book's recorded facts, with their subjects' names, story times and places in the story order, automatically, every night), the stress test (4.3: on the author's confirmation, the book's title and logline, its elements' names and summaries, the story order, its top facts, open threads and the most relevant passages of its drafts, bounded), the gap ranking (4.3: on the author's confirmation, the names of the bible's field labels and counts of how empty they are, with the book's title, logline and its elements' names and summaries, bounded), and the summary of a long interview's earlier rounds (4.3, off by default: those rounds' questions and answers) | Zero data retention (`AI_RETENTION_MODE=zdr`, an organisation arrangement with Anthropic) is the launch gate; standard retention (`standard-beta`) only during the closed beta (decision D5, amended 2026-11-19). Output JSON schemas are code and carry no author text (Anthropic caches schemas outside zero retention). |
+| Anthropic (Claude API, Messages endpoint only) | Author text in fenced data blocks; the product's own prompts; the model's answers | Every model feature: interview questions (2.2; since 4.0 with the author's confirmed source facts and relevant passages of their own drafts as context; since 4.2 a "grill me on what changed" session also carries the upstream entry before and after its change; since 4.3 a session started from a stress test also carries its weak points' labels and questions), rephrasing (2.4), enrichment (2.5), research findings and fit (2.6), source fact extraction (4.0: each passage of an uploaded draft, its headings and the book's element names), bible fact extraction (4.1: the text of each accepted bible entry that changed, automatically, with the facts already recorded about it and the book's element names; since 4.2 also the book's open promises, clues and open questions, so it can propose new ones and say one was paid off), the nightly continuity check (4.2: the statements of a changed book's recorded facts, with their subjects' names, story times and places in the story order, automatically, every night), the stress test (4.3: on the author's confirmation, the book's title and logline, its elements' names and summaries, the story order, its top facts, open threads and the most relevant passages of its drafts, bounded), the gap ranking (4.3: on the author's confirmation, the names of the bible's field labels and counts of how empty they are, with the book's title, logline and its elements' names and summaries, bounded), the summary of a long interview's earlier rounds (4.3; on since 4.4: those rounds' questions and answers), and the interview tie-break (4.4: the names of the few near-equal questions' subjects, their field labels, what kind of question each is and, for a follow-up, a short excerpt of what the field holds) | Zero data retention (`AI_RETENTION_MODE=zdr`, an organisation arrangement with Anthropic) is the launch gate; standard retention (`standard-beta`) only during the closed beta (decision D5, amended 2026-11-19). Output JSON schemas are code and carry no author text (Anthropic caches schemas outside zero retention). |
 
 The messages-only middleware (`src/lib/ai/client.ts`) refuses every other
 Anthropic surface (files, batches, message threads, containers, MCP, beta
@@ -93,10 +93,20 @@ None runs without an act of the author's.
   elements' names and the start of their summaries, bounded (one balanced-tier
   call). The answer is the order and one sentence a
   pick, stored encrypted.
-- **Compaction** (off by default until Phase 4.4) sends a long interview's
-  earlier rounds — their questions and answers — for a short summary (one
-  fast-tier call); the summary is stored encrypted and travels beside the
-  answers, which are still sent verbatim.
+- **Compaction** (on since Phase 4.4, decision D30; the threshold decides
+  when, so only long interviews compact) sends a long interview's earlier
+  rounds — their questions and answers — for a short summary (one fast-tier
+  call); the summary is stored encrypted and travels beside the answers, which
+  are still sent verbatim.
+- **The interview tie-break** (Phase 4.4, decision D30) sends, during an
+  interview the author started, the few candidate questions of a round whose
+  value scores are near-equal — at most eight lines, each the subject's kind
+  and name, the field's label, what kind of question it is and, for a
+  follow-up, at most 160 characters of what that field already holds (one
+  fast-tier call, at most one a round, its per-call cost budget enforced). The
+  answer is an order of the numbers it was shown and nothing else: no text is
+  stored or shown, and the code's own order stands whenever the call is not
+  made or its answer is not an exact reordering.
 
 ## Research: web search and web fetch (Phase 2.6, decision D9)
 

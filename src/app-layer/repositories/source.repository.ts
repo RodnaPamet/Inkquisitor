@@ -222,6 +222,11 @@ export const SourceRepository = {
 };
 
 export const SourceChunkRepository = {
+    /** Phase 4.4: some chunks' heading paths (where a source question's quote stands), never their text. */
+    async headingsOf(db: Db, workspaceId: string, ids: readonly string[]): Promise<Array<{ id: string; headingPath: string | null }>> {
+        if (ids.length === 0) return [];
+        return db.sourceChunk.findMany({ where: { workspaceId, id: { in: [...ids] } }, take: ids.length, select: { id: true, headingPath: true } });
+    },
     async createMany(db: Db, workspaceId: string, sourceId: string, rows: ReadonlyArray<{ position: number; headingPath: string | null; text: string; startOffset: number; endOffset: number; tokenEstimate: number }>): Promise<void> {
         if (rows.length === 0) return;
         await db.sourceChunk.createMany({
@@ -409,10 +414,70 @@ export const StoryFactRepository = {
         if (sourceIds.length === 0) return [];
         return sourceFacts(await db.storyFact.findMany({ where: { workspaceId, sourceId: { in: [...sourceIds] }, ...SOURCE_KIND, status: 'CONFIRMED', supersededAt: null }, orderBy: [{ chunkId: 'asc' }, { position: 'asc' }], take, select: FACT_SELECT }));
     },
-    /** Decide a fact (or change its decision). */
-    async decide(db: Db, workspaceId: string, id: string, data: { status: 'CONFIRMED' | 'REJECTED'; decidedById: string; decidedAt: Date }): Promise<boolean> {
-        const r = await db.storyFact.updateMany({ where: { workspaceId, id, ...SOURCE_KIND, supersededAt: null }, data: { status: data.status, decidedById: data.decidedById, decidedAt: data.decidedAt } });
+    /**
+     * Decide a fact (or change its decision). Phase 4.4 (D30): `decidedByAnswerId` names the interview answer a decision
+     * came from (NULL for a decision on the Facts page, which clears an earlier answer's), and `onlyPending` decides it
+     * only while it is still PENDING and unflagged — the interview's decision never overrides one the author made, and
+     * a flagged fact (D14) is decided on the Facts page alone.
+     */
+    async decide(
+        db: Db,
+        workspaceId: string,
+        id: string,
+        data: { status: 'CONFIRMED' | 'REJECTED'; decidedById: string; decidedAt: Date; decidedByAnswerId?: string | null; onlyPending?: boolean },
+    ): Promise<boolean> {
+        const r = await db.storyFact.updateMany({
+            where: { workspaceId, id, ...SOURCE_KIND, supersededAt: null, ...(data.onlyPending ? { status: 'PENDING' as const, flags: { isEmpty: true } } : {}) },
+            data: { status: data.status, decidedById: data.decidedById, decidedAt: data.decidedAt, decidedByAnswerId: data.decidedByAnswerId ?? null },
+        });
         return r.count === 1;
+    },
+    /** Phase 4.4: which of these facts are still PENDING, unflagged and live in these sources (a source question's persist). */
+    async pendingAmong(db: Db, workspaceId: string, ids: readonly string[], sourceIds: readonly string[]): Promise<string[]> {
+        if (ids.length === 0 || sourceIds.length === 0) return [];
+        const rows = await db.storyFact.findMany({
+            where: { workspaceId, id: { in: [...ids] }, sourceId: { in: [...sourceIds] }, ...SOURCE_KIND, status: 'PENDING', supersededAt: null, flags: { isEmpty: true } },
+            take: ids.length,
+            select: { id: true },
+        });
+        return rows.map((r) => r.id);
+    },
+    /** Phase 4.4: the PENDING, unflagged, live facts of these sources (what source questions may ask), in chunk order. */
+    async listPendingUnflagged(db: Db, workspaceId: string, sourceIds: readonly string[], take: number): Promise<StoryFactRow[]> {
+        if (sourceIds.length === 0) return [];
+        return sourceFacts(
+            await db.storyFact.findMany({
+                where: { workspaceId, sourceId: { in: [...sourceIds] }, ...SOURCE_KIND, status: 'PENDING', supersededAt: null, flags: { isEmpty: true } },
+                orderBy: [{ chunkId: 'asc' }, { position: 'asc' }],
+                take,
+                select: FACT_SELECT,
+            }),
+        );
+    },
+    /** Phase 4.4: some facts of any kind as a continuity question quotes them: subject, predicate and the exact words. */
+    async quotesOf(db: Db, workspaceId: string, ids: readonly string[]): Promise<Array<{ id: string; subjectElementId: string | null; predicate: string; quote: string; supersededAt: Date | null }>> {
+        if (ids.length === 0) return [];
+        return db.storyFact.findMany({ where: { workspaceId, id: { in: [...ids] } }, take: ids.length, select: { id: true, subjectElementId: true, predicate: true, quote: true, supersededAt: true } });
+    },
+    /**
+     * Phase 4.4: how many live facts the book holds about each (subject, predicate) — its bible facts and its confirmed
+     * source facts — counted, no text read (the deepening ladder's value score).
+     */
+    async countLiveAbout(db: Db, workspaceId: string, bookId: string, sourceIds: readonly string[], subjectElementIds: readonly string[]): Promise<Array<{ subjectElementId: string; predicate: string; count: number }>> {
+        if (subjectElementIds.length === 0) return [];
+        const rows = await db.storyFact.groupBy({
+            by: ['subjectElementId', 'predicate'],
+            where: {
+                workspaceId,
+                supersededAt: null,
+                subjectElementId: { in: [...subjectElementIds] },
+                OR: [{ bookId, sourceKind: { in: ['BIBLE_VERSION', 'RELATION_VERSION'] } }, ...(sourceIds.length > 0 ? [{ sourceId: { in: [...sourceIds] }, ...SOURCE_KIND, status: 'CONFIRMED' as const }] : [])],
+            },
+            _count: { _all: true },
+            orderBy: [{ subjectElementId: 'asc' }, { predicate: 'asc' }],
+            take: subjectElementIds.length * 32,
+        });
+        return rows.flatMap((r) => (r.subjectElementId ? [{ subjectElementId: r.subjectElementId, predicate: r.predicate, count: r._count._all }] : []));
     },
     /** Write a version's new facts (the caller holds the book's fact lock and has resolved them: one live fact per claim). */
     async createBibleFacts(db: Db, workspaceId: string, rows: readonly BibleFactInsert[], at: Date): Promise<Array<{ id: string; dedupeKey: string | null }>> {

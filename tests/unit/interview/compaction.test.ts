@@ -32,9 +32,9 @@ const answer = (round: number, id: string, text: string | null, status: RoundAns
 const answers = [answer(1, 'a1', 'She wants the ferry, whatever it costs.'), answer(1, 'a2', null, 'DECIDE_LATER'), answer(2, 'a3', 'Her father sold it once already.'), answer(3, 'a4', 'Because the river took her mother.')];
 const ON = { enabled: true, thresholdChars: 10 };
 
-it('is OFF by default until 4.4 (the brake), and fires only past the threshold with two rounds to keep one', () => {
-    expect(COMPACTION_ON_BY_DEFAULT).toBe(false);
-    expect(compactionSkip(DEFAULT_COMPACTION, answers)).toBe('OFF');
+it('is ON by default since 4.4 (D30 item 5), and fires only past the threshold with two rounds to keep one', () => {
+    expect(COMPACTION_ON_BY_DEFAULT).toBe(true);
+    expect(compactionSkip({ ...DEFAULT_COMPACTION, enabled: false }, answers)).toBe('OFF');
     expect(compactionSkip(ON, [answer(1, 'a1', 'x')])).toBe('TOO_FEW_ROUNDS');
     expect(compactionSkip({ enabled: true, thresholdChars: 1_000_000 }, answers)).toBe('BELOW_THRESHOLD');
     expect(compactionSkip(ON, answers)).toBeNull();

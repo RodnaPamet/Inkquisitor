@@ -25,22 +25,22 @@ export interface Dials {
 }
 
 interface DepthRow {
-    /** Rounds a session at this depth runs at most. */
-    roundBudget: number;
     /** The sentence the prompt carries for this depth. */
     emphasis: string;
 }
 
-/** Design 8.1. Six rounds is the most any session runs. */
+/**
+ * Design 8.1. Since Phase 4.4 (D23) depth sets how far DOWN a session goes — the levels in reach and the deepening
+ * ladder's layers (`ladderDepthFor`) — and no longer how many rounds it runs: the session's length is the author's
+ * (`session-length.ts`), and the fixed six-round limit is gone.
+ */
 export const DEPTH: Readonly<Record<number, DepthRow>> = Object.freeze({
-    1: { roundBudget: 2, emphasis: 'Ask about foundations only; no consequences or edge cases.' },
-    2: { roundBudget: 3, emphasis: 'Ask about foundations and what rests directly on them.' },
-    3: { roundBudget: 4, emphasis: 'Ask about consequences and pressures as well as foundations.' },
-    4: { roundBudget: 5, emphasis: 'Ask about consequences and pressures; a stored value may be challenged when the round has room.' },
-    5: { roundBudget: 6, emphasis: 'Ask about consistency with related elements and edge cases; a stored value may be challenged.' },
+    1: { emphasis: 'Ask about foundations only; no consequences or edge cases.' },
+    2: { emphasis: 'Ask about foundations and what rests directly on them.' },
+    3: { emphasis: 'Ask about consequences and pressures as well as foundations.' },
+    4: { emphasis: 'Ask about consequences and pressures; a stored value may be challenged when the round has room.' },
+    5: { emphasis: 'Ask about consistency with related elements and edge cases; a stored value may be challenged.' },
 });
-
-export const MAX_ROUNDS = 6;
 
 interface DetailRow {
     /** The question kinds this detail allows (content formats 1.6). */
@@ -92,10 +92,6 @@ export function isDial(value: unknown): value is number {
     return typeof value === 'number' && Number.isInteger(value) && value >= DIAL_MIN && value <= DIAL_MAX;
 }
 
-export function roundBudgetFor(depth: number): number {
-    return DEPTH[depth].roundBudget;
-}
-
 export function kindsAllowed(detail: number): readonly QuestionKind[] {
     return DETAIL[detail].kinds;
 }
@@ -107,14 +103,4 @@ export function roundCapFor(detail: number): number {
 /** The longest written text an answer at this detail may carry. */
 export function answerTextMax(detail: number): number {
     return Math.max(DETAIL[detail].answerMax, PICK_REASON_MIN_MAX);
-}
-
-/**
- * A session's token budget, input and output together (design 8.4): a
- * ceiling about a third to a half above the expected use. A session with no
- * persona still makes one generation call a round.
- */
-export function tokenBudgetFor(depth: number, personaCount: number): number {
-    const rounds = roundBudgetFor(depth);
-    return rounds * Math.max(1, personaCount) * TOKENS_PER_GENERATION_CALL + rounds * TOKENS_PER_RECONCILE_CALL;
 }

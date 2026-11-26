@@ -556,6 +556,14 @@ export function stubGapRankAnswer(body: Record<string, unknown>): { picks: Array
     return { picks };
 }
 
+/** The stub's TIE-BREAK answer (Phase 4.4, D30): the tied candidates in the order shown (a valid permutation, changing nothing). Pure. */
+export function stubQuestionOrderAnswer(body: Record<string, unknown>): { order: number[] } | null {
+    const tied = fencedBlocks(body).get('tied-candidates');
+    if (tied === undefined) return null;
+    const n = tied.split('\n').filter((l) => /^\d{1,2}\. /.test(l)).length;
+    return { order: Array.from({ length: n }, (_, i) => i + 1) };
+}
+
 /** The stub's ROUNDS SUMMARY answer (Phase 4.3 compaction): one fixed sentence that quotes nothing. Pure. */
 export function stubRoundsSummaryAnswer(body: Record<string, unknown>): { summary: string } | null {
     return fencedBlocks(body).has('earlier-rounds') ? { summary: 'The earlier rounds covered the chosen fields and left some open.' } : null;
@@ -604,7 +612,7 @@ export async function stubMessagesFetch(input: string | URL | Request, init?: Re
     const model = typeof body.model === 'string' ? body.model : 'stub-model';
     const gather = stubGatherEvents(body, model);
     if (gather) return new Response(sse(gather), { status: 200, headers: { 'content-type': 'text/event-stream' } });
-    const text = JSON.stringify(stubBibleFactsAnswer(body) ?? stubContinuityAnswer(body) ?? stubStressTestAnswer(body) ?? stubGapRankAnswer(body) ?? stubRoundsSummaryAnswer(body) ?? stubFactsAnswer(body) ?? stubFindingsAnswer(body) ?? stubFitAnswer(body) ?? stubReconcileAnswer(body) ?? stubAnswer(body));
+    const text = JSON.stringify(stubBibleFactsAnswer(body) ?? stubContinuityAnswer(body) ?? stubStressTestAnswer(body) ?? stubQuestionOrderAnswer(body) ?? stubGapRankAnswer(body) ?? stubRoundsSummaryAnswer(body) ?? stubFactsAnswer(body) ?? stubFindingsAnswer(body) ?? stubFitAnswer(body) ?? stubReconcileAnswer(body) ?? stubAnswer(body));
     return new Response(streamedMessage(model, text, { input_tokens: 1_500, output_tokens: Math.max(50, Math.ceil(text.length / 4)) }), {
         status: 200,
         headers: { 'content-type': 'text/event-stream' },

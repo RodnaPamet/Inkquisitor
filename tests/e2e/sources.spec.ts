@@ -39,8 +39,10 @@ test('upload a DOCX → confirm the cost → facts → confirm one → the inter
     const asks = async () => {
         const started = await api.post(`/api/w/${slug}/books/${bookId}/interviews`, { data: { scope: 'ELEMENT', elementId, depth: 2, detail: 3 } });
         expect(started.status()).toBe(201);
-        const view = (await started.json()) as { interview: { round: { questions: Array<{ targetsFieldKeys: string[] }> } | null } };
-        return (view.interview.round?.questions ?? []).flatMap((q) => q.targetsFieldKeys);
+        const view = (await started.json()) as { interview: { round: { questions: Array<{ targetsFieldKeys: string[]; generator: string }> } | null } };
+        // The fields the FRONTIER asks (Phase 4.4: a follow-up may deepen a field a confirmed fact answers, D23; the
+        // frontier never asks the field itself again, rule 5).
+        return (view.interview.round?.questions ?? []).filter((q) => q.generator === 'FRONTIER').flatMap((q) => q.targetsFieldKeys);
     };
     // Before any source: the want is asked.
     expect(await asks()).toContain('want');

@@ -15,6 +15,7 @@ import * as path from 'node:path';
 import { NextRequest } from 'next/server';
 import { ZodError } from 'zod';
 import { prisma } from '@/lib/db';
+import { tokenBudgetFor } from '@/lib/interview/session-length';
 import { runInWorkspaceContext } from '@/lib/db/rls-middleware';
 import { createBook, deleteBook } from '@/app-layer/usecases/books';
 import { createElement } from '@/app-layer/usecases/bible-elements';
@@ -85,9 +86,9 @@ describe('defaults and precedence', () => {
         await setBookInterviewDefaults(ctx, book, { detail: 4, personaKeys: ['gentle-mentor'] });
         const view = await startInterview(ctx, book, { scope: 'ELEMENT', elementId: el, personaKeys: ['socratic', 'target-reader'] }, { generator: fakeGenerator(), embedder });
         expect(view.session).toMatchObject({ dials: { depth: 2, detail: 4 }, personaKeys: ['socratic', 'target-reader'], offerRecommended: false, preferChoice: false });
-        // The session's budgets follow its resolved dials.
+        // The session's budgets follow its resolved dials and its length (Phase 4.4: the default four rounds, whatever the depth).
         const row = await prisma.interviewSession.findUniqueOrThrow({ where: { id: view.session.id } });
-        expect(row).toMatchObject({ roundBudget: 3, tokenBudget: 3 * 2 * 9_000 + 3 * 6_000 });
+        expect(row).toMatchObject({ lengthMode: 'ROUNDS', roundBudget: 4, questionBudget: null, tokenBudget: tokenBudgetFor({ mode: 'ROUNDS', rounds: 4 }, 4, 2), generatorsOff: [] });
         const audit = await prisma.auditLog.findFirst({ where: { workspaceId: owner.workspaceId, action: 'INTERVIEW_STARTED', entityId: view.session.id } });
         expect(audit?.detailsJson).toMatchObject({ dialSources: { depth: 'workspace', detail: 'book', personaKeys: 'session', offerRecommended: 'workspace', preferChoice: 'code' } });
         // The workspace layer is replaced whole: what a PUT leaves out passes on.
@@ -99,12 +100,12 @@ describe('defaults and precedence', () => {
         const book = (await createBook(ctx, { title: 'Read back' })).id;
         await setBookInterviewDefaults(ctx, book, { detail: 5, personaKeys: [] });
         const ws = await getWorkspaceInterviewDefaults(ctx);
-        expect(ws.stored).toEqual({ depth: 5, detail: null, personaKeys: null, offerRecommended: null, preferChoice: true });
+        expect(ws.stored).toEqual({ depth: 5, detail: null, personaKeys: null, offerRecommended: null, preferChoice: true, generatorsOff: null });
         const bk = await getBookInterviewDefaults(ctx, book);
-        expect(bk.stored).toEqual({ depth: null, detail: 5, personaKeys: [], offerRecommended: null, preferChoice: null });
-        expect(bk.effective).toEqual({ depth: 5, detail: 5, personaKeys: [], offerRecommended: true, preferChoice: true });
-        expect(bk.sources).toEqual({ depth: 'workspace', detail: 'book', personaKeys: 'book', offerRecommended: 'code', preferChoice: 'workspace' });
-        expect(bk.effects).toMatchObject({ roundBudget: 6, roundCap: 3, kindsAllowed: ['OPEN', 'SCENARIO'], generationCallsPerRound: 1 });
+        expect(bk.stored).toEqual({ depth: null, detail: 5, personaKeys: [], offerRecommended: null, preferChoice: null, generatorsOff: null });
+        expect(bk.effective).toEqual({ depth: 5, detail: 5, personaKeys: [], offerRecommended: true, preferChoice: true, generatorsOff: [] });
+        expect(bk.sources).toEqual({ depth: 'workspace', detail: 'book', personaKeys: 'book', offerRecommended: 'code', preferChoice: 'workspace', generatorsOff: 'code' });
+        expect(bk.effects).toMatchObject({ ladderLayers: 6, roundBudget: 4, roundCap: 3, kindsAllowed: ['OPEN', 'SCENARIO'], generationCallsPerRound: 1 });
         await setWorkspaceInterviewDefaults(ctx, {});
     });
 
@@ -168,7 +169,8 @@ describe('several personas (STORM’s perspectives)', () => {
         expect(new Set(calls.map((c) => c.promptVersion)).size).toBe(3);
         expect(calls[0].packs).toEqual(['craft-character@1', 'persona-socratic@1']);
         expect(calls.every((c) => c.costBudgetMicroUsd > 0)).toBe(true);
-        expect(view.session.packs!.map((p) => p.name)).toEqual(['craft-character', 'persona-socratic', 'persona-gentle-mentor', 'persona-ruthless-editor']);
+        // Phase 4.4 (D30): a KIND session with the relations generator on pins the relations pack too (its relations between characters are subjects).
+        expect(view.session.packs!.map((p) => p.name)).toEqual(['craft-character', 'relations', 'persona-socratic', 'persona-gentle-mentor', 'persona-ruthless-editor']);
         // Each field is asked once a round, whichever persona words it (2.2's rule holds across personas).
         const refs = view.round!.questions.filter((q) => q.mode === 'FRONTIER').flatMap((q) => q.targetsFieldKeys.map((k) => `${q.elementId}:${k}`));
         expect(new Set(refs).size).toBe(refs.length);

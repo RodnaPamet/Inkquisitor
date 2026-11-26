@@ -56,7 +56,7 @@ function server(bookLayer: { depth?: number; personaKeys?: string[] }, unmountab
         total: 0,
     };
     const defaults: DefaultsView = {
-        stored: { depth: null, detail: null, personaKeys: null, offerRecommended: null, preferChoice: null },
+        stored: { depth: null, detail: null, personaKeys: null, offerRecommended: null, preferChoice: null, generatorsOff: null },
         effective: resolved.settings,
         sources: resolved.sources,
         effects: dialEffects(resolved.settings),
@@ -79,7 +79,7 @@ describe('loadSetupOptions (2.3: the packs and the book defaults)', () => {
         expect(SETUP_API.bookDefaults('ada', 'b 1')).toBe('/api/w/ada/books/b%201/interview-defaults');
         expect(o.maxPersonas).toBe(PERSONAS_PER_SESSION_MAX);
         expect(o.defaults).toEqual({ ...CODE_SETUP_DEFAULTS, depth: 4, personaKeys: ['socratic', 'ruthless-editor'] });
-        expect(o.sources).toEqual({ depth: 'book', detail: 'code', personaKeys: 'book', offerRecommended: 'code', preferChoice: 'code' });
+        expect(o.sources).toEqual({ depth: 'book', detail: 'code', personaKeys: 'book', offerRecommended: 'code', preferChoice: 'code', generatorsOff: 'code' });
         expect(o.effects).toEqual(s.defaults.effects);
         // Phase 4.3: the picker offers the six of 2.3; the panel is offered only through its preset.
         expect(o.personas.map((p) => p.key)).toEqual(PERSONA_KEYS.filter((k) => !isPanelPersona(k)));
@@ -127,7 +127,7 @@ it('previews the server effects for the defaults, and the same rule once a dial 
     expect(previewEffects(o, o.defaults)).toBe(o.effects);
     const moved = { ...o.defaults, depth: 5, personaKeys: ['socratic' as const, 'target-reader' as const] };
     expect(previewEffects(o, moved)).toEqual(dialEffects(moved));
-    expect(previewEffects(o, moved).roundBudget).not.toBe(o.effects.roundBudget);
+    expect(previewEffects(o, moved).ladderLayers).not.toBe(o.effects.ladderLayers);
     expect(previewEffects(o, moved).generationCallsPerRound).toBe(2);
 });
 
@@ -153,7 +153,7 @@ it('names the persona or kind of a pack, and nothing for a name it does not know
 
 it('round-trips a setup through the query, and refuses a query that names no interview', () => {
     const target = { scope: 'KIND' as const, kind: 'CHARACTER' as const };
-    const setup = { depth: 5, detail: 1, personaKeys: ['ruthless-editor' as const, 'socratic' as const], offerRecommended: false, preferChoice: true };
+    const setup = { depth: 5, detail: 1, personaKeys: ['ruthless-editor' as const, 'socratic' as const], offerRecommended: false, preferChoice: true, generatorsOff: ['LADDER' as const, 'SOURCES' as const], length: { mode: 'QUESTIONS' as const, questions: 40 } };
     expect(setupFromQuery(Object.fromEntries(new URLSearchParams(interviewSetupQuery(target, setup))))).toEqual({ target, setup });
     expect(setupFromQuery({})).toBeNull();
     expect(setupFromQuery({ scope: 'ELEMENT' })).toBeNull();

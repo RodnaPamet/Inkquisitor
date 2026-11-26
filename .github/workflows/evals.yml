@@ -18,8 +18,10 @@
 # ranking's and the rounds summary's, evals-out/stress-test/, gap-hunt/ and
 # compaction/, committed over src/lib/stress-test/evals/evaluation-record.json,
 # src/lib/gap-hunt/evals/evaluation-record.json and
-# src/lib/interview/evals/compaction-evaluation-record.json). One input for the
-# three keeps the dispatch form within GitHub's ten inputs.
+# src/lib/interview/evals/compaction-evaluation-record.json), and since Phase 4.4
+# the interview tie-break's (--question-order: evals-out/question-order/,
+# committed over src/lib/interview/question-order/evals/evaluation-record.json).
+# One input for the four keeps the dispatch form within GitHub's ten inputs.
 #
 # Owner decisions of 2026-11-19: production mounts an interview pack only on a
 # REAL MODEL's evaluation record (D11), and real-model evaluations run here, in
@@ -102,7 +104,7 @@ on:
         default: false
         type: boolean
       book_level:
-        description: "Also run the book-level interrogation sets: the stress test, the gap ranking and the rounds summary (Phase 4.3)"
+        description: "Also run the book-level and continuous-questioning sets: the stress test, the gap ranking, the rounds summary (Phase 4.3) and the interview tie-break (Phase 4.4)"
         required: false
         default: false
         type: boolean
@@ -217,7 +219,7 @@ jobs:
           if [ "$SOURCES" = "true" ]; then extra="$extra --sources"; fi
           if [ "$BIBLE_FACTS" = "true" ]; then extra="$extra --bible-facts"; fi
           if [ "$CONTINUITY" = "true" ]; then extra="$extra --continuity"; fi
-          if [ "$BOOK_LEVEL" = "true" ]; then extra="$extra --book-level"; fi
+          if [ "$BOOK_LEVEL" = "true" ]; then extra="$extra --book-level --question-order"; fi
           # shellcheck disable=SC2086
           # --judge: the model judge over the ungraded behaviours of the pack
           # records written (Phase 2.H): a report beside them, never a gate.

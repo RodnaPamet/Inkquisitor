@@ -17,6 +17,7 @@ const DEFAULTS_SELECT = {
     personaKeys: true,
     offerRecommended: true,
     preferChoice: true,
+    generatorsOff: true,
     updatedAt: true,
 } as const;
 
@@ -29,6 +30,8 @@ export interface DefaultsWrite {
     personaKeys: string[] | null;
     offerRecommended: boolean | null;
     preferChoice: boolean | null;
+    /** Phase 4.4 (D30): the generators switched off, or null to pass the dial on. */
+    generatorsOff: string[] | null;
 }
 
 function data(w: DefaultsWrite) {
@@ -38,6 +41,7 @@ function data(w: DefaultsWrite) {
         personaKeys: w.personaKeys === null ? Prisma.DbNull : w.personaKeys,
         offerRecommended: w.offerRecommended,
         preferChoice: w.preferChoice,
+        generatorsOff: w.generatorsOff === null ? Prisma.DbNull : w.generatorsOff,
     };
 }
 

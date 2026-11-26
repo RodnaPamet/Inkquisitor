@@ -69,8 +69,9 @@ async function refusal(p: Promise<unknown>): Promise<{ status: number; reason: u
     throw new Error('expected a refusal');
 }
 
+/** The fields the round's FRONTIER questions target (Phase 4.4: a code-worded follow-up on an answered field is another generator's). */
 function targetsOf(view: InterviewView): string[] {
-    return view.round!.questions.flatMap((q) => q.targetsFieldKeys);
+    return view.round!.questions.filter((q) => q.origin !== 'GENERATOR').flatMap((q) => q.targetsFieldKeys);
 }
 
 describe('a session runs its rounds', () => {

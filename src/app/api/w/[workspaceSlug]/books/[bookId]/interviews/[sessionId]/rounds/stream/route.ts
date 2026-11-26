@@ -5,12 +5,14 @@
  * the interview may instead end or pause, which `committed` says with its
  * reason. 409 ROUND_OPEN / ROUND_GENERATING and 503 AI_UNAVAILABLE are the
  * ordinary JSON errors, before anything is written. Closing the stream
- * cancels the model call in flight and abandons the round.
+ * cancels the model call in flight and abandons the round. Phase 4.4 (D30): an
+ * optional body `{ "goOn": true }` goes on past the minor questions.
  */
 import { withApiErrorHandling } from '@/lib/errors/api';
 import { requirePermission } from '@/lib/security/permission-middleware';
 import { interviewStreamResponse } from '@/lib/interview/stream-response';
 import { nextRound } from '@/app-layer/usecases/interviews';
+import { readJsonBody } from '@/lib/http/json-body';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -18,7 +20,8 @@ export const dynamic = 'force-dynamic';
 type Params = { workspaceSlug: string; bookId: string; sessionId: string };
 
 export const POST = withApiErrorHandling(
-    requirePermission<Params>('bible.edit', async (req, { params }, ctx) =>
-        interviewStreamResponse(req, (sink) => nextRound(ctx, params.bookId, params.sessionId, { stream: sink, signal: sink.signal }), { workspaceId: ctx.workspaceId }),
-    ),
+    requirePermission<Params>('bible.edit', async (req, { params }, ctx) => {
+        const body = await readJsonBody(req, { optional: true });
+        return interviewStreamResponse(req, (sink) => nextRound(ctx, params.bookId, params.sessionId, { stream: sink, signal: sink.signal }, body), { workspaceId: ctx.workspaceId });
+    }),
 );

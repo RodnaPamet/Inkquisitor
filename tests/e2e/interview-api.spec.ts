@@ -60,7 +60,8 @@ test('the dial defaults: a workspace layer and a book layer, resolved book over 
     expect(read.defaults).toMatchObject({
         effective: { depth: 2, detail: 3, personaKeys: ['gentle-mentor', 'target-reader'], offerRecommended: true, preferChoice: true },
         sources: { depth: 'book', detail: 'code', personaKeys: 'workspace', offerRecommended: 'code', preferChoice: 'book' },
-        effects: { roundBudget: 3, generationCallsPerRound: 2 },
+        // Phase 4.4: the round budget is the session length's (four rounds by default), no longer the depth's.
+        effects: { roundBudget: 4, generationCallsPerRound: 2 },
     });
     const bad = await api.put(`/api/w/${slug}/interview-defaults`, { data: { personaKeys: ['socratic', 'socratic'] } });
     expect(bad.status()).toBe(400);

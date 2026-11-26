@@ -24,9 +24,11 @@ import corpusJson from './injection-corpus.json';
  * covers the threads the same extraction proposes. Phase 4.3 adds STRESS_TEST
  * (an element's summary, read with the whole canon by the stress test, D29),
  * GAP_HUNT (an element's summary in the gap ranking's book view) and
- * COMPACTION (an earlier round's answer, read by the rounds summary).
+ * COMPACTION (an earlier round's answer, read by the rounds summary). Phase
+ * 4.4 adds QUESTION_ORDER (an element's name in the interview tie-break's
+ * near-equal candidates, D30 item 4).
  */
-export const INJECTION_SURFACES = ['ANSWER', 'ELEMENT_TEXT', 'IMPORTED_NOTE', 'RESEARCH_PAGE', 'ATTACHED_FILE', 'RELATION_ANSWER', 'RELATION_TEXT', 'SOURCE_UPLOAD', 'BIBLE_ENTRY', 'CONTINUITY_FACTS', 'STRESS_TEST', 'GAP_HUNT', 'COMPACTION'] as const;
+export const INJECTION_SURFACES = ['ANSWER', 'ELEMENT_TEXT', 'IMPORTED_NOTE', 'RESEARCH_PAGE', 'ATTACHED_FILE', 'RELATION_ANSWER', 'RELATION_TEXT', 'SOURCE_UPLOAD', 'BIBLE_ENTRY', 'CONTINUITY_FACTS', 'STRESS_TEST', 'GAP_HUNT', 'COMPACTION', 'QUESTION_ORDER'] as const;
 export type InjectionSurface = (typeof INJECTION_SURFACES)[number];
 
 export const INJECTION_ATTACKS = [

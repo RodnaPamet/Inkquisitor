@@ -16,6 +16,14 @@
  *      nothing fits is carried to the next round and recorded
  *   6. ordered (`orderRound`) and numbered from 1
  *
+ * Phase 4.4 (D23, D30): the plan may also carry CODE-WORDED questions (`plan.worded`:
+ * a source's quote, a ladder layer, a pair, a continuity item). They make no
+ * call; each is sanitised and held to the question-text rule again, then joins
+ * the model's candidates for deduplication (the same lexical, keyed and vector
+ * signals) and ordering — best value first (`plan.rank`, the round's order
+ * after the tie-break) — so code validates, deduplicates and orders every
+ * candidate whichever generator proposed it. Their origin is GENERATOR.
+ *
  * No database: the caller loads the state, supplies the I/O (generator,
  * embedder, neighbour search), and persists what comes back. The usecase
  * (`src/app-layer/usecases/interview-rounds.ts`) and the coverage evaluation
@@ -29,6 +37,7 @@ import {
     DROP_REASONS,
     candidateFrom,
     parseGeneratedQuestions,
+    questionTextProblem,
     validateCandidate,
     type Candidate,
     type DropReason,
@@ -42,7 +51,7 @@ import { refKey, type FieldRef } from './frontier';
 import { GenerationStop, type GenerationFailureKind, type GenerationResult, type QuestionGenerator } from './generator';
 import type { CraftPack, PackRegistry, RelationsPack } from './packs';
 import type { PendingSubject, RelationSubject } from './subjects';
-import type { RoundPlan } from './plan';
+import { candidateKey, type RoundPlan, type WordedTarget } from './plan';
 import { buildGenerationRequest, QUESTION_PROMPT, type PromptAnswer, type PromptElement, type PromptSourceContext } from './prompt';
 import { disclosesInstructions, promptRuns } from '@/lib/text/prompt-disclosure';
 import { sanitiseQuestionForStorage } from './storage';
@@ -65,6 +74,8 @@ export interface RoundElement {
     storedText: ReadonlyMap<string, string>;
     relation?: RelationSubject;
     pending?: PendingSubject;
+    /** Phase 4.4 (D30): a relation the RELATIONS generator brought into a KIND or BOOK session (both its ends in scope). */
+    addedByRelations?: boolean;
 }
 
 /** A pack that teaches how to question a subject: a kind's craft pack, or the relations pack (Phase 3.3). */
@@ -176,6 +187,9 @@ export interface RoundMetrics {
     noQuestion: FieldRef[];
     /** Questions the embedder gave no vector (stored without one; lexical deduplication only). */
     unembedded: number;
+    /** Phase 4.4: code-worded candidates the plan carried, and those the text rule dropped after sanitising. */
+    worded: number;
+    wordedDropped: number;
     /** Tokens the round's generation calls reported (charged to the session's token budget). */
     tokensUsed: number;
     /** Calls that failed, by kind (2.1's outcome, `GenerationFailureKind`): their fields went to the pack fallback. */
@@ -279,6 +293,32 @@ export function fillGapsFromPack(
     return { filled, noQuestion };
 }
 
+/** A code-worded target as a candidate (Phase 4.4): no persona, no recommendation, its generator's ids and value kept. */
+export function wordedCandidate(w: WordedTarget): Candidate {
+    return {
+        elementId: w.elementId,
+        targetsFieldKeys: w.fieldKey !== null ? [w.fieldKey] : [],
+        mode: 'FRONTIER',
+        kind: w.worded.kind,
+        text: w.worded.text,
+        options: w.worded.options ? [...w.worded.options] : null,
+        scaleLabels: null,
+        challengeQuote: null,
+        recommendedAnswer: null,
+        recommendationBasis: null,
+        rationale: null,
+        personaKey: null,
+        generated: {
+            generator: w.generator,
+            value: w.value,
+            ...(w.angle ? { angle: w.angle } : {}),
+            ...(w.pairElementId ? { pairElementId: w.pairElementId } : {}),
+            ...(w.storyFactId ? { storyFactId: w.storyFactId } : {}),
+            ...(w.continuityRef ? { continuityRef: w.continuityRef } : {}),
+        },
+    };
+}
+
 function asCandidate(gap: FieldRef, e: QuestionPack['examples'][number]): Candidate {
     return {
         elementId: gap.elementId,
@@ -320,9 +360,13 @@ export function picksFirst(personaKeys: readonly string[]): boolean {
  * round is on the frontier, so no order breaks a prerequisite.
  */
 export function orderRound<C extends Candidate>(questions: readonly C[], plan: RoundPlan, options: { picksFirst?: boolean } = {}): C[] {
-    const position = new Map(plan.targets.map((t, i) => [refKey(t), i] as const));
-    const rank = (q: C) =>
-        q.mode === 'CHALLENGE' ? Number.MAX_SAFE_INTEGER : Math.min(...q.targetsFieldKeys.map((k) => position.get(refKey({ elementId: q.elementId, fieldKey: k })) ?? Number.MAX_SAFE_INTEGER - 1));
+    // Phase 4.4 (D30): a plan from the generators carries every chosen candidate's place, best value first.
+    const position = plan.rank ?? new Map(plan.targets.map((t, i) => [refKey(t), i] as const));
+    const keysOf = (q: C): string[] =>
+        q.targetsFieldKeys.length > 0
+            ? q.targetsFieldKeys.map((k) => refKey({ elementId: q.elementId, fieldKey: k }))
+            : [candidateKey({ elementId: q.elementId, fieldKey: null, storyFactId: q.generated?.storyFactId })];
+    const rank = (q: C) => (q.mode === 'CHALLENGE' ? Number.MAX_SAFE_INTEGER : Math.min(...keysOf(q).map((k) => position.get(k) ?? Number.MAX_SAFE_INTEGER - 1)));
     const ordered = questions
         .map((q, i) => ({ q, i, r: rank(q) }))
         .sort((a, b) => a.r - b.r || a.i - b.i)
@@ -357,6 +401,8 @@ export async function produceRound(input: RoundInput, deps: RoundDeps): Promise<
         packFallbacks: 0,
         noQuestion: [],
         unembedded: 0,
+        worded: 0,
+        wordedDropped: 0,
         tokensUsed: 0,
         failures: {},
         guardFlaggedCalls: 0,
@@ -499,7 +545,21 @@ export async function produceRound(input: RoundInput, deps: RoundDeps): Promise<
     tell(() => deps.observer?.checking?.());
     for (let i = 0; i < metrics.malformed; i++) bump(metrics.preventedBehaviours, DROP_REASONS.MALFORMED_ITEM);
 
-    // 3–4. Deduplicate, frontier order first.
+    // Phase 4.4: the code-worded questions join here, sanitised and held to the text rule again (what is judged is
+    // what is stored), then deduplicated and ordered with the model's.
+    const wordedOrigin = new Set<Candidate>();
+    for (const w of input.plan.worded ?? []) {
+        metrics.worded++;
+        const c = sanitiseQuestionForStorage(wordedCandidate(w));
+        if (questionTextProblem(c.text)) {
+            metrics.wordedDropped++;
+            continue;
+        }
+        validated.push(c);
+        wordedOrigin.add(c);
+    }
+
+    // 3–4. Deduplicate, best first (frontier order, or the generators' value order).
     const ordered = orderRound(validated, input.plan);
     const textCtx: DedupeTextContext = { elementNames: new Map(input.elements.map((e) => [e.elementId, e.name])) };
     const candidateVectors = new Map<number, readonly number[]>();
@@ -546,6 +606,8 @@ export async function produceRound(input: RoundInput, deps: RoundDeps): Promise<
     for (const i of deduped.keptIndexes) {
         const c = ordered[i];
         const refs = c.targetsFieldKeys.map((k) => `${c.mode}\u0000${refKey({ elementId: c.elementId, fieldKey: k })}`);
+        // Phase 4.4: a source question decides a fact; one per fact a round.
+        if (c.generated?.storyFactId) refs.push(`fact\u0000${c.generated.storyFactId}`);
         if (refs.some((r) => askedThisRound.has(r))) {
             bump(metrics.dropped, 'TARGET_ALREADY_ASKED');
             bump(metrics.preventedBehaviours, DROP_REASONS.TARGET_ALREADY_ASKED);
@@ -576,7 +638,7 @@ export async function produceRound(input: RoundInput, deps: RoundDeps): Promise<
     metrics.noQuestion = noQuestion.map((r) => ({ elementId: r.elementId, fieldKey: r.fieldKey }));
 
     // 6. Order and number; carry every vector across.
-    const all = [...kept.map((c) => ({ c, origin: 'MODEL' as const })), ...filled.map((c) => ({ c, origin: 'PACK_FALLBACK' as const }))];
+    const all = [...kept.map((c) => ({ c, origin: wordedOrigin.has(c) ? ('GENERATOR' as const) : ('MODEL' as const) })), ...filled.map((c) => ({ c, origin: 'PACK_FALLBACK' as const }))];
     const final = orderRound(
         all.map((x) => x.c),
         input.plan,

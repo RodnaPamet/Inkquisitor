@@ -23,6 +23,8 @@
  */
 import { roundCapFor } from './dials';
 import { refKey, type FieldRef, type FrontierEntry } from './frontier';
+import type { TargetCandidate } from './generators';
+import type { QuestionGeneratorKey } from './vocabulary';
 
 /** At most this many challenges in a session, each filled field at most once. */
 export const CHALLENGES_PER_SESSION = 2;
@@ -43,11 +45,21 @@ export interface PlanInput {
     challengesMax?: number;
     /** Phase 4.2: challenge whatever the frontier holds (a grill session on what changed). */
     challengeAlways?: boolean;
+    /** Phase 4.4: the frontier's own size, when `frontier` holds only the round's chosen model-worded targets (the challenge rule reads it). */
+    frontierSize?: number;
+    /** Phase 4.4: false when the round has no room for a challenge at all (a QUESTIONS session's last questions). Default true. */
+    allowChallenge?: boolean;
 }
 
 export interface PlannedTarget extends FrontierEntry {
     personaKey: string | null;
+    /** Phase 4.4 (D30): the generator that proposed it (the frontier, or relations for a relation's empty field) and its value score. */
+    generator?: QuestionGeneratorKey;
+    value?: number;
 }
+
+/** Phase 4.4: a candidate code worded (a ladder layer, a pair, a source fact, a continuity item), held in memory only. */
+export type WordedTarget = TargetCandidate & { worded: NonNullable<TargetCandidate['worded']> };
 
 export interface RoundPlan {
     cap: number;
@@ -55,6 +67,18 @@ export interface RoundPlan {
     /** Frontier fields beyond the cap, asked next round. */
     carried: FrontierEntry[];
     challenge: (FieldRef & { level: number; personaKey: string | null }) | null;
+    /**
+     * Phase 4.4 (D30): the round's code-worded candidates. In memory only: the stored plan names them by id and field,
+     * never their text (author words are quoted in them).
+     */
+    worded?: WordedTarget[];
+    /** Phase 4.4 (D30): every chosen candidate's place, best value first (and after the tie-break): `candidateKey`. */
+    rank?: ReadonlyMap<string, number>;
+}
+
+/** A candidate's key in a round's `rank`: its field reference, or a fact's id for a source question with no field. */
+export function candidateKey(c: { elementId: string; fieldKey: string | null; storyFactId?: string }): string {
+    return c.fieldKey !== null ? refKey({ elementId: c.elementId, fieldKey: c.fieldKey }) : `fact\u0000${c.storyFactId ?? ''}`;
 }
 
 export function challengeAllowed(frontierSize: number, cap: number, depth: number): boolean {
@@ -71,7 +95,7 @@ export function planRound(input: PlanInput): RoundPlan {
 
     let challenge: RoundPlan['challenge'] = null;
     const limit = input.challengesMax ?? CHALLENGES_PER_SESSION;
-    if (input.challengesPlanned < limit && (input.challengeAlways || challengeAllowed(input.frontier.length, cap, input.depth))) {
+    if (input.allowChallenge !== false && input.challengesPlanned < limit && (input.challengeAlways || challengeAllowed(input.frontierSize ?? input.frontier.length, cap, input.depth))) {
         const done = new Set(input.challenged.map(refKey));
         const next = input.challengeable.find((r) => r.level <= input.depth && !done.has(refKey(r)));
         if (next) challenge = { elementId: next.elementId, fieldKey: next.fieldKey, level: next.level, personaKey: personaAt(0) };

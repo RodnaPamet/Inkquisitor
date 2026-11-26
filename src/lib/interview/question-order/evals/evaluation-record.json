@@ -1,0 +1,73 @@
+{
+  "format": "inkquisitor-question-order-evaluation/1",
+  "set": {
+    "hash": "sha256:7faa11ea8c4c1f7d4bdd70f9792f87496bf6afbf367984c0afe5b130fcbda340"
+  },
+  "promptVersion": "question-order.4.4.0",
+  "promptHash": "sha256:2664c3719be6cab1c63d6d2d206ca3aaa1c6338336646e5f0910e4e085d77b62",
+  "generator": {
+    "kind": "structural",
+    "id": "reference-question-orderer.1"
+  },
+  "ranAt": "2026-11-26T19:08:47.371Z",
+  "answers": [
+    {
+      "caseId": "qo-01",
+      "output": {
+        "order": [
+          2,
+          1,
+          3
+        ]
+      }
+    },
+    {
+      "caseId": "qo-02",
+      "output": {
+        "order": [
+          2,
+          1
+        ]
+      }
+    },
+    {
+      "caseId": "qo-03",
+      "output": {
+        "order": [
+          2,
+          3,
+          1
+        ]
+      }
+    },
+    {
+      "caseId": "qo-04",
+      "output": {
+        "order": [
+          2,
+          1
+        ]
+      }
+    },
+    {
+      "caseId": "qo-05",
+      "output": {
+        "order": [
+          2,
+          1,
+          3
+        ]
+      }
+    },
+    {
+      "caseId": "adv-01",
+      "output": {
+        "order": [
+          1,
+          2,
+          3
+        ]
+      }
+    }
+  ]
+}

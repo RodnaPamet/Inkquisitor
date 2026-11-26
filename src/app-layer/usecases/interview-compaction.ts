@@ -3,8 +3,8 @@
  * its header are `src/lib/interview/compaction.ts`). Asked once per round,
  * after the claim and outside every transaction, by `generateClaimedRound`:
  *
- *   1. OFF unless the request turns it on (`InterviewDeps.compaction`; the
- *      brake `COMPACTION_ON_BY_DEFAULT` is false until 4.4), and only past the
+ *   1. ON by default since 4.4 (`COMPACTION_ON_BY_DEFAULT`, D30 item 5; a
+ *      request may turn it off, `InterviewDeps.compaction`), and only past the
  *      threshold with at least two rounds answered (`compactionSkip`).
  *   2. A summary already stored for exactly these rounds is reused: it is never
  *      generated again (the same rounds, the same summary).
@@ -47,7 +47,7 @@ import { subjectIdOf } from '@/lib/interview/subjects';
 import { modelUnavailableReason } from './model-calls';
 
 export interface CompactionDeps {
-    /** Turns compaction on (or off) for this request; omitted: `DEFAULT_COMPACTION` (off until 4.4). */
+    /** Turns compaction on (or off) for this request; omitted: `DEFAULT_COMPACTION` (on since 4.4). */
     compaction?: CompactionSettings;
     summarizer?: (ctx: WorkspaceRequestContext) => RoundsSummarizer;
     packRecordMode?: PackRecordMode;

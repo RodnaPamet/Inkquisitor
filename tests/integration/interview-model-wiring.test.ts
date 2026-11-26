@@ -14,6 +14,7 @@
  *   a flagged answer still words questions, the flag on the round
  */
 import { prisma } from '@/lib/db';
+import { FRONTIER_ONLY } from '../helpers/interview';
 import { createBook } from '@/app-layer/usecases/books';
 import { createElement } from '@/app-layer/usecases/bible-elements';
 import { callStructured } from '@/app-layer/usecases/model-calls';
@@ -107,8 +108,13 @@ it('the kill switch pauses a session that would need the model, sending nothing;
     process.env.AI_DISABLED = '1';
 
     // Depth 1, every field in reach stored: nothing to ask, so it finishes, kill switch or not.
-    const finished = await startInterview(ctx, bookId, { scope: 'ELEMENT', elementId: done.id, depth: 1, detail: 3 }, { generator: wired(ctx, api), embedder });
+    const finished = await startInterview(ctx, bookId, { scope: 'ELEMENT', elementId: done.id, depth: 1, detail: 3, generatorsOff: [...FRONTIER_ONLY] }, { generator: wired(ctx, api), embedder });
     expect(finished.session).toMatchObject({ status: 'COMPLETED', stopReason: 'NOTHING_AT_DEPTH' });
+    // Phase 4.4: with the deepening ladder on, the stored role has a follow-up, worded by code: the round needs no model,
+    // so the kill switch does not pause it, and nothing is sent.
+    const followUp = await startInterview(ctx, bookId, { scope: 'ELEMENT', elementId: done.id, depth: 1, detail: 3 }, { generator: wired(ctx, api), embedder });
+    expect(followUp.session.status).toBe('ACTIVE');
+    expect(followUp.round!.questions.map((q) => [q.generator, q.origin, q.targetsFieldKeys[0]])).toEqual([['LADDER', 'GENERATOR', 'role']]);
 
     // Something to ask: the kill switch pauses it, and nothing is sent or recorded.
     const paused = await startInterview(ctx, bookId, { scope: 'ELEMENT', elementId, depth: 3, detail: 3 }, { generator: wired(ctx, api), embedder });
@@ -184,7 +190,10 @@ it('a month that cannot take even the least question call pauses the session WOR
 });
 
 it('a round of three personas is not claimed when the month can take only two of its calls: nothing is spent on a round that cannot finish', async () => {
-    const { owner, ctx, bookId, elementId } = await setup();
+    const { owner, ctx, bookId } = await setup();
+    // Phase 4.4: the month must take the calls the round WILL make — one per persona holding a share — so the round
+    // has a share for each of the three (the role stored: its dependants open).
+    const elementId = (await createElement(ctx, bookId, { kind: 'CHARACTER', name: 'Three Voices', fields: [{ key: 'role', value: 'Keeps the salt ledger.' }] })).id;
     const floor = minimumQuestionCallMicroUsd(3);
     process.env.AI_MONTHLY_CEILING_USD_DEFAULT = ((2 * floor + 1) / 1_000_000).toFixed(6);
     const api = fakeAnthropic([questionModel({ usage: USAGE })]);

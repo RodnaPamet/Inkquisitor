@@ -16,7 +16,7 @@ function session(over: Partial<SessionRow> = {}): SessionRow {
     return {
         id: 's1', bookId: 'b1', scope: 'ELEMENT', targetElementId: EL, targetKind: null,
         scopeElementIds: [], scopeRelationIds: [], slotKind: null, slotAfterElementId: null, slotBeforeElementId: null, slotAct: null, staleFlagId: null, stressTestId: null, depth: 1, detail: 3, personaKeys: [],
-        offerRecommended: true, preferChoice: false, packPins: null, status: 'ACTIVE', stopReason: null, stopDetail: null, roundBudget: 2, roundsRun: 0,
+        offerRecommended: true, preferChoice: false, packPins: null, status: 'ACTIVE', stopReason: null, stopDetail: null, lengthMode: 'ROUNDS', roundBudget: 2, questionBudget: null, generatorsOff: [], minorAccepted: false, roundsRun: 0,
         tokenBudget: 30_000, tokensUsed: 0, createdById: null, createdAt: new Date(0), updatedAt: new Date(0), endedAt: null, ...over,
     };
 }

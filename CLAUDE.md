@@ -32,6 +32,7 @@ npm run packs:evaluate -- --no-packs --sources     # source fact extraction's se
 npm run packs:evaluate -- --no-packs --bible-facts # bible fact extraction's set (4.1): five synthetic bibles, its structural record beside it
 npm run packs:evaluate -- --no-packs --continuity  # the nightly deep continuity check's set (4.2): its structural record beside it
 npm run packs:evaluate -- --no-packs --book-level  # the stress test's, the gap ranking's and the rounds summary's sets (4.3): their structural records
+npm run packs:evaluate -- --no-packs --question-order  # the interview tie-break's set (4.4): its structural record beside it
 npm run packs:evaluate -- --judge                  # also the judge's report over the pack records written (2.H; a report, never a gate)
 npm run docs:build        # the Starlight help site (site/), from docs/user/
 npm run lint              # eslint . (flat config, eslint.config.mjs)
@@ -65,7 +66,7 @@ builds the help site and deploys it only on main when Pages is enabled;
 `postgres-image.yml` publishes `ghcr.io/rodnapamet/inkquisitor-postgres`
 (main only, weekly and on an upstream digest move; build, smoke, Trivy, then
 push); `evals.yml` (**Evals**, dispatch only, not a check) makes real-model
-pack evaluation records (and, with its `reconcile`, `research`, `rephrase`, `sources`, `bible_facts`, `continuity` and `book_level` inputs, the reconcile step's, the research agent's, the rephrase prompt's, source fact extraction's, bible fact extraction's, the deep continuity check's and 4.3's three book-level prompts')
+pack evaluation records (and, with its `reconcile`, `research`, `rephrase`, `sources`, `bible_facts`, `continuity` and `book_level` inputs, the reconcile step's, the research agent's, the rephrase prompt's, source fact extraction's, bible fact extraction's, the deep continuity check's and 4.3's three book-level prompts' — `book_level` also running 4.4's tie-break)
 on `secrets.ANTHROPIC_API_KEY` and uploads them as an artifact, committing
 nothing (`tests/unit/evals-workflow.test.ts`); `injection-redteam.yml`
 (**Injection red-team**, nightly once the repository variable
@@ -433,6 +434,21 @@ src/app-layer/usecases/      → stress-tests (page, start, the job's work, a se
 src/app-layer/jobs/          → `stress-test`, one job per confirmed run, addressed by id
 src/app/api/w/[workspaceSlug]/books/[bookId]/{stress-tests/**,gap-hunts}
 src/app/w/[workspaceSlug]/books/[bookId]/interrogate → src/components/interrogation/InterrogatePage
+```
+
+Phase 4.4 (continuous, deep questioning, D23 and D30) added:
+
+```
+prisma/migrations/…_continuous_questioning(_enums) → QuestionGenerator, InterviewLengthMode, QUESTION_BUDGET / VALUE_FELL /
+                               SESSION_LIMIT, origin GENERATOR; the session's length and generatorsOff, Question's generator columns,
+                               StoryFact.decidedByAnswerId; the six-round CHECK replaced
+src/lib/interview/generators/ → index (THE generators: frontier, ladder, relations, sources, continuity; pure), value (THE score),
+                               wording (code-worded questions), select (THE validate / dedupe / order / cut), ladder-depth
+src/lib/interview/session-length.ts → rounds, questions or until I stop; the token budget from the length (client-safe)
+src/lib/interview/question-order/ → the tie-break: prompt (QUESTION_ORDER_PROMPT, fast), schema, validate (exact permutation),
+                               cost, model-seam.ts, record-gate (D11); evals/ (set, evaluation, record)
+src/app-layer/usecases/      → interview-generators (THE generator inputs, bounded), interview-question-order (the tie-break's call);
+                               interview-rounds (planSession, the hard repetition gate), source-facts (decideFactsFromRound)
 ```
 
 ## Rules every change obeys
@@ -1057,7 +1073,8 @@ closed beta with an explicit operator flag (D5, amended 2026-11-19).
   holds each feature to it). LATENCY is held by counted work, never a wall
   clock (`interview-latency.test.ts`: the first question after one call).
   REPETITION: `bookRepetition` over a book's questions must find none; the
-  `interview.questions.repeats_dropped` counter shows the pressure. RECORDS:
+  `interview.questions.repeats_dropped` counter shows the pressure; since 4.4
+  it is a hard gate at persist (`withoutRepeats` under `lockBookQuestions`). RECORDS:
   every exported `definePrompt` template is evaluated by a record that pins its
   `promptContentHash` (and every pack record its pack's and set's hashes);
   `tests/guards/evaluation-records-current.test.ts` recomputes them, so after
@@ -1570,10 +1587,61 @@ closed beta with an explicit operator flag (D5, amended 2026-11-19).
   made only when the session's token budget takes its worst case
   (`compactionCallWorstTokens`) beside the round it serves, stored once
   per session and range; any failure leaves the round uncompacted.
-  `COMPACTION_ON_BY_DEFAULT` is false until 4.4. All three prompts follow D11
+  `COMPACTION_ON_BY_DEFAULT` is true since 4.4 (D30). All three prompts follow D11
   with their own records; after editing a set, prompt or schema, re-run
   `npm run packs:evaluate -- --no-packs --book-level`, and after the question
   prompt, `npm run packs:evaluate` (and `--rephrase`).
+- **Continuous, deep questioning (Phase 4.4; D23, D30).** THE FRONTIER IS ONE
+  GENERATOR AMONG FIVE (`src/lib/interview/generators/`, pure; inputs loaded
+  by `interview-generators.ts`, every read bounded and keyed by the book): the
+  frontier (model-worded by the unchanged QUESTION_PROMPT, the pack fallback
+  behind it), the deepening LADDER (follow-ups on an answered prose field,
+  layer by layer WHAT → WHY → COST → WHO_KNOWS → BREAKS → EDGE_CASES; a layer
+  answered anywhere in the book, or asked in this session, is held — rule 5 —
+  and the depth dial sets how far down, `ladderDepthFor`; its answer deepens
+  that same field through reconcile), RELATIONS (a KIND/BOOK session's relations
+  between two scope elements become subjects when it pinned the relations pack,
+  and PAIRS of the scope's characters and factions with no relation yet, at
+  most `PAIRS_PER_ROUND_MAX` a round, filed under the first element with
+  `pairElementId`; reconcile treats a pair's two elements as relation ends, so
+  an answer may become a NEW_RELATION the author decides), SOURCES (a PENDING,
+  unflagged fact of `bookSourceSet` about a scope element, quoted, yes/no; the
+  round's close decides it through `decideFactInTx`, the one writer of a fact's
+  decision, naming the answer — `decidedByAnswerId` — only while still pending
+  and unflagged; reconcile never reads a source question; a source question
+  whose predicate answers no field targets none, the only question allowed zero
+  targets) and CONTINUITY (pending CONTRADICTED proposals, OPEN threads landing
+  in `THREAD_LANDING_FIELDS`, timeline gaps). Every candidate has a CODE value
+  score (`value.ts`), and `selectCandidates` validates, deduplicates (one per
+  field, fact and basis a round, the higher value winning) and orders them best
+  value first, cut to the round's room; produceRound then deduplicates the
+  wording as ever. The four new generators' questions are WORDED BY CODE
+  (`wording.ts`, origin GENERATOR; the author's quotes verbatim, a `?` inside
+  them full-width; never re-worded — 409 QUESTION_NOT_REPHRASABLE); the stored
+  plan names them by id and field, never their text. A candidate below
+  `MINOR_VALUE_FLOOR` is minor: a round asks only what is above it, and when only
+  minor candidates are left the session PAUSES `VALUE_FELL` (last in the
+  precedence) until the author says go on (`goOn: true` on the next round sets
+  `minorAccepted`); never padding. THE TIE-BREAK (`QUESTION_ORDER_PROMPT`, fast,
+  D11, enforced per-call budget, charged to `chargeModelCalls` and the session's
+  budget) may reorder only the round's first run of near-equal candidates
+  (`tieGroups`); its answer counts only as an exact permutation, else the code's
+  order stands and `metrics.order` says why. SESSION LENGTH is the author's
+  (`session-length.ts`: ROUNDS 1..30, QUESTIONS 1..300, UNTIL_STOPPED; default
+  four rounds); the six-round limit and depth's round table are gone; every
+  session still stops at its token budget, the ceiling, the kill switch, the
+  author and SESSION_LIMIT (one more worst round past `SESSION_QUESTIONS_MAX`);
+  a round of code-worded questions alone needs no model call, so the kill switch
+  and the ceiling do not pause it; a spent question budget is QUESTION_BUDGET,
+  never FRONTIER_EMPTY. On the session page code-worded questions are their own
+  group (`CODE_WORDED_GROUP`), never "the craft guidance". THE HARD REPETITION GATE: a round's persist
+  and a rephrase take `lockBookQuestions` after the session's lock and drop any
+  question the book already holds in those words (`withoutRepeats`, which never
+  fails open). `generatorsOff` is a dial (session, book, workspace, code; at
+  least one on). COMPACTION is ON (`COMPACTION_ON_BY_DEFAULT`), its summary's
+  worst case reserved beside the round (`compactionReserveTokens`) and a share in
+  every budget. After editing the tie-break's set, prompt or schema, re-run
+  `npm run packs:evaluate -- --no-packs --question-order`.
 - **Sanitising author text.** Every author-text write sanitises at the
   usecase layer before it is stored: plain text through `plainLine` /
   `plainBlock` (`src/lib/bible/text.ts`, over `sanitizePlainText`), rich text
