@@ -4,7 +4,7 @@
  * rank alone (one free order per book and kind), never from an act.
  */
 import { detectRuleContradictions, propositionKey, ruleContradiction, type RuleFact } from '@/lib/continuity/rules';
-import { before, NO_ORDER, overlaps, storyClock } from '@/lib/continuity/story-clock';
+import { before, decidedOverlap, NO_ORDER, overlaps, storyClock } from '@/lib/continuity/story-clock';
 
 let n = 0;
 function fact(over: Partial<RuleFact> & Pick<RuleFact, 'predicate' | 'statement'>): RuleFact {
@@ -73,13 +73,34 @@ describe('the rule detectors', () => {
         expect(ruleContradiction(mill, cityLater, clock)).toBeNull();
         const millYard = fact({ predicate: 'LOCATION', statement: 'Wren is in the mill yard.', objectLiteral: 'the mill yard', ownerElementId: 'beat-late' });
         expect(ruleContradiction(mill, millYard, clock)).toBeNull();
+        // Two stated times that agree clash too.
+        const inMay = fact({ predicate: 'LOCATION', statement: 'Wren is at the mill.', objectLiteral: 'the mill', storyTimeFrom: 'May' });
+        expect(ruleContradiction(inMay, { ...city, ownerElementId: null, storyTimeFrom: 'May' })).toBe('WHEREABOUTS');
+    });
+
+    it('WHEREABOUTS (D28 addendum): a place with no time and no position clashes with nothing by rule, dated or not', () => {
+        const undated = fact({ predicate: 'LOCATION', statement: 'Wren is at the mill.', objectLiteral: 'the mill' });
+        const alsoUndated = fact({ predicate: 'LOCATION', statement: 'Wren is in the city.', objectLiteral: 'the city' });
+        const placed = { ...alsoUndated, id: 'placed', ownerElementId: 'beat-late' };
+        const dated = { ...alsoUndated, id: 'dated', storyTimeFrom: 'May' };
+        expect(ruleContradiction(undated, alsoUndated, clock)).toBeNull();
+        expect(ruleContradiction(undated, placed, clock)).toBeNull();
+        expect(ruleContradiction(undated, dated, clock)).toBeNull();
+        // A traveller's many undated whereabouts make no pair at all.
+        const many = Array.from({ length: 50 }, (_, i) => fact({ predicate: 'LOCATION', statement: `Wren is at place ${i}.`, objectLiteral: `place q${String.fromCharCode(97 + (i % 26))}${String.fromCharCode(97 + Math.floor(i / 26))}` }));
+        expect(detectRuleContradictions(many, clock).pairs).toEqual([]);
+        // A position and a stated time in no shared order decide nothing either.
+        expect(decidedOverlap({ ownerElementId: 'beat-late', storyTimeFrom: null, storyTimeTo: null }, { storyTimeFrom: 'May', storyTimeTo: null }, clock)).toBeNull();
     });
 
     it('KNOWLEDGE: opposite polarity about one thing at once, or knowing before not knowing; learning later is not a contradiction', () => {
         const knows = fact({ predicate: 'KNOWLEDGE', statement: 'Wren knows the mill is haunted.' });
         const doesNot = fact({ predicate: 'KNOWLEDGE', statement: 'Wren does not know the mill is haunted.' });
         expect(propositionKey(knows.statement)).toBe(propositionKey(doesNot.statement));
-        expect(ruleContradiction(knows, doesNot)).toBe('KNOWLEDGE');
+        // D28 addendum: undated, the two are left to the deep check; at one stated time they clash.
+        expect(ruleContradiction(knows, doesNot)).toBeNull();
+        expect(ruleContradiction({ ...knows, storyTimeFrom: 'the flood night' }, { ...doesNot, storyTimeFrom: 'the flood night' })).toBe('KNOWLEDGE');
+        expect(ruleContradiction({ ...knows, ownerElementId: 'beat-late' }, { ...doesNot, ownerElementId: 'beat-late' }, clock)).toBe('KNOWLEDGE');
         const knowsEarly = { ...knows, ownerElementId: 'beat-early' };
         const notLate = { ...doesNot, ownerElementId: 'beat-late' };
         expect(ruleContradiction(knowsEarly, notLate, clock)).toBe('KNOWLEDGE');

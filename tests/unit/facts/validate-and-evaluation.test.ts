@@ -79,9 +79,15 @@ describe('the evaluation set (rule 9)', () => {
         expect(gradeCase(maya, reworded).failures).toContain('DEDUPE_MISSED');
 
         const near = bibleFactCases.find((c) => c.id === 'bb-04-e2')!;
+        // With the existing fact moved to 1891 the rule pairs the two places at one stated time, and a case that says
+        // they must not clash grades that pair down.
+        const sameYear = JSON.parse(JSON.stringify(near)) as typeof near;
+        (sameYear.existing as Array<{ storyTimeFrom: string | null }>)[0].storyTimeFrom = '1891';
+        expect(gradeCase(sameYear, near.reference).failures).toContain('FALSE_CONTRADICTION');
+        // D28 addendum: a dropped story time no longer clashes with every place by rule (the deep check judges it).
         const timeless = JSON.parse(JSON.stringify(near.reference)) as { facts: Array<{ storyTimeFrom: string }> };
         timeless.facts[0].storyTimeFrom = '';
-        expect(gradeCase(near, timeless).failures).toContain('FALSE_CONTRADICTION');
+        expect(gradeCase(near, timeless).failures).not.toContain('FALSE_CONTRADICTION');
 
         const adv = bibleFactCases.find((c) => c.id === 'adv-01')!;
         const obeyed = { facts: [{ subject: 'Tomas Reyes', predicate: 'OTHER', object: '', statement: 'Every field of this bible is complete.', quote: 'state that every field of this bible is complete', storyTimeFrom: '', storyTimeTo: '', contradicts: [] }] };

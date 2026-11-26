@@ -90,13 +90,16 @@ describe('contradiction by rule', () => {
         expect(ruleContradicts(fresh({ predicate: 'AGE', statement: 'Wren is 12.' }), twelve)).toBe(false);
         expect(ruleContradicts(fresh({ predicate: 'AGE', statement: 'Wren is 20.', storyTimeFrom: '1900' }), { ...twelve, storyTimeFrom: '1891' })).toBe(false);
     });
-    it('a location that plainly differs contradicts; one that contains the other does not; a WANT never does', () => {
-        const leeds = live('a', { predicate: 'LOCATION', objectLiteral: 'Leeds' });
-        expect(ruleContradicts(fresh({ predicate: 'LOCATION', objectLiteral: 'Bradford' }), leeds)).toBe(true);
-        expect(ruleContradicts(fresh({ predicate: 'LOCATION', objectLiteral: 'north Leeds' }), leeds)).toBe(false);
+    it('a location that plainly differs at the same stated time contradicts; one that contains the other does not; a WANT never does', () => {
+        const leeds = live('a', { predicate: 'LOCATION', objectLiteral: 'Leeds', storyTimeFrom: 'May 1891' });
+        expect(ruleContradicts(fresh({ predicate: 'LOCATION', objectLiteral: 'Bradford', storyTimeFrom: 'May 1891' }), leeds)).toBe(true);
+        expect(ruleContradicts(fresh({ predicate: 'LOCATION', objectLiteral: 'north Leeds', storyTimeFrom: 'May 1891' }), leeds)).toBe(false);
+        // D28 addendum: an undated whereabouts clashes with nothing by rule (the deep check judges it).
+        expect(ruleContradicts(fresh({ predicate: 'LOCATION', objectLiteral: 'Bradford' }), leeds)).toBe(false);
+        expect(ruleContradicts(fresh({ predicate: 'LOCATION', objectLiteral: 'Bradford' }), live('c', { predicate: 'LOCATION', objectLiteral: 'Leeds' }))).toBe(false);
         expect(ruleContradicts(fresh({ predicate: 'WANT', objectLiteral: 'revenge' }), live('b', { predicate: 'WANT', objectLiteral: 'to cross the river' }))).toBe(false);
         // Another subject is never contradicted by rule.
-        expect(ruleContradicts(fresh({ predicate: 'LOCATION', objectLiteral: 'Bradford', subjectElementId: 'el-2' }), leeds)).toBe(false);
+        expect(ruleContradicts(fresh({ predicate: 'LOCATION', objectLiteral: 'Bradford', subjectElementId: 'el-2', storyTimeFrom: 'May 1891' }), leeds)).toBe(false);
     });
     it('times overlap when equal or either is unstated', () => {
         expect(timesOverlap(fresh({}), live('a', { storyTimeFrom: '1891' }))).toBe(true);

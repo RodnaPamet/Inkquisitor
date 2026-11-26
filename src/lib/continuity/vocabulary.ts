@@ -126,10 +126,11 @@ export const CONTINUITY_FACTS_PER_CALL_MIN = 10;
 /** A book's live facts the nightly run reads at most (the rule sweep and the pass's subject list; a cut is counted). */
 export const CONTINUITY_FACTS_READ_MAX = 4_000;
 /**
- * Contradictions one night's rule sweep proposes at most for a book. The rules re-read the whole book every night and
- * skip every pair already proposed, so what is past the bound is proposed on the nights that follow; without it, one
- * subject with a few hundred whereabouts and no story time (unknown overlaps everything) made tens of thousands of
- * pairs, whose writes ran past the transaction's timeout and failed the run every night.
+ * Contradictions one night's rule sweep proposes at most for a book: a SAFETY BOUND. The rules re-read the whole book
+ * every night and skip every pair already proposed, so what is past it is proposed on the nights that follow. It
+ * should rarely bind: since the D28 addendum an undated place or piece of knowledge clashes with nothing by rule (one
+ * subject's few hundred undated whereabouts made tens of thousands of pairs, whose writes ran past the transaction's
+ * timeout); only many facts that all stand at one stated time or position can still reach it.
  */
 export const CONTINUITY_PROPOSALS_PER_RUN_MAX = 1_000;
 /** Books the nightly dispatcher queues at most a night, across workspaces (fair-shared). */

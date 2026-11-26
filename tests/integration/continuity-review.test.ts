@@ -3,7 +3,7 @@
  * PostgreSQL. Each case failed before its fix:
  *
  *   a nightly rule sweep naming tens of thousands of pairs (one subject's many
- *   whereabouts, no story time) ran past PostgreSQL's bind-parameter limit in
+ *   whereabouts at one time) ran past PostgreSQL's bind-parameter limit in
  *   one query, and its writes past the transaction's timeout: the run failed
  *   every night
  *   a rejected thread came back under a reworded title (the key was the title)
@@ -45,7 +45,7 @@ function tag(i: number): string {
 }
 
 describe('the nightly rule sweep at scale', () => {
-    it('a subject whose many whereabouts all clash raises every pair, in queries PostgreSQL accepts', async () => {
+    it('a subject whose many whereabouts all clash at one time raises every pair, in queries PostgreSQL accepts', async () => {
         const ctx = workspaceCtx(await createAccount());
         const bookId = (await createBook(ctx, { title: 'Wanderer' })).id;
         const el = await createElement(ctx, bookId, { kind: 'CHARACTER', name: 'Rook' });
@@ -74,6 +74,8 @@ describe('the nightly rule sweep at scale', () => {
                         quote: statement,
                         quoteStart: 0,
                         quoteEnd: statement.length,
+                        // One stated time for all (D28 addendum: an undated place clashes with nothing by rule).
+                        storyTimeFrom: 'the night of the flood',
                     };
                 }),
             });

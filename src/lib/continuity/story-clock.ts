@@ -101,6 +101,23 @@ export function overlaps(a: ClockFact, b: ClockFact, clock: StoryClock = NO_ORDE
     return textTimesOverlap(a, b);
 }
 
+/**
+ * Do the two facts hold at an overlapping story time, AS FAR AS THEIR TIMES DECIDE IT (D28 addendum)? True or false
+ * when both carry an overlap-decidable time — positions in one order (the same element or not), or stated times on
+ * both (equal or not) — and null when either has neither, or one is placed only in an order the other is not in. A
+ * fact with no time does not overlap everything here: the rules that would pair it with every other fact
+ * (WHEREABOUTS, KNOWLEDGE) leave it to the deep check, which judges it in context.
+ */
+export function decidedOverlap(a: ClockFact, b: ClockFact, clock: StoryClock = NO_ORDER): boolean | null {
+    const pa = clock.positionOf(a);
+    const pb = clock.positionOf(b);
+    if (pa && pb && pa.kind === pb.kind) return pa.elementId === pb.elementId;
+    const ta = timeKey(a.storyTimeFrom) !== null || timeKey(a.storyTimeTo) !== null;
+    const tb = timeKey(b.storyTimeFrom) !== null || timeKey(b.storyTimeTo) !== null;
+    if (!ta || !tb) return null;
+    return textTimesOverlap(a, b);
+}
+
 /** Is `a` strictly before `b` in one order? False when either has no position, or their orders differ. */
 export function before(a: ClockFact, b: ClockFact, clock: StoryClock = NO_ORDER): boolean {
     const pa = clock.positionOf(a);

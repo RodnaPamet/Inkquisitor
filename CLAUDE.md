@@ -1401,7 +1401,8 @@ closed beta with an explicit operator flag (D5, amended 2026-11-19).
   kept) a live fact already holds adds PROVENANCE, never a twin (partial unique
   `StoryFact_one_live_claim`); a new fact contradicting a live one by RULE (an
   AGE, LOCATION, OCCUPATION or PLACE_TYPE that plainly differs at an
-  overlapping story time; never a ROLE or a WANT) or by the MODEL (an existing
+  overlapping story time — since the D28 addendum a LOCATION only when both
+  facts carry a time or a story position; never a ROLE or a WANT) or by the MODEL (an existing
   fact it was shown, same subject element) raises a PROPOSAL; an earlier fact
   of the same entry whose quote is gone raises NO_LONGER_STATED. NOTHING IS
   INVALIDATED by the job (rule 1): the author decides on the Facts page
@@ -1443,8 +1444,13 @@ closed beta with an explicit operator flag (D5, amended 2026-11-19).
   (never a second table): a `kind` (VALUE, WHEREABOUTS, KNOWLEDGE, TIMELINE,
   OTHER) and a basis (RULE, MODEL, DEEP with its `checkRunId`); before and after
   come from the story order's ranks alone (`storyClock`, D25), a text story time
-  second, unknown overlapping everything. The rules (`rules.ts`) need one linked
-  subject element and are narrow; one pair is raised once in either order. The
+  second. The rules (`rules.ts`) need one linked subject element and are narrow;
+  one pair is raised once in either order. WHEREABOUTS and KNOWLEDGE clash only
+  when BOTH facts carry an overlap-decidable time (`decidedOverlap`: a story
+  time, or a position in one order); a fact with neither is the deep check's
+  (D28 addendum, item 2). VALUE keeps "unknown overlaps everything" (few
+  distinct values per subject). `CONTINUITY_PROPOSALS_PER_RUN_MAX` (1,000 a
+  book a night) is a safety bound and should rarely bind. The
   author decides (`bible.edit`): keep the newer (`INVALIDATE`), keep the older
   (`INVALIDATE_NEWER`), both true (`KEEP_BOTH`, an explanation REQUIRED on a
   contradiction, stored as a CONFIRMED `AUTHOR_RESOLUTION` fact naming the
