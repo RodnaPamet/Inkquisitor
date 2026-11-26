@@ -147,6 +147,12 @@ export const CONTINUITY_FACTS_READ_MAX = 4_000;
  * timeout); only many facts that all stand at one stated time or position can still reach it.
  */
 export const CONTINUITY_PROPOSALS_PER_RUN_MAX = 1_000;
+/**
+ * A pass's target is this long before its run's claim: a fact stamped just before the claim may commit just after the
+ * run read the book, and a pass covering through the claim would skip it for ever. Facts inside the margin are covered
+ * by the next pass (the book stays due for them).
+ */
+export const CONTINUITY_PASS_SETTLE_MS = 15 * 60 * 1000;
 /** Books the nightly dispatcher queues at most a night, across workspaces (fair-shared). */
 export const CONTINUITY_DISPATCH_MAX = 500;
 /** A QUEUED or RUNNING run with no sign of life for this long was lost: the next night queues the book again. */

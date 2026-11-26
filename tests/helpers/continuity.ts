@@ -13,6 +13,7 @@ import { answerQuestion } from '@/app-layer/usecases/interview-answers';
 import { createThread } from '@/app-layer/usecases/continuity';
 import { executeContinuityDispatch } from '@/app-layer/usecases/continuity-dispatch';
 import { executeContinuityCheck, type ContinuityCheckDeps } from '@/app-layer/usecases/continuity-check';
+import { CONTINUITY_PASS_SETTLE_MS } from '@/lib/continuity/vocabulary';
 import { runInWorkspaceContext, runWithoutRls } from '@/lib/db/rls-middleware';
 import type { FactExtractor } from '@/lib/sources/extractor';
 import { fakeGenerator } from './fake-question-generator';
@@ -48,14 +49,18 @@ export function threadExtractor(sentence: string, title: string): () => FactExtr
     });
 }
 
-/** Queue and run the nightly check of the workspace's due books (the dispatcher, then each run), the deps given. */
+/**
+ * Queue and run the nightly check of the workspace's due books (the dispatcher, then each run), the deps given. The
+ * night runs, by default, a settle margin (`CONTINUITY_PASS_SETTLE_MS`) after the facts a test has just written, as a
+ * real night runs long after the day's saves; a test about the margin itself passes `now`.
+ */
 export async function runNight(ctx: WorkspaceRequestContext, deps: ContinuityCheckDeps = {}): Promise<Array<string | null>> {
     const queued: string[] = [];
     await executeContinuityDispatch({ enqueue: async (_name, payload) => void queued.push((payload as { runId: string }).runId), workspaceIds: [ctx.workspaceId] });
     const undo = setFakeApiKey();
     try {
         const outcomes: Array<string | null> = [];
-        for (const runId of queued) outcomes.push((await executeContinuityCheck({ workspaceId: ctx.workspaceId, runId }, { charge: () => undefined, gate: () => ({ mounted: true, recordKind: 'structural' }), ...deps })).outcome);
+        for (const runId of queued) outcomes.push((await executeContinuityCheck({ workspaceId: ctx.workspaceId, runId }, { charge: () => undefined, gate: () => ({ mounted: true, recordKind: 'structural' }), now: () => new Date(Date.now() + CONTINUITY_PASS_SETTLE_MS), ...deps })).outcome);
         return outcomes;
     } finally {
         undo();

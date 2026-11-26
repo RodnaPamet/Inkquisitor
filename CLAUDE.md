@@ -1464,6 +1464,9 @@ closed beta with an explicit operator flag (D5, amended 2026-11-19).
   cursor (`kind:id`; never author text in a cursor), each call's worst case
   inside the ENFORCED per-call budget (cut, halved, else `CALL_OVER_BUDGET`),
   each charged to `chargeModelCalls`; the cursor is saved after every call.
+  A pass covers facts stamped up to `CONTINUITY_PASS_SETTLE_MS` (15 min) before
+  its claim, never the claim itself (a fact stamped before it may commit after
+  the read); the rest are the next pass's.
   A workspace's deep calls spend at most `CONTINUITY_NIGHTLY_SHARE` (10 %) of
   its monthly ceiling a night (D28 addendum, item 1): measured from the ledger
   (calls of purpose `continuity.deep-check` charged in the night's window plus

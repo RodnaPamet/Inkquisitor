@@ -34,7 +34,7 @@ import { CLEAN_SCAN } from '../helpers/research';
 import { setFakeApiKey } from '../helpers/fake-anthropic';
 import { ageExtractor, extractPending } from '../helpers/facts';
 import { answerAbout, citeAnswers, runNight, threadExtractor } from '../helpers/continuity';
-import { CONTINUITY_PROPOSALS_PER_RUN_MAX } from '@/lib/continuity/vocabulary';
+import { CONTINUITY_PASS_SETTLE_MS, CONTINUITY_PROPOSALS_PER_RUN_MAX } from '@/lib/continuity/vocabulary';
 import { createAccount, workspaceCtx } from '../helpers/workspaces';
 
 afterAll(() => prisma.$disconnect());
@@ -164,7 +164,7 @@ describe('the nightly check: coverage and fairness', () => {
             const { executeContinuityCheck } = await import('@/app-layer/usecases/continuity-check');
             const undo = setFakeApiKey();
             try {
-                expect((await executeContinuityCheck({ workspaceId: ctx.workspaceId, runId: queued[0] }, { charge: () => undefined, ...refused })).outcome).toBe('NOT_EVALUATED');
+                expect((await executeContinuityCheck({ workspaceId: ctx.workspaceId, runId: queued[0] }, { charge: () => undefined, now: () => new Date(Date.now() + CONTINUITY_PASS_SETTLE_MS), ...refused })).outcome).toBe('NOT_EVALUATED');
             } finally {
                 undo();
             }
@@ -310,5 +310,30 @@ describe('the nightly check: what counts as a call made', () => {
         expect(await last()).toEqual({ outcome: 'CEILING', callsMade: 0, promptVersion: null });
         expect(await runNight(ctx, { checker: failing('PROVIDER_FAILURE') })).toEqual(['CALL_FAILED']);
         expect(await last()).toMatchObject({ outcome: 'CALL_FAILED', callsMade: 1 });
+    });
+});
+
+describe('the nightly check: the pass boundary', () => {
+    it('a fact stamped before a run’s claim but committed after its read is still checked by the next pass', async () => {
+        const ctx = workspaceCtx(await createAccount());
+        const bookId = (await createBook(ctx, { title: 'Boundary' })).id;
+        await createElement(ctx, bookId, { kind: 'CHARACTER', name: 'Ana', summary: 'Ana is 30 years old.' });
+        await extractPending(ctx, bookId, ageExtractor('Ana'));
+        const shown: string[] = [];
+        const seeing = () => ({
+            extract: async (request: { data: ReadonlyArray<{ label: string; text: string }> }) => {
+                shown.push(request.data.find((b) => b.label === 'facts')?.text ?? '');
+                return { ok: true as const, output: { contradictions: [] }, tokensUsed: 1, costMicroUsd: 1, callIds: [] as string[] };
+            },
+        });
+        // The run claims at `claim`; Bea's fact is written after the run read the book, but stamped before its claim
+        // (as a transaction that began earlier and committed later stamps it). Ana's, inside the settle margin too, waits
+        // for the next pass with it (this run finds nothing it may cover yet).
+        const claim = new Date(Date.now() + 60_000);
+        expect(await runNight(ctx, { checker: seeing, now: () => claim })).toEqual(['NOTHING_NEW']);
+        await createElement(ctx, bookId, { kind: 'CHARACTER', name: 'Bea', summary: 'Bea is 40 years old.' });
+        await extractPending(ctx, bookId, ageExtractor('Bea'));
+        expect(await runNight(ctx, { checker: seeing, now: () => new Date(claim.getTime() + 24 * 60 * 60 * 1000) })).toEqual(['OK']);
+        expect(shown.some((t) => t.includes('Bea is 40 years old.'))).toBe(true);
     });
 });

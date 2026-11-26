@@ -71,6 +71,7 @@ import {
     CONTINUITY_FACTS_READ_MAX,
     CONTINUITY_LIST_MAX,
     CONTINUITY_NIGHT_WINDOW_MS,
+    CONTINUITY_PASS_SETTLE_MS,
     CONTINUITY_NIGHTLY_SHARE,
     CONTINUITY_PROPOSALS_PER_RUN_MAX,
     type ContinuityOutcome,
@@ -306,7 +307,11 @@ export async function executeContinuityCheck(payload: { workspaceId: string; run
     metrics.factsCut = claimed.facts.length > CONTINUITY_FACTS_READ_MAX;
     const facts = claimed.facts.slice(0, CONTINUITY_FACTS_READ_MAX);
     counts.factsRead = facts.length;
-    const passTarget = state.passTarget ?? claim;
+    // A new pass covers facts stamped up to a moment SETTLED before the claim, never the claim itself: a fact is stamped
+    // when its transaction writes it and seen only once that commits, so one stamped just before the claim may commit
+    // just after this read; covered through the claim, it would be skipped for ever (and discovery would never queue
+    // the book for it). Facts inside the margin are read now and covered by the next pass.
+    const passTarget = state.passTarget ?? new Date(claim.getTime() - CONTINUITY_PASS_SETTLE_MS);
     const keep = { passTarget: state.passTarget, passCursor: state.passCursor };
 
     try {
