@@ -187,7 +187,11 @@ actually left.
 | tldraw (tldraw Inc., `cdn.tldraw.com`) | One request for its watermark-tracking image (`TLDRAW_WATERMARK_TRACK_URL`, `src/lib/security/csp.ts`): the visitor's **IP address** and the product's **domain name** (the `Referer`, cut to the origin by `Referrer-Policy`), and the browser's ordinary request headers. **No author text, map content or account data**: the request is a fixed URL with no query. The CSP admits that one URL in `connect-src` and nothing else of the host (decision D20); fonts, icons and the translation are served from our own origin | Each time a story map opens on an https deployment (tldraw's licence manager, since tldraw 3.x is used unlicensed with its watermark, D1) |
 
 Embeddings are computed in the deployment (self-hosted TEI, subphase 2.0): no
-external embedding provider receives author text.
+external embedding provider receives author text. A vector is a derivative of
+an encrypted-at-rest column (a question, an answer, a passage, an element's
+name and summary, a fact's statement), stored with no text and deleted with
+its source row (`docs/rls-workspace-isolation.md`, "Vectors are derivatives of
+encrypted text", Phase 4.H-a).
 
 ## Privacy page draft (research)
 

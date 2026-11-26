@@ -257,7 +257,9 @@ model Question {
   replacedBy Question?        @relation("QuestionRephrase")
   answers    Answer[]
   pairElement BibleElement?   @relation("QuestionPairElement", fields: [bookId, pairElementId], references: [bookId, id], onDelete: Cascade)
-  storyFact  StoryFact?       @relation("QuestionStoryFact", fields: [storyFactId], references: [id], onDelete: SetNull)
+  /// 4.H-a (#66 item 4): a composite key, like every cross-row key; the migration's action is
+  /// `ON DELETE SET NULL ("storyFactId")` (only the id column), which Prisma cannot spell, so NoAction here.
+  storyFact  StoryFact?       @relation("QuestionStoryFact", fields: [workspaceId, storyFactId], references: [workspaceId, id], onDelete: NoAction)
 
   @@unique([roundId, position])
   @@unique([workspaceId, sessionId, id])
@@ -271,8 +273,8 @@ model Question {
   @@index([workspaceId, bookId, dedupeKey])
   /// Phase 4.4: a pair's questions (and the foreign key's index).
   @@index([bookId, pairElementId])
-  /// Phase 4.4: the questions that asked about a fact (the foreign key's SET NULL).
-  @@index([storyFactId])
+  /// Phase 4.4: the questions that asked about a fact (the foreign key's SET NULL; composite since 4.H-a).
+  @@index([workspaceId, storyFactId])
 }
 
 /// What the author did with a question. Append-only (trigger): a re-answer
@@ -307,6 +309,8 @@ model Answer {
   @@unique([questionId, revision])
   /// An answer by id within its session: what a citation's foreign key names (Phase 2.5).
   @@unique([workspaceId, sessionId, id])
+  /// An answer by id within its workspace: what a source fact's decision names (4.H-a, #66 item 4).
+  @@unique([workspaceId, id])
   @@index([workspaceId, sessionId, questionId])
   @@index([answeredById])
 }

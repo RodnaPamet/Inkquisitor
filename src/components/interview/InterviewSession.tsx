@@ -291,12 +291,16 @@ export function InterviewSession(props: InterviewSessionProps) {
     const targetElementId = session?.targetElementId ?? (initial.kind === 'start' && initial.target.scope === 'ELEMENT' ? initial.target.elementId : null);
     const targetKind = session?.targetKind ?? (initial.kind === 'start' && initial.target.scope === 'KIND' ? initial.target.kind : null);
     const pendingSubject = elements.find((e) => e.pending)?.pending;
+    // Phase 4.2's "Grill me on what changed" (a SELECTION of one element from a stale flag) has its own heading (4.H-a, #62 item 5).
+    const staleGrill = !!(session?.staleFlagId ?? (initial.kind === 'start' && initial.target.scope === 'SELECTION' ? initial.target.staleFlagId : null));
     const title =
         scope === 'ELEMENT'
             ? t('titleElement', { name: (targetElementId && byId.get(targetElementId)?.name) || tScope('unknownElement') })
             : scope === 'KIND' && targetKind
               ? t('titleKind', { kind: kindLabels[targetKind] })
-              : scope === 'SELECTION'
+              : scope === 'SELECTION' && staleGrill
+                ? t('titleStale', { name: elements.find((e) => !e.pending)?.name || tScope('unknownElement') })
+                : scope === 'SELECTION'
                 ? t('titleSelection', { count: elements.length })
                 : scope === 'BETWEEN'
                   ? t('titleBetween', { a: pendingSubject?.afterName ?? tScope('unknownElement'), b: pendingSubject?.beforeName ?? tScope('unknownElement') })

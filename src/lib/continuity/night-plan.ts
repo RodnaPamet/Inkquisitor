@@ -48,6 +48,8 @@ export interface NightPlan<F extends PlannedFact> {
     cut: number;
     /** A subject no call can carry inside the budget: the night stops there. */
     overBudget: boolean;
+    /** That subject's key (4.H-a: what is passed over once it has failed `CONTINUITY_PAGE_FAILURES_MAX` nights), or null. */
+    blockedKey: string | null;
 }
 
 /**
@@ -75,6 +77,7 @@ export function planNight<F extends PlannedFact>(input: {
     let i = 0;
     let cut = 0;
     let overBudget = false;
+    let blockedKey: string | null = null;
     while (calls.length < input.maxCalls && i < pending.length) {
         let keys: string[] = [];
         let facts: F[] = [];
@@ -112,6 +115,7 @@ export function planNight<F extends PlannedFact>(input: {
         }
         if (overBudget) {
             i = start;
+            blockedKey = pending[start].key;
             break;
         }
         const s = pending[i - 1];
@@ -126,5 +130,6 @@ export function planNight<F extends PlannedFact>(input: {
         remaining: pending.length - coveredKeys.length,
         cut,
         overBudget,
+        blockedKey,
     };
 }

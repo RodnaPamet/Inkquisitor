@@ -64,7 +64,7 @@ import { MINOR_VALUE_FLOOR } from '@/lib/interview/generators/value';
 import { compactedThrough, compactionSkip, DEFAULT_COMPACTION, summaryRequestBlocks } from '@/lib/interview/compaction';
 import { compactionCallWorstTokens } from '@/lib/interview/compaction-seam';
 import { relationFieldDefs } from '@/lib/bible/templates';
-import { loadGeneratorInputs } from './interview-generators';
+import { fieldHoldsFor, loadGeneratorInputs } from './interview-generators';
 import { STALE_CHALLENGES_MAX } from '@/lib/continuity/vocabulary';
 import { QUESTION_PROMPT_VERSION } from '@/lib/interview/prompt';
 import { produceRound, TOKENS_PER_CALL_REPORT_MAX, type PlannedQuestion, type RoundObserver, type RoundOutput } from '@/lib/interview/round';
@@ -484,7 +484,7 @@ export async function claimRound(
         sessionId: session.id,
         number: roundNumber,
         promptVersion: QUESTION_PROMPT_VERSION,
-        plan: storedPlan(plan, frontier, selection),
+        plan: storedPlan(plan, frontier, selection, planned.inputs.historyCut === true),
     });
     if (session.status !== 'ACTIVE') {
         // Resuming a paused session: it is active again, and its stop is history.
@@ -502,7 +502,7 @@ export async function claimRound(
  * The plan as the round row stores it: field references, levels, generators, value scores and ids — never a
  * code-worded question's text, which quotes the author (Phase 4.4).
  */
-export function storedPlan(plan: RoundPlan, frontier: FrontierResult, selection: Selection): Prisma.InputJsonValue {
+export function storedPlan(plan: RoundPlan, frontier: FrontierResult, selection: Selection, historyCut = false): Prisma.InputJsonValue {
     return {
         cap: plan.cap,
         targets: plan.targets.map((t) => ({ elementId: t.elementId, fieldKey: t.fieldKey, level: t.level, personaKey: t.personaKey, generator: t.generator ?? 'FRONTIER', value: t.value ?? null })),
@@ -521,6 +521,8 @@ export function storedPlan(plan: RoundPlan, frontier: FrontierResult, selection:
         frontierSize: frontier.frontier.length,
         blocked: frontier.blocked.length,
         generators: { proposed: selection.proposed, refused: selection.refused, duplicates: selection.duplicates, remaining: selection.remaining, minor: selection.minor, held: selection.held },
+        // 4.H-a (#66 item 6): the ladder's and pairs' history was cut at its ceiling, so neither asked (named, never silent).
+        ...(historyCut ? { historyCut: true } : {}),
     } as unknown as Prisma.InputJsonValue;
 }
 
@@ -867,7 +869,17 @@ async function stillAskable(db: PrismaTx, ctx: WorkspaceRequestContext, session:
     const liveElements = pairIds.length > 0 ? new Set((await BibleElementRepository.listByIds(db, ctx.workspaceId, session.bookId, pairIds)).map((e) => e.id)) : new Set<string>();
     const related = new Set<string>();
     if (pairIds.length > 0) for (const r of await BibleRelationRepository.listBetween(db, ctx.workspaceId, session.bookId, pairIds, PAIR_PERSIST_RELATIONS_READ)) related.add([r.fromElementId, r.toElementId].sort().join('\u0000'));
+    // HOLD FOLLOW-UPS, read again at persist (4.H-a, #66 item 2): a proposal another session raised while this round was
+    // being worded holds its field too; a question about a held field is not asked.
+    const holdIds = { elementIds: new Set<string>(), relationIds: new Set<string>() };
+    for (const q of questions) {
+        if (q.elementId === PENDING_SUBJECT_ID || pairOfSubject(q.elementId)) continue;
+        if (subjects.get(q.elementId)?.relation) holdIds.relationIds.add(q.elementId);
+        else holdIds.elementIds.add(q.elementId);
+    }
+    const holds = await fieldHoldsFor(db, ctx, session.bookId, { elementIds: [...holdIds.elementIds], relationIds: [...holdIds.relationIds], pairs });
     return questions.filter((q) => {
+        if (q.targetsFieldKeys.some((k) => holds.has(refKey({ elementId: q.elementId, fieldKey: k })))) return false;
         const g = q.generated;
         if (g?.generator === 'SOURCES') return !!g.storyFactId && pendingFacts.has(g.storyFactId) && subjects.has(q.elementId);
         if (g?.generator === 'RELATIONS' && g.pairElementId) {
@@ -922,7 +934,14 @@ async function withoutRepeats(
         const dedupeKey = questionDedupeKey(dedupeTokens(sanitiseQuestionForStorage(q), textCtx));
         return { q, dedupeKey, key: exactKey(q.elementId, dedupeKey) };
     });
-    const probes = keyed.filter((k) => k.q.elementId !== PENDING_SUBJECT_ID).map(({ q, dedupeKey }) => repeatProbe(q.elementId, dedupeKey, relationIds));
+    // 4.H-a (#66 item 3): a question about the BETWEEN slot's beat not yet created is held to the session's earlier
+    // questions about it in the database too (filed under the slot's anchor, `aboutPending`), never the in-memory
+    // deduplication alone.
+    const probes = keyed.map(({ q, dedupeKey }) =>
+        q.elementId === PENDING_SUBJECT_ID
+            ? { elementId: session.slotAfterElementId ?? '', dedupeKey, pendingIn: { sessionId: session.id } }
+            : repeatProbe(q.elementId, dedupeKey, relationIds),
+    );
     const held = new Set((await QuestionRepository.findExactRepeats(db, ctx.workspaceId, session.bookId, probes)).map((r) => exactKey(r.elementId, r.dedupeKey)));
     const seen = new Set<string>();
     return keyed.filter(({ key }) => {

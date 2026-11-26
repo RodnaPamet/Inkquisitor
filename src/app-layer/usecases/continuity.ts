@@ -33,7 +33,7 @@
 import type { WorkspaceRequestContext } from '@/app-layer/types';
 import { logEvent } from '@/app-layer/events/audit';
 import { assertPermission } from '@/app-layer/policies/permission.policy';
-import { BibleElementRepository } from '@/app-layer/repositories/bible.repository';
+import { BibleElementRepository, BibleRelationRepository } from '@/app-layer/repositories/bible.repository';
 import {
     ContinuityCheckRepository,
     ContinuityFactRepository,
@@ -85,11 +85,20 @@ export interface ThreadProposalView {
     createdAt: string;
 }
 
+/** Relations read to tell whether a "decide later" pair has been related since (4.H-a). */
+const DECIDE_LATER_PAIR_RELATIONS_READ = 500;
+
 export interface DecideLaterView {
     answerId: string;
     sessionId: string;
     elementId: string;
     elementName: string | null;
+    /**
+     * 4.H-a (#66 item 5): a question about a PAIR with no relation yet (4.4's relations generator) names the pair —
+     * this is its second element — and is open while the two still hold no relation; it carries no field of either
+     * element (`fieldKeys` is empty).
+     */
+    pair: { elementId: string; elementName: string | null } | null;
     fieldKeys: string[];
     question: string;
     answeredAt: string;
@@ -127,6 +136,15 @@ export interface ContinuityPage {
         coveredThrough: string | null;
         /** A pass is under way (it goes on the next night). */
         passUnderWay: boolean;
+        /**
+         * 4.H-a (#62 item 1): the last run read only the first `CONTINUITY_FACTS_READ_MAX` of the book's live facts — the
+         * rest were not checked, so no pass over this book is ever reported complete while it holds more.
+         */
+        factsCut: boolean;
+        /** 4.H-a (#62 item 3): subjects of the pass (or the last complete one) passed over unchecked: a page that failed night after night, or one the guard refused. */
+        parkedSubjects: number;
+        /** Every live fact checked: a complete pass, nothing cut, nothing passed over (rule 6: never claimed otherwise). */
+        complete: boolean;
     };
 }
 
@@ -167,7 +185,7 @@ export async function getContinuityPage(ctx: WorkspaceRequestContext, bookId: st
         const elementIds = [
             ...threadsShown.map((t) => t.subjectElementId),
             ...proposalsShown.map((p) => p.subjectElementId),
-            ...later.rows.map((r) => r.question.elementId),
+            ...later.rows.flatMap((r) => [r.question.elementId, r.question.pairElementId]),
             ...standing.flatMap((f) => [f.elementId, f.upstreamElementId]),
         ].filter((x): x is string => !!x);
         const names = new Map((await BibleElementRepository.listByIds(db, ctx.workspaceId, bookId, [...new Set(elementIds)])).map((e) => [e.id, e.name] as const));
@@ -189,21 +207,34 @@ export async function getContinuityPage(ctx: WorkspaceRequestContext, bookId: st
         const latest = new Map<string, number>();
         for (const r of later.revisions) latest.set(r.questionId, Math.max(latest.get(r.questionId) ?? 0, r.revision));
         const open = later.rows.slice(0, CONTINUITY_LIST_MAX).filter((r) => latest.get(r.questionId) === r.revision && !r.question.relationId);
-        const stored = await storedTextOf(db, ctx, [...new Set(open.map((r) => r.question.elementId))]);
+        const stored = await storedTextOf(db, ctx, [...new Set(open.filter((r) => !r.question.pairElementId).map((r) => r.question.elementId))]);
+        // A pair question (4.H-a, #66 item 5) is open while its two elements still hold no relation: its fields are the
+        // relation's to come, never the first element's.
+        const pairIds = [...new Set(open.flatMap((r) => (r.question.pairElementId ? [r.question.elementId, r.question.pairElementId] : [])))];
+        const related = new Set<string>();
+        if (pairIds.length > 0) for (const rel of await BibleRelationRepository.listBetween(db, ctx.workspaceId, bookId, pairIds, DECIDE_LATER_PAIR_RELATIONS_READ)) related.add([rel.fromElementId, rel.toElementId].sort().join('\u0000'));
+        const stillOpen = (r: (typeof open)[number]): boolean => {
+            const q = r.question;
+            if (q.pairElementId) return names.has(q.elementId) && names.has(q.pairElementId) && !related.has([q.elementId, q.pairElementId].sort().join('\u0000'));
+            return q.targetsFieldKeys.some((k) => !stored.get(q.elementId)?.has(k));
+        };
         const decideLater: DecideLaterView[] = open
-            .filter((r) => r.question.targetsFieldKeys.some((k) => !stored.get(r.question.elementId)?.has(k)))
+            .filter(stillOpen)
             .map((r) => ({
                 answerId: r.id,
                 sessionId: r.sessionId,
                 elementId: r.question.elementId,
                 elementName: names.get(r.question.elementId) ?? null,
-                fieldKeys: r.question.targetsFieldKeys,
+                pair: r.question.pairElementId ? { elementId: r.question.pairElementId, elementName: names.get(r.question.pairElementId) ?? null } : null,
+                fieldKeys: r.question.pairElementId ? [] : r.question.targetsFieldKeys,
                 question: r.question.text,
                 answeredAt: r.createdAt.toISOString(),
             }));
 
         const check = await ContinuityCheckRepository.find(db, ctx.workspaceId, bookId);
         const last = await ContinuityRunRepository.lastFinished(db, ctx.workspaceId, bookId);
+        // 4.H-a (#62 item 1): a run that read a cut set of facts says so (its metrics), and so does the page.
+        const factsCut = !!last && typeof last.metrics === 'object' && last.metrics !== null && (last.metrics as { factsCut?: unknown }).factsCut === true;
         return {
             assessed: liveFacts > 0,
             liveFacts,
@@ -250,6 +281,9 @@ export async function getContinuityPage(ctx: WorkspaceRequestContext, bookId: st
                 factsRead: last?.factsRead ?? 0,
                 coveredThrough: check?.coveredThrough?.toISOString() ?? null,
                 passUnderWay: !!check?.passTarget,
+                factsCut,
+                parkedSubjects: check?.parkedSubjects ?? 0,
+                complete: !!check?.coveredThrough && !check.passTarget && !factsCut && (check.parkedSubjects ?? 0) === 0 && liveFacts > 0,
             },
         };
     });

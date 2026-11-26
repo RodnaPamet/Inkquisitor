@@ -6,6 +6,8 @@
  *   api.request.errors     Counter   (http.method, http.route, error.code)
  *   job.execution.count    Counter   (job.name, job.status)
  *   job.execution.duration Histogram (job.name, job.status) [ms]
+ *   job.workspace.skipped  Counter   (job.name, error.code): one workspace a
+ *                          multi-workspace job could not serve (4.H-a)
  *
  * Instruments are created lazily so the global MeterProvider can be installed
  * first; before `initTelemetry()` they are the API's no-op instruments.
@@ -42,6 +44,7 @@ let requestDuration: Histogram | null = null;
 let requestErrors: Counter | null = null;
 let jobCount: Counter | null = null;
 let jobDuration: Histogram | null = null;
+let jobWorkspaceSkipped: Counter | null = null;
 
 export function recordRequestMetrics(attrs: { method: string; route: string; status: number; durationMs: number }): void {
     requestCount ??= getMeter().createCounter('api.request.count', { description: 'API requests', unit: '1' });
@@ -70,4 +73,14 @@ export function recordJobMetrics(attrs: { jobName: string; success: boolean; dur
     const labels = { 'job.name': attrs.jobName, 'job.status': attrs.success ? 'success' : 'failure' };
     jobCount.add(1, labels);
     jobDuration.record(attrs.durationMs, labels);
+}
+
+/**
+ * A job that serves many workspaces (a dispatcher) skipped one it could not
+ * serve, and went on with the rest (4.H-a). The workspace id is a log field,
+ * never a label (cardinality, above).
+ */
+export function recordJobWorkspaceSkipped(attrs: { jobName: string; code: string }): void {
+    jobWorkspaceSkipped ??= getMeter().createCounter('job.workspace.skipped', { description: 'Workspaces a multi-workspace job skipped', unit: '1' });
+    jobWorkspaceSkipped.add(1, { 'job.name': attrs.jobName, 'error.code': attrs.code });
 }

@@ -189,7 +189,9 @@ describe('bible facts count at once, and extraction is idempotent', () => {
             provenance: await db.storyFactProvenance.count({ where: { workspaceId: ctx.workspaceId } }),
             proposals: await db.storyFactProposal.count({ where: { workspaceId: ctx.workspaceId } }),
         }));
-        expect(counts.provenance).toBe(facts.length);
+        // 4.H-a (roadmap item 1): nothing at all — 4.1 pinned one provenance row a fact here, each naming the very
+        // version that first stated it, which the re-run had written.
+        expect(counts.provenance).toBe(0);
         expect(counts.proposals).toBe(0);
         // And a DONE row is never claimed again.
         expect((await executeBibleFactExtraction({ workspaceId: ctx.workspaceId, extractionId: done.id }, { extractor: () => stubExtractor(ctx) })).ran).toBe(false);

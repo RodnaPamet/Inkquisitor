@@ -94,6 +94,12 @@ function referenceAnswer(c: ContinuityEvalCase): ContinuityRecord['answers'][num
     return { caseId: c.id, output: c.reference };
 }
 
+/** Does this case's reference answer name at least one contradiction? */
+function referenceNamesSomething(c: ContinuityEvalCase): boolean {
+    const r = c.reference as { contradictions?: unknown } | null;
+    return Array.isArray(r?.contradictions) && r.contradictions.length > 0;
+}
+
 export function checkContinuityRecord(raw: unknown): ContinuityRecordCheck {
     const parsed = ContinuityRecordSchema.safeParse(raw);
     if (!parsed.success) return { ok: false, reason: 'MALFORMED', detail: parsed.error.issues.map((i) => i.path.join('.')).join(', ') };
@@ -104,11 +110,22 @@ export function checkContinuityRecord(raw: unknown): ContinuityRecordCheck {
     const byCase = new Map(record.answers.map((a) => [a.caseId, a] as const));
     const missing = continuityCases.filter((c) => !byCase.has(c.id)).map((c) => c.id);
     if (missing.length > 0) return { ok: false, reason: 'CASES_MISSING', detail: missing.join(', ') };
+    // A model that finds nothing where the reference finds nothing (cc-05) answers exactly as the reference does: one
+    // coinciding case is what a faithful model does (2.5's rule, 4.3's stress test; #63). A model record is refused only
+    // when EVERY case whose reference names a contradiction holds the reference answer.
+    let named = 0;
+    let coinciding = 0;
     for (const c of continuityCases) {
         const recorded = JSON.stringify(byCase.get(c.id));
         const reference = JSON.stringify(referenceAnswer(c));
         if (record.generator.kind === 'structural' && recorded !== reference) return { ok: false, reason: 'STRUCTURAL_MISMATCH', detail: c.id };
-        if (record.generator.kind === 'model' && recorded === reference) return { ok: false, reason: 'STRUCTURAL_OUTPUT_AS_MODEL', detail: c.id };
+        if (referenceNamesSomething(c)) {
+            named++;
+            if (recorded === reference) coinciding++;
+        }
+    }
+    if (record.generator.kind === 'model' && named > 0 && coinciding === named) {
+        return { ok: false, reason: 'STRUCTURAL_OUTPUT_AS_MODEL', detail: 'every case with a contradiction holds the reference checker\'s answer, recorded as a model\'s' };
     }
     const grades = continuityCases.map((c) => gradeContinuityCase(c, byCase.get(c.id)!.output));
     const failed = grades.filter((g) => !g.passed);

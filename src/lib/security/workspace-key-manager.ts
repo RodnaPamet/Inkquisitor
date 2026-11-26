@@ -26,6 +26,24 @@ import { unwrapDek, type WorkspaceDek } from './workspace-keys';
 const MAX_CACHE_SIZE = 1000;
 const NO_PREVIOUS_TTL_MS = 30_000;
 
+/**
+ * A workspace's data key is missing or cannot be unwrapped (a corrupted
+ * `encryptedDek`, a master key that does not match it). Typed so a job that
+ * serves many workspaces can tell this workspace's failure from its own and
+ * skip it (4.H-a): `code` is what the job logs and counts. Its message names
+ * the workspace id only, never a key.
+ */
+export class WorkspaceKeyUnavailableError extends Error {
+    readonly code = 'WORKSPACE_KEY_UNAVAILABLE';
+    constructor(
+        readonly workspaceId: string,
+        readonly reason: 'NO_KEY' | 'UNWRAP_FAILED',
+    ) {
+        super(`The data key of workspace ${workspaceId} cannot be read (${reason}).`);
+        this.name = 'WorkspaceKeyUnavailableError';
+    }
+}
+
 export interface WorkspaceKeyManager {
     /** The workspace's DEK. Throws when the workspace or its key is missing. */
     getDek(workspaceId: string): Promise<WorkspaceDek>;
@@ -63,8 +81,13 @@ export function createWorkspaceKeyManager(client: KeyReader): WorkspaceKeyManage
                 select: { encryptedDek: true },
             });
             if (!row) throw new Error(`getDek: workspace ${workspaceId} not found`);
-            if (!row.encryptedDek) throw new Error(`getDek: workspace ${workspaceId} has no data key`);
-            const dek = unwrapDek(row.encryptedDek);
+            if (!row.encryptedDek) throw new WorkspaceKeyUnavailableError(workspaceId, 'NO_KEY');
+            let dek: WorkspaceDek;
+            try {
+                dek = unwrapDek(row.encryptedDek);
+            } catch {
+                throw new WorkspaceKeyUnavailableError(workspaceId, 'UNWRAP_FAILED');
+            }
             boundedSet(primary, workspaceId, dek);
             return dek;
         },

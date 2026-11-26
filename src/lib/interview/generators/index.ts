@@ -143,6 +143,11 @@ export interface GeneratorInput {
      * PENDING. No generator asks about one until the author decides it (`selectCandidates`' `held`).
      */
     heldByProposals?: ReadonlySet<string>;
+    /**
+     * 4.H-a (#66 item 6): the book's ladder and pair history was cut at its read's ceiling. The ladder and the pair
+     * questions then ask nothing: a layer or angle in the unread part cannot be proved unanswered (rule 5).
+     */
+    historyCut?: boolean;
 }
 
 export { ladderDepthFor };
@@ -177,7 +182,7 @@ function frontierCandidates(input: GeneratorInput): TargetCandidate[] {
 }
 
 function ladderCandidates(input: GeneratorInput): TargetCandidate[] {
-    if (!input.enabled.has('LADDER') || !kindsAllowed(input.detail).includes('OPEN')) return [];
+    if (!input.enabled.has('LADDER') || input.historyCut || !kindsAllowed(input.detail).includes('OPEN')) return [];
     const layers = LADDER_LAYERS.slice(0, ladderDepthFor(input.depth));
     const satisfied = new Set([...input.frontier.answered.map(refKey), ...input.frontier.answeredInSession.map(refKey)]);
     const levelOf = new Map([...input.frontier.answered.map((a) => [refKey(a), a.level] as const)]);
@@ -210,7 +215,7 @@ function ladderCandidates(input: GeneratorInput): TargetCandidate[] {
 }
 
 function pairCandidates(input: GeneratorInput): TargetCandidate[] {
-    if (!input.enabled.has('RELATIONS') || !kindsAllowed(input.detail).includes('OPEN')) return [];
+    if (!input.enabled.has('RELATIONS') || input.historyCut || !kindsAllowed(input.detail).includes('OPEN')) return [];
     const out: TargetCandidate[] = [];
     for (const p of input.pairs) {
         for (const angle of PAIR_ANGLES) {

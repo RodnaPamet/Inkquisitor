@@ -225,7 +225,8 @@ model StoryFact {
   subjectElement  BibleElement?         @relation("StoryFactSubject", fields: [subjectElementId], references: [id], onDelete: SetNull)
   objectElement   BibleElement?         @relation("StoryFactObject", fields: [objectElementId], references: [id], onDelete: SetNull)
   decidedBy       User?                 @relation("StoryFactDecidedBy", fields: [decidedById], references: [id], onDelete: SetNull)
-  decidedByAnswer Answer?               @relation("StoryFactDecidedByAnswer", fields: [decidedByAnswerId], references: [id], onDelete: SetNull)
+  /// 4.H-a (#66 item 4): composite; the migration's action is `ON DELETE SET NULL ("decidedByAnswerId")`.
+  decidedByAnswer Answer?               @relation("StoryFactDecidedByAnswer", fields: [workspaceId, decidedByAnswerId], references: [workspaceId, id], onDelete: NoAction)
   /// Phase 4.4: source questions that asked about it.
   questions       Question[]            @relation("QuestionStoryFact")
   invalidatedBy   StoryFact?            @relation("StoryFactInvalidatedBy", fields: [invalidatedByFactId], references: [id], onDelete: SetNull)
@@ -237,8 +238,8 @@ model StoryFact {
   proposalsAsNewer StoryFactProposal[]  @relation("StoryFactProposalNewer")
 
   @@unique([workspaceId, id])
-  /// Phase 4.4: the foreign key's index (an answer's deletion sets it NULL).
-  @@index([decidedByAnswerId])
+  /// Phase 4.4: the foreign key's index (an answer's deletion sets it NULL; composite since 4.H-a).
+  @@index([workspaceId, decidedByAnswerId])
   /// A source's facts by status, in chunk order (the Facts page).
   @@index([workspaceId, sourceId, status, chunkId, position])
   /// A chunk's facts.

@@ -20,12 +20,15 @@
  *
  * Discovery is the one read outside row-level security
  * (`fact-layer-discovery`: ids only); every write is in its workspace's own
- * context. Bounded per tick on both sides.
+ * context. Bounded per tick on both sides. A workspace that cannot be served
+ * (its data key will not unwrap, a write fails) is skipped, logged with its id
+ * and a code and counted (`servedWorkspace`, 4.H-a); the others are served.
  */
 import { randomUUID } from 'node:crypto';
 import { EmbeddingSourceRepository, EmbeddingTaskRepository, FactExtractionRepository } from '@/app-layer/repositories/fact-layer.repository';
 import { getVectorRepository, type VectorRecord } from '@/app-layer/repositories/vector.repository';
 import type { JobName, JobPayload } from '@/app-layer/jobs/types';
+import { servedWorkspace } from '@/app-layer/jobs/workspace-isolation';
 import { getEmbeddingProvider, MAX_EMBED_BATCH, vectorContentHash, type EmbeddingProvider } from '@/lib/ai/embeddings';
 import { decodeFieldValue, type FieldValue } from '@/lib/bible/field-values';
 import { plainBlock } from '@/lib/bible/text';
@@ -71,6 +74,8 @@ export interface DispatchResult {
     embedded: number;
     embedDropped: number;
     embedFailed: number;
+    /** 4.H-a: workspaces this tick could not serve (logged and counted; the others were served). */
+    workspacesSkipped: number;
 }
 
 function defaultExtractionOpen(): boolean {
@@ -80,7 +85,7 @@ function defaultExtractionOpen(): boolean {
 /** Run one tick (the job's body). */
 export async function executeFactLayerDispatch(deps: DispatchDeps = {}): Promise<DispatchResult> {
     const now = (deps.now ?? (() => new Date()))();
-    const result: DispatchResult = { queued: 0, enqueueFailed: 0, deferredAtCeiling: 0, extractionClosed: false, embedded: 0, embedDropped: 0, embedFailed: 0 };
+    const result: DispatchResult = { queued: 0, enqueueFailed: 0, deferredAtCeiling: 0, extractionClosed: false, embedded: 0, embedDropped: 0, embedFailed: 0, workspacesSkipped: 0 };
     const enqueue = deps.enqueue ?? (async (name, payload, options) => (await import('@/app-layer/jobs/queue')).enqueue(name, payload, options));
 
     // ── Extractions ──
@@ -94,7 +99,7 @@ export async function executeFactLayerDispatch(deps: DispatchDeps = {}): Promise
         const floor = (deps.callFloorMicroUsd ?? bibleFactsCallFloor)();
         for (const [workspaceId, rows] of byWorkspace) {
             const scope = { workspaceId, requestId: randomUUID() };
-            const marked = await runInWorkspaceContext(scope, async (db) => {
+            const marked = await servedWorkspace('fact-layer-dispatch', { workspaceId, step: 'extractions' }, () => runInWorkspaceContext(scope, async (db) => {
                 // AT THE CEILING, WAIT (owner decision, 2026-11-21): the month's own ledger (settled spend, live
                 // reservations and the least a call costs at worst) is asked BEFORE anything is queued. With no room,
                 // nothing of the workspace is queued: its due rows wait STOPPED CEILING until a later tick finds room —
@@ -107,7 +112,11 @@ export async function executeFactLayerDispatch(deps: DispatchDeps = {}): Promise
                 const out: Array<{ id: string; attempt: number }> = [];
                 for (const r of rows) if (await FactExtractionRepository.markQueued(db, workspaceId, r.id, now, window)) out.push({ id: r.id, attempt: r.attempts + 1 });
                 return out;
-            });
+            }));
+            if (marked === null) {
+                result.workspacesSkipped++;
+                continue;
+            }
             for (const m of marked) {
                 try {
                     await enqueue('bible-facts', { workspaceId, extractionId: m.id }, { jobId: `bible-facts-${m.id}-${m.attempt}` });
@@ -129,7 +138,11 @@ export async function executeFactLayerDispatch(deps: DispatchDeps = {}): Promise
     let budget = DISPATCH_EMBEDDINGS_MAX;
     for (const workspaceId of workspaces) {
         if (budget <= 0) break;
-        const done = await embedWorkspaceTasks(workspaceId, provider, Math.min(budget, MAX_EMBED_BATCH));
+        const done = await servedWorkspace('fact-layer-dispatch', { workspaceId, step: 'embeddings' }, () => embedWorkspaceTasks(workspaceId, provider, Math.min(budget, MAX_EMBED_BATCH)));
+        if (done === null) {
+            result.workspacesSkipped++;
+            continue;
+        }
         budget -= done.seen;
         result.embedded += done.embedded;
         result.embedDropped += done.dropped;

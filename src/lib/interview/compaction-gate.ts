@@ -30,3 +30,10 @@ export function compactionGate(mode: PackRecordMode, record: unknown = committed
     }
     return v;
 }
+
+/** The start-up line about a rounds summary that will not run, or null. Codes, never text. */
+export function compactionGateReport(mode: PackRecordMode): string | null {
+    const v = compactionGate(mode);
+    if (v.mounted) return null;
+    return `the rounds summary has no evaluation record this deployment accepts (${v.reason}): long sessions are sent uncompacted (NOT_EVALUATED).`;
+}

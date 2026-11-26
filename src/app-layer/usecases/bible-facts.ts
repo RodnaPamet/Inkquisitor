@@ -23,6 +23,10 @@
  *               the monthly ceiling and the kill switch first: CEILING and
  *               KILL_SWITCH stop the run cleanly, resumable. Its cost is counted
  *               on the row in a transaction of its own, whatever happens next.
+ *               A piece the guard refuses (or that repeats the prompt) yields
+ *               nothing and the run goes on with the others (4.H-a, #60 item 2):
+ *               the version still becomes the entry's baseline, so the refused
+ *               text is not re-sent with every later version.
  *   4. PERSIST  under the book's fact lock: validate (4.0's rules plus the
  *               entry's own), key each claim, resolve against the live facts
  *               (`dedupe.ts`), write the new facts CONFIRMED and automatic, the
@@ -117,6 +121,9 @@ interface RunMetrics {
     modelOtherSubject: number;
     /** Calls the version was sent in (its changed sections, bounded: the D27 addendum). */
     calls: number;
+    /** 4.H-a (#60 item 2): calls the guard refused (or that repeat the prompt), and the sections they carried: no fact. */
+    refusedCalls?: number;
+    refusedSections?: number;
     errorCode?: string;
 }
 
@@ -246,11 +253,15 @@ function asLive(f: BibleFactRow | StoryFactRow, owner: FactOwner, bible: BibleFa
         quote: f.quote,
         sameOwner,
         ownerElementId: bible?.elementId ?? null,
+        versionId: bible ? (bible.bibleVersionId ?? bible.relationVersionId) : null,
     };
 }
 
 /** The live facts a version is resolved against: the book's bible facts about its subject(s) and the book library's confirmed source facts about them. */
-async function liveFactsFor(db: PrismaTx, ctx: WorkspaceRequestContext, bookId: string, subject: Subject): Promise<LiveFact[]> {
+async function liveFactsFor(db: PrismaTx, ctx: WorkspaceRequestContext, bookId: string, subject: Subject, keys: readonly string[] = []): Promise<LiveFact[]> {
+    // 4.H-a (#60 item 1): the claims this version makes, read BY KEY first, so a held claim past the cap below is
+    // found (provenance) rather than inserted again (a unique violation that ended the run INTERNAL and looped).
+    const held = await BibleFactRepository.listLiveByKeys(db, ctx.workspaceId, bookId, keys);
     const bible = await BibleFactRepository.listLiveAbout(db, ctx.workspaceId, bookId, subject.elementIds, LIVE_FACTS_READ_MAX);
     // Facts the entry owns whose subject link went (an end deleted) are still the entry's: read them by owner too.
     const owned = await BibleFactRepository.listLiveOwnedBy(db, ctx.workspaceId, bookId, subject.owner.kind === 'BIBLE_VERSION' ? { elementId: subject.owner.id } : { relationId: subject.owner.id }, LIVE_FACTS_READ_MAX);
@@ -259,7 +270,7 @@ async function liveFactsFor(db: PrismaTx, ctx: WorkspaceRequestContext, bookId: 
     const sourced = await BibleFactRepository.listConfirmedSourceFactsAbout(db, ctx.workspaceId, set.bookSourceIds, subject.elementIds, LIVE_FACTS_READ_MAX);
     const seen = new Set<string>();
     const out: LiveFact[] = [];
-    for (const f of [...owned, ...bible]) {
+    for (const f of [...held, ...owned, ...bible]) {
         if (seen.has(f.id)) continue;
         seen.add(f.id);
         out.push(asLive(f, subject.owner, f));
@@ -352,6 +363,7 @@ export async function executeBibleFactExtraction(payload: { workspaceId: string;
 
     try {
         const outputs: CallOutput[] = [];
+        const refused: FactExtractionOutcome[] = [];
         if (prepared.changed > 0) {
             // Bounded calls (the D27 addendum): pieces of at most BIBLE_FACT_PIECE_MAX_CHARS, each call's worst case
             // inside the per-call cost budget — refused, nothing sent, when even the smallest call is not.
@@ -389,12 +401,25 @@ export async function executeBibleFactExtraction(payload: { workspaceId: string;
                         : result.failure === 'GUARD_REFUSED' ? 'GUARD_REFUSED'
                         : result.failure === 'PROMPT_INVALID' && result.errorCode === 'REPEATS_PROMPT' ? 'REPEATS_PROMPT'
                         : 'CALL_FAILED';
+                    if (outcome === 'GUARD_REFUSED' || outcome === 'REPEATS_PROMPT') {
+                        // 4.H-a (#60 item 2): a piece the guard refuses, or one that repeats the prompt, yields nothing — and
+                        // ONLY that piece. The other pieces' facts are kept, and the version still becomes the entry's
+                        // baseline (DONE), so the refused text is not sent again with every later version: it is sent
+                        // again only once the author changes it. Before 4.H-a the whole version ended SKIPPED, the
+                        // baseline stayed behind it, and one bad field blocked facts for the whole entry for ever.
+                        refused.push(outcome);
+                        metrics.refusedCalls = (metrics.refusedCalls ?? 0) + 1;
+                        metrics.refusedSections = (metrics.refusedSections ?? 0) + call.sections;
+                        continue;
+                    }
                     return end(ctx, row, outcome, metrics, now(), claim);
                 }
                 outputs.push({ output: result.output, sent: call.sent, shown: call.shown, threadsShown: call.threadsShown });
             }
         }
-        return await persist(ctx, row, claim, prepared, outputs, metrics, now);
+        // Every call refused: still DONE (the baseline moves past the refused text), the refusal named as the outcome.
+        const settled: FactExtractionOutcome | undefined = outputs.length === 0 && refused.length > 0 ? refused[0] : undefined;
+        return await persist(ctx, row, claim, prepared, outputs, metrics, now, settled);
     } catch (err) {
         logger.error('facts.extraction_failed', { component: 'facts', extractionId: row.id, error: err instanceof Error ? err.name : 'unknown' });
         return end(ctx, row, 'INTERNAL', { ...metrics, errorCode: 'INTERNAL' }, now(), claim);
@@ -402,7 +427,16 @@ export async function executeBibleFactExtraction(payload: { workspaceId: string;
 }
 
 /** Step 4 (the header): one transaction under the book's fact lock; audit last. */
-async function persist(ctx: WorkspaceRequestContext, row: FactExtractionRow, claim: Date, prepared: Prepared, outputs: readonly CallOutput[], metrics: RunMetrics, now: () => Date): Promise<Ended> {
+async function persist(
+    ctx: WorkspaceRequestContext,
+    row: FactExtractionRow,
+    claim: Date,
+    prepared: Prepared,
+    outputs: readonly CallOutput[],
+    metrics: RunMetrics,
+    now: () => Date,
+    settled?: FactExtractionOutcome,
+): Promise<Ended> {
     // Each call's answer is held to the text THAT call was shown (the span check per piece); the facts of all the
     // calls are then one version's facts, deduplicated by their claim key in `resolveFacts`.
     const facts: BibleFactDraft[] = [];
@@ -433,7 +467,7 @@ async function persist(ctx: WorkspaceRequestContext, row: FactExtractionRow, cla
             contradicts,
         };
     });
-    const outcome: FactExtractionOutcome = prepared.changed > 0 ? 'OK' : 'NO_CHANGE';
+    const outcome: FactExtractionOutcome = settled ?? (prepared.changed > 0 ? 'OK' : 'NO_CHANGE');
     return runInWorkspaceContext(ctx, async (db) => {
         await BibleFactRepository.lockBook(db, row.bookId);
         const current = await FactExtractionRepository.find(db, ctx.workspaceId, row.id);
@@ -452,7 +486,7 @@ async function persist(ctx: WorkspaceRequestContext, row: FactExtractionRow, cla
             return { ran: true, outcome: skipped };
         }
         // Read again under the lock: what another extraction of the book wrote meanwhile is resolved against too.
-        const live = await liveFactsFor(db, ctx, row.bookId, prepared.subject);
+        const live = await liveFactsFor(db, ctx, row.bookId, prepared.subject, fresh.map((f) => f.key));
         const liveIds = new Set(live.map((f) => f.id));
         const plan = resolveFacts({ fresh, shown: prepared.shown, live, entry: prepared.whole, clock: prepared.clock });
         // A fact shown to the call but invalidated (or gone) meanwhile is not proposed.
@@ -487,10 +521,16 @@ async function persist(ctx: WorkspaceRequestContext, row: FactExtractionRow, cla
         });
         const created = await StoryFactRepository.createBibleFacts(db, ctx.workspaceId, rows, at);
         const idOfNew = new Map(plan.insert.map((i, k) => [i, created[k].id] as const));
+        // A fact this very version first stated is not "restated" by it (4.H-a, roadmap item 1: a re-run of the version
+        // writes nothing — its own facts are held by key, and gain no provenance row from the version that made them).
+        const thisVersion = row.bibleVersionId ?? row.relationVersionId;
+        const liveById = new Map(live.map((f) => [f.id, f] as const));
         const provenanceAdded = await FactProvenanceRepository.add(
             db,
             ctx.workspaceId,
-            plan.restated.map((r) => ({ factId: r.factId, sourceKind: owner.kind, bibleVersionId: row.bibleVersionId, relationVersionId: row.relationVersionId })),
+            plan.restated
+                .filter((r) => liveById.get(r.factId)?.versionId !== thisVersion)
+                .map((r) => ({ factId: r.factId, sourceKind: owner.kind, bibleVersionId: row.bibleVersionId, relationVersionId: row.relationVersionId })),
         );
         const proposalsRaised = await FactProposalRepository.raise(db, ctx.workspaceId, [
             ...plan.contradictions.map((c) => ({ bookId: row.bookId, factId: c.olderId, newerFactId: idOfNew.get(c.newIndex)!, reason: 'CONTRADICTED' as const, basis: c.basis, kind: c.kind, extractionId: row.id })),

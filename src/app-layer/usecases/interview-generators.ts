@@ -44,8 +44,14 @@ import { fieldAnsweredBy } from '@/lib/sources/vocabulary';
 import { bookSourceSet } from './source-common';
 import { fieldText, type InterviewState } from './interview-state';
 
-/** The book's ladder and pair questions read at most. */
-export const GENERATOR_HISTORY_READ_MAX = 1_000;
+/**
+ * The book's ladder and pair questions, read a page at a time (4.H-a, #66 item 6: the read was one capped page, and a
+ * book past it silently lost the oldest answered layers — the ladder could then ask a layer the book already holds),
+ * up to `GENERATOR_HISTORY_READ_MAX`. Past that the cut is NAMED (`historyCut`, in the round's metrics) and the ladder
+ * and the pair questions ask nothing that round: what the unread history holds cannot be proved unanswered (rule 5).
+ */
+export const GENERATOR_HISTORY_PAGE = 1_000;
+export const GENERATOR_HISTORY_READ_MAX = 20_000;
 /** Pairs considered at most (the scope's characters and factions, two by two, in element order). */
 export const PAIR_CANDIDATES_MAX = 15;
 /** Relations read to know which pairs are already related. */
@@ -83,6 +89,8 @@ export async function loadGeneratorInputs(
     session: SessionRow,
     state: InterviewState,
     frontier: FrontierResult,
+    /** The history read's page and ceiling (tests: small ones). */
+    historyBounds: { page: number; max: number } = { page: GENERATOR_HISTORY_PAGE, max: GENERATOR_HISTORY_READ_MAX },
 ): Promise<GeneratorInput> {
     const enabled = generatorsOn(session.generatorsOff ?? []);
     const plain = plainSubjects(state);
@@ -91,7 +99,7 @@ export async function loadGeneratorInputs(
     const sessionQuestions = state.questions;
 
     // THE LADDER, AND THE PAIRS' ANGLES: the book's generator questions about the scope.
-    const history = enabled.has('LADDER') || enabled.has('RELATIONS') ? await QuestionRepository.listGeneratorHistory(db, ctx.workspaceId, session.bookId, { elementIds, relationIds }, GENERATOR_HISTORY_READ_MAX) : [];
+    const { rows: history, cut: historyCut } = enabled.has('LADDER') || enabled.has('RELATIONS') ? await readGeneratorHistory(db, ctx, session.bookId, { elementIds, relationIds }, historyBounds) : { rows: [], cut: false };
     const answered = new Set<string>();
     const askedInSession = new Set<string>();
     const pairAnswered = new Map<string, Set<PairAngle>>();
@@ -212,19 +220,60 @@ export async function loadGeneratorInputs(
 
     // HOLD FOLLOW-UPS (owner decision 2026-11-26, A): a field whose proposed change the author has not decided yet is
     // asked about by no generator until they decide it; a pair with a new relation pending between them likewise.
-    const heldByProposals = new Set<string>();
-    const proposals = await EnrichmentProposalRepository.pendingFieldHolds(db, ctx.workspaceId, session.bookId, { elementIds, relationIds }, PENDING_PROPOSALS_READ_MAX);
+    const heldByProposals = await fieldHoldsFor(db, ctx, session.bookId, { elementIds, relationIds, pairs });
+
+    return { depth: session.depth, detail: session.detail, enabled, subjects: state.elements, frontier, ladder: { answered, askedInSession }, factsHeld, pairs, pendingFacts, continuity, heldByProposals, historyCut };
+}
+
+type HistoryRow = Awaited<ReturnType<typeof QuestionRepository.listGeneratorHistory>>[number];
+
+/** The book's generator history, newest first, a page at a time up to `bounds.max` rows; `cut` when more stood past it. */
+async function readGeneratorHistory(
+    db: PrismaTx,
+    ctx: WorkspaceRequestContext,
+    bookId: string,
+    subjects: { elementIds: readonly string[]; relationIds: readonly string[] },
+    bounds: { page: number; max: number },
+): Promise<{ rows: HistoryRow[]; cut: boolean }> {
+    const rows: HistoryRow[] = [];
+    let before: { createdAt: Date; id: string } | undefined;
+    for (;;) {
+        const room = bounds.max - rows.length;
+        // One past the room: whether anything stands past the ceiling is a fact read, never assumed.
+        const page = await QuestionRepository.listGeneratorHistory(db, ctx.workspaceId, bookId, subjects, Math.min(bounds.page, room + 1), before);
+        if (page.length > room) return { rows: [...rows, ...page.slice(0, room)], cut: true };
+        rows.push(...page);
+        if (page.length < Math.min(bounds.page, room + 1)) return { rows, cut: false };
+        const last = page[page.length - 1];
+        before = { createdAt: last.createdAt, id: last.id };
+    }
+}
+
+/**
+ * THE FIELDS HELD BY A PENDING ENRICHMENT PROPOSAL (owner decision 2026-11-26, A), as `refKey`s of subject and field:
+ * an element's FIELD, a relation's RELATION_FIELD, and both fields of a pair with a NEW_RELATION pending between its
+ * two elements. Read when a round is planned (`loadGeneratorInputs`) and AGAIN when it persists (4.H-a, #66 item 2:
+ * `stillAskable`), so a proposal another session raised while this round was being worded holds its field too.
+ */
+export async function fieldHoldsFor(
+    db: PrismaTx,
+    ctx: WorkspaceRequestContext,
+    bookId: string,
+    subjects: { elementIds: readonly string[]; relationIds: readonly string[]; pairs: ReadonlyArray<Pick<PairInput, 'firstElementId' | 'secondElementId'>> },
+): Promise<Set<string>> {
+    const held = new Set<string>();
+    const elementIds = [...new Set([...subjects.elementIds, ...subjects.pairs.flatMap((p) => [p.firstElementId, p.secondElementId])])];
+    const proposals = await EnrichmentProposalRepository.pendingFieldHolds(db, ctx.workspaceId, bookId, { elementIds, relationIds: subjects.relationIds }, PENDING_PROPOSALS_READ_MAX);
     for (const p of proposals) {
-        if (p.kind === 'FIELD' && p.elementId && p.fieldKey) heldByProposals.add(refKey({ elementId: p.elementId, fieldKey: p.fieldKey }));
-        else if (p.kind === 'RELATION_FIELD' && p.relationId && p.fieldKey) heldByProposals.add(refKey({ elementId: p.relationId, fieldKey: p.fieldKey }));
+        if (p.kind === 'FIELD' && p.elementId && p.fieldKey) held.add(refKey({ elementId: p.elementId, fieldKey: p.fieldKey }));
+        else if (p.kind === 'RELATION_FIELD' && p.relationId && p.fieldKey) held.add(refKey({ elementId: p.relationId, fieldKey: p.fieldKey }));
     }
     const pendingLinks = new Set(proposals.flatMap((p) => (p.kind === 'NEW_RELATION' && p.newFromElementId && p.newToElementId ? [[p.newFromElementId, p.newToElementId].sort().join('\u0000')] : [])));
-    for (const p of pairs) {
+    for (const p of subjects.pairs) {
         if (!pendingLinks.has([p.firstElementId, p.secondElementId].sort().join('\u0000'))) continue;
-        for (const field of new Set(Object.values(PAIR_ANGLE_FIELD))) heldByProposals.add(refKey({ elementId: pairSubjectId(p.firstElementId, p.secondElementId), fieldKey: field }));
+        for (const field of new Set(Object.values(PAIR_ANGLE_FIELD))) held.add(refKey({ elementId: pairSubjectId(p.firstElementId, p.secondElementId), fieldKey: field }));
     }
-
-    return { depth: session.depth, detail: session.detail, enabled, subjects: state.elements, frontier, ladder: { answered, askedInSession }, factsHeld, pairs, pendingFacts, continuity, heldByProposals };
+    return held;
 }
 
 /**

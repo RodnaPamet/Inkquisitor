@@ -27,8 +27,10 @@
  *               nothing. Each chunk's facts are validated (`validateFacts`: the
  *               span verified, grounding, polarity, injection) and written in
  *               one short transaction with its cursor and the spend.
- *   4. FINISH   DONE `OK` when every chunk is read, else STOPPED `PARTIAL` (or
- *               the stop's reason). Audited, counts and codes only.
+ *   4. FINISH   DONE `OK` when every chunk is read and embedded, else STOPPED
+ *               `PARTIAL` (or the stop's reason); every chunk read but the
+ *               embedding failed is `PARTIAL` with `EMBEDDING_FAILED` (4.H-a),
+ *               resumable to re-embed. Audited, counts and codes only.
  *
  * A fact's subject is linked to a book element when the book names exactly
  * one element so (`nameKey`); a series fact is linked per book when it is
@@ -60,7 +62,7 @@ import { foldWithOrigins } from '@/lib/sources/quote';
 import { extractionGate, type ExtractionGateVerdict } from '@/lib/sources/record-gate';
 import { decodeHeadingPath, sanitiseFactForStorage } from '@/lib/sources/storage';
 import { validateFacts, type FactDraft } from '@/lib/sources/validate';
-import { effectiveSourceState, SOURCE_CHUNK_MODEL, type SourceOutcome } from '@/lib/sources/vocabulary';
+import { effectiveSourceState, EMBEDDING_FAILED, SOURCE_CHUNK_MODEL, type SourceOutcome } from '@/lib/sources/vocabulary';
 import { deploymentPackRecordMode } from './interview-packs';
 import { modelUnavailableReason } from './model-calls';
 import { bookNamesOf } from './source-library';
@@ -89,6 +91,8 @@ interface IngestMetrics {
     callIds: string[];
     embedded: number;
     embedFailed: boolean;
+    /** 4.H-a (#60 item 6): the provider answered with a failure (not merely none configured). */
+    embedProviderFailed?: boolean;
     /** Chunks marked unreadable (#57 item 2: they repeat a sentence of the prompt). */
     unreadable: number;
     errorCode?: string;
@@ -189,6 +193,7 @@ async function embedChunks(ctx: WorkspaceRequestContext, source: SourceRow, clai
         if (!result.ok) {
             logger.warn('sources.embedding_failed', { component: 'sources', sourceId: source.id, reason: result.reason, count: page.length });
             metrics.embedFailed = true;
+            metrics.embedProviderFailed = true;
             return;
         }
         const records: VectorRecord[] = page.map((c, i) => ({
@@ -319,6 +324,11 @@ export async function executeSourceIngest(payload: { workspaceId: string; source
             if (page.length < CHUNK_PAGE) break;
         }
         const remaining = await pendingOf(ctx, source.id);
+        // 4.H-a (#60 item 6): every passage read but the embedding failed is NOT done: it stops PARTIAL, named, so the
+        // author can resume it, and the resume (nothing left to read) only embeds what has no vector yet.
+        if (remaining === 0 && metrics.embedProviderFailed) {
+            return { ran: true, outcome: await finish(ctx, source, 'PARTIAL', { ...metrics, errorCode: EMBEDDING_FAILED }, remaining, claim) };
+        }
         return { ran: true, outcome: await finish(ctx, source, remaining === 0 ? 'OK' : 'PARTIAL', metrics, remaining, claim) };
     } catch (err) {
         logger.error('sources.ingest_failed', { component: 'sources', sourceId: source.id, error: err instanceof Error ? err.name : 'unknown' });

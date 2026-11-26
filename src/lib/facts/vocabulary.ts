@@ -45,9 +45,13 @@ export const FACT_EXTRACTION_OUTCOMES = [
     'NOT_EVALUATED',
     /** The workspace's model-call minute stayed full (D17): resumable. */
     'MODEL_RATE_LIMITED',
-    /** The entry's text tripped the guard: it yields no fact. Final. */
+    /**
+     * The entry's text tripped the guard: it yields no fact. Since 4.H-a (#60 item 2) only the refused PIECE yields
+     * nothing; the run goes on with the others, and a version every one of whose calls was refused ends DONE with this
+     * outcome, so it is the entry's baseline and the refused text is sent again only once it changes.
+     */
     'GUARD_REFUSED',
-    /** The entry repeats a sentence of the prompt, so no request can carry it (2.1 refuses it): it yields no fact. Final. */
+    /** The entry repeats a sentence of the prompt, so no request can carry it (2.1 refuses it): as GUARD_REFUSED. */
     'REPEATS_PROMPT',
     /** The call failed (a timeout, the provider, an invalid answer): resumable. */
     'CALL_FAILED',

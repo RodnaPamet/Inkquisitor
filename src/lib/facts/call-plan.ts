@@ -33,6 +33,8 @@ export interface PlannedCall {
     readonly blocks: AuthorDataBlock[];
     /** Its worst case, µUSD (at most the budget). */
     readonly worstMicroUsd: number;
+    /** How many section pieces it carries (4.H-a: what a refused call leaves unread is counted). */
+    readonly sections: number;
 }
 
 export type CallPlan = { ok: true; calls: PlannedCall[] } | { ok: false; reason: 'CALL_OVER_BUDGET'; worstMicroUsd: number };
@@ -56,7 +58,7 @@ export function planBibleFactCalls(input: {
         const sent = sentText(input.entry, batch);
         const openThreads = names ? (input.openThreads ?? []) : [];
         const blocks = bibleFactBlocks({ text: sent, subjects: input.subjects, existing: input.shown.slice(0, shown), bookNames: names ? input.bookNames : [], openThreads });
-        return { sent, shown, threadsShown: Math.min(openThreads.length, OPEN_THREADS_SHOWN_MAX), blocks, worstMicroUsd: input.worst(blocks) };
+        return { sent, shown, threadsShown: Math.min(openThreads.length, OPEN_THREADS_SHOWN_MAX), blocks, worstMicroUsd: input.worst(blocks), sections: batch.length };
     };
     let smallest = Number.POSITIVE_INFINITY;
     while (queue.length > 0) {

@@ -57,6 +57,16 @@ export const BookRepository = {
         return db.book.findFirst({ where: { id: bookId, workspaceId, deletedAt: null }, select: BOOK_SELECT });
     },
 
+    /**
+     * A live book of the workspace, its row held FOR SHARE to commit (4.H-a, #57 item 4): a write that hangs rows off
+     * the book (a source library) re-checks the book IN ITS OWN transaction, and a soft delete (an UPDATE) waits for
+     * it, so the write never lands under a book deleted between an earlier check and it.
+     */
+    async findLiveForShare(db: Db, workspaceId: string, bookId: string): Promise<boolean> {
+        const rows = await db.$queryRaw<Array<{ id: string }>>`SELECT id FROM "Book" WHERE id = ${bookId} AND "workspaceId" = ${workspaceId} AND "deletedAt" IS NULL FOR SHARE`;
+        return rows.length === 1;
+    },
+
     /** The workspace's books deleted after `since` (still restorable), newest deletion first. */
     listDeleted(db: Db, workspaceId: string, since: Date, take: number) {
         return db.book.findMany({

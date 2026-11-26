@@ -27,7 +27,11 @@
  *               failure (the D27 addendum's rule). Each call's pairs are checked
  *               (`validateContinuityPairs`) and PROPOSED with basis DEEP; its cost
  *               is counted in a transaction of its own; the cursor moves past the
- *               subjects it covered, so a stop keeps every page done.
+ *               subjects it covered, so a stop keeps every page done. A page that
+ *               fails in a way it will fail every night (over the per-call budget,
+ *               an answer never valid) is passed over after
+ *               `CONTINUITY_PAGE_FAILURES_MAX` such nights in a row (4.H-a, #62
+ *               item 3): its subjects counted on the check and shown on the page.
  *   5. FINISH   all subjects done: the pass is complete (`coveredThrough` = its
  *               target). Subjects left: DONE PAGED, the next night goes on from
  *               the cursor. Audit last.
@@ -73,6 +77,7 @@ import {
     CONTINUITY_NIGHT_WINDOW_MS,
     CONTINUITY_PASS_SETTLE_MS,
     CONTINUITY_NIGHTLY_SHARE,
+    CONTINUITY_PAGE_FAILURES_MAX,
     CONTINUITY_PROPOSALS_PER_RUN_MAX,
     type ContinuityOutcome,
     type ContinuityRunStatus,
@@ -127,6 +132,8 @@ interface Metrics {
     subjectFactsCut: number;
     /** Subjects of a page the guard refused: passed over in this pass, never retried behind it. */
     guardRefusedSubjects?: number;
+    /** 4.H-a (#62 item 3): subjects of a page that failed `CONTINUITY_PAGE_FAILURES_MAX` nights in a row, passed over tonight. */
+    parkedSubjects?: number;
     errorCode?: string;
 }
 
@@ -151,6 +158,9 @@ const STATUS_OF: Readonly<Record<ContinuityOutcome, ContinuityRunStatus>> = {
     CLAIM_EXPIRED: 'STOPPED',
     INTERNAL: 'FAILED',
 };
+
+/** A call's failures the PAGE causes, so it fails the same way every night (4.H-a, #62 item 3): never a timeout or an outage. */
+const PAGE_OWN_FAILURES: ReadonlySet<string> = new Set(['INVALID_OUTPUT', 'PROMPT_INVALID']);
 
 /** Failures that mean nothing reached the provider unless the call reports tokens or cost (the guard and an abort can come either side). */
 const REFUSED_BEFORE_SEND: ReadonlySet<string> = new Set(['KILL_SWITCH', 'WORKSPACE_CEILING', 'AI_UNAVAILABLE', 'PROMPT_INVALID', 'GUARD_REFUSED', 'ABORTED']);
@@ -260,7 +270,9 @@ export async function executeContinuityCheck(payload: { workspaceId: string; run
     });
     if (!looked) return { ran: false, outcome: null };
     const { run } = looked;
-    const finish = async (outcome: ContinuityOutcome, claim: Date | undefined, state?: { coveredThrough?: Date | null; passTarget: Date | null; passCursor: string | null }) => {
+    // 4.H-a (#62 item 3): the pass's failed-page count and its passed-over subjects, as every save of the check writes them.
+    const page: { pageFailures?: number; parkedSubjects?: number } = {};
+    const finish = async (outcome: ContinuityOutcome, claim: Date | undefined, state?: { coveredThrough?: Date | null; passTarget: Date | null; passCursor: string | null; pageFailures?: number; parkedSubjects?: number }) => {
         const at = now();
         await runInWorkspaceContext(looked.ctx ?? scope, async (db) => {
             const done = await ContinuityRunRepository.finish(db, payload.workspaceId, run.id, {
@@ -275,7 +287,7 @@ export async function executeContinuityCheck(payload: { workspaceId: string; run
                 at,
             });
             if (!done) return;
-            if (state && looked.ctx) await ContinuityCheckRepository.save(db, payload.workspaceId, run.bookId, { ...state, lastRunAt: at, lastOutcome: outcome });
+            if (state && looked.ctx) await ContinuityCheckRepository.save(db, payload.workspaceId, run.bookId, { ...page, ...state, lastRunAt: at, lastOutcome: outcome });
             // AUDIT LAST (3.H).
             if (looked.ctx) {
                 await logEvent(looked.ctx, { action: 'CONTINUITY_CHECKED', entityType: 'ContinuityRun', entityId: run.id, details: { bookId: run.bookId, outcome, ...counts } }, { db, actorType: 'SYSTEM' });
@@ -313,6 +325,22 @@ export async function executeContinuityCheck(payload: { workspaceId: string; run
     // the book for it). Facts inside the margin are read now and covered by the next pass.
     const passTarget = state.passTarget ?? new Date(claim.getTime() - CONTINUITY_PASS_SETTLE_MS);
     const keep = { passTarget: state.passTarget, passCursor: state.passCursor };
+    page.pageFailures = state.pageFailures;
+    page.parkedSubjects = state.parkedSubjects;
+    /**
+     * A page that failed this night in a way it will fail every night (over the per-call budget; an answer that is never
+     * valid; text that repeats the prompt): counted, and once it has failed `CONTINUITY_PAGE_FAILURES_MAX` nights in a
+     * row PASSED OVER — the cursor moves past its subjects, counted on the check and shown — so it never holds the pass.
+     */
+    const pageFailed = (subjectKeys: readonly string[]): string | null => {
+        page.pageFailures = (page.pageFailures ?? 0) + 1;
+        if (page.pageFailures < CONTINUITY_PAGE_FAILURES_MAX || subjectKeys.length === 0) return null;
+        page.pageFailures = 0;
+        page.parkedSubjects = (page.parkedSubjects ?? 0) + subjectKeys.length;
+        metrics.parkedSubjects = (metrics.parkedSubjects ?? 0) + subjectKeys.length;
+        counts.subjectsRemaining = Math.max(0, counts.subjectsRemaining - subjectKeys.length);
+        return subjectKeys[subjectKeys.length - 1];
+    };
 
     try {
         // Rule 6: a book with no live fact has nothing checked; it is never reported clean.
@@ -358,6 +386,11 @@ export async function executeContinuityCheck(payload: { workspaceId: string; run
         }
         // Nothing left to page through: a pass under way is complete; with none, nothing changed since the last one.
         if (subjects.length === 0) return await finish(state.passTarget ? 'OK' : 'NOTHING_NEW', claim, { coveredThrough: passTarget, passTarget: null, passCursor: null });
+        // A NEW pass starts with no failed page and nothing passed over (the last pass's count stays shown until then).
+        if (!state.passTarget) {
+            page.pageFailures = 0;
+            page.parkedSubjects = 0;
+        }
 
         const unavailable = modelUnavailableReason();
         if (unavailable) {
@@ -395,7 +428,10 @@ export async function executeContinuityCheck(payload: { workspaceId: string; run
         });
         metrics.subjectFactsCut = plan.cut;
         counts.subjectsRemaining = plan.remaining + plan.covered;
-        if (plan.calls.length === 0 && plan.overBudget) return await finish('CALL_OVER_BUDGET', claim, { passTarget, passCursor: keep.passCursor });
+        if (plan.calls.length === 0 && plan.overBudget) {
+            const past = pageFailed(plan.blockedKey ? [plan.blockedKey] : []);
+            return await finish('CALL_OVER_BUDGET', claim, { passTarget, passCursor: past ?? keep.passCursor });
+        }
 
         // The night's share of the month (D28 addendum): every deep call of the workspace in the night's window counts,
         // whatever its book; checked here with this call's worst case, and again by the ledger as the call reserves.
@@ -434,8 +470,16 @@ export async function executeContinuityCheck(payload: { workspaceId: string; run
                     // night stops, but the pass resumes PAST this page, its subjects counted as refused, never retried
                     // for ever behind it (4.0's rule: a refused chunk yields nothing).
                     metrics.guardRefusedSubjects = (metrics.guardRefusedSubjects ?? 0) + call.subjectKeys.length;
+                    // Passed over unchecked, so counted with the pass's passed-over subjects (4.H-a): the pass that
+                    // finishes past them is never "every fact checked" (rule 6).
+                    page.parkedSubjects = (page.parkedSubjects ?? 0) + call.subjectKeys.length;
                     counts.subjectsRemaining -= call.subjectKeys.length;
                     return await finish(outcome, claim, { passTarget, passCursor: call.subjectKeys[call.subjectKeys.length - 1] });
+                }
+                // An answer that is never valid, or text that repeats the prompt, fails the same page every night.
+                if (outcome === 'CALL_FAILED' && PAGE_OWN_FAILURES.has(result.failure)) {
+                    const past = pageFailed(call.subjectKeys);
+                    return await finish(outcome, claim, { passTarget, passCursor: past ?? cursor });
                 }
                 return await finish(outcome, claim, { passTarget, passCursor: cursor });
             }
@@ -445,7 +489,8 @@ export async function executeContinuityCheck(payload: { workspaceId: string; run
             const raised = await runInWorkspaceContext(ctx, async (db) => {
                 const n = await raisePairs(db, ctx, run.bookId, run, v.pairs.map((p) => ({ a: byId.get(p.a)!, b: byId.get(p.b)!, kind: p.kind })), 'DEEP', metrics.refusals);
                 // The page is done: the cursor moves past it, so a stop later in the night keeps it.
-                await ContinuityCheckRepository.save(db, ctx.workspaceId, run.bookId, { passTarget, passCursor: callCursor, lastRunAt: now(), lastOutcome: 'PAGED' });
+                page.pageFailures = 0;
+                await ContinuityCheckRepository.save(db, ctx.workspaceId, run.bookId, { ...page, passTarget, passCursor: callCursor, lastRunAt: now(), lastOutcome: 'PAGED' });
                 return n;
             });
             counts.deepProposals += raised;

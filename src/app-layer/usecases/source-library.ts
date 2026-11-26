@@ -40,6 +40,7 @@ import { logEvent } from '@/app-layer/events/audit';
 import { enqueue } from '@/app-layer/jobs/queue';
 import { assertPermission } from '@/app-layer/policies/permission.policy';
 import { BibleElementRepository } from '@/app-layer/repositories/bible.repository';
+import { BookRepository } from '@/app-layer/repositories/book.repository';
 import {
     BookSeriesSourceRepository,
     SourceChunkRepository,
@@ -51,7 +52,7 @@ import {
 } from '@/app-layer/repositories/source.repository';
 import { AiUnavailableError } from '@/lib/ai/errors';
 import { runInWorkspaceContext, type PrismaTx } from '@/lib/db/rls-middleware';
-import { AppError, ConflictError, ServiceUnavailableError, ValidationError } from '@/lib/errors/types';
+import { AppError, ConflictError, NotFoundError, ServiceUnavailableError, ValidationError } from '@/lib/errors/types';
 import type { PackRecordMode } from '@/lib/interview/pack-records-config';
 import { logger } from '@/lib/observability/logger';
 import { workspaceSubkey } from '@/lib/security/encryption';
@@ -62,7 +63,7 @@ import { parseSource, SourceRefusal, type ParseDeps } from '@/lib/sources/parse'
 import { EXTRACT_PROMPT_VERSION } from '@/lib/sources/prompt';
 import { extractionGate, type ExtractionGateVerdict } from '@/lib/sources/record-gate';
 import { decodeHeadingPath, sanitiseChunkForStorage, sanitiseSourceNameForStorage, SourceTextNotStorableError } from '@/lib/sources/storage';
-import { CHUNKS_PER_SOURCE_MAX, effectiveSourceState, isLiveStatus, SOURCES_PER_LIBRARY_MAX, type SourceFormat, type SourceStatus } from '@/lib/sources/vocabulary';
+import { awaitsEmbedding, CHUNKS_PER_SOURCE_MAX, effectiveSourceState, isLiveStatus, SOURCES_PER_LIBRARY_MAX, type SourceFormat, type SourceStatus } from '@/lib/sources/vocabulary';
 import { assertUploadClean } from './bible-import';
 import { requireBook } from './bible-common';
 import { deploymentPackRecordMode } from './interview-packs';
@@ -97,6 +98,8 @@ export interface SourceView {
     scope: 'BOOK' | 'SERIES';
     createdAt: string;
     finishedAt: string | null;
+    /** 4.H-a (#60 item 6): every passage read, the embedding failed — a resume re-embeds (and costs no model call). */
+    awaitsEmbedding: boolean;
 }
 
 /** The book's element names an extraction is shown (and links subjects by), bounded. */
@@ -124,6 +127,7 @@ export function sourceView(row: SourceRow, now: Date = new Date()): SourceView {
         scope: row.library.scope,
         createdAt: row.createdAt.toISOString(),
         finishedAt: row.finishedAt?.toISOString() ?? null,
+        awaitsEmbedding: awaitsEmbedding({ status: state.status, outcome: state.outcome, metrics: row.metrics }),
     };
 }
 
@@ -180,6 +184,9 @@ export async function uploadSource(ctx: WorkspaceRequestContext, target: SourceT
     const created = await runInWorkspaceContext(
         ctx,
         async (db) => {
+            // 4.H-a (#57 item 4): the book is checked again IN THIS transaction, its row held to commit, so a book deleted
+            // while the file was scanned and parsed never gains a library or a source.
+            if (target.kind === 'book' && !(await BookRepository.findLiveForShare(db, ctx.workspaceId, target.bookId))) throw new NotFoundError('Book not found.');
             const bookNames = target.kind === 'book' ? (await bookNamesOf(db, ctx, target.bookId)).map((n) => n.name) : [];
             const cost = sourceCost(chunks.map((c) => ({ headings: decodeHeadingPath(c.headingPath), text: c.text, bookNames })));
             const library = await ensureLibrary(db, ctx, target);
@@ -329,7 +336,8 @@ export async function dispatchIngestion(ctx: WorkspaceRequestContext, sourceId: 
             const state = effectiveSourceState(source);
             if (isLiveStatus(state.status)) throw new ConflictError('This source is already being read.', { reason: 'INGEST_IN_PROGRESS' });
             const cost = await remainingCost(db, ctx, source);
-            if (cost.pending === 0) throw new ConflictError('Every passage of this source has been read.', { reason: 'NOTHING_TO_INGEST' });
+            // 4.H-a (#60 item 6): with every passage read, only a source whose embedding failed may run again (it re-embeds).
+            if (cost.pending === 0 && !awaitsEmbedding(source)) throw new ConflictError('Every passage of this source has been read.', { reason: 'NOTHING_TO_INGEST' });
             if (!Number.isFinite(input.confirmWorstCaseMicroUsd) || input.confirmWorstCaseMicroUsd < cost.worst) {
                 throw new ConflictError('The cost changed since it was shown; confirm the new amount.', { reason: 'ESTIMATE_CHANGED', expectedMicroUsd: cost.expected, worstCaseMicroUsd: cost.worst, pendingChunks: cost.pending });
             }

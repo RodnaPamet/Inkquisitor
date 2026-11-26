@@ -451,6 +451,17 @@ src/app-layer/usecases/      → interview-generators (THE generator inputs, bou
                                interview-rounds (planSession, the hard repetition gate), source-facts (decideFactsFromRound)
 ```
 
+Phase 4.H-a (hardening Phase 4: correctness and isolation, D31) added:
+
+```
+prisma/migrations/…_phase4_hardening → ContinuityRun.nightKey (one run a book a night), ContinuityCheck.pageFailures / parkedSubjects,
+                               Answer (workspaceId, id), composite keys for Question.storyFactId and StoryFact.decidedByAnswerId
+src/lib/evals/record-gate-reports.ts → every model feature's D11 gate report, written at start (GATE_REPORTS, #63)
+src/app-layer/jobs/workspace-isolation.ts → servedWorkspace: one workspace's failure in a multi-workspace job is skipped, logged, counted
+tests/fixtures/workers/native-spike-worker.mjs → a parse worker held in one native call (the memory watchdog's test)
+tests/integration/{fact-layer,continuity,questioning}-hardening, retrieval-isolation, embedding-deletion; tests/rendered/phase4-not-assessed
+```
+
 ## Rules every change obeys
 
 These are `docs/ROADMAP.md` section 3, restated. The roadmap is authoritative
@@ -1619,7 +1630,8 @@ closed beta with an explicit operator flag (D5, amended 2026-11-19).
   (`wording.ts`, origin GENERATOR; the author's quotes verbatim, a `?` inside
   them full-width; never re-worded — 409 QUESTION_NOT_REPHRASABLE); the stored
   plan names them by id and field, never their text (the owner kept code wording
-  for 4.4; model wording in the persona's voice is revisited in 4.H, D30). A candidate below
+  for 4.4, D30, and again in 4.H, D31: personas word only the frontier's questions,
+  revisited only after real-model evaluation records exist). A candidate below
   `MINOR_VALUE_FLOOR` is minor: a round asks only what is above it, and when only
   minor candidates are left the session PAUSES `VALUE_FELL` (last in the
   precedence) until the author says go on (`goOn: true` on the next round sets
@@ -1654,6 +1666,69 @@ closed beta with an explicit operator flag (D5, amended 2026-11-19).
   worst case reserved beside the round (`compactionReserveTokens`) and a share in
   every budget. After editing the tie-break's set, prompt or schema, re-run
   `npm run packs:evaluate -- --no-packs --question-order`.
+- **Hardening Phase 4 (4.H-a; D31).** IDEMPOTENT EXTRACTION: a bible version
+  extracted again writes nothing — its own facts are held by claim key and gain
+  no provenance row from the version that first stated them; a source ingested
+  again reads no chunk (`extractedAt`). The live facts a version is resolved
+  against are read BY CLAIM KEY first (`BibleFactRepository.listLiveByKeys`),
+  then by subject up to `LIVE_FACTS_READ_MAX`, so a held claim past the cap gets
+  provenance and never hits `StoryFact_one_live_claim`. A call the guard
+  refuses (or that repeats the prompt) yields nothing for ITS piece only; the
+  run goes on, and a version every call of which was refused still ends DONE
+  (outcome GUARD_REFUSED / REPEATS_PROMPT), so it is the entry's baseline and the
+  refused text is sent again only once it changes. Invalidating a fact settles
+  every pending proposal it stands in, older or newer (`settleAllForFact`). An
+  ingestion that read every chunk but whose embedding FAILED (the provider
+  answered a failure, not "none configured") stops STOPPED `PARTIAL` with
+  `EMBEDDING_FAILED` (`awaitsEmbedding`), resumable at a zero "at most": the
+  resume only embeds. An upload re-checks its book in the write's own
+  transaction, its row `FOR SHARE` (`findLiveForShare`). The parse worker's
+  watchdog also reads the PROCESS's resident memory while a heap read has gone
+  unanswered for `MEMORY_STALL_MS` (a worker held in one native call), measured
+  from the worker's `online`. THE NIGHTLY CHECK: a dispatch is for one night
+  (`continuityNightKey`, the UTC date 12 h before it); a book with a run for
+  that night is not due, and `ContinuityRun_one_a_night` (partial unique) holds
+  it under concurrency. A page whose call is over the per-call budget, or whose
+  answer is never valid (INVALID_OUTPUT, PROMPT_INVALID — never a timeout or an
+  outage), counts a failed night (`pageFailures`); after
+  `CONTINUITY_PAGE_FAILURES_MAX` (3) in a row its subjects are PASSED OVER
+  (cursor past them, `parkedSubjects`, reset when a new pass starts); a page
+the guard refused is passed over at once and counted there too. The
+  Continuity page's `nightly.complete` is true only for a finished pass with
+  nothing cut (`factsCut`, the last run's metrics), nothing passed over and at
+  least one live fact; the page never says "every fact checked" otherwise. A
+  "Grill me on what changed" session carries `staleFlagId` and has its own
+  heading (`titleStale`). QUESTIONING: the hold on fields with a pending
+  proposal is read again at persist (`fieldHoldsFor` in `stillAskable`); the
+  hard repetition gate probes the database for a BETWEEN slot's beat too
+  (`pendingIn`: the session's earlier questions about it, never another
+  session's); the ladder's history is read a page at a time
+  (`GENERATOR_HISTORY_PAGE`) up to `GENERATOR_HISTORY_READ_MAX`, and past it
+  the cut is named (`historyCut` in the round's plan) and the ladder and the
+  pair questions ask nothing that round; a "decide later" pair question names
+  the pair on the Continuity page (`pair`, open while the two hold no
+  relation). `Question.storyFactId` and `StoryFact.decidedByAnswerId` are
+  composite `(workspaceId, id)` keys whose deletion sets only the id NULL
+  (`SET NULL (col)` in the migration; the Prisma relation says `NoAction`,
+  which Prisma cannot spell otherwise). The gap hunt counts a relation between
+  two elements of one kind once. A JOB THAT SERVES EVERY WORKSPACE (the
+  fact-layer and continuity dispatchers) runs each workspace's part through
+  `servedWorkspace` (`src/app-layer/jobs/workspace-isolation.ts`): a throw there
+  — a data key that will not unwrap is `WorkspaceKeyUnavailableError`, code
+  `WORKSPACE_KEY_UNAVAILABLE` — is logged with ids and a code (never the
+  message), counted (`job.workspace.skipped`) and skipped, and every other
+  workspace is served; discovery reads distinct workspaces
+  (`listDueWorkspaces` groups by workspace), so one workspace's backlog never
+  fills a tick. A new multi-workspace job does the same. EVERY D11 GATE is reported at start
+  (`recordGateReports`): a new gate joins `GATE_REPORTS`
+  (`tests/unit/platform/startup-record-gates.test.ts`). A model record's
+  "copied reference" check refuses only when EVERY case whose reference names
+  something holds the reference answer (continuity's like 4.3's stress test and
+  2.5's reconcile). VECTORS are derivatives of encrypted-at-rest columns,
+  deleted with their source row (`docs/rls-workspace-isolation.md`); a new
+  vector source model joins `tests/integration/embedding-deletion.test.ts`, and
+  a new surface that feeds a model a book's context joins
+  `retrieval-isolation.test.ts`.
 - **Sanitising author text.** Every author-text write sanitises at the
   usecase layer before it is stored: plain text through `plainLine` /
   `plainBlock` (`src/lib/bible/text.ts`, over `sanitizePlainText`), rich text

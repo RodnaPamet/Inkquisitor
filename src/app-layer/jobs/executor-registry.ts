@@ -206,7 +206,7 @@ function registerDefaultExecutors(): void {
                 ...emptyResult('fact-layer-dispatch', startedAt, startMs),
                 itemsScanned: r.queued + r.enqueueFailed + r.embedded + r.embedDropped + r.embedFailed,
                 itemsActioned: r.queued + r.embedded,
-                itemsSkipped: r.embedDropped,
+                itemsSkipped: r.embedDropped + r.workspacesSkipped,
                 details: { ...r },
             };
         });
@@ -240,7 +240,7 @@ function registerDefaultExecutors(): void {
                 ...emptyResult('continuity-dispatch', startedAt, startMs),
                 itemsScanned: r.due,
                 itemsActioned: r.queued,
-                itemsSkipped: r.enqueueFailed,
+                itemsSkipped: r.enqueueFailed + r.workspacesSkipped,
                 details: { ...r },
             };
         });

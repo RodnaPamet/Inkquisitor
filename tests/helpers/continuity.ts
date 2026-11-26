@@ -49,6 +49,12 @@ export function threadExtractor(sentence: string, title: string): () => FactExtr
     });
 }
 
+let testNights = 0;
+/** A night key no other call of this process names (4.H-a's one-run-a-night rule is per night). */
+export function nextTestNight(): string {
+    return `test-${process.pid.toString(36)}-${Date.now().toString(36)}-${(testNights++).toString(36)}`;
+}
+
 /**
  * Queue and run the nightly check of the workspace's due books (the dispatcher, then each run), the deps given. The
  * night runs, by default, a settle margin (`CONTINUITY_PASS_SETTLE_MS`) after the facts a test has just written, as a
@@ -56,7 +62,8 @@ export function threadExtractor(sentence: string, title: string): () => FactExtr
  */
 export async function runNight(ctx: WorkspaceRequestContext, deps: ContinuityCheckDeps = {}): Promise<Array<string | null>> {
     const queued: string[] = [];
-    await executeContinuityDispatch({ enqueue: async (_name, payload) => void queued.push((payload as { runId: string }).runId), workspaceIds: [ctx.workspaceId] });
+    // Each call is a night of its own (4.H-a: a book is queued at most once a night), named so tests can run many.
+    await executeContinuityDispatch({ enqueue: async (_name, payload) => void queued.push((payload as { runId: string }).runId), workspaceIds: [ctx.workspaceId], nightKey: nextTestNight() });
     const undo = setFakeApiKey();
     try {
         const outcomes: Array<string | null> = [];

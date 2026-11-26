@@ -379,9 +379,20 @@ export const FactProposalRepository = {
 
 export const EmbeddingTaskRepository = {
     /** DISCOVERY (outside RLS, ids only): the workspaces with tasks waiting, oldest task first. */
+    /**
+     * Up to `take` DISTINCT workspaces with tasks, the oldest task first (4.H-a). It read the `take` oldest TASKS and
+     * kept their workspaces, so one workspace holding that many old tasks — one whose key cannot be unwrapped never
+     * clears them — was the only workspace every tick, and every other workspace's tasks waited for ever.
+     */
     async listDueWorkspaces(db: PrismaClient, take: number, workspaceIds?: readonly string[]): Promise<string[]> {
-        const rows = await db.embeddingTask.findMany({ where: workspaceIds ? { workspaceId: { in: [...workspaceIds] } } : {}, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }], take, select: { workspaceId: true } });
-        return [...new Set(rows.map((r) => r.workspaceId))];
+        const rows = await db.embeddingTask.groupBy({
+            by: ['workspaceId'],
+            where: workspaceIds ? { workspaceId: { in: [...workspaceIds] } } : {},
+            _min: { createdAt: true },
+            orderBy: [{ _min: { createdAt: 'asc' } }, { workspaceId: 'asc' }],
+            take,
+        });
+        return rows.map((r) => r.workspaceId);
     },
     async listForWorkspace(db: Db, workspaceId: string, take: number): Promise<Array<{ id: string; sourceModel: string; sourceId: string; attempts: number; generation: number }>> {
         return db.embeddingTask.findMany({ where: { workspaceId }, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }], take, select: { id: true, sourceModel: true, sourceId: true, attempts: true, generation: true } });

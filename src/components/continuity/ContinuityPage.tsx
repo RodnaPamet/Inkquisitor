@@ -362,6 +362,11 @@ export function ContinuityPage({ workspaceSlug, book, initial, canEdit }: Contin
     };
 
     const nightly = page.nightly;
+    /** The last run's outcome in words; a pass that finished over a cut or passed-over set is never "every fact checked" (4.H-a). */
+    const nightlyOutcomeText = (n: typeof nightly): string => {
+        if (n.outcome === 'OK' && !n.complete) return t('nightly.outcome.OK_INCOMPLETE');
+        return t.has(`nightly.outcome.${n.outcome}`) ? t(`nightly.outcome.${n.outcome}`) : (n.outcome ?? '');
+    };
     return (
         <EntityDetailLayout
             id="continuity-page"
@@ -385,13 +390,23 @@ export function ContinuityPage({ workspaceSlug, book, initial, canEdit }: Contin
                     </h2>
                     <p className="text-sm text-content-muted" data-testid="continuity-nightly">
                         {nightly.lastRunAt
-                            ? t('nightly.lastRun', { when: new Date(nightly.lastRunAt).toLocaleString(), outcome: t.has(`nightly.outcome.${nightly.outcome}`) ? t(`nightly.outcome.${nightly.outcome}`) : (nightly.outcome ?? '') })
+                            ? t('nightly.lastRun', { when: new Date(nightly.lastRunAt).toLocaleString(), outcome: nightlyOutcomeText(nightly) })
                             : t('nightly.never')}
                     </p>
                     {nightly.lastRunAt ? (
                         <p className="text-sm text-content-muted">{t('nightly.covered', { covered: nightly.subjectsCovered, remaining: nightly.subjectsRemaining, facts: nightly.factsRead })}</p>
                     ) : null}
                     {nightly.passUnderWay ? <p className="text-sm text-content-muted">{t('nightly.passUnderWay')}</p> : null}
+                    {nightly.factsCut ? (
+                        <p className="text-sm text-content-muted" data-testid="continuity-nightly-cut">
+                            {t('nightly.factsCut', { read: nightly.factsRead, total: page.liveFacts })}
+                        </p>
+                    ) : null}
+                    {nightly.parkedSubjects > 0 ? (
+                        <p className="text-sm text-content-muted" data-testid="continuity-nightly-parked">
+                            {t('nightly.parked', { count: nightly.parkedSubjects })}
+                        </p>
+                    ) : null}
                 </Card>
 
                 <section className="space-y-default" aria-labelledby="continuity-contradictions-title" id="continuity-contradictions">
@@ -473,7 +488,9 @@ export function ContinuityPage({ workspaceSlug, book, initial, canEdit }: Contin
                                         {later.map((d) => (
                                             <li key={d.answerId} className="space-y-tight py-default" data-testid="continuity-decide-later">
                                                 <p className="text-sm text-content-emphasis">{d.question}</p>
-                                                <p className="text-xs text-content-muted">{t('decideLater.from', { element: d.elementName ?? '' })}</p>
+                                                <p className="text-xs text-content-muted">
+                                                    {d.pair ? t('decideLater.fromPair', { first: d.elementName ?? '', second: d.pair.elementName ?? '' }) : t('decideLater.from', { element: d.elementName ?? '' })}
+                                                </p>
                                             </li>
                                         ))}
                                     </ul>
