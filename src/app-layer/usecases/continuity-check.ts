@@ -67,6 +67,7 @@ import {
     CONTINUITY_FACTS_PER_CALL_MIN,
     CONTINUITY_FACTS_READ_MAX,
     CONTINUITY_LIST_MAX,
+    CONTINUITY_PROPOSALS_PER_RUN_MAX,
     type ContinuityOutcome,
     type ContinuityRunStatus,
     type ContradictionKind,
@@ -185,11 +186,13 @@ async function raisePairs(
     pairs: ReadonlyArray<{ a: CheckFactRow; b: CheckFactRow; kind: ContradictionKind }>,
     basis: 'RULE' | 'DEEP',
     refusals: Record<string, number>,
+    max: number = CONTINUITY_PROPOSALS_PER_RUN_MAX,
 ): Promise<number> {
     if (pairs.length === 0) return 0;
     await BibleFactRepository.lockBook(db, bookId);
     const live = await ContinuityFactRepository.liveIds(db, ctx.workspaceId, [...new Set(pairs.flatMap((p) => [p.a.id, p.b.id]))]);
     const held = await FactProposalRepository.heldPairs(db, ctx.workspaceId, pairs.map((p) => ({ a: p.a.id, b: p.b.id })));
+
     const rows = [];
     for (const p of pairs) {
         if (!live.has(p.a.id) || !live.has(p.b.id)) {
@@ -203,7 +206,11 @@ async function raisePairs(
         const [older, newer] = ordered(p.a, p.b);
         rows.push({ bookId, factId: older.id, newerFactId: newer.id, reason: 'CONTRADICTED' as const, basis, kind: p.kind, checkRunId: run.id });
     }
-    return FactProposalRepository.raise(db, ctx.workspaceId, rows);
+    // Bounded a night (the rule sweep's writes run inside one transaction): what is past the bound is raised on the
+    // nights that follow, the held pairs checked first, so each pair is still raised once.
+    const kept = rows.slice(0, max);
+    if (rows.length > kept.length) refusals.DEFERRED = (refusals.DEFERRED ?? 0) + rows.length - kept.length;
+    return FactProposalRepository.raise(db, ctx.workspaceId, kept);
 }
 
 /** A fact as one line of the deep call's facts block, with its place in the story order. */
@@ -289,7 +296,9 @@ export async function executeContinuityCheck(payload: { workspaceId: string; run
 
     try {
         // Rule 6: a book with no live fact has nothing checked; it is never reported clean.
-        if (facts.length === 0) return await finish('NO_FACTS', claim, { passTarget: null, passCursor: null });
+        // Its coverage still moves: the book was due for facts this run cannot check (an unlinked subject), and a
+        // coverage left behind them would queue the book again every night, for ever, to read nothing.
+        if (facts.length === 0) return await finish('NO_FACTS', claim, { coveredThrough: passTarget, passTarget: null, passCursor: null });
 
         const placed = claimed.placed.slice(0, CLOCK_ELEMENTS_MAX);
         metrics.clockKnown = claimed.placed.length <= CLOCK_ELEMENTS_MAX;
@@ -402,9 +411,10 @@ export async function executeContinuityCheck(payload: { workspaceId: string; run
             });
             counts.deepProposals += raised;
             counts.subjectsCovered += call.subjectKeys.length;
+            // What a stop later in the night leaves: the pass's subjects less those its calls have covered.
+            counts.subjectsRemaining -= call.subjectKeys.length;
             cursor = callCursor;
         }
-        counts.subjectsRemaining = plan.remaining;
         if (plan.remaining > 0 || plan.overBudget) {
             return await finish(plan.overBudget && plan.calls.length === 0 ? 'CALL_OVER_BUDGET' : 'PAGED', claim, { passTarget, passCursor: cursor });
         }

@@ -504,7 +504,9 @@ async function persist(ctx: WorkspaceRequestContext, row: FactExtractionRow, cla
             const target = t.paysOffIndex === null ? null : prepared.openThreads[t.paysOffIndex];
             if (t.op === 'SET_STATE' && (!target || !stillOpen.has(target.id))) continue;
             const proposedState = t.op === 'NEW_THREAD' ? 'OPEN' : CLOSED_STATE_OF[t.kind];
-            const parts = t.op === 'NEW_THREAD' ? ['THREAD', t.kind, contentTokens(t.title ?? '').join(' ')] : ['PAY', target!.id, proposedState];
+            // A new thread is keyed by its KIND and the entry's own WORDS that set it up, never by the model's title: the
+            // title is reworded from call to call, so keying on it let a rejected thread return under a new title.
+            const parts = t.op === 'NEW_THREAD' ? ['THREAD', t.kind, contentTokens(t.quote).join(' ') || t.quote] : ['PAY', target!.id, proposedState];
             const clean = sanitiseThreadProposalForStorage({ title: t.title, quote: t.quote });
             threadRows.push({
                 bookId: row.bookId,

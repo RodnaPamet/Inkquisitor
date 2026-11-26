@@ -130,14 +130,17 @@ export const ContinuityDiscovery = {
      * created (or a book-library source fact confirmed) after the check's `coveredThrough`, or a pass under way —
      * with no live run (one QUEUED or RUNNING since `staleBefore`), SHARED FAIRLY between workspaces: each
      * workspace's books are numbered, and the list is taken in that number's order, so one workspace's hundred books
-     * never hold back another's one.
+     * never hold back another's one. Within a workspace (and among workspaces in one round) the book checked least
+     * recently comes first: a book stays due while its pass is under way (and, without an evaluation record, for as
+     * long as that lasts), so an order fixed by id would hand the same books every night's places and never reach
+     * the rest.
      */
     async listDueBooks(db: PrismaClient, data: { take: number; staleBefore: Date; workspaceIds?: readonly string[] }): Promise<DueBook[]> {
         const scope = data.workspaceIds ? Prisma.sql`AND b."workspaceId" = ANY(${[...data.workspaceIds]}::text[])` : Prisma.empty;
         return db.$queryRaw<DueBook[]>(Prisma.sql`
             SELECT "workspaceId", "bookId" FROM (
-                SELECT b."workspaceId", b."id" AS "bookId",
-                       row_number() OVER (PARTITION BY b."workspaceId" ORDER BY b."id") AS rn
+                SELECT b."workspaceId", b."id" AS "bookId", c."lastRunAt",
+                       row_number() OVER (PARTITION BY b."workspaceId" ORDER BY c."lastRunAt" ASC NULLS FIRST, b."id") AS rn
                 FROM "Book" b
                 LEFT JOIN "ContinuityCheck" c ON c."workspaceId" = b."workspaceId" AND c."bookId" = b."id"
                 WHERE b."deletedAt" IS NULL ${scope}
@@ -154,7 +157,7 @@ export const ContinuityDiscovery = {
                                   WHERE r."workspaceId" = b."workspaceId" AND r."bookId" = b."id"
                                     AND r."status" IN ('QUEUED', 'RUNNING') AND r."createdAt" > ${data.staleBefore})
             ) due
-            ORDER BY rn, "workspaceId", "bookId"
+            ORDER BY rn, "lastRunAt" ASC NULLS FIRST, "workspaceId", "bookId"
             LIMIT ${data.take}`);
     },
 };

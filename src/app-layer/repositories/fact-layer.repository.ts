@@ -42,6 +42,24 @@ export type FactExtractionRow = Prisma.BibleFactExtractionGetPayload<{ select: t
 const PROPOSAL_SELECT = { id: true, bookId: true, factId: true, newerFactId: true, reason: true, basis: true, kind: true, status: true, decidedAt: true, createdAt: true } as const satisfies Prisma.StoryFactProposalSelect;
 export type FactProposalRow = Prisma.StoryFactProposalGetPayload<{ select: typeof PROPOSAL_SELECT }>;
 
+/**
+ * Every proposal (decided or not) between two of these facts, as `older|newer` keys (Phase 4.2). The facts are named
+ * as two id lists, never one OR branch per pair: a nightly rule sweep over a large subject names tens of thousands of
+ * pairs, and as branches they ran past PostgreSQL's bind-parameter limit in one query (or, cut into slices, past the
+ * transaction's timeout), failing the whole run every night. The ids are a bounded fact read's, so their pairs bound
+ * the rows.
+ */
+async function proposedPairsAmong(db: Db, workspaceId: string, factIds: readonly string[]): Promise<Set<string>> {
+    const ids = [...new Set(factIds)];
+    if (ids.length < 2) return new Set();
+    const rows = await db.storyFactProposal.findMany({
+        where: { workspaceId, factId: { in: ids }, newerFactId: { in: ids } },
+        take: ids.length * (ids.length - 1),
+        select: { factId: true, newerFactId: true },
+    });
+    return new Set(rows.map((r) => `${r.factId}|${r.newerFactId}`));
+}
+
 /** When an extraction is due (the dispatcher's window): discovery and the mark ask the same predicate. */
 export interface ExtractionDueWindow {
     now: Date;
@@ -298,26 +316,20 @@ export const FactProposalRepository = {
         // Phase 4.2: a pair already proposed in EITHER order (decided or not) is never proposed again; the unique
         // key is directional, so the reverse is asked here, under the caller's book fact lock.
         const pairs = rows.filter((r) => r.newerFactId !== null);
-        const held = pairs.length === 0 ? [] : await db.storyFactProposal.findMany({
-            where: { workspaceId, OR: pairs.map((r) => ({ factId: r.newerFactId!, newerFactId: r.factId })) },
-            take: pairs.length,
-            select: { factId: true, newerFactId: true },
-        });
-        const reversed = new Set(held.map((h) => `${h.newerFactId}|${h.factId}`));
-        const fresh = rows.filter((r) => r.newerFactId === null || !reversed.has(`${r.factId}|${r.newerFactId}`));
+        const held = await proposedPairsAmong(db, workspaceId, pairs.flatMap((r) => [r.factId, r.newerFactId!]));
+        const fresh = rows.filter((r) => r.newerFactId === null || !held.has(`${r.newerFactId}|${r.factId}`));
         if (fresh.length === 0) return 0;
         const r = await db.storyFactProposal.createMany({ data: fresh.map((x) => ({ workspaceId, ...x })), skipDuplicates: true });
         return r.count;
     },
     /** Phase 4.2: the unordered pairs among these that the book already holds a proposal for (decided or not). */
     async heldPairs(db: Db, workspaceId: string, pairs: ReadonlyArray<{ a: string; b: string }>): Promise<Set<string>> {
-        if (pairs.length === 0) return new Set();
-        const rows = await db.storyFactProposal.findMany({
-            where: { workspaceId, OR: pairs.flatMap((p) => [{ factId: p.a, newerFactId: p.b }, { factId: p.b, newerFactId: p.a }]) },
-            take: pairs.length * 2,
-            select: { factId: true, newerFactId: true },
-        });
-        return new Set(rows.flatMap((r) => (r.newerFactId ? [`${r.factId}|${r.newerFactId}`, `${r.newerFactId}|${r.factId}`] : [])));
+        const out = new Set<string>();
+        for (const key of await proposedPairsAmong(db, workspaceId, pairs.flatMap((p) => [p.a, p.b]))) {
+            const [a, b] = key.split('|');
+            out.add(`${a}|${b}`).add(`${b}|${a}`);
+        }
+        return out;
     },
     /** Phase 4.2: a book's pending proposals of one reason (the Continuity page's contradictions, its no-longer-stated facts). */
     async listPendingByReason(db: Db, workspaceId: string, bookId: string, reason: 'CONTRADICTED' | 'NO_LONGER_STATED', take: number): Promise<FactProposalRow[]> {

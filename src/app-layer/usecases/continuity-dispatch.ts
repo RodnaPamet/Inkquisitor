@@ -25,6 +25,8 @@ export interface ContinuityDispatchDeps {
     /** Only these workspaces (tests, which share one database). */
     workspaceIds?: readonly string[];
     now?: () => Date;
+    /** Books queued at most (tests: a smaller bound than `CONTINUITY_DISPATCH_MAX`). */
+    take?: number;
 }
 
 export interface ContinuityDispatchResult {
@@ -39,7 +41,7 @@ export async function executeContinuityDispatch(deps: ContinuityDispatchDeps = {
     const staleBefore = new Date(now.getTime() - STALE_CONTINUITY_RUN_MS);
     const enqueue = deps.enqueue ?? (async (name, payload, options) => (await import('@/app-layer/jobs/queue')).enqueue(name, payload, options));
     const result: ContinuityDispatchResult = { due: 0, queued: 0, expired: 0, enqueueFailed: 0 };
-    const due = await runWithoutRls({ reason: 'continuity-discovery' }, (db) => ContinuityDiscovery.listDueBooks(db, { take: CONTINUITY_DISPATCH_MAX, staleBefore, workspaceIds: deps.workspaceIds }));
+    const due = await runWithoutRls({ reason: 'continuity-discovery' }, (db) => ContinuityDiscovery.listDueBooks(db, { take: deps.take ?? CONTINUITY_DISPATCH_MAX, staleBefore, workspaceIds: deps.workspaceIds }));
     result.due = due.length;
     for (const book of due) {
         const scope = { workspaceId: book.workspaceId, requestId: randomUUID() };
