@@ -60,4 +60,13 @@ export const SCHEDULED_JOBS: readonly ScheduleDefinition[] = [
         description: 'Queue due bible fact extractions and embed due elements, facts and answers (Phase 4.1).',
         defaultPayload: {},
     },
+    {
+        // Nightly, off the hour (02:23 UTC), before the purge and the call-log
+        // retention: each book changed since its last deep check gets one night's
+        // bounded page (D28); a pass longer than a night goes on the next.
+        name: 'continuity-dispatch',
+        pattern: '23 2 * * *',
+        description: 'Queue the nightly continuity check of every book changed since its last one: rules, then a bounded deep-tier page (Phase 4.2).',
+        defaultPayload: {},
+    },
 ];

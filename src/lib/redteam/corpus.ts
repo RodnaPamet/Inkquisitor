@@ -19,8 +19,11 @@ import corpusJson from './injection-corpus.json';
  * which a relation round's questions are worded around). Phase 4.0 adds
  * SOURCE_UPLOAD (a passage of an uploaded draft, read for facts) and 4.1
  * BIBLE_ENTRY (an accepted bible entry, read for facts automatically, D27).
+ * Phase 4.2 adds CONTINUITY_FACTS (a fact's statement, shown to the nightly
+ * deep continuity check with no author in the loop, D28); BIBLE_ENTRY now also
+ * covers the threads the same extraction proposes.
  */
-export const INJECTION_SURFACES = ['ANSWER', 'ELEMENT_TEXT', 'IMPORTED_NOTE', 'RESEARCH_PAGE', 'ATTACHED_FILE', 'RELATION_ANSWER', 'RELATION_TEXT', 'SOURCE_UPLOAD', 'BIBLE_ENTRY'] as const;
+export const INJECTION_SURFACES = ['ANSWER', 'ELEMENT_TEXT', 'IMPORTED_NOTE', 'RESEARCH_PAGE', 'ATTACHED_FILE', 'RELATION_ANSWER', 'RELATION_TEXT', 'SOURCE_UPLOAD', 'BIBLE_ENTRY', 'CONTINUITY_FACTS'] as const;
 export type InjectionSurface = (typeof INJECTION_SURFACES)[number];
 
 export const INJECTION_ATTACKS = [

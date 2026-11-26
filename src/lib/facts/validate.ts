@@ -16,12 +16,16 @@
  * A `contradicts` number that names no fact shown is dropped (counted). Each
  * refusal is a counted code, never a row.
  */
-import { nameKey } from '@/lib/enrichment/validate';
+import { addressesTheProduct, groundingForm, nameKey } from '@/lib/enrichment/validate';
+import { plainLine } from '@/lib/bible/text';
+import { groundSentence, normaliseText, sentences } from '@/lib/interview/text';
+import { copiesInjected } from '@/lib/sources/validate';
+import { THREAD_TITLE_MAX, type ThreadKind } from '@/lib/continuity/vocabulary';
 import { disclosesInstructions, promptRuns } from '@/lib/text/prompt-disclosure';
 import { locateQuote } from '@/lib/sources/quote';
 import { validateFacts, type FactDraft } from '@/lib/sources/validate';
 import { BIBLE_FACTS_PROMPT } from './prompt';
-import { parseBibleFactsOutput } from './schema';
+import { parseBibleFactsOutput, parseBibleThreadsOutput } from './schema';
 
 export const BIBLE_FACT_REFUSALS = ['SUBJECT_NOT_ENTRY', 'QUOTE_NOT_IN_ENTRY', 'COPIES_INJECTED_TEXT', 'CONTRADICTS_UNKNOWN'] as const;
 
@@ -84,4 +88,94 @@ export function validateBibleFacts(
         });
     }
     return { facts, refusals, drafted: items.length + malformed };
+}
+
+/**
+ * THE RULES A PROPOSED THREAD IS HELD TO (Phase 4.2, D28; rules 1, 2 and 4, D14). Pure. On the text the call was
+ * SHOWN, as a fact is; in order, each refusal a counted code:
+ *
+ *   THREAD_QUOTE_NOT_FOUND   the quote is not one contiguous run of the text shown (and so of the entry)
+ *   THREAD_TITLE_EMPTY       a new thread with no title once sanitised
+ *   THREAD_COPIES_INJECTED   markup or a script scheme, an address the entry does not give, the guard's injection hit,
+ *                            or eight words of the prompt, in its title or quote
+ *   THREAD_NOT_GROUNDED      a sentence of the title is not supported by the quote
+ *   THREAD_UNKNOWN           `paysOff` names no open thread shown, or one of another kind
+ *   THREAD_DUPLICATE         the same thread (or the same pay-off) twice
+ *
+ * A title that addresses the product is NOT refused (D14): the proposal is FLAGGED and accepted only one by one.
+ * The stored quote is the entry's own slice at the located span.
+ */
+export interface BibleThreadDraft {
+    readonly op: 'NEW_THREAD' | 'SET_STATE';
+    readonly kind: ThreadKind;
+    /** A new thread's title (sanitised); null for a pay-off. */
+    readonly title: string | null;
+    /** A pay-off's open thread (0-based index into those shown); null for a new thread. */
+    readonly paysOffIndex: number | null;
+    readonly quote: string;
+    readonly quoteStart: number;
+    readonly quoteEnd: number;
+    readonly flags: string[];
+}
+
+export function validateBibleThreads(
+    raw: unknown,
+    input: { sent: string; entry: string; openThreads: ReadonlyArray<{ kind: string }> },
+): { threads: BibleThreadDraft[]; refusals: Record<string, number>; drafted: number } {
+    const { items, malformed } = parseBibleThreadsOutput(raw);
+    const refusals: Record<string, number> = {};
+    const refuse = (code: string, n = 1) => (refusals[code] = (refusals[code] ?? 0) + n);
+    if (malformed > 0) refuse('THREAD_INVALID_ITEM', malformed);
+    const threads: BibleThreadDraft[] = [];
+    const seen = new Set<string>();
+    for (const item of items) {
+        if (!locateQuote(item.quote, input.sent)) {
+            refuse('THREAD_QUOTE_NOT_FOUND');
+            continue;
+        }
+        const span = locateQuote(item.quote, input.entry);
+        if (!span) {
+            refuse('THREAD_QUOTE_NOT_FOUND');
+            continue;
+        }
+        const quote = input.entry.slice(span.start, span.end);
+        if (copiesInjected([item.title, item.quote], input.sent) || disclosesInstructions([item.title, item.quote], RUNS)) {
+            refuse('THREAD_COPIES_INJECTED');
+            continue;
+        }
+        if (item.paysOff > 0) {
+            const open = input.openThreads[item.paysOff - 1];
+            if (!open || open.kind !== item.kind) {
+                refuse('THREAD_UNKNOWN');
+                continue;
+            }
+            const key = `pay:${item.paysOff}`;
+            if (seen.has(key)) {
+                refuse('THREAD_DUPLICATE');
+                continue;
+            }
+            seen.add(key);
+            threads.push({ op: 'SET_STATE', kind: item.kind, title: null, paysOffIndex: item.paysOff - 1, quote, quoteStart: span.start, quoteEnd: span.end, flags: [] });
+            continue;
+        }
+        const clipped = plainLine(item.title);
+        const title = clipped.length > THREAD_TITLE_MAX ? clipped.slice(0, THREAD_TITLE_MAX).trimEnd() : clipped;
+        if (title === '') {
+            refuse('THREAD_TITLE_EMPTY');
+            continue;
+        }
+        const sources = [groundingForm(quote)];
+        if (!sentences(groundingForm(title)).every((t) => groundSentence(t, sources).supported)) {
+            refuse('THREAD_NOT_GROUNDED');
+            continue;
+        }
+        const key = `new:${item.kind}:${normaliseText(title)}`;
+        if (seen.has(key)) {
+            refuse('THREAD_DUPLICATE');
+            continue;
+        }
+        seen.add(key);
+        threads.push({ op: 'NEW_THREAD', kind: item.kind, title, paysOffIndex: null, quote, quoteStart: span.start, quoteEnd: span.end, flags: addressesTheProduct(title) ? ['POSSIBLE_INSTRUCTION'] : [] });
+    }
+    return { threads, refusals, drafted: items.length + malformed };
 }

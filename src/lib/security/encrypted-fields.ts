@@ -70,6 +70,9 @@ export const ENCRYPTED_FIELDS: EncryptedFieldManifest = Object.freeze({
     SourceChunk: Object.freeze(['text', 'headingPath']),
     StoryFact: Object.freeze(['subjectName', 'objectLiteral', 'statement', 'quote', 'storyTimeFrom', 'storyTimeTo']),
     StoryFactOverride: Object.freeze(['text']),
+    // Phase 4.2 (D28): the registries' entries and the threads the product proposes (the quote is the version's words).
+    StoryThread: Object.freeze(['title', 'note']),
+    StoryThreadProposal: Object.freeze(['title', 'quote']),
 });
 
 /** The lookups the extension runs per operation, compiled once per manifest. */

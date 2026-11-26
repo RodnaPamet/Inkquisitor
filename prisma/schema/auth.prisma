@@ -58,6 +58,11 @@ model User {
   factDecisions         StoryFact[]         @relation("StoryFactDecidedBy")
   factOverrides         StoryFactOverride[] @relation("StoryFactOverrideBy")
   factProposalDecisions StoryFactProposal[] @relation("StoryFactProposalDecidedBy")
+  /// Phase 4.2 (D28): threads made and edited, thread proposals decided, stale flags dismissed.
+  threadsCreated          StoryThread[]         @relation("StoryThreadCreatedBy")
+  threadsUpdated          StoryThread[]         @relation("StoryThreadUpdatedBy")
+  threadProposalDecisions StoryThreadProposal[] @relation("StoryThreadProposalDecidedBy")
+  staleFlagsDismissed     StaleFlag[]           @relation("StaleFlagDismissedBy")
   /// Phase 3.1: story-map snapshots this person's saves wrote; the link is
   /// cleared (and the snapshot kept) when the person is deleted.
   mapSnapshots          MapSnapshot[]

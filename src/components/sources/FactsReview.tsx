@@ -33,16 +33,18 @@ import { Textarea } from '@/components/ui/textarea';
 import { ToggleGroup } from '@/components/ui/toggle-group';
 import { APP_ROUTES } from '@/lib/app-routes';
 import { BibleApiError } from '@/lib/bible/api-client';
-import { sourcesApi, type FactProposalsPage, type FactsPage, type FactView, type LibraryRef } from '@/lib/sources/api-client';
-import { FactProposalsPanel } from './FactProposalsPanel';
+import { sourcesApi, type FactsPage, type FactView, type LibraryRef } from '@/lib/sources/api-client';
 
 export interface FactsReviewProps {
     workspaceSlug: string;
     book: { id: string; title: string } | null;
     initial: FactsPage;
     canEdit: boolean;
-    /** A book's page (Phase 4.1, D27): the pending proposals to invalidate a fact, decided here. */
-    proposals?: FactProposalsPage;
+    /**
+     * A book's page: how many proposals to invalidate a fact wait for the author (4.1). Since Phase 4.2 they are
+     * decided on the Continuity page, with every other continuity finding; this page links there.
+     */
+    pendingContinuity?: number;
 }
 
 const STATUS_FILTERS = ['PENDING', 'CONFIRMED', 'REJECTED', 'ALL'] as const;
@@ -143,7 +145,7 @@ function FactCard({ fact, canEdit, inherited, onDecide, onOverride }: { fact: Fa
     );
 }
 
-export function FactsReview({ workspaceSlug, book, initial, canEdit, proposals }: FactsReviewProps) {
+export function FactsReview({ workspaceSlug, book, initial, canEdit, pendingContinuity }: FactsReviewProps) {
     const t = useTranslations('sources.facts');
     const errorText = useErrorText();
     const ref: LibraryRef = { slug: workspaceSlug, bookId: book?.id ?? null };
@@ -240,7 +242,13 @@ export function FactsReview({ workspaceSlug, book, initial, canEdit, proposals }
             }
         >
             <div className="space-y-section">
-                {book && proposals ? <FactProposalsPanel workspaceSlug={workspaceSlug} bookId={book.id} initial={proposals} canEdit={canEdit} /> : null}
+                {book && pendingContinuity ? (
+                    <p className="text-sm text-content-muted" id="continuity-link">
+                        <Link href={APP_ROUTES.continuity(workspaceSlug, book.id)} className="text-[var(--brand-default)] underline">
+                            {t('continuityLink', { count: pendingContinuity })}
+                        </Link>
+                    </p>
+                ) : null}
                 <p className="text-sm text-content-muted">{t('help')}</p>
                 <div className="flex flex-wrap items-center justify-between gap-tight">
                     <ToggleGroup

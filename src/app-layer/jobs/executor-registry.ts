@@ -228,6 +228,40 @@ function registerDefaultExecutors(): void {
             };
         });
     });
+
+    // Phase 4.2 (D28): the nightly continuity dispatcher, and one book's night per run.
+    executorRegistry.register('continuity-dispatch', async () => {
+        const startedAt = new Date().toISOString();
+        const startMs = performance.now();
+        return runJob('continuity-dispatch', async () => {
+            const { executeContinuityDispatch } = await import('@/app-layer/usecases/continuity-dispatch');
+            const r = await executeContinuityDispatch();
+            return {
+                ...emptyResult('continuity-dispatch', startedAt, startMs),
+                itemsScanned: r.due,
+                itemsActioned: r.queued,
+                itemsSkipped: r.enqueueFailed,
+                details: { ...r },
+            };
+        });
+    });
+
+    executorRegistry.register('continuity-check', async (payload) => {
+        const startedAt = new Date().toISOString();
+        const startMs = performance.now();
+        return runJob('continuity-check', async () => {
+            const { executeContinuityCheck } = await import('@/app-layer/usecases/continuity-check');
+            const { jobShutdownSignal } = await import('./shutdown-signal');
+            const r = await executeContinuityCheck(payload, { signal: jobShutdownSignal() });
+            return {
+                ...emptyResult('continuity-check', startedAt, startMs),
+                itemsScanned: 1,
+                itemsActioned: r.ran ? 1 : 0,
+                itemsSkipped: r.ran ? 0 : 1,
+                details: { runId: payload.runId, outcome: r.outcome },
+            };
+        });
+    });
 }
 
 registerDefaultExecutors();

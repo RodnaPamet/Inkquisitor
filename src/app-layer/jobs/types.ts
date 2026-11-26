@@ -102,6 +102,22 @@ export interface BibleFactsPayload {
     extractionId: string;
 }
 
+/**
+ * Phase 4.2 (D28): the nightly continuity dispatcher. No payload: it finds the
+ * books changed since their last deep check itself (`usecases/continuity-dispatch.ts`).
+ */
+export type ContinuityDispatchPayload = Record<string, never>;
+
+/**
+ * One book's nightly continuity check (Phase 4.2, D28): the run's id and its
+ * workspace, never a fact's text (`usecases/continuity-check.ts`). Idempotent: a
+ * run that is no longer QUEUED is left alone.
+ */
+export interface ContinuityCheckPayload {
+    workspaceId: string;
+    runId: string;
+}
+
 export interface JobPayloadMap {
     heartbeat: HeartbeatPayload;
     'book-purge': BookPurgePayload;
@@ -110,6 +126,8 @@ export interface JobPayloadMap {
     'source-ingest': SourceIngestPayload;
     'fact-layer-dispatch': FactLayerDispatchPayload;
     'bible-facts': BibleFactsPayload;
+    'continuity-dispatch': ContinuityDispatchPayload;
+    'continuity-check': ContinuityCheckPayload;
 }
 
 export type JobName = keyof JobPayloadMap;
@@ -176,6 +194,23 @@ export const JOB_DEFAULTS: Record<JobName, JobDefaults> = {
         // One attempt: an extraction that stops records its outcome and the
         // dispatcher queues it again when it is due, so a call is never repeated
         // by the queue behind the row's back.
+        attempts: 1,
+        backoff: { type: 'fixed', delay: 0 },
+        removeOnComplete: 200,
+        removeOnFail: 200,
+    },
+    'continuity-dispatch': {
+        // One attempt: the next night is the retry, and every book it would have
+        // queued is still due then (a pass keeps its cursor).
+        attempts: 1,
+        backoff: { type: 'fixed', delay: 0 },
+        removeOnComplete: 30,
+        removeOnFail: 100,
+    },
+    'continuity-check': {
+        // One attempt: a night that stops records its outcome and keeps its
+        // cursor; the next night's dispatcher queues the book again, so a call is
+        // never repeated by the queue behind the run's back.
         attempts: 1,
         backoff: { type: 'fixed', delay: 0 },
         removeOnComplete: 200,

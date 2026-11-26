@@ -1,0 +1,219 @@
+// ─────────────────────────────────────────────────────────────────
+//  Continuity (Phase 4.2, decision D28): the nightly deep check's state,
+//  the open-thread registries, and propagation debt.
+//
+//  CONTRADICTIONS live in `StoryFactProposal` (sources.prisma), the record
+//  4.1 made and 4.2 extends: a kind, a DEEP basis, a decision that keeps the
+//  newer or the older fact, and "both true", whose explanation becomes a fact
+//  (`StoryFact` of kind AUTHOR_RESOLUTION). Nothing here is a second table for
+//  the same thing.
+//
+//  THE REGISTRIES are one table with a kind (`StoryThread`: PROMISE, CLUE,
+//  OPEN_QUESTION): the same lifecycle (proposed, accepted, edited by hand,
+//  closed), the same text and the same isolation, so one table. Proposals are
+//  `StoryThreadProposal`, drawn by the bible fact extraction (4.1's call, its
+//  output schema extended) and each citing the version and the words it rests
+//  on; the author accepts or rejects (rule 1).
+//
+//  PROPAGATION DEBT is `StaleFlag`: an element whose accepted versions cited
+//  answers about another element is flagged "may be stale" when that element
+//  changes, by a trigger on the version table (in the version's transaction).
+//  A flag clears when its element is next saved (read, not written: the
+//  element's newest version passing the flag's `downstreamVersionNumber`),
+//  or when the author dismisses it.
+//
+//  EVERY MODEL HERE IS WORKSPACE-SCOPED (FORCE RLS, `workspace_isolation`,
+//  `superuser_bypass`), and a thread's and a proposal's text are encrypted at
+//  rest (`src/lib/security/encrypted-fields.ts`). Runs and flags hold ids,
+//  counts and codes only.
+// ─────────────────────────────────────────────────────────────────
+
+/// A book's nightly deep-check state (one row a book, created on its first run).
+model ContinuityCheck {
+  id             String    @id @default(cuid())
+  workspaceId    String
+  bookId         String
+  /// Every live fact created at or before this has had its subject checked by a complete pass. NULL: never.
+  coveredThrough DateTime?
+  /// The pass under way: the facts it covers were created at or before this; NULL when no pass is under way.
+  passTarget     DateTime?
+  /// The pass's cursor: the last subject (its order key) a deep call covered. NULL at the pass's start.
+  passCursor     String?
+  lastRunAt      DateTime?
+  lastOutcome    String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  book Book @relation(fields: [workspaceId, bookId], references: [workspaceId, id], onDelete: Cascade)
+
+  @@unique([workspaceId, id])
+  @@unique([workspaceId, bookId])
+  @@index([bookId])
+}
+
+/// One night's check of one book (the `continuity-check` job's row): counts and codes only.
+model ContinuityRun {
+  id                String    @id @default(cuid())
+  workspaceId       String
+  bookId            String
+  /// QUEUED | RUNNING | DONE | STOPPED | SKIPPED | FAILED (CHECK).
+  status            String    @default("QUEUED")
+  /// How it ended or paused, a code (CHECK; `CONTINUITY_OUTCOMES`).
+  outcome           String?
+  /// The pass this run worked on (facts created at or before it).
+  passTarget        DateTime?
+  factsRead         Int       @default(0)
+  ruleProposals     Int       @default(0)
+  deepProposals     Int       @default(0)
+  subjectsCovered   Int       @default(0)
+  subjectsRemaining Int       @default(0)
+  callsMade         Int       @default(0)
+  costMicroUsd      BigInt    @default(0)
+  promptVersion     String?
+  /// Counts and codes only (refusals by code, AiCallLog ids). Never text.
+  metrics           Json?
+  createdAt         DateTime  @default(now())
+  startedAt         DateTime?
+  finishedAt        DateTime?
+
+  book Book @relation(fields: [workspaceId, bookId], references: [workspaceId, id], onDelete: Cascade)
+
+  @@unique([workspaceId, id])
+  /// A book's runs, newest first (the Continuity page's "last checked", the dispatcher's live-run check).
+  @@index([workspaceId, bookId, createdAt])
+  /// The dispatcher's scan for stale live runs across workspaces.
+  @@index([status, createdAt])
+}
+
+/// A registry entry (Phase 4.2): a PROMISE set up for the reader, a CLUE, or an OPEN_QUESTION.
+model StoryThread {
+  id               String    @id @default(cuid())
+  workspaceId      String
+  bookId           String
+  /// PROMISE | CLUE | OPEN_QUESTION (CHECK).
+  kind             String
+  /// What it is, one line (encrypted, sanitised).
+  title            String
+  /// The author's note (encrypted, sanitised), or NULL.
+  note             String?
+  /// OPEN, or a kind's closed state: PROMISE PAID_OFF | DROPPED, CLUE REVEALED | DROPPED, OPEN_QUESTION RESOLVED (CHECK).
+  state            String    @default("OPEN")
+  /// The element it is about, when the author or its proposal named one; NULL otherwise (and once that element goes).
+  subjectElementId String?
+  /// 1, 2, 3, … : every edit names the version it was made against (409 VERSION_CONFLICT otherwise).
+  version          Int       @default(1)
+  createdById      String?
+  updatedById      String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  book           Book                  @relation(fields: [workspaceId, bookId], references: [workspaceId, id], onDelete: Cascade)
+  subjectElement BibleElement?         @relation("StoryThreadSubject", fields: [subjectElementId], references: [id], onDelete: SetNull)
+  createdBy      User?                 @relation("StoryThreadCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedBy      User?                 @relation("StoryThreadUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  proposals      StoryThreadProposal[]
+
+  @@unique([workspaceId, id])
+  /// A book's threads, most recently changed first (the Continuity page).
+  @@index([workspaceId, bookId, updatedAt])
+  /// A book's open threads, oldest first (what an extraction is shown).
+  @@index([workspaceId, bookId, state, createdAt])
+  @@index([subjectElementId])
+  @@index([createdById])
+  @@index([updatedById])
+}
+
+/// A thread proposed by the product (Phase 4.2): a new thread, or a thread's state (a promise paid off), citing where.
+model StoryThreadProposal {
+  id                String    @id @default(cuid())
+  workspaceId       String
+  bookId            String
+  /// NEW_THREAD | SET_STATE (CHECK).
+  op                String
+  /// The thread's kind (CHECK).
+  kind              String
+  /// NEW_THREAD: the proposed title (encrypted, sanitised). SET_STATE: NULL.
+  title             String?
+  /// NEW_THREAD: OPEN. SET_STATE: the closed state proposed (CHECK).
+  proposedState     String
+  /// SET_STATE: the thread it would change. NEW_THREAD: the thread its acceptance created. NULL once that thread goes.
+  threadId          String?
+  /// The bible fact extraction that drew it, and the accepted version it cites.
+  extractionId      String?
+  bibleVersionId    String?
+  relationVersionId String?
+  /// The words of the version it rests on (encrypted), and where they are in the version's rendered entry.
+  quote             String
+  quoteStart        Int
+  quoteEnd          Int
+  /// The element it is about (the version's element; a relation's first end); NULL once it goes.
+  subjectElementId  String?
+  /// The claim, keyed (`workspaceSubkey`): one proposal per claim in a book, ever (a rejected one is never proposed again).
+  dedupeKey         String
+  /// D14: POSSIBLE_INSTRUCTION.
+  flags             String[]  @default([])
+  /// PENDING | ACCEPTED | REJECTED (CHECK).
+  status            String    @default("PENDING")
+  decidedById       String?
+  decidedAt         DateTime?
+  createdAt         DateTime  @default(now())
+
+  book            Book                  @relation(fields: [workspaceId, bookId], references: [workspaceId, id], onDelete: Cascade)
+  thread          StoryThread?          @relation(fields: [threadId], references: [id], onDelete: SetNull)
+  bibleVersion    BibleEntryVersion?    @relation("StoryThreadProposalVersion", fields: [bibleVersionId], references: [id], onDelete: Cascade)
+  relationVersion BibleRelationVersion? @relation("StoryThreadProposalRelationVersion", fields: [relationVersionId], references: [id], onDelete: Cascade)
+  subjectElement  BibleElement?         @relation("StoryThreadProposalSubject", fields: [subjectElementId], references: [id], onDelete: SetNull)
+  decidedBy       User?                 @relation("StoryThreadProposalDecidedBy", fields: [decidedById], references: [id], onDelete: SetNull)
+
+  @@unique([workspaceId, id])
+  @@unique([workspaceId, bookId, dedupeKey])
+  /// A book's proposals by status, newest first (the Continuity page).
+  @@index([workspaceId, bookId, status, createdAt])
+  @@index([threadId])
+  @@index([bibleVersionId])
+  @@index([relationVersionId])
+  @@index([subjectElementId])
+  @@index([decidedById])
+}
+
+/// Propagation debt (Phase 4.2): `elementId` may be stale since `upstreamElementId` changed. One row per pair.
+model StaleFlag {
+  id                      String    @id @default(cuid())
+  workspaceId             String
+  bookId                  String
+  /// The entry that may be stale: one of its accepted versions cited an answer about the upstream element.
+  elementId               String
+  /// The element whose change raised it.
+  upstreamElementId       String
+  /// ANSWER: the downstream entry's version names (`sourceAnswerIds`) an answer to a question about the upstream element (CHECK).
+  basis                   String    @default("ANSWER")
+  /// The downstream version that cites it (the newest such), an id only.
+  citedVersionId          String
+  /// The upstream version before the change the flag stands for (the earliest of an open flag's changes), an id only; NULL for a first version.
+  baseVersionId           String?
+  /// The upstream version that raised it (the newest change).
+  upstreamVersionId       String
+  /// The downstream entry's newest version number when it was raised: a newer save of it (not a reorder) clears the flag.
+  downstreamVersionNumber Int
+  /// OPEN | DISMISSED | CLEARED (CHECK). CLEARED is written by the nightly sweep for a flag its entry's save already cleared.
+  status                  String    @default("OPEN")
+  raisedAt                DateTime  @default(now())
+  dismissedAt             DateTime?
+  dismissedById           String?
+
+  book            Book              @relation(fields: [workspaceId, bookId], references: [workspaceId, id], onDelete: Cascade)
+  element         BibleElement      @relation("StaleFlagElement", fields: [workspaceId, elementId], references: [workspaceId, id], onDelete: Cascade)
+  upstreamElement BibleElement      @relation("StaleFlagUpstream", fields: [workspaceId, upstreamElementId], references: [workspaceId, id], onDelete: Cascade)
+  upstreamVersion BibleEntryVersion @relation("StaleFlagUpstreamVersion", fields: [upstreamVersionId], references: [id], onDelete: Cascade)
+  dismissedBy     User?             @relation("StaleFlagDismissedBy", fields: [dismissedById], references: [id], onDelete: SetNull)
+  sessions        InterviewSession[]
+
+  @@unique([workspaceId, id])
+  @@unique([elementId, upstreamElementId])
+  /// A book's flags by status, newest first (the Continuity page).
+  @@index([workspaceId, bookId, status, raisedAt])
+  @@index([workspaceId, elementId])
+  @@index([workspaceId, upstreamElementId])
+  @@index([upstreamVersionId])
+  @@index([dismissedById])
+}

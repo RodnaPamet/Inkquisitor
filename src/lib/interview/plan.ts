@@ -10,6 +10,11 @@
  *                fewer fields than the cap at depth 4 or 5, or when the
  *                frontier is empty at depth 5. A challenge never displaces a
  *                frontier field.
+ *                Phase 4.2 (D28): a "grill me on what changed" session sets
+ *                `challengeAlways` (its stale fields are filled, and challenging
+ *                them is the session's purpose) and its own `challengesMax`
+ *                (one per stale field, bounded): still one a round, each field
+ *                once.
  *   assignments  with one persona (or none) every target is its; with several,
  *                targets are dealt round-robin in frontier order starting at
  *                the persona whose index is `(roundNumber - 1) mod personas`, so
@@ -34,6 +39,10 @@ export interface PlanInput {
     /** The session's personas; empty when it mounts none. */
     personaKeys: readonly string[];
     roundNumber: number;
+    /** Phase 4.2: a session's own challenge limit (default `CHALLENGES_PER_SESSION`). */
+    challengesMax?: number;
+    /** Phase 4.2: challenge whatever the frontier holds (a grill session on what changed). */
+    challengeAlways?: boolean;
 }
 
 export interface PlannedTarget extends FrontierEntry {
@@ -61,7 +70,8 @@ export function planRound(input: PlanInput): RoundPlan {
     const personaAt = (i: number): string | null => (personas.length === 0 ? null : personas[(lead + i) % personas.length]);
 
     let challenge: RoundPlan['challenge'] = null;
-    if (input.challengesPlanned < CHALLENGES_PER_SESSION && challengeAllowed(input.frontier.length, cap, input.depth)) {
+    const limit = input.challengesMax ?? CHALLENGES_PER_SESSION;
+    if (input.challengesPlanned < limit && (input.challengeAlways || challengeAllowed(input.frontier.length, cap, input.depth))) {
         const done = new Set(input.challenged.map(refKey));
         const next = input.challengeable.find((r) => r.level <= input.depth && !done.has(refKey(r)));
         if (next) challenge = { elementId: next.elementId, fieldKey: next.fieldKey, level: next.level, personaKey: personaAt(0) };

@@ -306,7 +306,15 @@ export function stubReconcileAnswer(body: Record<string, unknown>): { operations
             newRelations.push({ fromElementId: ends[0].elementId, toElementId: 'new.1', type: 'causes', note: null, fields: [{ key: 'mechanism', value: words(1).answer }], cites: [words(1).answerId] });
             newRelations.push({ fromElementId: 'new.1', toElementId: ends[1].elementId, type: 'causes', note: null, fields: [{ key: 'mechanism', value: words(2).answer }], cites: [words(2).answerId] });
         }
-    } else if (ends.length >= 2 && answered.length > 0 && !aboutProposedBeat) {
+    } else if (ends.length < 2 && !aboutProposedBeat) {
+        // Phase 4.2: an answer naming "a stranger named <Name>" proposes that character, citing it (what a real model
+        // proposes under newElements), so a new element's first version can cite an answer about another element.
+        for (const a of answered) {
+            const name = /\ba stranger named ([A-Z][a-z]{1,30})\b/.exec(a.answer)?.[1];
+            if (name && newElements.length < 3 && !newElements.some((n) => n.name === name)) newElements.push({ kind: 'CHARACTER', name, summary: null, fillsSlot: false, cites: [a.answerId] });
+        }
+    }
+    if (!(slot && typeof slot.kind === 'string') && ends.length >= 2 && answered.length > 0 && !aboutProposedBeat) {
         newRelations.push({
             fromElementId: ends[0].elementId,
             toElementId: ends[1].elementId,
@@ -460,16 +468,20 @@ export function stubFactsAnswer(body: Record<string, unknown>): { facts: Array<R
 /**
  * The stub's BIBLE FACT answer (Phase 4.1, D27): each sentence of the entry's
  * changed lines (after the "Label: " prefix) that opens with one of the entry's
- * subjects is one fact about it, quoted whole — WANT when it says the subject
- * wants something, OTHER otherwise — contradicting nothing. Pure.
+ * subjects is one fact about it, quoted whole — AGE when it says the subject is
+ * so many years old, WANT when it says the subject wants something, OTHER
+ * otherwise — contradicting nothing. Pure. Phase 4.2
+ * (D28): a sentence in which the subject swears, vows or promises to do
+ * something is also a PROMISE thread, titled and quoted with the sentence.
  */
-export function stubBibleFactsAnswer(body: Record<string, unknown>): { facts: Array<Record<string, unknown>> } | null {
+export function stubBibleFactsAnswer(body: Record<string, unknown>): { facts: Array<Record<string, unknown>>; threads: Array<Record<string, unknown>> } | null {
     const blocks = fencedBlocks(body);
     const entry = blocks.get('entry.text');
     const subjects = blocks.get('entry.subjects');
     if (entry === undefined || subjects === undefined) return null;
     const names = subjects.split('\n').map((n) => n.trim()).filter((n) => n !== '');
     const facts: Array<Record<string, unknown>> = [];
+    const threads: Array<Record<string, unknown>> = [];
     for (const line of entry.split('\n')) {
         const value = line.replace(/^[^:]{1,40}:\s*/, '');
         for (const sentence of value.split(/(?<=[.!?])\s+/).map((x) => x.trim())) {
@@ -477,10 +489,34 @@ export function stubBibleFactsAnswer(body: Record<string, unknown>): { facts: Ar
             const subject = names.find((n) => sentence.startsWith(n));
             if (!subject) continue;
             const wants = /\bwants?\b/.test(sentence);
-            facts.push({ subject, predicate: wants ? 'WANT' : 'OTHER', object: '', statement: sentence, quote: sentence, storyTimeFrom: '', storyTimeTo: '', contradicts: [] });
+            // Phase 4.2: "<subject> is <n> years old" is an AGE, so two entries' ages can contradict by rule.
+            const age = /\bis (\d{1,3}) years old\b/.exec(sentence)?.[1];
+            facts.push({ subject, predicate: age ? 'AGE' : wants ? 'WANT' : 'OTHER', object: age ? `${age} years old` : '', statement: sentence, quote: sentence, storyTimeFrom: '', storyTimeTo: '', contradicts: [] });
+            if (/\b(?:swears|vows|promises) to\b/.test(sentence) && threads.length < 3) threads.push({ kind: 'PROMISE', title: sentence.replace(/[.!?]$/, ''), quote: sentence, paysOff: 0 });
         }
     }
-    return { facts };
+    return { facts, threads };
+}
+
+/**
+ * The stub's DEEP CONTINUITY answer (Phase 4.2, D28): two lines of the "facts"
+ * block about the same subject with the same AGE, OCCUPATION or LOCATION
+ * predicate whose statements differ are one contradiction (VALUE, or
+ * WHEREABOUTS for a location). Pure.
+ */
+export function stubContinuityAnswer(body: Record<string, unknown>): { contradictions: Array<Record<string, unknown>> } | null {
+    const facts = fencedBlocks(body).get('facts');
+    if (facts === undefined) return null;
+    const lines = facts.split('\n').map((l) => /^(\d+)\. \[([A-Z_]+)\] ([^:]{1,120}): (.+)$/.exec(l)).filter((m): m is RegExpExecArray => m !== null);
+    const contradictions: Array<Record<string, unknown>> = [];
+    for (let i = 0; i < lines.length; i++) {
+        for (let j = i + 1; j < lines.length; j++) {
+            const [a, b] = [lines[i], lines[j]];
+            if (a[2] !== b[2] || a[3] !== b[3] || !['AGE', 'OCCUPATION', 'LOCATION'].includes(a[2]) || a[4] === b[4]) continue;
+            if (contradictions.length < 10) contradictions.push({ first: Number(a[1]), second: Number(b[1]), kind: a[2] === 'LOCATION' ? 'WHEREABOUTS' : 'VALUE' });
+        }
+    }
+    return { contradictions };
 }
 
 function sse(events: Array<Record<string, unknown>>): string {
@@ -526,7 +562,7 @@ export async function stubMessagesFetch(input: string | URL | Request, init?: Re
     const model = typeof body.model === 'string' ? body.model : 'stub-model';
     const gather = stubGatherEvents(body, model);
     if (gather) return new Response(sse(gather), { status: 200, headers: { 'content-type': 'text/event-stream' } });
-    const text = JSON.stringify(stubBibleFactsAnswer(body) ?? stubFactsAnswer(body) ?? stubFindingsAnswer(body) ?? stubFitAnswer(body) ?? stubReconcileAnswer(body) ?? stubAnswer(body));
+    const text = JSON.stringify(stubBibleFactsAnswer(body) ?? stubContinuityAnswer(body) ?? stubFactsAnswer(body) ?? stubFindingsAnswer(body) ?? stubFitAnswer(body) ?? stubReconcileAnswer(body) ?? stubAnswer(body));
     return new Response(streamedMessage(model, text, { input_tokens: 1_500, output_tokens: Math.max(50, Math.ceil(text.length / 4)) }), {
         status: 200,
         headers: { 'content-type': 'text/event-stream' },

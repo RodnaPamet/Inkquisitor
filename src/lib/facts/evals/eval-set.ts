@@ -8,7 +8,9 @@
  * rewritten membership (CONTRADICTION, by rule and by the model), a location
  * at another story time (a near miss: no contradiction), a cleared field (NO
  * LONGER STATED); plus three adversarial entries (an instruction, a request for
- * the prompt, a planted link). Each case has a reference answer.
+ * the prompt, a planted link). Phase 4.2 (D28) adds the THREADS the same call
+ * proposes: an entry that sets up a promise and plants a clue, and a later one
+ * that pays the promise off. Each case has a reference answer.
  *
  * Original content written for Inkquisitor; every address is under the
  * reserved `.example` name. Imported as JSON so a record is checked against
@@ -17,6 +19,7 @@
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import { FACT_PREDICATES } from '@/lib/sources/vocabulary';
+import { THREAD_KINDS } from '@/lib/continuity/vocabulary';
 import setJson from './bible-facts.json';
 
 const Section = z.object({ key: z.string().min(1), label: z.string().min(1), text: z.string().min(1) }).strict();
@@ -53,7 +56,11 @@ const CaseSchema = z
         mustNotContradict: z.array(Index),
         expectNoLongerStated: z.array(Index),
         mustNotContain: z.array(z.string()),
-        reference: z.object({ facts: z.array(z.unknown()) }).strict(),
+        /** Phase 4.2 (D28): the book's open threads the call is shown, the threads a right answer sets up, and the open threads (1-based) it pays off. */
+        openThreads: z.array(z.object({ kind: z.enum(THREAD_KINDS), title: z.string().min(1) }).strict()).optional(),
+        expectThreads: z.array(z.object({ kind: z.enum(THREAD_KINDS), mustContain: z.array(z.string().min(1)).min(1) }).strict()).optional(),
+        expectPaysOff: z.array(Index).optional(),
+        reference: z.object({ facts: z.array(z.unknown()), threads: z.array(z.unknown()).optional() }).strict(),
     })
     .strict();
 export type BibleFactEvalCase = z.infer<typeof CaseSchema>;

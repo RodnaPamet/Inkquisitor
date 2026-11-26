@@ -90,6 +90,8 @@ export interface EvalArgs {
     /** Also run source fact extraction's evaluation (Phase 4.0). */
     sources?: boolean;
     bibleFacts?: boolean;
+    /** Phase 4.2: the deep continuity check's set. */
+    continuity?: boolean;
     /** Also run the rephrase prompt's evaluation (Phase 2.H). */
     rephrase: boolean;
     /** Also judge the ungraded behaviours of the pack records written (Phase 2.H). */
@@ -112,6 +114,7 @@ export function parseEvalArgs(argv: readonly string[]): EvalArgs {
         else if (a === '--research') args.research = true;
         else if (a === '--sources') args.sources = true;
         else if (a === '--bible-facts') args.bibleFacts = true;
+        else if (a === '--continuity') args.continuity = true;
         else if (a === '--rephrase') args.rephrase = true;
         else if (a === '--judge') args.judge = true;
         else if (a === '--no-packs') args.packs = [];

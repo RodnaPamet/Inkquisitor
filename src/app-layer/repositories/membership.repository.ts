@@ -63,6 +63,11 @@ export const MembershipRepository = {
         return db.workspaceMembership.findFirst({ where: { workspaceId, userId }, select: { id: true, role: true } });
     },
 
+    /** Phase 4.2: the workspace's longest-standing member of a role (the nightly continuity check runs as an OWNER, else an EDITOR). */
+    oldestOfRole(db: Db, workspaceId: string, role: WorkspaceRole) {
+        return db.workspaceMembership.findFirst({ where: { workspaceId, role }, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }], select: { userId: true, role: true } });
+    },
+
     countOwners(db: Db, workspaceId: string) {
         return db.workspaceMembership.count({ where: { workspaceId, role: 'OWNER' } });
     },

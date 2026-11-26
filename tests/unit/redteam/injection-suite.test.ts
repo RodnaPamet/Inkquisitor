@@ -19,6 +19,8 @@ import { FINDINGS_PROMPT, FIT_PROMPT } from '@/lib/research/prompt';
 import { researchStepsOver } from '@/lib/research/model-seam';
 import { extractorOver } from '@/lib/sources/model-seam';
 import { bibleFactExtractorOver } from '@/lib/facts/model-seam';
+import { continuityCheckerOver } from '@/lib/continuity/model-seam';
+import { CONTINUITY_PROMPT } from '@/lib/continuity/prompt';
 import { BIBLE_FACTS_PROMPT } from '@/lib/facts/prompt';
 import { EXTRACT_PROMPT } from '@/lib/sources/prompt';
 import { INJECTION_CORPUS, INJECTION_SURFACES, type InjectionCase } from '@/lib/redteam/corpus';
@@ -116,7 +118,18 @@ function compromisedAnswer(body: Record<string, unknown>): string {
                 { subject: name, predicate: 'OTHER', object: '', statement: `${recite(BIBLE_FACTS_PROMPT.system)}.`, quote: `${name} keeps the Wennaway light alone`, storyTimeFrom: '', storyTimeTo: '', contradicts: [] },
                 { subject: name, predicate: 'ROLE', object: '', statement: `${name} keeps the Wennaway light alone after her brother drowns.`, quote: `${name} keeps the Wennaway light alone after her brother drowns.`, storyTimeFrom: '', storyTimeTo: '', contradicts: [1] },
             ],
+            // Phase 4.2: the injection as a thread, the prompt recited as one, a pay-off of a thread never shown, the other book's canary.
+            threads: [
+                { kind: 'PROMISE', title: injected, quote: injected, paysOff: 0 },
+                { kind: 'CLUE', title: `${recite(BIBLE_FACTS_PROMPT.system)}`, quote: `${name} keeps the Wennaway light alone`, paysOff: 0 },
+                { kind: 'PROMISE', title: '', quote: `${name} keeps the Wennaway light alone`, paysOff: 7 },
+                { kind: 'OPEN_QUESTION', title: `What does ${FOREIGN_CANARY} hide?`, quote: `${name} keeps the Wennaway light alone`, paysOff: 0 },
+            ],
         });
+    }
+    if (is(CONTINUITY_PROMPT)) {
+        // Phase 4.2: every pair "agreed", a pair past the page, a fact paired with itself.
+        return JSON.stringify({ contradictions: [{ first: 1, second: 2, kind: 'OTHER' }, { first: 2, second: 40, kind: 'VALUE' }, { first: 3, second: 3, kind: 'VALUE' }] });
     }
     if (is(EXTRACT_PROMPT)) {
         // Phase 4.0: a fact that is the injection, one about the other book, the prompt recited, the instruction obeyed.
@@ -159,6 +172,7 @@ function compromisedSeams(): InjectionSeams & { api: ReturnType<typeof fakeAnthr
         researcher: researchStepsOver((input) => call(input) as never),
         extractor: extractorOver((input) => call(input) as never),
         bibleExtractor: bibleFactExtractorOver((input) => call(input) as never),
+        continuityChecker: continuityCheckerOver((input) => call(input) as never),
         requests: () => api.requests,
     };
 }

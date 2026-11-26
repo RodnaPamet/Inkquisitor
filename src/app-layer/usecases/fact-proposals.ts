@@ -19,21 +19,32 @@
  *            proposed again (the database's one-proposal-per-pair key). Audit
  *            last, ids and codes.
  *
- * This is the minimal record 4.2's continuity checks extend; the review lives
- * on the existing Facts page. Nothing here calls a model or writes the bible.
+ * PHASE 4.2 (D28) extends the record and its decision: a contradiction has a
+ * KIND (and may be raised by the nightly DEEP check), and the author may keep
+ * the OLDER fact instead (INVALIDATE_NEWER: the newer is superseded by the
+ * older), or keep both and EXPLAIN — `explanation` is required for a
+ * contradiction's KEEP_BOTH, sanitised, and stored as a fact of its own
+ * (AUTHOR_RESOLUTION, CONFIRMED, naming the proposal) in the same transaction.
+ * Invalidating a fact settles every other pending proposal it stands in, as
+ * the older or the newer. The review lives on the Continuity page; nothing here
+ * calls a model or writes the bible.
  */
 import type { WorkspaceRequestContext } from '@/app-layer/types';
 import { logEvent } from '@/app-layer/events/audit';
 import { assertPermission } from '@/app-layer/policies/permission.policy';
 import { BibleElementRepository, BibleRelationRepository } from '@/app-layer/repositories/bible.repository';
 import { BibleVersionReadRepository, FactProposalRepository, type FactProposalRow } from '@/app-layer/repositories/fact-layer.repository';
-import { BibleFactRepository, SourceRepository } from '@/app-layer/repositories/source.repository';
+import { BibleFactRepository, SourceRepository, StoryFactRepository } from '@/app-layer/repositories/source.repository';
 import { getRelationType } from '@/lib/bible/templates';
 import type { BibleKind } from '@/lib/bible/kinds';
 import { runInWorkspaceContext, type PrismaTx } from '@/lib/db/rls-middleware';
 import { ConflictError, NotFoundError } from '@/lib/errors/types';
 import { FACT_PROPOSALS_PER_VIEW_MAX, STATUS_OF_DECISION, type FactProposalBasis, type FactProposalDecision, type FactProposalReason } from '@/lib/facts/vocabulary';
 import { FactProposalDecisionInput } from '@/app-layer/schemas/sources';
+import { ValidationError } from '@/lib/errors/types';
+import { sanitiseExplanationForStorage } from '@/lib/continuity/storage';
+import { sanitiseFactForStorage } from '@/lib/sources/storage';
+import type { ContradictionKind } from '@/lib/continuity/vocabulary';
 import { requireBook } from './bible-common';
 
 export interface ProposalFactView {
@@ -48,13 +59,17 @@ export interface ProposalFactView {
     origin:
         | { kind: 'ELEMENT'; elementName: string | null; versionNumber: number | null }
         | { kind: 'RELATION'; label: string | null }
-        | { kind: 'SOURCE'; filename: string | null; version: number | null };
+        | { kind: 'SOURCE'; filename: string | null; version: number | null }
+        /** Phase 4.2: the author's own explanation of a contradiction they resolved as both true. */
+        | { kind: 'AUTHOR' };
 }
 
 export interface FactProposalView {
     id: string;
     reason: FactProposalReason;
     basis: FactProposalBasis;
+    /** Phase 4.2: what cannot both hold (a contradiction), or null. */
+    kind: ContradictionKind | null;
     createdAt: string;
     older: ProposalFactView;
     newer: ProposalFactView | null;
@@ -66,7 +81,7 @@ export interface FactProposalsPage {
     truncated: boolean;
 }
 
-async function views(db: PrismaTx, ctx: WorkspaceRequestContext, bookId: string, rows: readonly FactProposalRow[]): Promise<FactProposalView[]> {
+export async function views(db: PrismaTx, ctx: WorkspaceRequestContext, bookId: string, rows: readonly FactProposalRow[]): Promise<FactProposalView[]> {
     const ids = [...new Set(rows.flatMap((r) => [r.factId, ...(r.newerFactId ? [r.newerFactId] : [])]))];
     const facts = new Map((await BibleFactRepository.listAnyByIds(db, ctx.workspaceId, ids)).map((f) => [f.id, f] as const));
     const elementIds = [...new Set([...facts.values()].map((f) => f.elementId).filter((x): x is string => !!x))];
@@ -85,6 +100,8 @@ async function views(db: PrismaTx, ctx: WorkspaceRequestContext, bookId: string,
             const r = f.relationId ? relations.get(f.relationId) : undefined;
             const type = r ? getRelationType(r.from.kind as BibleKind, r.type) : undefined;
             origin = { kind: 'RELATION', label: r ? `${r.from.name} — ${type?.label ?? r.type} — ${r.to.name}` : null };
+        } else if (f.sourceKind === 'AUTHOR_RESOLUTION') {
+            origin = { kind: 'AUTHOR' };
         } else {
             const s = f.sourceId ? sources.get(f.sourceId) : undefined;
             origin = { kind: 'SOURCE', filename: s?.filename ?? null, version: s?.version ?? null };
@@ -95,7 +112,7 @@ async function views(db: PrismaTx, ctx: WorkspaceRequestContext, bookId: string,
     for (const r of rows) {
         const older = view(r.factId);
         if (!older) continue;
-        out.push({ id: r.id, reason: r.reason as FactProposalReason, basis: r.basis as FactProposalBasis, createdAt: r.createdAt.toISOString(), older, newer: r.newerFactId ? view(r.newerFactId) : null });
+        out.push({ id: r.id, reason: r.reason as FactProposalReason, basis: r.basis as FactProposalBasis, kind: (r.kind as ContradictionKind | null) ?? null, createdAt: r.createdAt.toISOString(), older, newer: r.newerFactId ? view(r.newerFactId) : null });
     }
     return out;
 }
@@ -112,30 +129,78 @@ export async function listFactProposals(ctx: WorkspaceRequestContext, bookId: st
 }
 
 /** Decide one proposal (the header's decide). `input` is `{ decision }`, read after the book is found (a deleted book is a 404 whatever the body). */
-export async function decideFactProposal(ctx: WorkspaceRequestContext, bookId: string, proposalId: string, input: unknown): Promise<{ id: string; status: string }> {
+export async function decideFactProposal(ctx: WorkspaceRequestContext, bookId: string, proposalId: string, input: unknown): Promise<{ id: string; status: string; explanationFactId: string | null }> {
     await assertPermission(ctx, 'bible.edit');
     return runInWorkspaceContext(ctx, async (db) => {
         await requireBook(db, ctx, bookId);
-        const decision: FactProposalDecision = FactProposalDecisionInput.parse(input).decision;
+        const parsed = FactProposalDecisionInput.parse(input);
+        const decision: FactProposalDecision = parsed.decision;
         await BibleFactRepository.lockBook(db, bookId);
         const proposal = await FactProposalRepository.find(db, ctx.workspaceId, bookId, proposalId);
         if (!proposal) throw new NotFoundError('Proposal not found.');
         if (proposal.status !== 'PENDING') throw new ConflictError('This proposal was already decided.', { reason: 'PROPOSAL_DECIDED', status: proposal.status });
+        // Phase 4.2 (D28): keeping the older fact is a contradiction's answer only (there is no newer fact otherwise).
+        if (decision === 'INVALIDATE_NEWER' && !proposal.newerFactId) throw new ValidationError('Only a contradiction has a newer fact to set aside.', { reason: 'NO_NEWER_FACT' });
+        // "Both are true" of a contradiction carries the author's explanation, which becomes a fact (sanitised first).
+        let explanation: string | null = null;
+        if (decision === 'KEEP_BOTH' && proposal.reason === 'CONTRADICTED') {
+            if (!parsed.explanation || parsed.explanation.trim() === '') throw new ValidationError('Say how both can be true.', { reason: 'EXPLANATION_REQUIRED' });
+            try {
+                explanation = sanitiseExplanationForStorage(parsed.explanation);
+            } catch {
+                throw new ValidationError('Say how both can be true.', { reason: 'EXPLANATION_REQUIRED' });
+            }
+        }
         const at = new Date();
         const status = STATUS_OF_DECISION[decision];
         let settled = 0;
-        if (decision === 'INVALIDATE') {
-            if (!(await BibleFactRepository.supersede(db, ctx.workspaceId, proposal.factId, { at, byFactId: proposal.newerFactId }))) {
+        let explanationFactId: string | null = null;
+        if (decision === 'INVALIDATE' || decision === 'INVALIDATE_NEWER') {
+            const gone = decision === 'INVALIDATE' ? proposal.factId : proposal.newerFactId!;
+            const by = decision === 'INVALIDATE' ? proposal.newerFactId : proposal.factId;
+            if (!(await BibleFactRepository.supersede(db, ctx.workspaceId, gone, { at, byFactId: by }))) {
                 throw new ConflictError('That fact no longer stands.', { reason: 'FACT_NOT_LIVE' });
             }
             await FactProposalRepository.decide(db, ctx.workspaceId, proposal.id, { status, decidedById: ctx.userId, at });
-            settled = (await FactProposalRepository.settleOthersForFact(db, ctx.workspaceId, proposal.factId, { decidedById: ctx.userId, at })) + 1;
+            settled = (await FactProposalRepository.settleAllForFact(db, ctx.workspaceId, gone, { decidedById: ctx.userId, at })) + 1;
         } else {
             await FactProposalRepository.decide(db, ctx.workspaceId, proposal.id, { status, decidedById: ctx.userId, at });
+            if (explanation !== null) {
+                const [older] = await BibleFactRepository.listAnyByIds(db, ctx.workspaceId, [proposal.factId]);
+                // The explanation is stored as a fact: through the fact sanitiser like every other fact's text.
+                const fact = sanitiseFactForStorage({
+                    position: 0,
+                    subjectName: older?.subjectName || 'Explanation',
+                    predicate: 'OTHER',
+                    objectLiteral: null,
+                    statement: explanation,
+                    quote: explanation,
+                    quoteStart: 0,
+                    quoteEnd: explanation.length,
+                    storyTimeFrom: null,
+                    storyTimeTo: null,
+                    flags: [],
+                });
+                explanationFactId = (
+                    await StoryFactRepository.createResolutionFact(db, ctx.workspaceId, {
+                        bookId,
+                        resolvesProposalId: proposal.id,
+                        subjectName: fact.subjectName,
+                        subjectElementId: older?.subjectElementId ?? null,
+                        statement: fact.statement,
+                        decidedById: ctx.userId,
+                        at,
+                    })
+                ).id;
+            }
             settled = 1;
         }
         // AUDIT LAST (3.H).
-        await logEvent(ctx, { action: 'STORY_FACT_PROPOSAL_DECIDED', entityType: 'StoryFactProposal', entityId: proposal.id, details: { bookId, decision, reason: proposal.reason, settled } }, { db });
-        return { id: proposal.id, status };
+        await logEvent(
+            ctx,
+            { action: 'STORY_FACT_PROPOSAL_DECIDED', entityType: 'StoryFactProposal', entityId: proposal.id, details: { bookId, decision, reason: proposal.reason, kind: proposal.kind, settled, explanationFactId } },
+            { db },
+        );
+        return { id: proposal.id, status, explanationFactId };
     });
 }

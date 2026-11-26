@@ -313,4 +313,6 @@ enum StoryFactSourceKind {
   SOURCE_CHUNK
   BIBLE_VERSION
   RELATION_VERSION
+  /// Phase 4.2 (D28): the author's explanation of a contradiction they resolved as "both true".
+  AUTHOR_RESOLUTION
 }

@@ -78,8 +78,8 @@ export const sourcesApi = {
     setOverride: (slug: string, bookId: string, factId: string, text: string) => bibleFetch<{ factId: string }>(SOURCES_API.override(slug, bookId, factId), { method: 'PUT', body: { text } }),
     clearOverride: (slug: string, bookId: string, factId: string) => bibleFetch<{ cleared: boolean }>(SOURCES_API.override(slug, bookId, factId), { method: 'DELETE' }),
     proposals: (slug: string, bookId: string) => bibleFetch<FactProposalsPage>(SOURCES_API.proposals(slug, bookId)),
-    decideProposal: (slug: string, bookId: string, proposalId: string, decision: FactProposalDecision) =>
-        bibleFetch<{ proposal: { id: string; status: string } }>(SOURCES_API.proposalDecision(slug, bookId, proposalId), { method: 'POST', body: { decision } }),
+    decideProposal: (slug: string, bookId: string, proposalId: string, decision: FactProposalDecision, explanation?: string) =>
+        bibleFetch<{ proposal: { id: string; status: string } }>(SOURCES_API.proposalDecision(slug, bookId, proposalId), { method: 'POST', body: explanation === undefined ? { decision } : { decision, explanation } }),
 };
 
 /** µUSD as dollars for display ("$0.42"; under a cent "< $0.01"). */

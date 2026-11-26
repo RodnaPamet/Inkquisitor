@@ -265,6 +265,13 @@ it('an accepted bible entry carrying instructions (Phase 4.1, D27): read with no
                         { subject: 'Ilse Varga', predicate: 'OTHER', object: '', statement: `${recited}.`, quote: 'Keeper of the light.', storyTimeFrom: '', storyTimeTo: '', contradicts: [] },
                         { subject: 'Ilse Varga', predicate: 'ROLE', object: '', statement: 'Ilse Varga is the keeper of the light.', quote: 'Keeper of the light.', storyTimeFrom: '', storyTimeTo: '', contradicts: [1] },
                     ],
+                    // Phase 4.2 (D28): the injection, the other book and the prompt as threads; a pay-off of a thread never shown.
+                    threads: [
+                        { kind: 'PROMISE', title: INJECTION, quote: 'Keeper of the light.', paysOff: 0 },
+                        { kind: 'CLUE', title: `${CANARY_B} hides the key`, quote: 'Keeper of the light.', paysOff: 0 },
+                        { kind: 'OPEN_QUESTION', title: recited, quote: 'Keeper of the light.', paysOff: 0 },
+                        { kind: 'PROMISE', title: '', quote: 'Keeper of the light.', paysOff: 4 },
+                    ],
                 }),
             },
         },
@@ -279,4 +286,7 @@ it('an accepted bible entry carrying instructions (Phase 4.1, D27): read with no
         expect(JSON.stringify(f)).not.toContain(CANARY_B);
         expect(f.statement).not.toContain(recited);
     }
+    // Nothing foreign, recited or injected is proposed as a thread either (none of them is grounded in the entry).
+    const threads = await runInWorkspaceContext(ctx, (db) => db.storyThreadProposal.findMany({ where: { bookId: bookA }, select: { title: true, quote: true } }));
+    expect(threads).toEqual([]);
 });

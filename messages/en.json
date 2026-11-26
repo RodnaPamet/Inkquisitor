@@ -1642,32 +1642,174 @@
                 "POWER_BASE": "power",
                 "RULE": "rule of the world",
                 "OTHER": "other"
+            },
+            "continuityLink": "{count, plural, one {# possible contradiction waits for you on the Continuity page} other {# possible contradictions wait for you on the Continuity page}}"
+        }
+    },
+    "continuity": {
+        "title": "Continuity",
+        "factsLink": "Facts",
+        "truncated": "Showing the first {shown}; decide these to see the rest.",
+        "status": {
+            "facts": "{count, plural, one {Checked against # fact} other {Checked against # facts}}",
+            "notAssessed": "Not assessed yet",
+            "notAssessedHelp": "Your bible states no facts yet, so nothing has been checked. Facts are drawn from your entries in the background when you save them."
+        },
+        "nightly": {
+            "title": "Nightly check",
+            "never": "The nightly check has not run on this book yet.",
+            "lastRun": "Last run {when}: {outcome}",
+            "covered": "{covered} subjects checked, {remaining} left for later nights, {facts} facts read.",
+            "passUnderWay": "A check of a large change is under way; it continues tomorrow night.",
+            "outcome": {
+                "OK": "every fact checked",
+                "PAGED": "part checked, the rest goes on tomorrow",
+                "NO_FACTS": "no facts to check",
+                "NOTHING_NEW": "nothing changed since the last check",
+                "BOOK_DELETED": "the book was deleted",
+                "NO_ACTOR": "no member may edit this bible",
+                "CEILING": "paused at this month’s AI spend limit; it resumes when there is room",
+                "KILL_SWITCH": "paused: AI is switched off",
+                "AI_UNAVAILABLE": "paused: AI is not available here",
+                "NOT_EVALUATED": "rules only: the deep check is not yet approved for this deployment",
+                "MODEL_RATE_LIMITED": "paused: too many AI calls this minute",
+                "CALL_FAILED": "paused after a failed call; it resumes tomorrow",
+                "GUARD_REFUSED": "paused: the safety check refused a page",
+                "CALL_OVER_BUDGET": "paused: one page would cost more than allowed",
+                "ABORTED": "stopped by a restart; it resumes tomorrow",
+                "CLAIM_EXPIRED": "lost and requeued",
+                "INTERNAL": "failed; it is tried again tomorrow"
             }
         },
-        "proposals": {
-            "title": "Possible contradictions",
-            "help": "Facts drawn from your bible count as soon as you save an entry. When a newer entry says something an older fact cannot also be true alongside, or an entry no longer says what it did, nothing is changed: you decide here.",
-            "count": "{count} to decide",
-            "truncated": "Showing the first {shown}; decide these to see the rest.",
-            "contradicted": "A newer fact may contradict an older one",
-            "noLongerStated": "Your entry no longer says this",
-            "basis": {
-                "RULE": "The two give different values for the same thing.",
-                "MODEL": "Read as contradictory when the newer entry was saved.",
-                "TEXT": "The words this fact rests on are no longer in its entry."
-            },
-            "older": "Older",
-            "newer": "Newer",
+        "facts": {
+            "when": "when: {from} {to}",
             "originElement": "From your bible: {element} (version {version})",
             "originElementNoVersion": "From your bible: {element}",
             "originRelation": "From your bible: {relation}",
             "originSource": "From {file} (version {version})",
-            "originUnknown": "From an entry that is no longer in the book",
-            "invalidate": "The older fact no longer holds",
-            "invalidateGone": "This fact no longer holds",
-            "keepBoth": "Both are true",
-            "reject": "Not a contradiction",
+            "originAuthor": "Your explanation",
+            "originUnknown": "From an entry that is no longer in the book"
+        },
+        "contradictions": {
+            "title": "Contradictions",
+            "count": "{count} to decide",
+            "none": "No contradictions are waiting for you.",
+            "noLongerStatedTitle": "No longer stated",
+            "noLongerStated": "Your entry no longer says this",
+            "kind": {
+                "VALUE": "A detail differs at the same time",
+                "WHEREABOUTS": "In two places at once",
+                "KNOWLEDGE": "Who knows what, and when",
+                "TIMELINE": "An impossible order",
+                "OTHER": "These cannot both hold"
+            },
+            "basis": {
+                "RULE": "Found by a rule",
+                "MODEL": "Found when an entry was saved",
+                "TEXT": "The words this rests on are gone from its entry",
+                "DEEP": "Found by the nightly check"
+            },
+            "older": "Older",
+            "newer": "Newer",
+            "keepNewer": "Keep the newer",
+            "keepOlder": "Keep the older",
+            "bothTrue": "Both are true",
+            "notContradiction": "Not a contradiction",
+            "retire": "This no longer holds",
+            "stillTrue": "It still holds",
+            "explainTitle": "How are both true?",
+            "explainHelp": "Say how both facts hold. Your explanation is kept as a fact of its own.",
+            "explanation": "Explanation",
+            "explanationRequired": "Say how both can be true.",
+            "saveExplanation": "Save explanation",
+            "cancel": "Cancel",
             "decided": "Decided."
+        },
+        "threads": {
+            "title": "Promises, clues and open questions",
+            "add": "Thread",
+            "addTitle": "Add a thread",
+            "editTitle": "Edit thread",
+            "addHelp": "A promise is something set up for the reader to be paid off; a clue is a detail planted for them; an open question is something still undecided.",
+            "kindLabel": "Kind",
+            "titleLabel": "Title",
+            "titleRequired": "Give it a title.",
+            "noteLabel": "Note",
+            "save": "Save",
+            "cancel": "Cancel",
+            "saved": "Saved.",
+            "edit": "Edit",
+            "remove": "Remove",
+            "removed": "Removed “{title}”.",
+            "undo": "Undo",
+            "none": "Nothing here yet.",
+            "about": "About {name}",
+            "kind": {
+                "PROMISE": "Promise",
+                "CLUE": "Clue",
+                "OPEN_QUESTION": "Open question"
+            },
+            "group": {
+                "PROMISE": "Promises",
+                "CLUE": "Clues",
+                "OPEN_QUESTION": "Open questions"
+            },
+            "state": {
+                "OPEN": "Open",
+                "PAID_OFF": "Paid off",
+                "DROPPED": "Dropped",
+                "REVEALED": "Revealed",
+                "RESOLVED": "Resolved"
+            },
+            "move": {
+                "OPEN": "Reopen",
+                "PAID_OFF": "Mark paid off",
+                "DROPPED": "Mark dropped",
+                "REVEALED": "Mark revealed",
+                "RESOLVED": "Mark resolved"
+            }
+        },
+        "threadProposals": {
+            "title": "Proposed threads",
+            "help": "Drawn from your entries when you saved them. Nothing is added until you accept it.",
+            "paysOff": "“{title}”: {state}",
+            "origin": "From your bible: {element} (version {version})",
+            "originNoVersion": "From your bible: {element}",
+            "originUnknown": "From an entry that is no longer in the book",
+            "flagged": "This reads like an instruction to the product rather than a story thread: check it before you accept it.",
+            "accept": "Accept",
+            "reject": "Reject",
+            "accepted": "Accepted.",
+            "rejected": "Rejected."
+        },
+        "decideLater": {
+            "title": "Decide later",
+            "from": "You chose to decide later · {element}",
+            "contradictions": "{count, plural, one {# contradiction is still unresolved (above).} other {# contradictions are still unresolved (above).}}"
+        },
+        "stale": {
+            "title": "May be stale",
+            "help": "These entries drew on answers about an element that has changed since. Saving the entry clears its flag.",
+            "none": "No entry is flagged.",
+            "because": "{upstream} changed (version {from} to {to}).",
+            "becauseNoVersions": "{upstream} changed.",
+            "unknownElement": "An entry no longer in the book",
+            "grill": "Grill me on what changed",
+            "dismiss": "Still holds",
+            "dismissed": "Dismissed."
+        },
+        "reasons": {
+            "generic": "That did not work. Reload and try again.",
+            "PROPOSAL_DECIDED": "That was already decided.",
+            "FACT_NOT_LIVE": "That fact no longer stands.",
+            "EXPLANATION_REQUIRED": "Say how both can be true.",
+            "NO_NEWER_FACT": "There is no newer fact to set aside.",
+            "VERSION_CONFLICT": "This thread changed since you opened it. Reload to see it.",
+            "STATE_NOT_ALLOWED": "That state does not fit this kind of thread.",
+            "THREADS_FULL": "This book holds as many threads as it can.",
+            "THREAD_NOT_OPEN": "That thread is no longer open.",
+            "FLAG_NOT_OPEN": "That flag is no longer open.",
+            "STALE_FLAG_GONE": "This entry is no longer flagged."
         }
     }
 }

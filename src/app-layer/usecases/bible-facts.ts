@@ -29,6 +29,11 @@
  *               provenance of each restated one, and a PROPOSAL for each
  *               contradiction and each earlier fact the entry no longer states —
  *               nothing is invalidated (rule 1); then the row DONE; audit last.
+ *               Phase 4.2 (D28): the same call's THREADS (a promise, a clue, an
+ *               open question set up, or an open thread paid off) are checked
+ *               (`validateBibleThreads`) and PROPOSED, one per claim in the book
+ *               ever, citing the version and its words; contradictions carry
+ *               their KIND, and rules read the story order (D25) as a fact's time.
  *
  * IDEMPOTENT: a DONE or SKIPPED row is never claimed again, and a resolve run
  * twice over one version writes nothing new (the claim keys, the provenance's
@@ -59,7 +64,13 @@ import { bibleFactsCallWorstCase } from '@/lib/facts/cost';
 import { defaultBibleFactExtractor } from '@/lib/facts/model-seam';
 import { BIBLE_FACTS_CALL_COST_BUDGET_MICRO_USD, BIBLE_FACTS_PROMPT_VERSION, EXISTING_FACTS_SHOWN_MAX } from '@/lib/facts/prompt';
 import { bibleFactGate, type BibleFactGateVerdict } from '@/lib/facts/record-gate';
-import { validateBibleFacts, type BibleFactDraft } from '@/lib/facts/validate';
+import { validateBibleFacts, validateBibleThreads, type BibleFactDraft } from '@/lib/facts/validate';
+import { contentTokens } from '@/lib/interview/text';
+import { placedElementsOf, StoryThreadRepository, StoryThreadProposalRepository, type ThreadProposalInsert } from '@/app-layer/repositories/continuity.repository';
+import { NO_ORDER, storyClock, type StoryClock } from '@/lib/continuity/story-clock';
+import { sanitiseThreadProposalForStorage } from '@/lib/continuity/storage';
+import { OPEN_THREADS_SHOWN_MAX } from '@/lib/continuity/vocabulary';
+import { CLOCK_ELEMENTS_MAX } from '@/lib/continuity/vocabulary';
 import { BIBLE_FACT_PIECE_MAX_CHARS, BIBLE_FACT_PIECE_MIN_CHARS, FACT_EXTRACTION_ATTEMPTS_MAX, FACT_EXTRACTION_RETRY_MS, RESUMABLE_EXTRACTION_OUTCOMES, type FactExtractionOutcome, type FactExtractionStatus } from '@/lib/facts/vocabulary';
 import type { PackRecordMode } from '@/lib/interview/pack-records-config';
 import { logger } from '@/lib/observability/logger';
@@ -86,6 +97,9 @@ export interface BibleFactDeps {
     worstCase?: (blocks: readonly AuthorDataBlock[]) => number;
 }
 
+/** The state a pay-off moves a thread of each kind to (Phase 4.2). */
+const CLOSED_STATE_OF: Readonly<Record<string, string>> = Object.freeze({ PROMISE: 'PAID_OFF', CLUE: 'REVEALED', OPEN_QUESTION: 'RESOLVED' });
+
 /** How long one extraction waits out a full model-call minute at most before it stops MODEL_RATE_LIMITED. */
 export const MODEL_RATE_WAIT_MAX_MS = 60_000;
 /** Live facts read about a subject at most (the resolve's other side; the call is shown the first `EXISTING_FACTS_SHOWN_MAX`). */
@@ -93,6 +107,8 @@ export const LIVE_FACTS_READ_MAX = 400;
 
 interface RunMetrics {
     sectionsChanged: number;
+    /** Phase 4.2: threads proposed, and refused by code. */
+    threadsProposed?: number;
     drafted: number;
     kept: number;
     refusals: Record<string, number>;
@@ -106,7 +122,7 @@ interface RunMetrics {
 
 type Ended = { ran: boolean; outcome: FactExtractionOutcome | null };
 
-function defaultSleep(ms: number, signal?: AbortSignal): Promise<void> {
+export function defaultSleep(ms: number, signal?: AbortSignal): Promise<void> {
     return new Promise((resolve) => {
         const timer = setTimeout(resolve, ms);
         signal?.addEventListener('abort', () => {
@@ -197,6 +213,8 @@ interface CallOutput {
     output: unknown;
     sent: string;
     shown: number;
+    /** Phase 4.2: how many open threads the call was shown (a pay-off names one of them). */
+    threadsShown: number;
 }
 
 interface Prepared {
@@ -209,6 +227,9 @@ interface Prepared {
     shown: LiveFact[];
     bookNames: string[];
     nameToId: (name: string | null) => string | null;
+    /** Phase 4.2: the book's open threads (shown to each call, oldest first) and the story clock (D25). */
+    openThreads: Array<{ id: string; kind: string; title: string }>;
+    clock: StoryClock;
 }
 
 function asLive(f: BibleFactRow | StoryFactRow, owner: FactOwner, bible: BibleFactRow | null): LiveFact {
@@ -224,6 +245,7 @@ function asLive(f: BibleFactRow | StoryFactRow, owner: FactOwner, bible: BibleFa
         storyTimeTo: f.storyTimeTo,
         quote: f.quote,
         sameOwner,
+        ownerElementId: bible?.elementId ?? null,
     };
 }
 
@@ -284,7 +306,13 @@ async function prepare(db: PrismaTx, ctx: WorkspaceRequestContext, row: FactExtr
     }
     const changed = changedSections(entry, baseline);
     const live = await liveFactsFor(db, ctx, row.bookId, subject);
+    // Phase 4.2 (D28): the open threads a pay-off may name, and the story order a rule reads as a fact's time.
+    const openThreads = await StoryThreadRepository.listOpen(db, ctx.workspaceId, row.bookId, OPEN_THREADS_SHOWN_MAX);
+    const placed = await placedElementsOf(db, ctx.workspaceId, row.bookId, CLOCK_ELEMENTS_MAX + 1);
+    const clock = placed.length > CLOCK_ELEMENTS_MAX ? NO_ORDER : storyClock(placed.map((e) => ({ id: e.id, kind: e.kind, name: e.name, orderRank: e.orderRank! })));
     return {
+        openThreads,
+        clock,
         subject,
         entry,
         whole: entryText(entry),
@@ -333,6 +361,7 @@ export async function executeBibleFactExtraction(payload: { workspaceId: string;
                 subjects: prepared.subject.names,
                 shown: prepared.shown,
                 bookNames: prepared.bookNames,
+                openThreads: prepared.openThreads,
                 budgetMicroUsd: BIBLE_FACTS_CALL_COST_BUDGET_MICRO_USD,
                 maxChars: BIBLE_FACT_PIECE_MAX_CHARS,
                 minChars: BIBLE_FACT_PIECE_MIN_CHARS,
@@ -362,7 +391,7 @@ export async function executeBibleFactExtraction(payload: { workspaceId: string;
                         : 'CALL_FAILED';
                     return end(ctx, row, outcome, metrics, now(), claim);
                 }
-                outputs.push({ output: result.output, sent: call.sent, shown: call.shown });
+                outputs.push({ output: result.output, sent: call.sent, shown: call.shown, threadsShown: call.threadsShown });
             }
         }
         return await persist(ctx, row, claim, prepared, outputs, metrics, now);
@@ -384,11 +413,25 @@ async function persist(ctx: WorkspaceRequestContext, row: FactExtractionRow, cla
         for (const f of v.facts) facts.push({ ...f, position: facts.length });
     }
     const validation = { facts };
+    // Phase 4.2: each call's threads, held to the text THAT call was shown and the open threads it was shown.
+    const threadDrafts: ReturnType<typeof validateBibleThreads>['threads'] = [];
+    for (const o of outputs) {
+        const v = validateBibleThreads(o.output, { sent: o.sent, entry: prepared.whole, openThreads: prepared.openThreads.slice(0, o.threadsShown) });
+        for (const [code, n] of Object.entries(v.refusals)) metrics.refusals[code] = (metrics.refusals[code] ?? 0) + n;
+        threadDrafts.push(...v.threads);
+    }
     const drafts = validation.facts.map((d) => ({ draft: sanitiseFactForStorage(d), subjectIndex: d.subjectIndex, contradicts: d.contradicts }));
     const owner = prepared.subject.owner;
     const fresh: NewFact[] = drafts.map(({ draft, subjectIndex, contradicts }) => {
         const claimInput = { predicate: draft.predicate, subjectElementId: prepared.subject.elementIds[subjectIndex], objectLiteral: draft.objectLiteral, statement: draft.statement };
-        return { ...claimInput, storyTimeFrom: draft.storyTimeFrom, storyTimeTo: draft.storyTimeTo, key: claimKey(ctx.workspaceId, claimParts(owner, claimInput)), contradicts };
+        return {
+            ...claimInput,
+            storyTimeFrom: draft.storyTimeFrom,
+            storyTimeTo: draft.storyTimeTo,
+            ownerElementId: owner.kind === 'BIBLE_VERSION' ? owner.id : null,
+            key: claimKey(ctx.workspaceId, claimParts(owner, claimInput)),
+            contradicts,
+        };
     });
     const outcome: FactExtractionOutcome = prepared.changed > 0 ? 'OK' : 'NO_CHANGE';
     return runInWorkspaceContext(ctx, async (db) => {
@@ -411,7 +454,7 @@ async function persist(ctx: WorkspaceRequestContext, row: FactExtractionRow, cla
         // Read again under the lock: what another extraction of the book wrote meanwhile is resolved against too.
         const live = await liveFactsFor(db, ctx, row.bookId, prepared.subject);
         const liveIds = new Set(live.map((f) => f.id));
-        const plan = resolveFacts({ fresh, shown: prepared.shown, live, entry: prepared.whole });
+        const plan = resolveFacts({ fresh, shown: prepared.shown, live, entry: prepared.whole, clock: prepared.clock });
         // A fact shown to the call but invalidated (or gone) meanwhile is not proposed.
         plan.contradictions = plan.contradictions.filter((c) => liveIds.has(c.olderId));
         metrics.duplicatesInVersion = plan.counts.duplicatesInVersion;
@@ -450,9 +493,38 @@ async function persist(ctx: WorkspaceRequestContext, row: FactExtractionRow, cla
             plan.restated.map((r) => ({ factId: r.factId, sourceKind: owner.kind, bibleVersionId: row.bibleVersionId, relationVersionId: row.relationVersionId })),
         );
         const proposalsRaised = await FactProposalRepository.raise(db, ctx.workspaceId, [
-            ...plan.contradictions.map((c) => ({ bookId: row.bookId, factId: c.olderId, newerFactId: idOfNew.get(c.newIndex)!, reason: 'CONTRADICTED' as const, basis: c.basis, extractionId: row.id })),
-            ...plan.noLongerStated.map((id) => ({ bookId: row.bookId, factId: id, newerFactId: null, reason: 'NO_LONGER_STATED' as const, basis: 'TEXT' as const, extractionId: row.id })),
+            ...plan.contradictions.map((c) => ({ bookId: row.bookId, factId: c.olderId, newerFactId: idOfNew.get(c.newIndex)!, reason: 'CONTRADICTED' as const, basis: c.basis, kind: c.kind, extractionId: row.id })),
+            ...plan.noLongerStated.map((id) => ({ bookId: row.bookId, factId: id, newerFactId: null, reason: 'NO_LONGER_STATED' as const, basis: 'TEXT' as const, kind: null, extractionId: row.id })),
         ]);
+        // Phase 4.2 (D28): the threads, proposed (rule 1), one per claim in the book ever (a rejected one never returns).
+        // A pay-off names a thread still open now; one closed meanwhile is not proposed.
+        const stillOpen = new Map((await StoryThreadRepository.listOpen(db, ctx.workspaceId, row.bookId, OPEN_THREADS_SHOWN_MAX)).map((t) => [t.id, t] as const));
+        const threadRows: ThreadProposalInsert[] = [];
+        for (const t of threadDrafts) {
+            const target = t.paysOffIndex === null ? null : prepared.openThreads[t.paysOffIndex];
+            if (t.op === 'SET_STATE' && (!target || !stillOpen.has(target.id))) continue;
+            const proposedState = t.op === 'NEW_THREAD' ? 'OPEN' : CLOSED_STATE_OF[t.kind];
+            const parts = t.op === 'NEW_THREAD' ? ['THREAD', t.kind, contentTokens(t.title ?? '').join(' ')] : ['PAY', target!.id, proposedState];
+            const clean = sanitiseThreadProposalForStorage({ title: t.title, quote: t.quote });
+            threadRows.push({
+                bookId: row.bookId,
+                op: t.op,
+                kind: t.kind,
+                title: clean.title,
+                proposedState,
+                threadId: target?.id ?? null,
+                extractionId: row.id,
+                bibleVersionId: row.bibleVersionId,
+                relationVersionId: row.relationVersionId,
+                quote: clean.quote,
+                quoteStart: t.quoteStart,
+                quoteEnd: t.quoteEnd,
+                subjectElementId: prepared.subject.elementIds[0] ?? null,
+                dedupeKey: claimKey(ctx.workspaceId, parts),
+                flags: t.flags,
+            });
+        }
+        metrics.threadsProposed = await StoryThreadProposalRepository.raise(db, ctx.workspaceId, threadRows);
         metrics.kept = created.length;
         const counts = { factsAdded: created.length, provenanceAdded, proposalsRaised };
         await FactExtractionRepository.finish(db, ctx.workspaceId, row.id, {
@@ -480,7 +552,7 @@ async function persist(ctx: WorkspaceRequestContext, row: FactExtractionRow, cla
  * send a 429. Bounded: past `MODEL_RATE_WAIT_MAX_MS` (or once aborted) it answers false and NO call is charged or
  * made.
  */
-async function waitForModelRate(
+export async function waitForModelRate(
     ctx: WorkspaceRequestContext,
     charge: (workspaceId: string, calls: number) => void,
     sleep: (ms: number, signal?: AbortSignal) => Promise<void>,

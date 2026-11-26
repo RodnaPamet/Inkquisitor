@@ -19,7 +19,10 @@
  *           OCCUPATION, a PLACE_TYPE (objects that differ and neither holds the
  *           other) — at an overlapping story time (equal, or either unstated).
  *           Deliberately narrow: a ROLE or a WANT can hold several values, so
- *           code never calls two of them a contradiction.
+ *           code never calls two of them a contradiction. Since Phase 4.2 the
+ *           rules are `continuity/rules.ts`'s (VALUE, WHEREABOUTS, KNOWLEDGE),
+ *           with the story order (D25) as a fact's time when a clock is given,
+ *           and every proposal carries the KIND it is.
  *   MODEL   the call named an existing fact shown to it (graphiti's design);
  *           code keeps it only when that fact is about the same subject element.
  *
@@ -33,8 +36,11 @@
  */
 import { nameKey } from '@/lib/enrichment/validate';
 import { contentTokens } from '@/lib/interview/text';
-import { locateQuote, foldWithOrigins } from '@/lib/sources/quote';
+import { locateQuote } from '@/lib/sources/quote';
 import { negated } from '@/lib/text/negation';
+import { ruleContradiction, type RuleFact } from '@/lib/continuity/rules';
+import { NO_ORDER, textTimesOverlap, type StoryClock } from '@/lib/continuity/story-clock';
+import type { ContradictionKind } from '@/lib/continuity/vocabulary';
 import type { FactProposalBasis } from './vocabulary';
 
 /** Who owns a bible fact: the element a version is of, or the relation. */
@@ -55,8 +61,8 @@ export function claimParts(owner: FactOwner, f: ClaimInput): string[] {
     return [owner.kind, owner.id, f.predicate, f.subjectElementId ?? '', nameKey(f.objectLiteral ?? ''), contentTokens(f.statement).join(' '), negated(f.statement) ? 'neg' : 'pos'];
 }
 
-/** The predicates code may call contradictory on its own (the header's RULE). */
-export const RULE_PREDICATES: ReadonlySet<string> = new Set(['AGE', 'LOCATION', 'OCCUPATION', 'PLACE_TYPE']);
+/** The predicates code may call contradictory on its own (the header's RULE; since 4.2 also KNOWLEDGE, `continuity/rules.ts`). */
+export const RULE_PREDICATES: ReadonlySet<string> = new Set(['AGE', 'LOCATION', 'OCCUPATION', 'PLACE_TYPE', 'KNOWLEDGE']);
 
 export interface ResolvableFact {
     readonly predicate: string;
@@ -65,37 +71,27 @@ export interface ResolvableFact {
     readonly statement: string;
     readonly storyTimeFrom: string | null;
     readonly storyTimeTo: string | null;
+    /** Phase 4.2: the element whose entry stated it (its story position, D25), when it is a bible fact. */
+    readonly ownerElementId?: string | null;
 }
 
-function firstNumber(text: string): string | null {
-    return /\d+(?:\.\d+)?/.exec(text)?.[0] ?? null;
-}
-
-function timeKey(t: string | null): string | null {
-    return t && t.trim() !== '' ? foldWithOrigins(t).text : null;
-}
-
-/** Do the two facts hold at an overlapping story time (the same stated times, or either unstated)? */
+/** Do the two facts hold at an overlapping story time (the same stated times, or either unstated)? 4.1's rule; 4.2's clock adds the order. */
 export function timesOverlap(a: ResolvableFact, b: ResolvableFact): boolean {
-    const [af, at, bf, bt] = [timeKey(a.storyTimeFrom), timeKey(a.storyTimeTo), timeKey(b.storyTimeFrom), timeKey(b.storyTimeTo)];
-    if ((af === null && at === null) || (bf === null && bt === null)) return true;
-    return af === bf && at === bt;
+    return textTimesOverlap(a, b);
 }
 
-/** The RULE: could code alone call these two facts contradictory? */
-export function ruleContradicts(a: ResolvableFact, b: ResolvableFact): boolean {
-    if (a.predicate !== b.predicate || !RULE_PREDICATES.has(a.predicate)) return false;
-    if (a.subjectElementId === null || a.subjectElementId !== b.subjectElementId) return false;
-    if (!timesOverlap(a, b)) return false;
-    if (a.predicate === 'AGE') {
-        const x = firstNumber(a.objectLiteral || a.statement);
-        const y = firstNumber(b.objectLiteral || b.statement);
-        return x !== null && y !== null && Number(x) !== Number(y);
-    }
-    const x = nameKey(a.objectLiteral ?? '');
-    const y = nameKey(b.objectLiteral ?? '');
-    if (x === '' || y === '') return false;
-    return x !== y && !x.includes(y) && !y.includes(x);
+function asRuleFact(f: ResolvableFact, id: string): RuleFact {
+    return { ...f, id };
+}
+
+/** The RULE: could code alone call these two facts contradictory, and how (Phase 4.2's detectors)? */
+export function ruleKind(a: ResolvableFact, b: ResolvableFact, clock: StoryClock = NO_ORDER): ContradictionKind | null {
+    return ruleContradiction(asRuleFact(a, 'a'), asRuleFact(b, 'b'), clock);
+}
+
+/** The RULE as 4.1 asked it: is there any rule contradiction? */
+export function ruleContradicts(a: ResolvableFact, b: ResolvableFact, clock: StoryClock = NO_ORDER): boolean {
+    return ruleKind(a, b, clock) !== null;
 }
 
 export interface NewFact extends ResolvableFact {
@@ -120,7 +116,7 @@ export interface ResolutionPlan {
     /** Live facts restated by this version (provenance), with the new fact that restated each. */
     restated: Array<{ factId: string; newIndex: number }>;
     /** Older live fact → newer (by the new fact's index), and how it was seen. */
-    contradictions: Array<{ olderId: string; newIndex: number; basis: Extract<FactProposalBasis, 'RULE' | 'MODEL'> }>;
+    contradictions: Array<{ olderId: string; newIndex: number; basis: Extract<FactProposalBasis, 'RULE' | 'MODEL'>; kind: ContradictionKind }>;
     /** Earlier facts of the same entry the version no longer states. */
     noLongerStated: string[];
     /** Counted, never rows. */
@@ -133,7 +129,8 @@ export interface ResolutionPlan {
  * list the call was shown, in its order (the model's `contradicts` index into it); `live` is every live fact
  * the version is resolved against (the shown ones among them). `entry` is the version's whole rendered text.
  */
-export function resolveFacts(input: { fresh: readonly NewFact[]; shown: readonly LiveFact[]; live: readonly LiveFact[]; entry: string }): ResolutionPlan {
+export function resolveFacts(input: { fresh: readonly NewFact[]; shown: readonly LiveFact[]; live: readonly LiveFact[]; entry: string; clock?: StoryClock }): ResolutionPlan {
+    const clock = input.clock ?? NO_ORDER;
     const plan: ResolutionPlan = { insert: [], restated: [], contradictions: [], noLongerStated: [], counts: { duplicatesInVersion: 0, modelOtherSubject: 0 } };
     const liveByKey = new Map<string, LiveFact>();
     for (const f of input.live) if (f.key) liveByKey.set(f.key, f);
@@ -155,17 +152,18 @@ export function resolveFacts(input: { fresh: readonly NewFact[]; shown: readonly
         plan.insert.push(i);
     });
     const inserted = new Set(plan.insert);
-    const propose = (olderId: string, newIndex: number, basis: 'RULE' | 'MODEL') => {
+    const propose = (olderId: string, newIndex: number, basis: 'RULE' | 'MODEL', kind: ContradictionKind) => {
         const key = `${olderId}|${newIndex}`;
         if (pairs.has(key)) return;
         pairs.add(key);
-        plan.contradictions.push({ olderId, newIndex, basis });
+        plan.contradictions.push({ olderId, newIndex, basis, kind });
     };
     for (const i of plan.insert) {
         const fact = input.fresh[i];
         for (const older of input.live) {
             if (older.key !== null && older.key === fact.key) continue;
-            if (ruleContradicts(fact, older)) propose(older.id, i, 'RULE');
+            const kind = ruleKind(fact, older, clock);
+            if (kind) propose(older.id, i, 'RULE', kind);
         }
         for (const n of fact.contradicts) {
             const older = input.shown[n];
@@ -174,7 +172,7 @@ export function resolveFacts(input: { fresh: readonly NewFact[]; shown: readonly
                 plan.counts.modelOtherSubject++;
                 continue;
             }
-            propose(older.id, i, 'MODEL');
+            propose(older.id, i, 'MODEL', ruleKind(fact, older, clock) ?? 'OTHER');
         }
     }
     // A fact restated in this very version is never proposed as contradicted by it.
@@ -184,7 +182,7 @@ export function resolveFacts(input: { fresh: readonly NewFact[]; shown: readonly
     const contradicted = new Set(plan.contradictions.map((c) => c.olderId));
     for (const r of plan.restated) {
         const fact = input.fresh[r.newIndex];
-        for (const older of input.live) if (older.id !== r.factId && (ruleContradicts(fact, older) || fact.contradicts.some((n) => input.shown[n]?.id === older.id))) contradicted.add(older.id);
+        for (const older of input.live) if (older.id !== r.factId && (ruleContradicts(fact, older, clock) || fact.contradicts.some((n) => input.shown[n]?.id === older.id))) contradicted.add(older.id);
     }
     for (const older of input.live) {
         // A fact this version contradicts is already proposed, with the fact that replaces it.

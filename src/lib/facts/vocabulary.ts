@@ -101,15 +101,21 @@ export const EMBEDDING_TASK_ATTEMPTS_MAX = 5;
 
 export const FACT_PROPOSAL_REASONS = ['CONTRADICTED', 'NO_LONGER_STATED'] as const;
 export type FactProposalReason = (typeof FACT_PROPOSAL_REASONS)[number];
-export const FACT_PROPOSAL_BASES = ['RULE', 'MODEL', 'TEXT'] as const;
+/** Phase 4.2 adds DEEP: the nightly deep continuity check (D28). */
+export const FACT_PROPOSAL_BASES = ['RULE', 'MODEL', 'TEXT', 'DEEP'] as const;
 export type FactProposalBasis = (typeof FACT_PROPOSAL_BASES)[number];
-export const FACT_PROPOSAL_STATUSES = ['PENDING', 'INVALIDATED', 'KEPT', 'REJECTED'] as const;
+/** Phase 4.2 adds INVALIDATED_NEWER: the author kept the older fact (D28). */
+export const FACT_PROPOSAL_STATUSES = ['PENDING', 'INVALIDATED', 'INVALIDATED_NEWER', 'KEPT', 'REJECTED'] as const;
 export type FactProposalStatus = (typeof FACT_PROPOSAL_STATUSES)[number];
 
-/** The author's three answers to a proposal (D27): invalidate the older fact, keep both, or reject the proposal. */
-export const FACT_PROPOSAL_DECISIONS = ['INVALIDATE', 'KEEP_BOTH', 'REJECT'] as const;
+/**
+ * The author's answers to a proposal (D27): invalidate the older fact, keep both, or reject the proposal; and since
+ * Phase 4.2 (D28), for a contradiction, invalidate the NEWER one (the author picks the older). Keeping both of a
+ * contradiction takes the author's explanation, which becomes a fact.
+ */
+export const FACT_PROPOSAL_DECISIONS = ['INVALIDATE', 'INVALIDATE_NEWER', 'KEEP_BOTH', 'REJECT'] as const;
 export type FactProposalDecision = (typeof FACT_PROPOSAL_DECISIONS)[number];
-export const STATUS_OF_DECISION: Readonly<Record<FactProposalDecision, Exclude<FactProposalStatus, 'PENDING'>>> = Object.freeze({ INVALIDATE: 'INVALIDATED', KEEP_BOTH: 'KEPT', REJECT: 'REJECTED' });
+export const STATUS_OF_DECISION: Readonly<Record<FactProposalDecision, Exclude<FactProposalStatus, 'PENDING'>>> = Object.freeze({ INVALIDATE: 'INVALIDATED', INVALIDATE_NEWER: 'INVALIDATED_NEWER', KEEP_BOTH: 'KEPT', REJECT: 'REJECTED' });
 
 /** A book's pending proposals the Facts page reads at most (a cut is said). */
 export const FACT_PROPOSALS_PER_VIEW_MAX = 100;

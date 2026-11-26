@@ -11,7 +11,9 @@
 # extraction (Phase 4.0, input `sources`: evals-out/sources/, committed over
 # src/lib/sources/evals/evaluation-record.json) and bible fact extraction
 # (Phase 4.1, input `bible_facts`: evals-out/bible-facts/, committed over
-# src/lib/facts/evals/evaluation-record.json).
+# src/lib/facts/evals/evaluation-record.json) and the deep continuity check
+# (Phase 4.2, input `continuity`: evals-out/continuity/, committed over
+# src/lib/continuity/evals/evaluation-record.json).
 #
 # Owner decisions of 2026-11-19: production mounts an interview pack only on a
 # REAL MODEL's evaluation record (D11), and real-model evaluations run here, in
@@ -85,6 +87,11 @@ on:
         type: boolean
       bible_facts:
         description: "Also run bible fact extraction's evaluation set (five synthetic bibles and three adversarial entries, Phase 4.1)"
+        required: false
+        default: false
+        type: boolean
+      continuity:
+        description: "Also run the deep continuity check's evaluation set (seeded contradictions and near misses, Phase 4.2)"
         required: false
         default: false
         type: boolean
@@ -187,6 +194,7 @@ jobs:
           REPHRASE: ${{ inputs.rephrase }}
           SOURCES: ${{ inputs.sources }}
           BIBLE_FACTS: ${{ inputs.bible_facts }}
+          CONTINUITY: ${{ inputs.continuity }}
         run: |
           set -uo pipefail
           extra=""
@@ -196,6 +204,7 @@ jobs:
           if [ "$REPHRASE" = "true" ]; then extra="$extra --rephrase"; fi
           if [ "$SOURCES" = "true" ]; then extra="$extra --sources"; fi
           if [ "$BIBLE_FACTS" = "true" ]; then extra="$extra --bible-facts"; fi
+          if [ "$CONTINUITY" = "true" ]; then extra="$extra --continuity"; fi
           # shellcheck disable=SC2086
           # --judge: the model judge over the ungraded behaviours of the pack
           # records written (Phase 2.H): a report beside them, never a gate.

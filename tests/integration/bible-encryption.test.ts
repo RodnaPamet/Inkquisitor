@@ -40,6 +40,9 @@ import { defaultFactExtractor } from '@/lib/sources/model-seam';
 import { StubEmbeddingProvider } from '@/lib/ai/embeddings/stub-provider';
 import { fakeAnthropic } from '../helpers/fake-anthropic';
 import { setFakeApiKey } from '../helpers/fake-anthropic';
+import { createThread } from '@/app-layer/usecases/continuity';
+import { extractPending } from '../helpers/facts';
+import { threadExtractor } from '../helpers/continuity';
 
 afterAll(() => prisma.$disconnect());
 
@@ -193,6 +196,13 @@ beforeAll(async () => {
     await decideFact(ctx, fact.id, 'CONFIRM');
     await setFactOverride(ctx, book.id, fact.id, { text: `Our own ${MARK} answer.` });
     Object.assign(ids, { Source: series.id, Book: book.id });
+
+    // Continuity (Phase 4.2, D28): a thread by hand, title and note marked, and one proposed from a saved entry.
+    await createThread(ctx, book.id, { kind: 'CLUE', title: `A wet boot ${MARK}`, note: `Planted ${MARK} early.` });
+    const vow = `Mara swears to find the hawk ${MARK} before spring.`;
+    await createElement(ctx, book.id, { kind: 'CHARACTER', name: 'Mara', summary: vow });
+    await extractPending(ctx, book.id, threadExtractor(vow, `Mara will find the hawk ${MARK}`));
+    expect(await prisma.storyThreadProposal.count({ where: { bookId: book.id } })).toBe(1);
 }, 60_000);
 
 /** The raw stored values of `field` on every row of `model` this suite wrote, read as the owner. */
@@ -204,7 +214,7 @@ async function rawValues(model: string, field: string): Promise<string[]> {
     const byMap = model === 'MapSnapshot';
     const byRelation = model === 'BibleRelationField' || model === 'BibleRelationVersion';
     const bySource = model === 'SourceChunk' || model === 'StoryFact';
-    const byBook = model === 'StoryFactOverride';
+    const byBook = model === 'StoryFactOverride' || model === 'StoryThread' || model === 'StoryThreadProposal';
     const where = byElement ? `"elementId" = $1` : bySession ? `"sessionId" = $1` : byRun ? `"runId" = $1` : byBrief ? `"briefId" = $1` : byMap ? `"mapId" = $1` : byRelation ? `"relationId" = $1` : bySource ? `"sourceId" = $1` : byBook ? `"bookId" = $1` : `"id" = $1`;
     const id = byElement ? ids.BibleElement : bySession ? ids.Session : byRun ? ids.Run : byBrief ? ids.ResearchBrief : byMap ? ids.StoryMap : byRelation ? ids.BibleRelation : bySource ? ids.Source : byBook ? ids.Book : ids[model];
     const rows = await prisma.$queryRawUnsafe<Array<{ v: string | null }>>(`SELECT "${field}" AS v FROM "${model}" WHERE ${where}`, id);
@@ -264,6 +274,10 @@ it('the manifest covers the bible, interview and research author text the briefs
             'StoryFact.storyTimeFrom',
             'StoryFact.storyTimeTo',
             'StoryFactOverride.text',
+            'StoryThread.title',
+            'StoryThread.note',
+            'StoryThreadProposal.title',
+            'StoryThreadProposal.quote',
         ].sort(),
     );
 });

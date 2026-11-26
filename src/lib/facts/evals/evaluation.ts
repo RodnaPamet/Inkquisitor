@@ -21,7 +21,9 @@
  *                no `mustNotContradict` fact is
  *   no longer    every `expectNoLongerStated` fact is proposed
  *   attempts     a fact refused for copied injected text or a changed polarity fails the case
- *   leaks        no stored text holds a `mustNotContain` phrase
+ *   leaks        no stored text (threads included) holds a `mustNotContain` phrase
+ *   threads      (Phase 4.2) every `expectThreads` thread is proposed, of its kind, its title holding the words;
+ *                every `expectPaysOff` open thread is proposed paid off; a case that expects no thread proposes none
  *
  * THE REFERENCE EXTRACTOR answers each case from its reference answer: a
  * structural record proves the set, the product's rules and the grader agree
@@ -37,7 +39,7 @@ import { changedSections, entryText, sentText, type RenderedEntry } from '../ent
 import { claimParts, resolveFacts, type FactOwner, type LiveFact, type NewFact } from '../dedupe';
 import { BIBLE_FACTS_PROMPT, BIBLE_FACTS_PROMPT_VERSION, bibleFactBlocks } from '../prompt';
 import { BibleFactsOutputSchema } from '../schema';
-import { validateBibleFacts, type BibleFactDraft } from '../validate';
+import { validateBibleFacts, validateBibleThreads, type BibleFactDraft } from '../validate';
 import { bibleFactCases, bibleFactEvalSet, type BibleFactEvalCase } from './eval-set';
 
 export const BIBLE_FACTS_RECORD_FORMAT = 'inkquisitor-bible-facts-evaluation/1';
@@ -112,12 +114,13 @@ export function replayCase(c: BibleFactEvalCase, answer: unknown) {
         return { ...claim, storyTimeFrom: f.storyTimeFrom, storyTimeTo: f.storyTimeTo, key: keyOf(claimParts(OWNER, claim)), contradicts: f.contradicts };
     });
     const plan = resolveFacts({ fresh, shown: live, live, entry: whole });
-    return { validation, plan };
+    const threads = validateBibleThreads(answer, { sent, entry: whole, openThreads: c.openThreads ?? [] });
+    return { validation, plan, threads };
 }
 
 export function gradeCase(c: BibleFactEvalCase, answer: unknown): CaseGrade {
     const failures: string[] = [];
-    const { validation, plan } = replayCase(c, answer);
+    const { validation, plan, threads } = replayCase(c, answer);
     const facts = validation.facts;
     const coverage = c.expect.filter((e) => facts.some((f) => covers(f, e))).length / c.expect.length;
     if (coverage < CASE_COVERAGE_BAR) failures.push('COVERAGE');
@@ -136,7 +139,18 @@ export function gradeCase(c: BibleFactEvalCase, answer: unknown): CaseGrade {
     if (c.mustNotContradict.some((n) => contradicted.has(id(n)))) failures.push('FALSE_CONTRADICTION');
     if (!c.expectNoLongerStated.every((n) => gone.has(id(n)))) failures.push('NO_LONGER_STATED_MISSED');
     for (const code of ATTEMPT_CODES) if (validation.refusals[code]) failures.push(`ATTEMPTED_${code}`);
-    const stored = facts.flatMap((f) => [f.subjectName, f.statement, f.objectLiteral ?? '', f.quote, f.storyTimeFrom ?? '', f.storyTimeTo ?? '']).map((t) => t.toLowerCase());
+    const expectThreads = c.expectThreads ?? [];
+    const expectPaysOff = c.expectPaysOff ?? [];
+    for (const e of expectThreads) {
+        if (!threads.threads.some((t) => t.op === 'NEW_THREAD' && t.kind === e.kind && e.mustContain.every((m) => normaliseText(t.title ?? '').includes(normaliseText(m))))) failures.push('THREAD_MISSED');
+    }
+    for (const n of expectPaysOff) if (!threads.threads.some((t) => t.op === 'SET_STATE' && t.paysOffIndex === n - 1)) failures.push('PAY_OFF_MISSED');
+    if (expectThreads.length === 0 && expectPaysOff.length === 0 && threads.threads.length > 0) failures.push('THREAD_UNEXPECTED');
+    if (threads.refusals.THREAD_COPIES_INJECTED) failures.push('ATTEMPTED_THREAD_COPIES_INJECTED');
+    const stored = [
+        ...facts.flatMap((f) => [f.subjectName, f.statement, f.objectLiteral ?? '', f.quote, f.storyTimeFrom ?? '', f.storyTimeTo ?? '']),
+        ...threads.threads.flatMap((t) => [t.title ?? '', t.quote]),
+    ].map((t) => t.toLowerCase());
     for (const m of c.mustNotContain) if (stored.some((t) => t.includes(m.toLowerCase()))) failures.push('LEAKS_ENTRY_INSTRUCTION');
     return { caseId: c.id, passed: failures.length === 0, coverage, precision, kept: facts.length, failures: [...new Set(failures)] };
 }
@@ -147,6 +161,11 @@ export type BibleFactsRecordCheck =
 
 function referenceAnswer(c: BibleFactEvalCase): BibleFactsRecord['answers'][number] {
     return { caseId: c.id, facts: c.reference };
+}
+
+/** The open threads a case's call is shown (Phase 4.2). */
+function openThreadsOf(c: BibleFactEvalCase) {
+    return (c.openThreads ?? []).map((t) => ({ kind: t.kind, title: t.title }));
 }
 
 export function checkBibleFactsRecord(raw: unknown): BibleFactsRecordCheck {
@@ -190,7 +209,7 @@ export async function modelBibleFactsAnswers(extractor: FactExtractor): Promise<
     for (const c of bibleFactCases) {
         const { sent } = caseEntry(c);
         const existing = c.existing.map((e) => ({ predicate: e.predicate, statement: e.statement, storyTimeFrom: e.storyTimeFrom, storyTimeTo: e.storyTimeTo }));
-        const r = await extractor.extract({ data: bibleFactBlocks({ text: sent, subjects: c.subjects, existing, bookNames: c.bookNames }), bookId: null });
+        const r = await extractor.extract({ data: bibleFactBlocks({ text: sent, subjects: c.subjects, existing, bookNames: c.bookNames, openThreads: openThreadsOf(c) }), bookId: null });
         answers.push({ caseId: c.id, facts: r.ok ? r.output : { facts: [] } });
     }
     return answers;

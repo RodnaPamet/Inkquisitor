@@ -71,6 +71,8 @@ model InterviewSession {
   slotAfterElementId  String?
   slotBeforeElementId String?
   slotAct             String?
+  /// Phase 4.2 (D28): "Grill me on what changed": the stale flag a SELECTION session of its one element was started from (frozen; NULL otherwise, and once the flag goes).
+  staleFlagId         String?
   /// How far down the field dependencies the session goes, 1..5 (CHECK).
   depth               Int
   /// How specific a question is and how long a reply it invites, 1..5 (CHECK).
@@ -107,6 +109,7 @@ model InterviewSession {
 
   book                Book                 @relation(fields: [workspaceId, bookId], references: [workspaceId, id], onDelete: Cascade)
   targetElement       BibleElement?        @relation(fields: [bookId, targetElementId], references: [bookId, id], onDelete: Cascade)
+  staleFlag           StaleFlag?           @relation(fields: [staleFlagId], references: [id], onDelete: SetNull)
   createdBy           User?                @relation(fields: [createdById], references: [id], onDelete: SetNull)
   rounds              InterviewRound[]
   questions           Question[]
@@ -120,6 +123,8 @@ model InterviewSession {
   @@index([workspaceId, bookId, createdAt])
   @@index([bookId, targetElementId])
   @@index([createdById])
+  /// Phase 4.2: a stale flag's grill sessions (the foreign key's SET NULL).
+  @@index([staleFlagId])
 }
 
 /// One round of a session: the frontier it was planned from and the

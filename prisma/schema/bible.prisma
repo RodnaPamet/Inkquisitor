@@ -74,6 +74,12 @@ model Book {
   storyMaps         StoryMap[]
   /// Phase 3.3: the history of the book's relations (it outlives each relation).
   relationVersions  BibleRelationVersion[]
+  /// Phase 4.2 (D28): the nightly continuity check's state and runs, the open-thread registries, propagation debt.
+  continuityCheck      ContinuityCheck[]
+  continuityRuns       ContinuityRun[]
+  storyThreads         StoryThread[]
+  storyThreadProposals StoryThreadProposal[]
+  staleFlags           StaleFlag[]
 
   @@unique([workspaceId, id])
   /// The books list: a workspace's live books, most recently updated first.
@@ -129,6 +135,11 @@ model BibleElement {
   /// Phase 3.3: NEW_RELATION proposals with this element at one end.
   newRelationsFrom    EnrichmentProposal[] @relation("NewRelationFrom")
   newRelationsTo      EnrichmentProposal[] @relation("NewRelationTo")
+  /// Phase 4.2 (D28): threads and thread proposals about it; propagation debt it owes, and that its changes raise.
+  threadsAbout         StoryThread[]         @relation("StoryThreadSubject")
+  threadProposalsAbout StoryThreadProposal[] @relation("StoryThreadProposalSubject")
+  staleFlags           StaleFlag[]           @relation("StaleFlagElement")
+  staleFlagsRaised     StaleFlag[]           @relation("StaleFlagUpstream")
 
   @@unique([bookId, slug])
   @@unique([bookId, id])
@@ -251,8 +262,13 @@ model BibleEntryVersion {
   factExtraction  BibleFactExtraction?
   facts           StoryFact[]
   factProvenance  StoryFactProvenance[]
+  /// Phase 4.2 (D28): the thread proposals it is cited by, the stale flags it raised.
+  threadProposals StoryThreadProposal[] @relation("StoryThreadProposalVersion")
+  staleFlags      StaleFlag[]           @relation("StaleFlagUpstreamVersion")
 
   @@unique([elementId, versionNumber])
+  /// Phase 4.2 (D28): the versions that cite some answers (propagation debt's trigger asks it).
+  @@index([sourceAnswerIds], type: Gin)
   @@index([workspaceId, bookId])
   @@index([authorId])
 }
@@ -312,6 +328,8 @@ model BibleRelationVersion {
   factExtraction  BibleFactExtraction?
   facts           StoryFact[]
   factProvenance  StoryFactProvenance[]
+  /// Phase 4.2 (D28): the thread proposals it is cited by.
+  threadProposals StoryThreadProposal[] @relation("StoryThreadProposalRelationVersion")
 
   @@unique([relationId, versionNumber])
   @@index([workspaceId, bookId])

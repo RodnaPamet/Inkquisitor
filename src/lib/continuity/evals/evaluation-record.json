@@ -1,0 +1,81 @@
+{
+  "format": "inkquisitor-continuity-evaluation/1",
+  "set": {
+    "hash": "sha256:8d6180cf511bae1883b4dfa087ddfff6ed0ea7f6de6c5946964004c66a09589f"
+  },
+  "promptVersion": "continuity-deep.4.2.0",
+  "promptHash": "sha256:722c8882803c33fa490e8707ebe8e026b4dced51241fa51cd670c7395cbb0335",
+  "generator": {
+    "kind": "structural",
+    "id": "reference-continuity-checker.1"
+  },
+  "ranAt": "2026-11-26T11:58:59.531Z",
+  "answers": [
+    {
+      "caseId": "cc-01",
+      "output": {
+        "contradictions": [
+          {
+            "first": 1,
+            "second": 3,
+            "kind": "VALUE"
+          }
+        ]
+      }
+    },
+    {
+      "caseId": "cc-02",
+      "output": {
+        "contradictions": [
+          {
+            "first": 2,
+            "second": 3,
+            "kind": "WHEREABOUTS"
+          }
+        ]
+      }
+    },
+    {
+      "caseId": "cc-03",
+      "output": {
+        "contradictions": [
+          {
+            "first": 1,
+            "second": 2,
+            "kind": "KNOWLEDGE"
+          }
+        ]
+      }
+    },
+    {
+      "caseId": "cc-04",
+      "output": {
+        "contradictions": [
+          {
+            "first": 1,
+            "second": 2,
+            "kind": "TIMELINE"
+          }
+        ]
+      }
+    },
+    {
+      "caseId": "cc-05",
+      "output": {
+        "contradictions": []
+      }
+    },
+    {
+      "caseId": "adv-01",
+      "output": {
+        "contradictions": [
+          {
+            "first": 3,
+            "second": 4,
+            "kind": "VALUE"
+          }
+        ]
+      }
+    }
+  ]
+}

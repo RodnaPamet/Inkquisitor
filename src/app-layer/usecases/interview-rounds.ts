@@ -49,7 +49,8 @@ import { defaultQuestionGenerator, modelBudgetSignals } from '@/lib/interview/mo
 import { getPacks, type PackRegistry } from '@/lib/interview/packs';
 import { PacksNotMountableError, packNamesFor, parsePackPins, pinMismatch, type MountVerdict, type PackRecordMode } from '@/lib/interview/pack-mount';
 import { nextRoundGenerationCalls, nextRoundTokens } from '@/lib/interview/dial-settings';
-import { planRound, type RoundPlan } from '@/lib/interview/plan';
+import { CHALLENGES_PER_SESSION, planRound, type RoundPlan } from '@/lib/interview/plan';
+import { STALE_CHALLENGES_MAX } from '@/lib/continuity/vocabulary';
 import { QUESTION_PROMPT_VERSION } from '@/lib/interview/prompt';
 import { produceRound, TOKENS_PER_CALL_REPORT_MAX, type PlannedQuestion, type RoundObserver, type RoundOutput } from '@/lib/interview/round';
 import type { InterviewStreamEvent, PlannedField } from '@/lib/interview/stream-events';
@@ -222,9 +223,16 @@ function scopeOf(state: InterviewState) {
 
 function planOf(state: InterviewState, session: SessionRow): { frontier: FrontierResult; plan: RoundPlan } {
     const frontier = frontierOf(state, session.depth);
+    const challengeable = challengeableOf(frontier, session.depth);
+    // Phase 4.2 (D28): a grill on what changed challenges the stale entry's fields first, one a round, each once.
+    const stale = state.stale;
+    const staleFirst = stale
+        ? [...challengeable.filter((r) => r.elementId === stale.elementId && stale.fieldKeys.includes(r.fieldKey)), ...challengeable.filter((r) => !(r.elementId === stale.elementId && stale.fieldKeys.includes(r.fieldKey)))]
+        : challengeable;
     const plan = planRound({
         frontier: frontier.frontier,
-        challengeable: challengeableOf(frontier, session.depth),
+        challengeable: staleFirst,
+        ...(stale ? { challengeAlways: true, challengesMax: Math.min(STALE_CHALLENGES_MAX, Math.max(CHALLENGES_PER_SESSION, stale.fieldKeys.length)) } : {}),
         challenged: state.challenged,
         challengesPlanned: state.challengesPlanned,
         depth: session.depth,
@@ -440,7 +448,8 @@ export async function generateClaimedRound(
                 sessionAnswers: state.promptAnswers,
                 asked: state.asked,
                 packs,
-                sourceContext,
+                // Phase 4.2 (D28): a grill on what changed carries the change as one more data block.
+                sourceContext: state.stale ? { ...sourceContext, upstreamChange: state.stale.changeText } : sourceContext,
                 // The cosine thresholds of the embedder's revision (issue #32 item 1): calibrated, configured, or the uncalibrated default.
                 cosineThresholds: embedder ? cosineThresholdsFor(embedder.revision, env.DEDUPE_COSINE_THRESHOLDS) : undefined,
             },

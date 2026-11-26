@@ -127,8 +127,8 @@ describe('resolving a version', () => {
         });
         expect(plan.contradictions).toEqual(
             expect.arrayContaining([
-                { olderId: 'age', newIndex: 0, basis: 'RULE' },
-                { olderId: 'member', newIndex: 0, basis: 'MODEL' },
+                { olderId: 'age', newIndex: 0, basis: 'RULE', kind: 'VALUE' },
+                { olderId: 'member', newIndex: 0, basis: 'MODEL', kind: 'OTHER' },
             ]),
         );
         expect(plan.contradictions.map((c) => c.olderId)).not.toContain('other');

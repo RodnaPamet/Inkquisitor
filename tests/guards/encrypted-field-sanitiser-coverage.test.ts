@@ -99,12 +99,17 @@ const COVERAGE: Readonly<Record<string, Classification>> = {
     'Source.filename': { repository: 'SourceRepository', writeMethods: ['create'], sanitiser: 'sanitiseSourceNameForStorage' },
     'SourceChunk.text': { repository: 'SourceChunkRepository', writeMethods: ['createMany'], sanitiser: 'sanitiseChunkForStorage' },
     'SourceChunk.headingPath': { repository: 'SourceChunkRepository', writeMethods: ['createMany'], sanitiser: 'sanitiseChunkForStorage' },
-    'StoryFact.subjectName': { repository: 'StoryFactRepository', writeMethods: ['createMany', 'createBibleFacts'], sanitiser: 'sanitiseFactForStorage' },
-    'StoryFact.objectLiteral': { repository: 'StoryFactRepository', writeMethods: ['createMany', 'createBibleFacts'], sanitiser: 'sanitiseFactForStorage' },
-    'StoryFact.statement': { repository: 'StoryFactRepository', writeMethods: ['createMany', 'createBibleFacts'], sanitiser: 'sanitiseFactForStorage' },
-    'StoryFact.quote': { repository: 'StoryFactRepository', writeMethods: ['createMany', 'createBibleFacts'], sanitiser: 'sanitiseFactForStorage' },
-    'StoryFact.storyTimeFrom': { repository: 'StoryFactRepository', writeMethods: ['createMany', 'createBibleFacts'], sanitiser: 'sanitiseFactForStorage' },
-    'StoryFact.storyTimeTo': { repository: 'StoryFactRepository', writeMethods: ['createMany', 'createBibleFacts'], sanitiser: 'sanitiseFactForStorage' },
+    'StoryFact.subjectName': { repository: 'StoryFactRepository', writeMethods: ['createMany', 'createBibleFacts', 'createResolutionFact'], sanitiser: 'sanitiseFactForStorage' },
+    'StoryFact.objectLiteral': { repository: 'StoryFactRepository', writeMethods: ['createMany', 'createBibleFacts', 'createResolutionFact'], sanitiser: 'sanitiseFactForStorage' },
+    'StoryFact.statement': { repository: 'StoryFactRepository', writeMethods: ['createMany', 'createBibleFacts', 'createResolutionFact'], sanitiser: 'sanitiseFactForStorage' },
+    'StoryFact.quote': { repository: 'StoryFactRepository', writeMethods: ['createMany', 'createBibleFacts', 'createResolutionFact'], sanitiser: 'sanitiseFactForStorage' },
+    'StoryFact.storyTimeFrom': { repository: 'StoryFactRepository', writeMethods: ['createMany', 'createBibleFacts', 'createResolutionFact'], sanitiser: 'sanitiseFactForStorage' },
+    'StoryFact.storyTimeTo': { repository: 'StoryFactRepository', writeMethods: ['createMany', 'createBibleFacts', 'createResolutionFact'], sanitiser: 'sanitiseFactForStorage' },
+    // Phase 4.2 (D28): a thread's title and note (by hand, or an accepted proposal's), a proposed thread's title and quote.
+    'StoryThread.title': { repository: 'StoryThreadRepository', writeMethods: ['create', 'update'], sanitiser: 'sanitiseThreadForStorage' },
+    'StoryThread.note': { repository: 'StoryThreadRepository', writeMethods: ['create', 'update'], sanitiser: 'sanitiseThreadForStorage' },
+    'StoryThreadProposal.title': { repository: 'StoryThreadProposalRepository', writeMethods: ['raise'], sanitiser: 'sanitiseThreadProposalForStorage' },
+    'StoryThreadProposal.quote': { repository: 'StoryThreadProposalRepository', writeMethods: ['raise'], sanitiser: 'sanitiseThreadProposalForStorage' },
     'StoryFactOverride.text': { repository: 'StoryFactOverrideRepository', writeMethods: ['upsert'], sanitiser: 'sanitiseOverrideForStorage' },
     // Phase 3.1: a story map's freeform layer (sticky notes and loose text) is author text; a snapshot is the saved state.
     'StoryMap.freeformJson': { repository: 'StoryMapRepository', writeMethods: ['create', 'commit'], sanitiser: 'sanitiseFreeformForStorage' },
@@ -142,6 +147,8 @@ const REPOSITORIES: Readonly<Record<string, { file: string; model: string }>> = 
     SourceChunkRepository: { file: 'src/app-layer/repositories/source.repository.ts', model: 'SourceChunk' },
     StoryFactRepository: { file: 'src/app-layer/repositories/source.repository.ts', model: 'StoryFact' },
     StoryFactOverrideRepository: { file: 'src/app-layer/repositories/source.repository.ts', model: 'StoryFactOverride' },
+    StoryThreadRepository: { file: 'src/app-layer/repositories/continuity.repository.ts', model: 'StoryThread' },
+    StoryThreadProposalRepository: { file: 'src/app-layer/repositories/continuity.repository.ts', model: 'StoryThreadProposal' },
 };
 
 /** Wrappers, where each is defined and what it must call; the chain must end at a primitive. */
@@ -165,6 +172,8 @@ const WRAPPERS: Readonly<Record<string, { file: string; calls: readonly string[]
     sanitiseChunkForStorage: { file: 'src/lib/sources/storage.ts', calls: ['plainBlock', 'plainLine'] },
     sanitiseFactForStorage: { file: 'src/lib/sources/storage.ts', calls: ['plainLine'] },
     sanitiseOverrideForStorage: { file: 'src/lib/sources/storage.ts', calls: ['plainBlock'] },
+    sanitiseThreadForStorage: { file: 'src/lib/continuity/storage.ts', calls: ['plainLine', 'plainBlock'] },
+    sanitiseThreadProposalForStorage: { file: 'src/lib/continuity/storage.ts', calls: ['plainLine'] },
     sanitiseFreeformRecords: { file: 'src/lib/canvas/freeform.ts', calls: ['cleanValue'] },
     cleanValue: { file: 'src/lib/canvas/freeform.ts', calls: ['cleanString'] },
     cleanString: { file: 'src/lib/canvas/freeform.ts', calls: ['sanitizePlainText'] },

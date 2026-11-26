@@ -263,7 +263,8 @@ describe('a contradiction is proposed, never applied', () => {
 
     it('KEEP_BOTH leaves both live, and the pair is never proposed again', async () => {
         const p = (await listFactProposals(ctx, bookId)).proposals[0];
-        await decideFactProposal(ctx, bookId, p.id, { decision: 'KEEP_BOTH' });
+        // Phase 4.2 (D28): "both are true" of a contradiction carries the author's explanation.
+        await decideFactProposal(ctx, bookId, p.id, { decision: 'KEEP_BOTH', explanation: 'Wren turned thirteen during the story.' });
         expect((await bibleFacts(bookId)).every((f) => f.supersededAt === null)).toBe(true);
         // The same version extracted again raises nothing new.
         const done = (await rows(ctx, bookId)).find((r) => r.outcome === 'OK' && r.status === 'DONE' && r.proposalsRaised === 1)!;
