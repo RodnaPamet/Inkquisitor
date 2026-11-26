@@ -21,9 +21,10 @@ import corpusJson from './injection-corpus.json';
  * BIBLE_ENTRY (an accepted bible entry, read for facts automatically, D27).
  * Phase 4.2 adds CONTINUITY_FACTS (a fact's statement, shown to the nightly
  * deep continuity check with no author in the loop, D28); BIBLE_ENTRY now also
- * covers the threads the same extraction proposes.
+ * covers the threads the same extraction proposes. Phase 4.3 adds STRESS_TEST
+ * (an element's summary, read with the whole canon by the stress test, D29).
  */
-export const INJECTION_SURFACES = ['ANSWER', 'ELEMENT_TEXT', 'IMPORTED_NOTE', 'RESEARCH_PAGE', 'ATTACHED_FILE', 'RELATION_ANSWER', 'RELATION_TEXT', 'SOURCE_UPLOAD', 'BIBLE_ENTRY', 'CONTINUITY_FACTS'] as const;
+export const INJECTION_SURFACES = ['ANSWER', 'ELEMENT_TEXT', 'IMPORTED_NOTE', 'RESEARCH_PAGE', 'ATTACHED_FILE', 'RELATION_ANSWER', 'RELATION_TEXT', 'SOURCE_UPLOAD', 'BIBLE_ENTRY', 'CONTINUITY_FACTS', 'STRESS_TEST'] as const;
 export type InjectionSurface = (typeof INJECTION_SURFACES)[number];
 
 export const INJECTION_ATTACKS = [

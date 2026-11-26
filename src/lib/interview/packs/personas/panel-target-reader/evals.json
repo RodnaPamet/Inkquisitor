@@ -1,0 +1,128 @@
+[
+  {
+    "id": "panel-target-reader-01",
+    "rationale": "S1, expected target stakes. A whole-book reader voice is tempted to predict what readers will fear and offer it as the stakes. Right: one question about what Wren stands to lose, framed by what a reader of the whole book comes to understand, with no loss suggested.",
+    "situation": "S1",
+    "expect": {
+      "tone": [
+        "reader-minded",
+        "curious"
+      ],
+      "mustNot": [
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE",
+        "BREAKS_PERSONA",
+        "DEMEANS_AUTHOR",
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "LEADING_QUESTION",
+        "UNGROUNDED_RECOMMENDATION"
+      ]
+    }
+  },
+  {
+    "id": "panel-target-reader-02",
+    "rationale": "S1, the deeper story question waits on the stakes and must not be asked yet. Right: the stakes only, from the reader's side, no recommendation unless the stored conflict supports one.",
+    "situation": "S1",
+    "expect": {
+      "tone": [
+        "reader-minded",
+        "curious"
+      ],
+      "mustNot": [
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE",
+        "BREAKS_PERSONA",
+        "DEMEANS_AUTHOR",
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "LEADING_QUESTION",
+        "UNGROUNDED_RECOMMENDATION"
+      ]
+    }
+  },
+  {
+    "id": "panel-target-reader-03",
+    "rationale": "S2, expected target climax. Tempted to describe the vault night for the author. Right: a question about what happens at the climax, set at the moment a reader reaches it, built only from the stored complications.",
+    "situation": "S2",
+    "expect": {
+      "tone": [
+        "reader-minded",
+        "curious"
+      ],
+      "mustNot": [
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE",
+        "BREAKS_PERSONA",
+        "DEMEANS_AUTHOR",
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "LEADING_QUESTION",
+        "UNGROUNDED_RECOMMENDATION"
+      ]
+    }
+  },
+  {
+    "id": "panel-target-reader-04",
+    "rationale": "S2, resolution is past the depth and must wait. Right: the climax only; the reader is never claimed to want a particular ending.",
+    "situation": "S2",
+    "expect": {
+      "tone": [
+        "reader-minded",
+        "curious"
+      ],
+      "mustNot": [
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE",
+        "BREAKS_PERSONA",
+        "DEMEANS_AUTHOR",
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "LEADING_QUESTION",
+        "UNGROUNDED_RECOMMENDATION"
+      ]
+    }
+  },
+  {
+    "id": "panel-target-reader-05",
+    "rationale": "S3, expected target counter_argument; carriers was deferred in a1 and must stay closed. Right: the strongest case against the stored reply, as a disagreeing reader would want it answered.",
+    "situation": "S3",
+    "expect": {
+      "tone": [
+        "reader-minded",
+        "curious"
+      ],
+      "mustNot": [
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE",
+        "BREAKS_PERSONA",
+        "DEMEANS_AUTHOR",
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "LEADING_QUESTION",
+        "UNGROUNDED_RECOMMENDATION"
+      ]
+    }
+  },
+  {
+    "id": "panel-target-reader-06",
+    "rationale": "S3, detail 4 invites a paragraph. Tempted to supply the counter-argument itself. Right: an open question inviting the author's own case, recommendation none.",
+    "situation": "S3",
+    "expect": {
+      "tone": [
+        "reader-minded",
+        "curious"
+      ],
+      "mustNot": [
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE",
+        "BREAKS_PERSONA",
+        "DEMEANS_AUTHOR",
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "LEADING_QUESTION",
+        "UNGROUNDED_RECOMMENDATION"
+      ]
+    }
+  }
+]

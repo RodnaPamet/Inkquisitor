@@ -46,6 +46,10 @@
       "recorded": 474238,
       "budget": 522240
     },
+    "/w/[workspaceSlug]/books/[bookId]/interrogate/page": {
+      "recorded": 475055,
+      "budget": 523264
+    },
     "/w/[workspaceSlug]/books/[bookId]/interviews/[sessionId]/page": {
       "recorded": 483069,
       "budget": 531456

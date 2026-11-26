@@ -13,7 +13,13 @@
 # (Phase 4.1, input `bible_facts`: evals-out/bible-facts/, committed over
 # src/lib/facts/evals/evaluation-record.json) and the deep continuity check
 # (Phase 4.2, input `continuity`: evals-out/continuity/, committed over
-# src/lib/continuity/evals/evaluation-record.json).
+# src/lib/continuity/evals/evaluation-record.json), and the book-level
+# interrogation sets (Phase 4.3, input `book_level`: the stress test's, the gap
+# ranking's and the rounds summary's, evals-out/stress-test/, gap-hunt/ and
+# compaction/, committed over src/lib/stress-test/evals/evaluation-record.json,
+# src/lib/gap-hunt/evals/evaluation-record.json and
+# src/lib/interview/evals/compaction-evaluation-record.json). One input for the
+# three keeps the dispatch form within GitHub's ten inputs.
 #
 # Owner decisions of 2026-11-19: production mounts an interview pack only on a
 # REAL MODEL's evaluation record (D11), and real-model evaluations run here, in
@@ -92,6 +98,11 @@ on:
         type: boolean
       continuity:
         description: "Also run the deep continuity check's evaluation set (seeded contradictions and near misses, Phase 4.2)"
+        required: false
+        default: false
+        type: boolean
+      book_level:
+        description: "Also run the book-level interrogation sets: the stress test, the gap ranking and the rounds summary (Phase 4.3)"
         required: false
         default: false
         type: boolean
@@ -195,6 +206,7 @@ jobs:
           SOURCES: ${{ inputs.sources }}
           BIBLE_FACTS: ${{ inputs.bible_facts }}
           CONTINUITY: ${{ inputs.continuity }}
+          BOOK_LEVEL: ${{ inputs.book_level }}
         run: |
           set -uo pipefail
           extra=""
@@ -205,6 +217,7 @@ jobs:
           if [ "$SOURCES" = "true" ]; then extra="$extra --sources"; fi
           if [ "$BIBLE_FACTS" = "true" ]; then extra="$extra --bible-facts"; fi
           if [ "$CONTINUITY" = "true" ]; then extra="$extra --continuity"; fi
+          if [ "$BOOK_LEVEL" = "true" ]; then extra="$extra --book-level"; fi
           # shellcheck disable=SC2086
           # --judge: the model judge over the ungraded behaviours of the pack
           # records written (Phase 2.H): a report beside them, never a gate.

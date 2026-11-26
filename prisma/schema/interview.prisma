@@ -73,6 +73,8 @@ model InterviewSession {
   slotAct             String?
   /// Phase 4.2 (D28): "Grill me on what changed": the stale flag a SELECTION session of its one element was started from (frozen; NULL otherwise, and once the flag goes).
   staleFlagId         String?
+  /// Phase 4.3 (D29): the stress test a SELECTION session was started from (its weak points ride along as a data block; NULL otherwise, and once the test goes).
+  stressTestId        String?
   /// How far down the field dependencies the session goes, 1..5 (CHECK).
   depth               Int
   /// How specific a question is and how long a reply it invites, 1..5 (CHECK).
@@ -110,12 +112,15 @@ model InterviewSession {
   book                Book                 @relation(fields: [workspaceId, bookId], references: [workspaceId, id], onDelete: Cascade)
   targetElement       BibleElement?        @relation(fields: [bookId, targetElementId], references: [bookId, id], onDelete: Cascade)
   staleFlag           StaleFlag?           @relation(fields: [staleFlagId], references: [id], onDelete: SetNull)
+  stressTest          StressTest?          @relation(fields: [stressTestId], references: [id], onDelete: SetNull)
   createdBy           User?                @relation(fields: [createdById], references: [id], onDelete: SetNull)
   rounds              InterviewRound[]
   questions           Question[]
   /// Phase 2.5: the rounds' reconcile runs and the proposed bible changes.
   reconcileRuns       ReconcileRun[]
   enrichmentProposals EnrichmentProposal[]
+  /// Phase 4.3: the summaries of its earlier rounds (long-session compaction).
+  compactions         InterviewCompaction[]
 
   @@unique([workspaceId, id])
   @@unique([workspaceId, bookId, id])
@@ -125,6 +130,8 @@ model InterviewSession {
   @@index([createdById])
   /// Phase 4.2: a stale flag's grill sessions (the foreign key's SET NULL).
   @@index([staleFlagId])
+  /// Phase 4.3: a stress test's sessions (the foreign key's SET NULL).
+  @@index([stressTestId])
 }
 
 /// One round of a session: the frontier it was planned from and the

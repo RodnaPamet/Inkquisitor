@@ -111,6 +111,11 @@ const COVERAGE: Readonly<Record<string, Classification>> = {
     'StoryThreadProposal.title': { repository: 'StoryThreadProposalRepository', writeMethods: ['raise'], sanitiser: 'sanitiseThreadProposalForStorage' },
     'StoryThreadProposal.quote': { repository: 'StoryThreadProposalRepository', writeMethods: ['raise'], sanitiser: 'sanitiseThreadProposalForStorage' },
     'StoryFactOverride.text': { repository: 'StoryFactOverrideRepository', writeMethods: ['upsert'], sanitiser: 'sanitiseOverrideForStorage' },
+    // Phase 4.3 (D29): book-level interrogation's model-written text about the book.
+    'StressWeakPoint.title': { repository: 'StressWeakPointRepository', writeMethods: ['createMany'], sanitiser: 'sanitiseWeakPointForStorage' },
+    'StressWeakPoint.questions': { repository: 'StressWeakPointRepository', writeMethods: ['createMany'], sanitiser: 'sanitiseWeakPointForStorage' },
+    'GapHunt.picks': { repository: 'GapHuntRepository', writeMethods: ['create'], sanitiser: 'sanitiseGapPicksForStorage' },
+    'InterviewCompaction.summary': { repository: 'InterviewCompactionRepository', writeMethods: ['create'], sanitiser: 'sanitiseSummaryForStorage' },
     // Phase 3.1: a story map's freeform layer (sticky notes and loose text) is author text; a snapshot is the saved state.
     'StoryMap.freeformJson': { repository: 'StoryMapRepository', writeMethods: ['create', 'commit'], sanitiser: 'sanitiseFreeformForStorage' },
     'MapSnapshot.snapshot': {
@@ -149,6 +154,9 @@ const REPOSITORIES: Readonly<Record<string, { file: string; model: string }>> = 
     StoryFactOverrideRepository: { file: 'src/app-layer/repositories/source.repository.ts', model: 'StoryFactOverride' },
     StoryThreadRepository: { file: 'src/app-layer/repositories/continuity.repository.ts', model: 'StoryThread' },
     StoryThreadProposalRepository: { file: 'src/app-layer/repositories/continuity.repository.ts', model: 'StoryThreadProposal' },
+    StressWeakPointRepository: { file: 'src/app-layer/repositories/interrogation.repository.ts', model: 'StressWeakPoint' },
+    GapHuntRepository: { file: 'src/app-layer/repositories/interrogation.repository.ts', model: 'GapHunt' },
+    InterviewCompactionRepository: { file: 'src/app-layer/repositories/interrogation.repository.ts', model: 'InterviewCompaction' },
 };
 
 /** Wrappers, where each is defined and what it must call; the chain must end at a primitive. */
@@ -174,6 +182,9 @@ const WRAPPERS: Readonly<Record<string, { file: string; calls: readonly string[]
     sanitiseOverrideForStorage: { file: 'src/lib/sources/storage.ts', calls: ['plainBlock'] },
     sanitiseThreadForStorage: { file: 'src/lib/continuity/storage.ts', calls: ['plainLine', 'plainBlock'] },
     sanitiseThreadProposalForStorage: { file: 'src/lib/continuity/storage.ts', calls: ['plainLine'] },
+    sanitiseWeakPointForStorage: { file: 'src/lib/stress-test/storage.ts', calls: ['plainLine'] },
+    sanitiseGapPicksForStorage: { file: 'src/lib/gap-hunt/storage.ts', calls: ['plainLine'] },
+    sanitiseSummaryForStorage: { file: 'src/lib/interview/compaction-prompt.ts', calls: ['plainBlock'] },
     sanitiseFreeformRecords: { file: 'src/lib/canvas/freeform.ts', calls: ['cleanValue'] },
     cleanValue: { file: 'src/lib/canvas/freeform.ts', calls: ['cleanString'] },
     cleanString: { file: 'src/lib/canvas/freeform.ts', calls: ['sanitizePlainText'] },

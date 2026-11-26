@@ -73,6 +73,11 @@ export const ENCRYPTED_FIELDS: EncryptedFieldManifest = Object.freeze({
     // Phase 4.2 (D28): the registries' entries and the threads the product proposes (the quote is the version's words).
     StoryThread: Object.freeze(['title', 'note']),
     StoryThreadProposal: Object.freeze(['title', 'quote']),
+    // Phase 4.3 (D29): a stress test's weak points (label and questions), a gap hunt's picks (the reasons), a long
+    // session's summary of its earlier rounds.
+    StressWeakPoint: Object.freeze(['title', 'questions']),
+    GapHunt: Object.freeze(['picks']),
+    InterviewCompaction: Object.freeze(['summary']),
 });
 
 /** The lookups the extension runs per operation, compiled once per manifest. */

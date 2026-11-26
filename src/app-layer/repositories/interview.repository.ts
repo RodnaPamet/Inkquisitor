@@ -31,6 +31,7 @@ export const SESSION_SELECT = {
     slotBeforeElementId: true,
     slotAct: true,
     staleFlagId: true,
+    stressTestId: true,
     depth: true,
     detail: true,
     personaKeys: true,
@@ -146,6 +147,8 @@ export const InterviewSessionRepository = {
             slotAct?: string | null;
             /** Phase 4.2: "Grill me on what changed": the stale flag it was started from. */
             staleFlagId?: string | null;
+            /** Phase 4.3: the stress test it was started from. */
+            stressTestId?: string | null;
             depth: number;
             detail: number;
             personaKeys: string[];

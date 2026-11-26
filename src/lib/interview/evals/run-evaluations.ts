@@ -92,6 +92,8 @@ export interface EvalArgs {
     bibleFacts?: boolean;
     /** Phase 4.2: the deep continuity check's set. */
     continuity?: boolean;
+    /** Phase 4.3: the book-level interrogation sets (the stress test, the gap ranking, the rounds summary). */
+    bookLevel?: boolean;
     /** Also run the rephrase prompt's evaluation (Phase 2.H). */
     rephrase: boolean;
     /** Also judge the ungraded behaviours of the pack records written (Phase 2.H). */
@@ -115,6 +117,7 @@ export function parseEvalArgs(argv: readonly string[]): EvalArgs {
         else if (a === '--sources') args.sources = true;
         else if (a === '--bible-facts') args.bibleFacts = true;
         else if (a === '--continuity') args.continuity = true;
+        else if (a === '--book-level') args.bookLevel = true;
         else if (a === '--rephrase') args.rephrase = true;
         else if (a === '--judge') args.judge = true;
         else if (a === '--no-packs') args.packs = [];

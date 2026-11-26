@@ -118,6 +118,11 @@ export interface ContinuityCheckPayload {
     runId: string;
 }
 
+export interface StressTestPayload {
+    workspaceId: string;
+    stressTestId: string;
+}
+
 export interface JobPayloadMap {
     heartbeat: HeartbeatPayload;
     'book-purge': BookPurgePayload;
@@ -128,6 +133,7 @@ export interface JobPayloadMap {
     'bible-facts': BibleFactsPayload;
     'continuity-dispatch': ContinuityDispatchPayload;
     'continuity-check': ContinuityCheckPayload;
+    'stress-test': StressTestPayload;
 }
 
 export type JobName = keyof JobPayloadMap;
@@ -214,6 +220,15 @@ export const JOB_DEFAULTS: Record<JobName, JobDefaults> = {
         attempts: 1,
         backoff: { type: 'fixed', delay: 0 },
         removeOnComplete: 200,
+        removeOnFail: 200,
+    },
+    'stress-test': {
+        // One attempt: a deep call is never repeated behind the author's back. A
+        // test that stops records its named outcome; the author starts another
+        // (confirming its cost again).
+        attempts: 1,
+        backoff: { type: 'fixed', delay: 0 },
+        removeOnComplete: 100,
         removeOnFail: 200,
     },
 };

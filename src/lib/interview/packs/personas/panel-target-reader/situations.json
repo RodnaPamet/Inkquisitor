@@ -1,0 +1,44 @@
+{
+  "S1": {
+    "kind": "PREMISE",
+    "elementName": "The Weir",
+    "bibleState": {
+      "central_character": "Wren Holt, the lock-keeper's twelve-year-old daughter.",
+      "starting_situation": "The weir above the village is failing as the first winter floods arrive.",
+      "central_conflict": "Wren must keep the sluices working while her father insists the weir will hold.",
+      "stakes": null,
+      "story_question": null
+    },
+    "priorAnswers": [],
+    "dials": { "depth": 3, "detail": 3 }
+  },
+  "S2": {
+    "kind": "PLOT",
+    "elementName": "The charter job",
+    "bibleState": {
+      "plotline_owner": "Ines Varga, a forger who has never been caught.",
+      "opening_disturbance": "The city council announces a vote that will void every deed signed under the old charter.",
+      "driving_goal": "Steal the founding charter before the vote.",
+      "complications": ["Her partner Tomas sells the plan to the council's clerk.", "The charter is moved to the cathedral vault a week early."],
+      "climax": null,
+      "resolution": null
+    },
+    "priorAnswers": [],
+    "dials": { "depth": 4, "detail": 3 }
+  },
+  "S3": {
+    "kind": "THEME",
+    "elementName": "Debt and family",
+    "bibleState": {
+      "subject": "What we owe the people who raised us.",
+      "thematic_question": "Does a debt to kin outweigh the debt we owe ourselves?",
+      "stance": "It does, until paying it means becoming someone they would not recognise.",
+      "counter_argument": null,
+      "carriers": null
+    },
+    "priorAnswers": [
+      { "id": "a1", "questionKind": "OPEN", "question": "Which characters carry this question through the book?", "targetsFieldKeys": ["carriers"], "status": "DECIDE_LATER", "answer": null }
+    ],
+    "dials": { "depth": 4, "detail": 4 }
+  }
+}

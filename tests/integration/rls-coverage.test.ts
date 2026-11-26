@@ -34,6 +34,7 @@ import { seedStoryMap } from '../helpers/canvas';
 import { seedSourceLibrary } from '../helpers/sources';
 import { seedFactLayer } from '../helpers/facts';
 import { seedContinuity } from '../helpers/continuity';
+import { seedInterrogation } from '../helpers/interrogation';
 import { createAccount, workspaceCtx } from '../helpers/workspaces';
 import { setBookInterviewDefaults, setWorkspaceInterviewDefaults } from '@/app-layer/usecases/interview-defaults';
 
@@ -144,8 +145,8 @@ beforeAll(async () => {
     await seedVectors(workspaceCtx(a), aBook.bookId, 'rls-a');
     await seedVectors(workspaceCtx(b), bBook.bookId, 'rls-b');
     // An interview with a round, its questions and an answer (Phase 2.2).
-    await seedInterview(workspaceCtx(a), aBook.bookId, aBook.characterId, 'rls-a');
-    await seedInterview(workspaceCtx(b), bBook.bookId, bBook.characterId, 'rls-b');
+    const aInterview = await seedInterview(workspaceCtx(a), aBook.bookId, aBook.characterId, 'rls-a');
+    const bInterview = await seedInterview(workspaceCtx(b), bBook.bookId, bBook.characterId, 'rls-b');
     // A round reconciled into proposals (Phase 2.5): a run, proposals and their citations.
     for (const [acct, book] of [[a, aBook], [b, bBook]] as const) {
         const seeded = await seedReconciledRound(workspaceCtx(acct), book.bookId, book.characterId);
@@ -168,6 +169,9 @@ beforeAll(async () => {
     // Continuity (4.2): a thread by hand and one proposed, a stale flag, a nightly run and its state.
     await seedContinuity(workspaceCtx(a), aBook.bookId, 'rls-a');
     await seedContinuity(workspaceCtx(b), bBook.bookId, 'rls-b');
+    // Book-level interrogation (4.3): a stress test and its weak point, a gap hunt, a compaction.
+    await seedInterrogation(workspaceCtx(a), aBook.bookId, aInterview.sessionId, 'rls-a');
+    await seedInterrogation(workspaceCtx(b), bBook.bookId, bInterview.sessionId, 'rls-b');
     // The model layer's ledger (2.1): a settled call and a live reservation.
     await seedAiCall(workspaceCtx(a), aBook.bookId, 'rls-a');
     await seedAiCall(workspaceCtx(b), bBook.bookId, 'rls-b');
@@ -232,6 +236,10 @@ it('there is something to cover: zero tables is never complete coverage', () => 
             'StoryThread',
             'StoryThreadProposal',
             'StaleFlag',
+            'StressTest',
+            'StressWeakPoint',
+            'GapHunt',
+            'InterviewCompaction',
         ]),
     );
 });

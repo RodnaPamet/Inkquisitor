@@ -1,0 +1,140 @@
+{
+  "format": "inkquisitor-pack-evaluation/1",
+  "pack": {
+    "name": "persona-panel-genre-specialist",
+    "version": 1,
+    "contentHash": "sha256:74488d91b65198cce55b99118eb2b9957fc130a4711f16b468ac2418af5f220a"
+  },
+  "set": {
+    "hash": "sha256:eeaeb999f28be9ab84870e1d082876ddbc526d9f20f4215da4b1616607dc1643"
+  },
+  "promptVersion": "question-generation.4.3.0",
+  "promptHash": "sha256:6b7ace7744c5b190e7a6c9125144a9d3751d3667dbe71e646b827b8851bb7d46",
+  "generator": {
+    "kind": "structural",
+    "id": "structural-generator.1"
+  },
+  "ranAt": "2026-11-26T15:23:17.480Z",
+  "answers": [
+    {
+      "caseId": "panel-genre-specialist-01",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-panel-genre-specialist-01",
+              "targetsFieldKeys": [
+                "stakes"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the stakes.",
+              "kind": "OPEN",
+              "text": "What stakes matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "panel-genre-specialist-02",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-panel-genre-specialist-02",
+              "targetsFieldKeys": [
+                "stakes"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the stakes.",
+              "kind": "OPEN",
+              "text": "What stakes matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "panel-genre-specialist-03",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-panel-genre-specialist-03",
+              "targetsFieldKeys": [
+                "climax"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the climax.",
+              "kind": "OPEN",
+              "text": "What climax matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "panel-genre-specialist-04",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-panel-genre-specialist-04",
+              "targetsFieldKeys": [
+                "climax"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the climax.",
+              "kind": "OPEN",
+              "text": "What climax matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "panel-genre-specialist-05",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-panel-genre-specialist-05",
+              "targetsFieldKeys": [
+                "counter_argument"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the counter argument.",
+              "kind": "OPEN",
+              "text": "What counter argument matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "panel-genre-specialist-06",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-panel-genre-specialist-06",
+              "targetsFieldKeys": [
+                "counter_argument"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the counter argument.",
+              "kind": "OPEN",
+              "text": "What counter argument matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    }
+  ]
+}

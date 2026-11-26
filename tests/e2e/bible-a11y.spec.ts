@@ -133,6 +133,11 @@ test('axe finds no WCAG 2.1 AA violation on the bible pages and dialogs', async 
     await main.locator('#thread-add').click();
     await expectNoAxeViolations(page, 'add a thread dialog', '[role="dialog"]');
     await page.keyboard.press('Escape');
+
+    // Phase 4.3: the Interrogate page with the model off (the stubbed-model test below runs a stress test and opens the panel).
+    await page.goto(`/w/${slug}/books/${bookId}/interrogate`);
+    await expect(main.getByRole('heading', { level: 1, name: 'Interrogate' })).toBeVisible();
+    await expectNoAxeViolations(page, 'book interrogate, model off');
 });
 
 test('axe finds no WCAG 2.1 AA violation on the story maps, the type picker, the element sheet and the embedded maps (Phase 3.2)', async ({ page }) => {
@@ -399,6 +404,28 @@ test.describe('the interview pages (Phase 2.4, the stubbed-model server)', () =>
         await expect(main.locator('#round-finish')).toBeFocused();
         await page.keyboard.press('Enter');
         await expect(main.locator('[data-testid="round-questions"][data-round="2"]')).toBeVisible({ timeout: 20_000 });
+    });
+});
+
+test.describe('the Interrogate page (Phase 4.3, the stubbed-model server and its worker)', () => {
+    test.use({ baseURL: STUB_BASE_URL });
+
+    test('axe finds no WCAG 2.1 AA violation on the Interrogate page: the cost confirmation, a finished stress test, the gap hunt and the panel sheet', async ({ page }) => {
+        test.setTimeout(180_000);
+        const { slug, bookId } = await bookWithCharacter(page);
+        const main = page.getByRole('main');
+        await page.goto(`/w/${slug}/books/${bookId}/interrogate`);
+        await expect(main.getByTestId('stress-estimate')).toBeVisible();
+        await expectNoAxeViolations(page, 'book interrogate, before any test');
+        await main.locator('#stress-start').click();
+        await expect(page.getByRole('dialog')).toBeVisible();
+        await expectNoAxeViolations(page, 'stress test cost confirmation', '[role="dialog"]');
+        await page.getByRole('dialog').locator('[data-modal-confirm]').click();
+        await expect(main.getByTestId('stress-test').first()).toHaveAttribute('data-status', 'DONE', { timeout: 120_000 });
+        await expectNoAxeViolations(page, 'book interrogate, a finished stress test');
+        await main.locator('#interrogate-panel').click();
+        await expect(page.getByRole('dialog').getByTestId('panel-preset').getByRole('checkbox')).toBeEnabled({ timeout: SETUP_OPTIONS_TIMEOUT_MS });
+        await expectNoAxeViolations(page, 'persona panel setup sheet', '[role="dialog"]');
     });
 });
 

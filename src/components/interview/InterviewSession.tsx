@@ -46,6 +46,7 @@ import { isPersonaKey } from '@/lib/interview/vocabulary';
 import type { ReconcileAttention } from '@/app-layer/usecases/enrichment-review';
 import { useInterviewErrorMessage, useStopMessage } from './messages';
 import { QuestionCard, type QuestionCardHandle } from './QuestionCard';
+import { groupByPersona, groupsNeedHeadings } from '@/lib/interview/persona-groups';
 import { RoundFieldsPanel, type FieldNaming } from './RoundFieldsPanel';
 import { useInterviewStream } from './use-interview-stream';
 
@@ -314,6 +315,9 @@ export function InterviewSession(props: InterviewSessionProps) {
                   : null;
 
     const personaName = (key: string | null) => (key && isPersonaKey(key) ? tPersona(`${key}.name`) : null);
+    const personaGroups = groupByPersona(questions);
+    const grouped = groupsNeedHeadings(personaGroups);
+    const displayed = personaGroups.flatMap((g) => g.items);
     const about = (q: { elementId: string; subjectId?: string; targetsFieldKeys: readonly string[] }) => {
         const subject = q.subjectId ?? q.elementId;
         return `${naming.elementName(subject)} · ${q.targetsFieldKeys.map((k) => naming.fieldLabel(subject, k)).join(', ')}`;
@@ -432,28 +436,41 @@ export function InterviewSession(props: InterviewSessionProps) {
 
             {!streaming && questions.length > 0 && ids ? (
                 <div className="space-y-default" data-testid="round-questions" data-round={round?.number}>
-                    {questions.map((q, i) => (
-                        <QuestionCard
-                            key={q.id}
-                            ref={(h) => void cardRefs.current.set(q.id, h)}
-                            ids={ids}
-                            question={q}
-                            number={i + 1}
-                            about={about(q)}
-                            personaName={personaName(q.personaKey)}
-                            canEdit={canEdit}
-                            answerable={roundOpen}
-                            onChanged={(updated) => replaceQuestion(updated)}
-                            onRephrased={(replacement, replacedId) => {
-                                replaceQuestion(replacement, replacedId);
-                                setTimeout(() => cardRefs.current.get(replacement.id)?.focus(), 0);
-                            }}
-                            onAdvance={() => {
-                                const next = questions.slice(i + 1).find((x) => x.answer === null) ?? questions[i + 1];
-                                if (next) cardRefs.current.get(next.id)?.focus();
-                                else document.getElementById('round-finish')?.focus();
-                            }}
-                        />
+                    {/* Phase 4.3 (D29): a round worded by several personas (a panel) is grouped by who asked. */}
+                    {personaGroups.map((g) => (
+                        <section key={g.personaKey ?? 'none'} className="space-y-default" aria-labelledby={grouped ? `asked-by-${g.personaKey ?? 'none'}` : undefined} data-testid={grouped ? 'persona-group' : undefined} data-persona={g.personaKey ?? undefined}>
+                            {grouped ? (
+                                <h2 id={`asked-by-${g.personaKey ?? 'none'}`} className="text-sm font-semibold text-content-emphasis">
+                                    {g.personaKey ? t('askedBy', { name: personaName(g.personaKey) ?? g.personaKey }) : t('askedByNone')}
+                                </h2>
+                            ) : null}
+                            {g.items.map((q) => {
+                                const i = displayed.indexOf(q);
+                                return (
+                                    <QuestionCard
+                                        key={q.id}
+                                        ref={(h) => void cardRefs.current.set(q.id, h)}
+                                        ids={ids}
+                                        question={q}
+                                        number={i + 1}
+                                        about={about(q)}
+                                        personaName={personaName(q.personaKey)}
+                                        canEdit={canEdit}
+                                        answerable={roundOpen}
+                                        onChanged={(updated) => replaceQuestion(updated)}
+                                        onRephrased={(replacement, replacedId) => {
+                                            replaceQuestion(replacement, replacedId);
+                                            setTimeout(() => cardRefs.current.get(replacement.id)?.focus(), 0);
+                                        }}
+                                        onAdvance={() => {
+                                            const next = displayed.slice(i + 1).find((x) => x.answer === null) ?? displayed[i + 1];
+                                            if (next) cardRefs.current.get(next.id)?.focus();
+                                            else document.getElementById('round-finish')?.focus();
+                                        }}
+                                    />
+                                );
+                            })}
+                        </section>
                     ))}
                 </div>
             ) : null}

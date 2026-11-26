@@ -309,6 +309,10 @@ export const PERSONA_DISPLAY_NAMES: Readonly<Record<PersonaKey, string>> = {
     'devils-advocate': "Devil's Advocate",
     'target-reader': 'Target Reader',
     'genre-specialist': 'Genre Specialist',
+    // Phase 4.3 (D29): the book-level panel's voices, named as the roadmap names them.
+    'panel-target-reader': 'Target Reader',
+    'panel-ruthless-editor': 'Ruthless Editor',
+    'panel-genre-specialist': 'Genre Specialist',
 };
 
 export const PERSONA_FIXED_BULLETS = [
@@ -555,7 +559,12 @@ export interface PackRegistry {
     relationEvals: readonly RelationEvalCase[];
     personaEvals: Readonly<Record<PersonaKey, PersonaEvalCase[]>>;
     situations: Readonly<Record<SituationId, Situation>>;
-    /** Every pack, by name: 16 craft (one per kind), the relations pack, then 6 personas. */
+    /**
+     * Each persona's situations (Phase 4.3): its own `situations.json` beside its pack when it has one (the
+     * book-level panel's), else the shared file's.
+     */
+    personaSituations: Readonly<Record<PersonaKey, Readonly<Record<SituationId, Situation>>>>;
+    /** Every pack, by name: 16 craft (one per kind), the relations pack, then the personas. */
     files: Readonly<Record<string, PackFile>>;
     personaEvalCount: number;
 }
@@ -628,11 +637,16 @@ export function loadPacks(dir: string = PACKS_DIR): PackRegistry {
     const situations = parseSituations(situationsRaw);
     const personas = {} as Record<PersonaKey, PersonaPack>;
     const personaEvals = {} as Record<PersonaKey, PersonaEvalCase[]>;
+    const personaSituations = {} as Record<PersonaKey, Record<SituationId, Situation>>;
     let personaEvalCount = 0;
     for (const key of PERSONA_KEYS) {
         const rel = path.join('personas', key);
         const raw = read(rel, 'PACK.md');
         const evalsRaw = read(rel, 'evals.json');
+        // Phase 4.3: a persona with situations of its own (the book-level panel's) is evaluated against them.
+        const ownSituations = fs.existsSync(path.join(dir, rel, SITUATIONS_FILE));
+        const mySituationsRaw = ownSituations ? read(rel, SITUATIONS_FILE) : situationsRaw;
+        personaSituations[key] = ownSituations ? parseSituations(mySituationsRaw) : situations;
         personas[key] = parsePersonaPack(raw, key);
         personaEvals[key] = parsePersonaEvals(evalsRaw, key);
         personaEvalCount += personaEvals[key].length;
@@ -643,16 +657,16 @@ export function loadPacks(dir: string = PACKS_DIR): PackRegistry {
             version: personas[key].version,
             dir: rel,
             contentHash: personas[key].contentHash,
-            setHash: personaSetHash(evalsRaw, situationsRaw),
+            setHash: personaSetHash(evalsRaw, mySituationsRaw),
             scan: scanPackFiles([
                 ['PACK.md', raw],
                 ['evals.json', evalsRaw],
-                [SITUATIONS_FILE, situationsRaw],
+                [SITUATIONS_FILE, mySituationsRaw],
             ]),
             record: readRecord(path.join(dir, rel)),
         };
     }
-    return { craft, relations, personas, craftEvals, relationEvals, personaEvals, situations, files, personaEvalCount };
+    return { craft, relations, personas, craftEvals, relationEvals, personaEvals, situations, personaSituations, files, personaEvalCount };
 }
 
 let registry: PackRegistry | undefined;

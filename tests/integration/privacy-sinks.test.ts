@@ -45,6 +45,10 @@ import { context, trace } from '@opentelemetry/api';
 import { AsyncLocalStorageContextManager } from '@opentelemetry/context-async-hooks';
 import { InMemorySpanExporter, SimpleSpanProcessor, TracerProvider } from '@opentelemetry/sdk-trace';
 import { prisma } from '@/lib/db';
+import { getGapHuntPage, runGapHunt } from '@/app-layer/usecases/gap-hunts';
+import { defaultGapRanker } from '@/lib/gap-hunt/model-seam';
+import { defaultStressTester } from '@/lib/stress-test/model-seam';
+import { MOUNTED as MOUNTED_INTERROGATION, runStressTest } from '../helpers/interrogation';
 import { saveStoryMap } from '@/app-layer/usecases/story-maps';
 import { searchBook } from '@/app-layer/usecases/book-search';
 import { POST as searchRoute } from '@/app/api/w/[workspaceSlug]/books/[bookId]/search/route';
@@ -290,6 +294,28 @@ it('a marker planted in every author-text path reaches no log line, span, Sentry
     ]);
     const { runId } = await dispatchResearchRun(ctx, bookId, brief.id, { gate: MOUNTED_GATE, enqueue: async () => undefined });
     await executeResearchRun({ workspaceId: ctx.workspaceId, runId }, { gate: MOUNTED_GATE, researcher: (c) => defaultResearcher(c, { fetch: web.fetch }) });
+
+    // Book-level interrogation (Phase 4.3, D29): a stress test over the canon (which carries the marker) whose
+    // weak point quotes it back; a gap hunt ranked by a model that names it; the stored text is encrypted, and
+    // nothing of it reaches a sink.
+    const stressApi = fakeAnthropic([
+        { kind: 'respond', answer: (body) => ({ kind: 'text', text: JSON.stringify({ weakPoints: [{ kind: 'OTHER', title: `The keeper ${MARKER}`, questions: [`What does the keeper ${MARKER} want?`], cites: [/(E\d+)\. \[CHARACTER\]/.exec(JSON.stringify(body.messages))![1]] }] }) }) },
+    ]);
+    const stress = await runStressTest(ctx, bookId, { tester: (c) => defaultStressTester(c, { fetch: stressApi.fetch }) });
+    expect(stress.outcome).toBe('OK');
+    {
+        const restore = setFakeApiKey();
+        try {
+            const page = await getGapHuntPage(ctx, bookId, { gate: MOUNTED_INTERROGATION });
+            if (page.ranking.available) {
+                const first = page.hunt.candidates[0];
+                const rankApi = fakeAnthropic([{ kind: 'text', text: JSON.stringify({ picks: [{ candidate: first.n, reason: `${first.fieldLabel} matters for ${MARKER}.`, cites: [first.n] }] }) }]);
+                await runGapHunt(ctx, bookId, { confirmWorstCaseMicroUsd: page.ranking.worstMicroUsd }, { gate: MOUNTED_INTERROGATION, charge: () => undefined, ranker: (c) => defaultGapRanker(c, { fetch: rankApi.fetch }) });
+            }
+        } finally {
+            restore();
+        }
+    }
 
     // Sources (Phase 4.0): a DOCX whose name and text carry the marker, read into chunks, its
     // facts drawn by a model that quotes it, a second chunk answered with marker-laden invalid output.

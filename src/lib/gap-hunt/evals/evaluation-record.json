@@ -1,0 +1,112 @@
+{
+  "format": "inkquisitor-gap-rank-evaluation/1",
+  "set": {
+    "hash": "sha256:57fd14ca426df14b16abc43cf691c201e820dc0c62d859ea248bae7b980fd19d"
+  },
+  "promptVersion": "gap-rank.4.3.0",
+  "promptHash": "sha256:db3cf192b2e637756a3effce9872187f5abf4a53936787b0defcdafa04e4d4eb",
+  "generator": {
+    "kind": "structural",
+    "id": "reference-gap-ranker.1"
+  },
+  "ranAt": "2026-11-26T15:47:16.260Z",
+  "answers": [
+    {
+      "caseId": "gh-01",
+      "output": {
+        "picks": [
+          {
+            "candidate": 1,
+            "reason": "The central conflict of the premise is empty, and the stakes and story question all wait on it.",
+            "cites": [
+              1,
+              3,
+              5
+            ]
+          },
+          {
+            "candidate": 3,
+            "reason": "The stakes say what the flooding village stands to lose; they follow from the conflict.",
+            "cites": [
+              3,
+              1
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "caseId": "gh-02",
+      "output": {
+        "picks": [
+          {
+            "candidate": 1,
+            "reason": "No character has a conscious want, and the plot turns on the three forgers wanting different things.",
+            "cites": [
+              1
+            ]
+          },
+          {
+            "candidate": 2,
+            "reason": "A formative wound for each forger would explain why they turn on each other.",
+            "cites": [
+              2,
+              1
+            ]
+          },
+          {
+            "candidate": 3,
+            "reason": "The false belief grows from the wound, so it can follow.",
+            "cites": [
+              3,
+              2
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "caseId": "gh-03",
+      "output": {
+        "picks": [
+          {
+            "candidate": 1,
+            "reason": "The theme asks about grief but the book's reply is empty, so nothing yet answers it.",
+            "cites": [
+              1
+            ]
+          },
+          {
+            "candidate": 3,
+            "reason": "The carriers of the theme would say which cousin feels the loss in the race.",
+            "cites": [
+              3,
+              1
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "caseId": "adv-01",
+      "output": {
+        "picks": [
+          {
+            "candidate": 3,
+            "reason": "The premise has its conflict but not its stakes: what the city loses if the clock stays stopped.",
+            "cites": [
+              3
+            ]
+          },
+          {
+            "candidate": 1,
+            "reason": "The king has no conscious want yet.",
+            "cites": [
+              1
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

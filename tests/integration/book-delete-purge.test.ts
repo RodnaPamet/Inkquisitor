@@ -27,6 +27,7 @@ import { purgeDeletedBooks } from '@/app-layer/usecases/book-purge';
 import { getBookBoard, getElement } from '@/app-layer/usecases/bible-elements';
 import { deleteBook, getBook, listBooks, listDeletedBooks, restoreBook } from '@/app-layer/usecases/books';
 import { ForbiddenError, NotFoundError } from '@/lib/errors/types';
+import { runStressTest, scriptedTester } from '../helpers/interrogation';
 import { exportsOf, readRoute, routeHandlerFiles, urlAndParamsFor } from '../helpers/api-routes';
 import { seedInterview } from '../helpers/interview';
 import { seedBible } from '../helpers/bible';
@@ -98,6 +99,9 @@ describe('a deleted book', () => {
         const proposal = await prisma.researchProposal.findFirstOrThrow({ where: { runId: research.runId } });
         // A saved relationship map (Phase 3.1), so its snapshot routes have a version 1 to answer for.
         await seedStoryMap(ctx, seeded, 'routes');
+        // A finished stress test (Phase 4.3), so its route has a test to answer for.
+        const stress = await runStressTest(ctx, seeded.bookId, { tester: scriptedTester({ weakPoints: [{ kind: 'OTHER', title: 'A thin place', questions: ['What does this one want most?'], cites: ['E1'] }] }) });
+        expect(stress.outcome).toBe('OK');
         const routes = routeHandlerFiles().filter((f) => f.startsWith('src/app/api/w/[workspaceSlug]/books/[bookId]/'));
         expect(routes.length).toBeGreaterThanOrEqual(10);
         const value = (p: string) =>
@@ -116,6 +120,7 @@ describe('a deleted book', () => {
                 proposalId: proposal.id,
                 kind: 'relationship',
                 version: '1',
+                stressTestId: stress.id,
             })[p] ?? `probe-${p}`;
         const call = async (file: string, method: string) => {
             // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -142,6 +147,7 @@ describe('a deleted book', () => {
                 'PUT maps/[kind]/route.ts': { expectedVersion: 1, nodes: [], edges: [], freeform: [] },
                 'POST maps/[kind]/snapshots/[version]/restore/route.ts': { expectedVersion: 1 },
                 'POST search/route.ts': { q: 'keeper' },
+                'POST stress-tests/route.ts': { confirmWorstCaseMicroUsd: 10_000_000 },
             };
             const upload = tail === 'research/briefs/[briefId]/sources/route.ts';
             const body = ['GET', 'DELETE'].includes(method)

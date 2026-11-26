@@ -34,6 +34,13 @@
  *       evaluation-record.json). Re-run after editing the set, the continuity
  *       prompt or its output schema.
  *
+ *   npm run packs:evaluate -- --book-level [--no-packs]
+ *       also the book-level interrogation sets (Phase 4.3, D29): the stress
+ *       test's, the gap hunt ranking's and the long-session rounds summary's,
+ *       each reference's record beside its set (src/lib/stress-test/evals/,
+ *       src/lib/gap-hunt/evals/, src/lib/interview/evals/compaction-*).
+ *       Re-run after editing a set, one of those prompts or its schema.
+ *
  *   npm run packs:evaluate -- --research [--no-packs]
  *       also the research agent's evaluation sets (Phase 2.6): the
  *       deterministic researcher's record is written beside the sets
@@ -101,6 +108,42 @@ import { BIBLE_FACTS_PROMPT_VERSION } from '../src/lib/facts/prompt';
 import { CONTINUITY_RECORD_FORMAT, continuityPromptHash, checkContinuityRecord, modelContinuityAnswers, structuralContinuityRecord } from '../src/lib/continuity/evals/evaluation';
 import { continuityEvalSet } from '../src/lib/continuity/evals/eval-set';
 import { CONTINUITY_PROMPT_VERSION } from '../src/lib/continuity/prompt';
+
+import { checkStressTestRecord, modelStressTestAnswers, STRESS_TEST_RECORD_FORMAT, stressTestPromptHash, structuralStressTestRecord } from '../src/lib/stress-test/evals/evaluation';
+import { stressTestEvalSet } from '../src/lib/stress-test/evals/eval-set';
+import { STRESS_TEST_PROMPT_VERSION } from '../src/lib/stress-test/prompt';
+import { checkGapRankRecord, GAP_RANK_RECORD_FORMAT, gapRankPromptHash, modelGapRankAnswers, structuralGapRankRecord } from '../src/lib/gap-hunt/evals/evaluation';
+import { gapHuntEvalSet } from '../src/lib/gap-hunt/evals/eval-set';
+import { GAP_RANK_PROMPT_VERSION } from '../src/lib/gap-hunt/prompt';
+import { checkCompactionRecord, COMPACTION_RECORD_FORMAT, compactionEvalSet, compactionPromptHash, modelCompactionAnswers, structuralCompactionRecord } from '../src/lib/interview/evals/compaction-evaluation';
+import { COMPACTION_PROMPT_VERSION } from '../src/lib/interview/compaction-prompt';
+
+/** The book-level interrogation sets (4.3): each record written beside its set (or under --out) and checked as its gate checks it. */
+async function runBookLevelEvaluations(
+    model: { stressTester: FactExtractor; stressTesterId: string; gapRanker: FactExtractor; gapRankerId: string; summarizer: FactExtractor; summarizerId: string } | null,
+    outRoot: string | null,
+): Promise<Array<{ name: string; passed: boolean; detail: string }>> {
+    const write = (rel: string, sub: string, record: unknown) => {
+        const file = outRoot ? path.join(outRoot, sub, 'evaluation-record.json') : path.resolve(rel);
+        mkdirSync(path.dirname(file), { recursive: true });
+        writeFileSync(file, JSON.stringify(record, null, 2) + '\n');
+    };
+    const ranAt = new Date().toISOString();
+    const stress = model
+        ? { format: STRESS_TEST_RECORD_FORMAT, set: { ...stressTestEvalSet }, promptVersion: STRESS_TEST_PROMPT_VERSION, promptHash: stressTestPromptHash(), generator: { kind: 'model' as const, id: model.stressTesterId }, ranAt, answers: await modelStressTestAnswers(model.stressTester) }
+        : structuralStressTestRecord();
+    write('src/lib/stress-test/evals/evaluation-record.json', 'stress-test', stress);
+    const gap = model
+        ? { format: GAP_RANK_RECORD_FORMAT, set: { ...gapHuntEvalSet }, promptVersion: GAP_RANK_PROMPT_VERSION, promptHash: gapRankPromptHash(), generator: { kind: 'model' as const, id: model.gapRankerId }, ranAt, answers: await modelGapRankAnswers(model.gapRanker) }
+        : structuralGapRankRecord();
+    write('src/lib/gap-hunt/evals/evaluation-record.json', 'gap-hunt', gap);
+    const summary = model
+        ? { format: COMPACTION_RECORD_FORMAT, set: { ...compactionEvalSet }, promptVersion: COMPACTION_PROMPT_VERSION, promptHash: compactionPromptHash(), generator: { kind: 'model' as const, id: model.summarizerId }, ranAt, answers: await modelCompactionAnswers(model.summarizer) }
+        : structuralCompactionRecord();
+    write('src/lib/interview/evals/compaction-evaluation-record.json', 'compaction', summary);
+    const verdict = (name: string, c: { ok: true } | { ok: false; reason: string; detail: string }) => ({ name, passed: c.ok, detail: c.ok ? 'passed' : `${c.reason}: ${c.detail}` });
+    return [verdict('Stress test', checkStressTestRecord(stress)), verdict('Gap ranking', checkGapRankRecord(gap)), verdict('Rounds summary', checkCompactionRecord(summary))];
+}
 
 /** Where the structural continuity record is written (beside the set), relative to the repository. */
 const CONTINUITY_RECORD_RELATIVE = 'src/lib/continuity/evals/evaluation-record.json';
@@ -207,7 +250,7 @@ function fail(message: string, code: number): never {
 }
 
 /** The wired model generator in a throwaway workspace, and what it closes. */
-async function modelGenerator(): Promise<{ generator: QuestionGenerator; reconciler: Reconciler; researcher: Researcher; extractor: FactExtractor; extractorId: string; bibleExtractor: FactExtractor; bibleExtractorId: string; continuityChecker: FactExtractor; continuityCheckerId: string; judge: Judge; id: string; reconcilerId: string; rephraserId: string; close: () => Promise<void> }> {
+async function modelGenerator(): Promise<{ generator: QuestionGenerator; reconciler: Reconciler; researcher: Researcher; extractor: FactExtractor; extractorId: string; bibleExtractor: FactExtractor; bibleExtractorId: string; continuityChecker: FactExtractor; continuityCheckerId: string; stressTester: FactExtractor; stressTesterId: string; gapRanker: FactExtractor; gapRankerId: string; summarizer: FactExtractor; summarizerId: string; judge: Judge; id: string; reconcilerId: string; rephraserId: string; close: () => Promise<void> }> {
     if (!process.env.ANTHROPIC_API_KEY?.trim()) fail('ANTHROPIC_API_KEY is not set: a model run never falls back to the structural generator', 2);
     if (!process.env.DATABASE_URL) fail('a model run needs DATABASE_URL (a migrated database: the call ledger and the spend ceiling live there)', 2);
     const budget = (() => {
@@ -266,7 +309,21 @@ async function modelGenerator(): Promise<{ generator: QuestionGenerator; reconci
     const { defaultContinuityChecker } = await import('../src/lib/continuity/model-seam');
     const { CONTINUITY_PROMPT } = await import('../src/lib/continuity/prompt');
     const continuityChecker = defaultContinuityChecker(ctx);
-    return { generator, reconciler, researcher, extractor, extractorId: modelForTier(EXTRACT_PROMPT.tier), bibleExtractor, bibleExtractorId: modelForTier(BIBLE_FACTS_PROMPT.tier), continuityChecker, continuityCheckerId: modelForTier(CONTINUITY_PROMPT.tier), judge, id, reconcilerId: modelForTier(RECONCILE_PROMPT.tier), rephraserId: modelForTier(REPHRASE_PROMPT.tier), close: () => prisma.$disconnect() };
+    const { defaultStressTester } = await import('../src/lib/stress-test/model-seam');
+    const { STRESS_TEST_PROMPT } = await import('../src/lib/stress-test/prompt');
+    const { defaultGapRanker } = await import('../src/lib/gap-hunt/model-seam');
+    const { GAP_RANK_PROMPT } = await import('../src/lib/gap-hunt/prompt');
+    const { defaultRoundsSummarizer } = await import('../src/lib/interview/compaction-seam');
+    const { COMPACTION_PROMPT } = await import('../src/lib/interview/compaction-prompt');
+    const book = {
+        stressTester: defaultStressTester(ctx),
+        stressTesterId: modelForTier(STRESS_TEST_PROMPT.tier),
+        gapRanker: defaultGapRanker(ctx),
+        gapRankerId: modelForTier(GAP_RANK_PROMPT.tier),
+        summarizer: defaultRoundsSummarizer(ctx),
+        summarizerId: modelForTier(COMPACTION_PROMPT.tier),
+    };
+    return { ...book, generator, reconciler, researcher, extractor, extractorId: modelForTier(EXTRACT_PROMPT.tier), bibleExtractor, bibleExtractorId: modelForTier(BIBLE_FACTS_PROMPT.tier), continuityChecker, continuityCheckerId: modelForTier(CONTINUITY_PROMPT.tier), judge, id, reconcilerId: modelForTier(RECONCILE_PROMPT.tier), rephraserId: modelForTier(REPHRASE_PROMPT.tier), close: () => prisma.$disconnect() };
 }
 
 async function main(): Promise<void> {
@@ -330,7 +387,9 @@ async function main(): Promise<void> {
             const file = args.out ? path.join(path.resolve(args.out), 'continuity', 'evaluation-record.json') : path.resolve(CONTINUITY_RECORD_RELATIVE);
             continuity = await runContinuityEvaluation(model?.continuityChecker ?? null, model?.continuityCheckerId ?? null, file);
         }
+        const bookLevel = args.bookLevel ? await runBookLevelEvaluations(model, args.out ? path.resolve(args.out) : null) : null;
         for (const line of summaryLines(results, coverage, model ? spent : null, reconcile)) out(line);
+        for (const b of bookLevel ?? []) out(`${b.name}: ${b.passed ? 'passed' : 'NOT passed'} (${b.detail}).`);
         if (continuity) out(`Continuity: ${continuity.passed ? 'passed' : 'NOT passed'} (${continuity.detail}).`);
         if (bibleFacts) out(`Bible facts: ${bibleFacts.passed ? 'passed' : 'NOT passed'} (${bibleFacts.detail}).`);
         if (sources) out(`Sources: ${sources.passed ? 'passed' : 'NOT passed'} (${sources.detail}).`);
@@ -346,6 +405,7 @@ async function main(): Promise<void> {
             (!sources || sources.passed) &&
             (!bibleFacts || bibleFacts.passed) &&
             (!continuity || continuity.passed) &&
+            (!bookLevel || bookLevel.every((b) => b.passed)) &&
             (!rephrase || rephrase.passed);
         process.exitCode = ok ? 0 : 1;
     } finally {

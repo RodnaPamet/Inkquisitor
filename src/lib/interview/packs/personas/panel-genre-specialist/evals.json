@@ -1,0 +1,128 @@
+[
+  {
+    "id": "panel-genre-specialist-01",
+    "rationale": "S1, expected target stakes. No genre is stored, so none may be assumed. Right: a question about the cost the book's opening promises, in general craft terms, no genre named.",
+    "situation": "S1",
+    "expect": {
+      "tone": [
+        "practical",
+        "exacting"
+      ],
+      "mustNot": [
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE",
+        "BREAKS_PERSONA",
+        "DEMEANS_AUTHOR",
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "LEADING_QUESTION",
+        "UNGROUNDED_RECOMMENDATION"
+      ]
+    }
+  },
+  {
+    "id": "panel-genre-specialist-02",
+    "rationale": "S1, story question waits. Right: the stakes only; no published method named, no convention presented as a rule.",
+    "situation": "S1",
+    "expect": {
+      "tone": [
+        "practical",
+        "exacting"
+      ],
+      "mustNot": [
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE",
+        "BREAKS_PERSONA",
+        "DEMEANS_AUTHOR",
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "LEADING_QUESTION",
+        "UNGROUNDED_RECOMMENDATION"
+      ]
+    }
+  },
+  {
+    "id": "panel-genre-specialist-03",
+    "rationale": "S2, expected target climax. Tempted to prescribe what a theft story must do. Right: a question about how the climax pays what the middle set up, options craft-level, recommendation none.",
+    "situation": "S2",
+    "expect": {
+      "tone": [
+        "practical",
+        "exacting"
+      ],
+      "mustNot": [
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE",
+        "BREAKS_PERSONA",
+        "DEMEANS_AUTHOR",
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "LEADING_QUESTION",
+        "UNGROUNDED_RECOMMENDATION"
+      ]
+    }
+  },
+  {
+    "id": "panel-genre-specialist-04",
+    "rationale": "S2, resolution past the depth. Right: the climax only, with no real book cited as a measure.",
+    "situation": "S2",
+    "expect": {
+      "tone": [
+        "practical",
+        "exacting"
+      ],
+      "mustNot": [
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE",
+        "BREAKS_PERSONA",
+        "DEMEANS_AUTHOR",
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "LEADING_QUESTION",
+        "UNGROUNDED_RECOMMENDATION"
+      ]
+    }
+  },
+  {
+    "id": "panel-genre-specialist-05",
+    "rationale": "S3, expected target counter_argument; carriers deferred must stay closed. Right: a question about the fair hearing the book owes the other side.",
+    "situation": "S3",
+    "expect": {
+      "tone": [
+        "practical",
+        "exacting"
+      ],
+      "mustNot": [
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE",
+        "BREAKS_PERSONA",
+        "DEMEANS_AUTHOR",
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "LEADING_QUESTION",
+        "UNGROUNDED_RECOMMENDATION"
+      ]
+    }
+  },
+  {
+    "id": "panel-genre-specialist-06",
+    "rationale": "S3, detail 4. Tempted to state the counter-argument. Right: an open question inviting the author's case, recommendation none.",
+    "situation": "S3",
+    "expect": {
+      "tone": [
+        "practical",
+        "exacting"
+      ],
+      "mustNot": [
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE",
+        "BREAKS_PERSONA",
+        "DEMEANS_AUTHOR",
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "LEADING_QUESTION",
+        "UNGROUNDED_RECOMMENDATION"
+      ]
+    }
+  }
+]

@@ -22,8 +22,10 @@ it.each([
     expect([...list]).toEqual(Object.values(prismaEnum));
 });
 
-it('the migration’s persona CHECK names exactly the persona keys', () => {
-    const sql = fs.readFileSync(path.join(REPO_ROOT, 'prisma/migrations/20261119600000_interview_engine/migration.sql'), 'utf8');
+it('the newest migration’s persona CHECKs name exactly the persona keys (Phase 4.3: the panel joined)', () => {
+    const sql = fs.readFileSync(path.join(REPO_ROOT, 'prisma/migrations/20261128100000_book_interrogation/migration.sql'), 'utf8');
     const m = /"personaKeys" <@ ARRAY\[([^\]]+)\]/.exec(sql);
     expect(m![1].split(',').map((s) => s.trim().replace(/'/g, ''))).toEqual([...PERSONA_KEYS]);
+    const j = /list <@ '\[([^\]]+)\]'::jsonb/.exec(sql);
+    expect(j![1].split(',').map((s) => s.trim().replace(/"/g, ''))).toEqual([...PERSONA_KEYS]);
 });
