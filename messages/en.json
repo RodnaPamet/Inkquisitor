@@ -687,7 +687,12 @@
             "start": "Start interview",
             "cancel": "Cancel",
             "loading": "Loading the options…",
-            "loadFailed": "The interview options could not be loaded."
+            "loadFailed": "The interview options could not be loaded.",
+            "panel": {
+                "title": "Panel",
+                "label": "Question with the panel",
+                "help": "Target Reader, Ruthless Editor and Genre Specialist question the book together; their questions are grouped by who asked."
+            }
         },
         "personas": {
             "gentle-mentor": {
@@ -713,6 +718,18 @@
             "genre-specialist": {
                 "name": "Genre Specialist",
                 "summary": "The promises your genre makes, and where you depart on purpose."
+            },
+            "panel-target-reader": {
+                "name": "Panel: Target Reader",
+                "summary": "The panel's reader of the whole book: what its opening promises and what a reader carries away."
+            },
+            "panel-ruthless-editor": {
+                "name": "Panel: Ruthless Editor",
+                "summary": "The panel's editor of the whole book: what carries weight, what would collapse without it."
+            },
+            "panel-genre-specialist": {
+                "name": "Panel: Genre Specialist",
+                "summary": "The panel's genre voice: the promises the whole book makes to readers of its genre."
             }
         },
         "kinds": {
@@ -799,7 +816,9 @@
             "reconciled": "{count, plural, =0 {No bible changes were proposed from this round.} one {One bible change was proposed from this round: review it.} other {# bible changes were proposed from this round: review them.}}",
             "reconcileNotRun": "{count, plural, one {The answers of round {rounds} were not turned into proposed bible changes: the step failed or was refused, and they are waiting.} other {The answers of rounds {rounds} were not turned into proposed bible changes: the step failed or was refused, and they are waiting.}}",
             "reconcileNotRunLink": "Open the review page to run it again.",
-            "reconcileBudgetSpent": "{count, plural, one {The answers of round {rounds} were not turned into proposed bible changes: this interview has used its share of the AI budget, so running the step again cannot help. Your answers are kept; copy what you need into the bible yourself.} other {The answers of rounds {rounds} were not turned into proposed bible changes: this interview has used its share of the AI budget, so running the step again cannot help. Your answers are kept; copy what you need into the bible yourself.}}"
+            "reconcileBudgetSpent": "{count, plural, one {The answers of round {rounds} were not turned into proposed bible changes: this interview has used its share of the AI budget, so running the step again cannot help. Your answers are kept; copy what you need into the bible yourself.} other {The answers of rounds {rounds} were not turned into proposed bible changes: this interview has used its share of the AI budget, so running the step again cannot help. Your answers are kept; copy what you need into the bible yourself.}}",
+            "askedBy": "Asked by {name}",
+            "askedByNone": "From the craft guidance"
         },
         "card": {
             "question": "Question {number}",
@@ -1024,7 +1043,9 @@
             "ORDER_RANK_EXHAUSTED": "There is no more room at that place in the story order.",
             "ORDER_SCOPE_TOO_LARGE": "This story order is too long to place in.",
             "generic": "That did not work. Try again."
-        }
+        },
+        "askedBy": "Asked by {name}",
+        "askedByNone": "From the craft guidance"
     },
     "research": {
         "meta": {
@@ -1811,6 +1832,128 @@
             "THREAD_NOT_OPEN": "That thread is no longer open.",
             "FLAG_NOT_OPEN": "That flag is no longer open.",
             "STALE_FLAG_GONE": "This entry is no longer flagged."
+        }
+    },
+    "interrogation": {
+        "title": "Interrogate",
+        "subtitle": "Questions about the whole book. Nothing here changes the bible until you accept a change.",
+        "notAssessed": "Not assessed",
+        "panel": {
+            "open": "Question with a panel",
+            "sheetTitle": "Question {book}"
+        },
+        "stress": {
+            "title": "Stress test",
+            "help": "A deep pass over the whole book that finds its weakest points and turns each into questions for you. It never gives a verdict and never rewrites anything.",
+            "notAssessedHelp": "Add elements to the bible first: a book with nothing in it has nothing to test.",
+            "coverage": "Reads {elements} of {elementsTotal} elements, {facts} of {factsTotal} facts, {threads} of {threadsTotal} open threads and {passages} of {passagesTotal} passages.",
+            "coverageCut": "The rest was left out to keep the call within its budget.",
+            "atMost": "This costs at most {worst}.",
+            "overBudget": "This book is too large for one stress test within its budget.",
+            "start": "Stress test this book",
+            "started": "Stress test started.",
+            "confirmTitle": "Stress test this book?",
+            "confirmBody": "One deep pass over the book. It costs at most {worst} and counts against your monthly AI limit.",
+            "confirmLabel": "Run for at most {worst}",
+            "testLabel": "Stress test of {when}",
+            "when": "Started {when}",
+            "running": "Reading the book…",
+            "cost": "Cost {cost} of at most {confirmed}.",
+            "weakPointsTitle": "Weak points",
+            "questions": "Questions",
+            "cites": "Rests on:",
+            "citationGone": "(no longer in the book)",
+            "flagged": "Possible instruction: this text addresses the product itself. Read it with care.",
+            "startSession": "Start a session from these weak points",
+            "status": {
+                "QUEUED": "Queued",
+                "RUNNING": "Running",
+                "DONE": "Done",
+                "STOPPED": "Stopped",
+                "FAILED": "Failed"
+            },
+            "kind": {
+                "UNMOTIVATED_TURN": "Unmotivated turn",
+                "COSTLESS_PROTAGONIST": "Protagonist with no cost",
+                "UNARGUED_THEME": "Theme nothing tests",
+                "UNPAID_PROMISE": "Promise never paid",
+                "OTHER": "Weak point"
+            },
+            "citation": {
+                "ELEMENT": "Element",
+                "FACT": "Fact",
+                "THREAD": "Thread",
+                "PASSAGE": "Passage"
+            },
+            "outcome": {
+                "OK": "Weak points found. Each is a set of questions for you.",
+                "NONE_FOUND": "The pass read the book and kept no weak point it could ground in what it was shown.",
+                "NOT_ASSESSED": "Not assessed: the book held nothing to read.",
+                "CEILING": "Stopped: this month's AI limit has been reached. Nothing was charged beyond it.",
+                "KILL_SWITCH": "Stopped: AI features are switched off in this deployment.",
+                "AI_UNAVAILABLE": "Stopped: no AI call can be made in this deployment.",
+                "NOT_EVALUATED": "Stopped: the stress test is not available in this deployment yet.",
+                "MODEL_RATE_LIMITED": "Stopped: too many AI calls this minute. Run it again shortly.",
+                "ESTIMATE_CHANGED": "Stopped before any call: the book grew past the cost you confirmed. Run it again to see the new cost.",
+                "CALL_OVER_BUDGET": "Stopped: the book is too large for one call within its budget.",
+                "ABORTED": "Stopped: the worker was shutting down. Run it again.",
+                "CLAIM_EXPIRED": "Stopped: the run was lost. Run it again.",
+                "CALL_FAILED": "Stopped: the AI call failed. Run it again.",
+                "GUARD_REFUSED": "Stopped: the safety check refused the call.",
+                "BOOK_DELETED": "Stopped: the book was deleted.",
+                "NO_ACTOR": "Stopped: the person who started it can no longer edit this book.",
+                "ENQUEUE_FAILED": "Failed to queue. Run it again.",
+                "INTERNAL": "Failed. Run it again.",
+                "generic": "Stopped."
+            }
+        },
+        "gaps": {
+            "title": "Gap hunt",
+            "help": "Which kinds and fields the rest of the book depends on and leaves empty, and the next three sessions to fill them.",
+            "notAssessedHelp": "Add elements to the bible first: there is nothing to measure yet.",
+            "none": "Every field of every element the book holds is filled.",
+            "rankedBadge": "Ranked for this book",
+            "unrankedBadge": "Unranked",
+            "changedSince": "The book has changed since this ran.",
+            "picks": "Gaps",
+            "counts": "{empty} of {elements} empty; {dependents} other fields depend on it.",
+            "elementsCut": "The book holds more elements than one gap hunt reads; the rest were not measured.",
+            "nextSessions": "Next sessions",
+            "sessionElement": "{element}: {field} (depth {depth})",
+            "sessionKind": "Every {kind}: {field} (depth {depth})",
+            "rank": "Rank for this book (at most {worst})",
+            "refresh": "Refresh the order",
+            "ranked": "Gaps ranked.",
+            "shownUnranked": "Shown in the product's own order, unranked.",
+            "confirmTitle": "Rank these gaps for this book?",
+            "confirmBody": "One AI call weighs which gaps matter most for this story. It costs at most {worst}.",
+            "confirmLabel": "Rank for at most {worst}",
+            "unranked": {
+                "KILL_SWITCH": "Unranked: AI features are switched off.",
+                "AI_UNAVAILABLE": "Unranked: no AI call can be made in this deployment.",
+                "WORKSPACE_CEILING": "Unranked: this month's AI limit has been reached.",
+                "NOT_EVALUATED": "Unranked: the AI ranking is not available in this deployment yet.",
+                "CALL_OVER_BUDGET": "Unranked: the call would pass its budget.",
+                "MODEL_RATE_LIMITED": "Unranked: too many AI calls this minute.",
+                "CALL_FAILED": "Unranked: the AI call failed.",
+                "GUARD_REFUSED": "Unranked: the safety check refused the call.",
+                "NO_VALID_PICK": "Unranked: the product's own order, by how much depends on each gap and how empty it is."
+            }
+        },
+        "reasons": {
+            "ESTIMATE_CHANGED": "The cost changed since it was shown. Check the new amount and confirm again.",
+            "STRESS_TEST_IN_PROGRESS": "A stress test of this book is already running.",
+            "NOTHING_TO_TEST": "There is nothing in this book to test yet.",
+            "CALL_OVER_BUDGET": "This book is too large for one call within its budget.",
+            "STRESS_TEST_NOT_EVALUATED": "The stress test is not available in this deployment yet.",
+            "AI_DISABLED": "AI features are switched off in this deployment.",
+            "CREDENTIAL_NOT_CONFIGURED": "No AI call can be made in this deployment.",
+            "RETENTION_MODE_UNDECLARED": "No AI call can be made in this deployment.",
+            "SDK_AMBIENT_HEADERS_SET": "No AI call can be made in this deployment.",
+            "NOTHING_TO_RANK": "There is nothing in this book to rank yet.",
+            "NO_GAPS": "No field the book holds is left empty.",
+            "MODEL_RATE_LIMITED": "Too many AI calls this minute. Try again shortly.",
+            "generic": "That did not work. Try again."
         }
     }
 }

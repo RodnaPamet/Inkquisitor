@@ -100,6 +100,9 @@ export interface SourceContext {
     readonly related?: ReadonlyArray<RelatedSummary>;
     /** Something relevant did not fit the budget, or the scan was cut. */
     readonly truncated: boolean;
+    /** Phase 4.3: the rows behind `facts` and `passages`, in the same order (a stress test cites them by id). */
+    readonly factIds?: readonly string[];
+    readonly passageIds?: readonly string[];
 }
 
 export const EMPTY_SOURCE_CONTEXT: SourceContext = Object.freeze({ facts: [], passages: [], truncated: false });
@@ -268,6 +271,7 @@ export async function assembleSourceContext(
     // 2. The top k facts: the scope's bible facts, its confirmed source facts, then the nearest of the book's others.
     const facts: Array<SourceContext['facts'][number]> = [];
     const factIds = new Set<string>();
+    const factOrder: string[] = [];
     const factBudget = used + budgetChars * FACTS_BUDGET_SHARE;
     const addFact = (f: { id: string; subject: string; statement: string; from: SourceContext['facts'][number]['from'] }): boolean => {
         if (factIds.has(f.id)) return true;
@@ -282,6 +286,7 @@ export async function assembleSourceContext(
         }
         used += size;
         factIds.add(f.id);
+        factOrder.push(f.id);
         facts.push({ subject: f.subject, statement: f.statement, from: f.from });
         return true;
     };
@@ -313,6 +318,7 @@ export async function assembleSourceContext(
 
     // 3. Passages: the vector store's nearest (filtered to the book's sources in the query) and the lexical ranker's best.
     const passages: Array<SourceContext['passages'][number]> = [];
+    const passageIds: string[] = [];
     if (allowed.length > 0) {
         const allowedSet = new Set(allowed);
         const ranks = new Map<string, number>();
@@ -351,7 +357,8 @@ export async function assembleSourceContext(
             }
             used += text.length + headings.length;
             passages.push({ headings, text });
+            passageIds.push(c.id);
         }
     }
-    return { facts, passages, ...(related ? { related: relatedOut } : {}), truncated };
+    return { facts, passages, ...(related ? { related: relatedOut } : {}), truncated, factIds: factOrder, passageIds };
 }

@@ -1,0 +1,138 @@
+// ─────────────────────────────────────────────────────────────────
+//  Book-level interrogation (Phase 4.3, decision D29).
+//
+//  A STRESS TEST is one deep-tier pass over a book's canon, run on demand as a
+//  background job once the author has confirmed its "at most" cost. It finds
+//  the book's weak points and turns each into QUESTIONS (never verdicts, never
+//  rewrites); each weak point cites, by id, the elements, facts, threads or
+//  source passages it rests on (code checked every citation). Nothing here
+//  writes the bible: the author may start an interview from the weak points.
+//
+//  A GAP HUNT ranks the code's candidate gaps (kinds and fields the rest of the
+//  book depends on and leaves empty) with one cheap model call, or shows the
+//  code's own order labelled unranked, and proposes the next three sessions.
+//
+//  AN INTERVIEW COMPACTION is the model's summary of a long session's earlier
+//  rounds' QUESTIONS; the answers and accepted changes are never summarised
+//  (the request carries them verbatim, by code).
+//
+//  EVERY MODEL HERE IS WORKSPACE-SCOPED (FORCE RLS, `workspace_isolation`,
+//  `superuser_bypass`) and cascades with its book (or its session), so the
+//  30-day book purge takes it. Author-derived text is encrypted at rest
+//  (`src/lib/security/encrypted-fields.ts`): a weak point's label and
+//  questions, a gap hunt's picks, a compaction's summary. Coverage, candidates,
+//  citations and metrics are ids, counts and codes only.
+// ─────────────────────────────────────────────────────────────────
+
+/// One stress test of a book (the `stress-test` job's row).
+model StressTest {
+  id                     String            @id @default(cuid())
+  workspaceId            String
+  bookId                 String
+  /// QUEUED | RUNNING | DONE | STOPPED | FAILED (CHECK).
+  status                 String            @default("QUEUED")
+  /// How it ended, a code (CHECK; `STRESS_TEST_OUTCOMES`).
+  outcome                String?
+  /// The "at most" the author confirmed: the job's budget for its one call.
+  confirmedWorstMicroUsd BigInt
+  /// What the call actually cost (settled).
+  costMicroUsd           BigInt            @default(0)
+  /// What the pass read and left out: counts only (`StressCoverage`).
+  coverage               Json?
+  /// Refusals by code, AiCallLog ids, an error code. Never text.
+  metrics                Json?
+  promptVersion          String?
+  requestedById          String?
+  createdAt              DateTime          @default(now())
+  startedAt              DateTime?
+  /// The worker's last sign of life (queued, claimed, every step): stale past `STALE_STRESS_TEST_MS`.
+  heartbeatAt            DateTime          @default(now())
+  finishedAt             DateTime?
+
+  book        Book              @relation(fields: [workspaceId, bookId], references: [workspaceId, id], onDelete: Cascade)
+  requestedBy User?             @relation("StressTestRequestedBy", fields: [requestedById], references: [id], onDelete: SetNull)
+  weakPoints  StressWeakPoint[]
+  sessions    InterviewSession[]
+
+  @@unique([workspaceId, id])
+  /// A book's stress tests, newest first (the Interrogate page; a live one refuses a second).
+  @@index([workspaceId, bookId, createdAt])
+  @@index([requestedById])
+}
+
+/// One weak point a stress test kept: a label, questions, and what it cites. Fixed once written (append-only).
+model StressWeakPoint {
+  id           String     @id @default(cuid())
+  workspaceId  String
+  stressTestId String
+  /// 1, 2, …: the model's order, weakest first.
+  position     Int
+  /// UNMOTIVATED_TURN | COSTLESS_PROTAGONIST | UNARGUED_THEME | UNPAID_PROMISE | OTHER (CHECK).
+  kind         String
+  /// The label (encrypted, sanitised).
+  title        String
+  /// The questions, a JSON array of strings (encrypted, sanitised).
+  questions    String
+  /// What it rests on: `[{ type, id }]`, ids only (ELEMENT, FACT, THREAD, PASSAGE).
+  citations    Json
+  /// D14: POSSIBLE_INSTRUCTION.
+  flags        String[]   @default([])
+  createdAt    DateTime   @default(now())
+
+  stressTest StressTest @relation(fields: [workspaceId, stressTestId], references: [workspaceId, id], onDelete: Cascade)
+
+  @@unique([stressTestId, position])
+  @@index([workspaceId, stressTestId])
+}
+
+/// One gap hunt of a book: the code's candidates and the model's (or the code's own, unranked) picks.
+model GapHunt {
+  id             String   @id @default(cuid())
+  workspaceId    String
+  bookId         String
+  /// True: a model call ranked the picks (validated). False: the code's order, with `unrankedReason` (CHECK: exactly one).
+  ranked         Boolean
+  unrankedReason String?
+  /// The candidates: product words and counts, ids of empty elements (`GapCandidate[]`). Never author text.
+  candidates     Json
+  /// The picks, a JSON array (`GapPick[]`; the reasons are model text about the book: encrypted, sanitised).
+  picks          String
+  /// The book's version count when it ran: a different count now says the book has changed since.
+  bookMark       Int
+  /// The book held more elements than one gap hunt reads.
+  elementsCut    Boolean  @default(false)
+  costMicroUsd   BigInt   @default(0)
+  promptVersion  String?
+  /// Refusals by code. Never text.
+  refusals       Json?
+  createdById    String?
+  createdAt      DateTime @default(now())
+
+  book      Book  @relation(fields: [workspaceId, bookId], references: [workspaceId, id], onDelete: Cascade)
+  createdBy User? @relation("GapHuntCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@unique([workspaceId, id])
+  /// A book's gap hunts, newest first (the Interrogate page shows the newest).
+  @@index([workspaceId, bookId, createdAt])
+  @@index([createdById])
+}
+
+/// A long session's summary of its earlier rounds' questions (long-session compaction). Append-only.
+model InterviewCompaction {
+  id            String   @id @default(cuid())
+  workspaceId   String
+  sessionId     String
+  /// It covers rounds 1 to this.
+  throughRound  Int
+  /// The model's summary (encrypted, sanitised): only ever sent back fenced as model-written data.
+  summary       String
+  promptVersion String
+  tokensUsed    Int      @default(0)
+  costMicroUsd  BigInt   @default(0)
+  createdAt     DateTime @default(now())
+
+  session InterviewSession @relation(fields: [workspaceId, sessionId], references: [workspaceId, id], onDelete: Cascade)
+
+  @@unique([sessionId, throughRound])
+  @@index([workspaceId, sessionId])
+}

@@ -4,7 +4,14 @@
  */
 import { productionConfigProblems, productionConfigWarnings } from '@/lib/startup-checks';
 import { aiUnavailableReason, stubModelActive } from '@/lib/ai/config';
-import { isLoopbackUrl, stubAnswer, stubMessagesFetch, stubModelProblems } from '@/lib/ai/model-stub';
+import { isLoopbackUrl, stubAnswer, stubGapRankAnswer, stubMessagesFetch, stubModelProblems, stubRoundsSummaryAnswer, stubStressTestAnswer } from '@/lib/ai/model-stub';
+import { buildStressInput, shownText } from '@/lib/stress-test/input';
+import { validateWeakPoints } from '@/lib/stress-test/validate';
+import { computeGapCandidates } from '@/lib/gap-hunt/candidates';
+import { gapRankBlocks } from '@/lib/gap-hunt/prompt';
+import { validateGapPicks } from '@/lib/gap-hunt/validate';
+import { getTemplate } from '@/lib/bible/templates';
+import { validateRoundsSummary } from '@/lib/interview/compaction-prompt';
 import { validateCandidate, candidateFrom, GeneratedQuestionsSchema } from '@/lib/interview/candidates';
 
 const longValue = (seed: string) => `${seed}-`.repeat(8);
@@ -129,5 +136,45 @@ describe('the stub’s answers', () => {
         const pending = stubMessagesFetch('https://x/v1/messages', { method: 'POST', body: '{}', signal: abort.signal });
         abort.abort();
         await expect(pending).rejects.toBeDefined();
+    });
+});
+
+describe('the stub’s book-level answers (Phase 4.3), each kept whole by the product’s own validation', () => {
+    it('the stress test: a weak point per element shown, a single question citing a shown tag', () => {
+        const input = buildStressInput(
+            {
+                book: { title: 'The Lamp Room', logline: null },
+                elements: [
+                    { id: 'e-1', kind: 'CHARACTER', name: 'Ilse', summary: 'Ilse keeps the lighthouse.' },
+                    { id: 'e-2', kind: 'CHARACTER', name: 'Corvin', summary: 'Corvin arrives on the ferry.' },
+                ],
+                facts: [],
+                threads: [],
+                passages: [],
+                orders: [],
+                totals: { elements: 2, facts: 0, threads: 0, passages: 0 },
+            },
+            40_000,
+        );
+        const out = stubStressTestAnswer(body('OPEN', Object.fromEntries(input.blocks.map((b) => [b.label, b.text]))));
+        const v = validateWeakPoints(out, { shown: input.shown, text: shownText(input) });
+        expect(v.refusals).toEqual({});
+        expect(v.weakPoints.map((w) => w.citations.map((c) => c.id))).toEqual([['e-1'], ['e-2']]);
+        expect(stubStressTestAnswer(body('OPEN', { 'targets.1': '{}' }))).toBeNull();
+    });
+
+    it('the gap ranking: the first three candidates, each reason naming its own field', () => {
+        const candidates = computeGapCandidates({ elements: [{ id: 'p1', kind: 'PREMISE', filledKeys: new Set<string>() }], signals: new Map(), template: getTemplate });
+        const blocks = gapRankBlocks({ candidates, book: { title: 'The Lamp Room', logline: null }, elements: [] });
+        const out = stubGapRankAnswer(body('OPEN', Object.fromEntries(blocks.map((b) => [b.label, b.text]))));
+        const v = validateGapPicks(out, { candidates, text: blocks.map((b) => b.text).join('\n') });
+        expect(v.refusals).toEqual({});
+        expect(v.picks.map((p) => p.n)).toEqual([1, 2, 3]);
+    });
+
+    it('the rounds summary: one sentence that quotes no answer', () => {
+        const out = stubRoundsSummaryAnswer(body('OPEN', { 'earlier-rounds': '[]' }));
+        expect(validateRoundsSummary(out, { text: '[]', answers: ['She burns the logbook every winter night.'] })).toMatchObject({ ok: true });
+        expect(stubRoundsSummaryAnswer(body('OPEN', { 'targets.1': '{}' }))).toBeNull();
     });
 });

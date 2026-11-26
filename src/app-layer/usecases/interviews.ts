@@ -70,6 +70,7 @@ import { defaultLayersFor } from './interview-defaults';
 import { StaleFlagRepository } from '@/app-layer/repositories/continuity.repository';
 import { standingStaleFlags } from './stale-flags';
 import { deploymentPackMounts } from './interview-packs';
+import { requireStressTestForSession } from './stress-tests';
 import {
     announceClaim,
     claimRound,
@@ -156,6 +157,13 @@ export async function startInterview(ctx: WorkspaceRequestContext, bookId: strin
             kinds = selection.kinds;
             // Phase 4.2 (D28): "Grill me on what changed" — the flag must stand for this very element, still open.
             if (parsed.staleFlagId) await requireStandingFlag(db, ctx, bookId, parsed.staleFlagId, selection.elementIds[0]);
+            // Phase 4.3 (D29): a session from a stress test asks about its weak points' elements, and nothing else.
+            if (parsed.stressTestId) {
+                const test = await requireStressTestForSession(db, ctx, bookId, parsed.stressTestId);
+                if (selection.elementIds.length === 0 || selection.elementIds.some((id) => !test.elementIds.includes(id))) {
+                    throw new ConflictError('Those elements are not what this stress test asks about.', { reason: 'STRESS_SCOPE_MISMATCH' });
+                }
+            }
         } else if (parsed.scope === 'BETWEEN') {
             slot = await resolveBetweenSlot(db, ctx, bookId, parsed.afterElementId!, parsed.beforeElementId!);
             kinds = [slot.kind];
@@ -183,6 +191,7 @@ export async function startInterview(ctx: WorkspaceRequestContext, bookId: strin
             slotBeforeElementId: slot?.beforeElementId ?? null,
             slotAct: slot?.act ?? null,
             staleFlagId: parsed.staleFlagId ?? null,
+            stressTestId: parsed.stressTestId ?? null,
             depth,
             detail,
             personaKeys,
@@ -208,6 +217,7 @@ export async function startInterview(ctx: WorkspaceRequestContext, bookId: strin
                     scopeRelations: session.scopeRelationIds.length,
                     ...(slot ? { slotAfterElementId: slot.afterElementId, slotBeforeElementId: slot.beforeElementId } : {}),
                     ...(parsed.staleFlagId ? { staleFlagId: parsed.staleFlagId } : {}),
+                    ...(parsed.stressTestId ? { stressTestId: parsed.stressTestId } : {}),
                     depth,
                     detail,
                     personaKeys,

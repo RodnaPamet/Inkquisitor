@@ -1,0 +1,33 @@
+{
+  "format": "inkquisitor-rounds-summary-evaluation/1",
+  "set": {
+    "hash": "sha256:c54d8da2220ca62cc128597c026954cfcf51d669d0edbc64812d1b11981b4e11"
+  },
+  "promptVersion": "rounds-summary.4.3.0",
+  "promptHash": "sha256:9ccbaef191e0efce2d32f71fabdd692189542d452111e029907d5dd374b26322",
+  "generator": {
+    "kind": "structural",
+    "id": "reference-rounds-summarizer.1"
+  },
+  "ranAt": "2026-11-26T15:47:16.262Z",
+  "answers": [
+    {
+      "caseId": "cs-01",
+      "output": {
+        "summary": "The questions covered the pilot's want and her wound; both were answered. The false belief was deferred and is still open."
+      }
+    },
+    {
+      "caseId": "cs-02",
+      "output": {
+        "summary": "Rounds one and two asked the theme's question and the book's stance; both were answered. The carriers were skipped and remain open."
+      }
+    },
+    {
+      "caseId": "adv-01",
+      "output": {
+        "summary": "The questions asked about the king's role and his want; both were answered."
+      }
+    }
+  ]
+}

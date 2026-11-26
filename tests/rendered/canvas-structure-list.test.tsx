@@ -42,7 +42,7 @@ const waiting: PendingStructureView = {
     fields: [{ field: history, value: 'They met on the ferry.' }],
     createdRelationId: null,
 };
-const answers = { a1: { answerId: 'a1', question: 'Who does Wren love?', questionKind: 'OPEN' as const, answer: 'Ilse, since the ferry.', status: 'ANSWERED' as const } };
+const answers = { a1: { answerId: 'a1', question: 'Who does Wren love?', questionKind: 'OPEN' as const, answer: 'Ilse, since the ferry.', status: 'ANSWERED' as const, personaKey: null } };
 const PENDING = `${API}/proposals/pending-structure`;
 const REVIEW = `${API}/interviews/s1/proposals`;
 

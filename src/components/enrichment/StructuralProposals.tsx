@@ -19,6 +19,8 @@
  * picks, or accept it without a place. A beat never lands where the author
  * did not choose.
  */
+import { groupByPersona, groupsNeedHeadings } from '@/lib/interview/persona-groups';
+import { isPersonaKey } from '@/lib/interview/vocabulary';
 import { useId, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { Check, X } from 'lucide-react';
@@ -36,26 +38,42 @@ const noop = () => {};
 
 export function ProposalSources({ ids, answers }: { ids: readonly string[]; answers: Record<string, CitedAnswerView> }) {
     const t = useTranslations('enrichment');
+    const tPersona = useTranslations('interview.personas');
+    // Phase 4.3 (D29): answers to a panel's questions are grouped by who asked (`groupByPersona`, as the session groups them).
+    const groups = groupByPersona(ids.map((id) => ({ id, personaKey: answers[id]?.personaKey ?? null })));
+    const grouped = groupsNeedHeadings(groups);
+    const item = (id: string) => {
+        const a = answers[id];
+        return (
+            <li key={id} className="rounded-md border border-border-subtle bg-bg-muted p-2 text-sm">
+                {a ? (
+                    <>
+                        <p className="text-content-muted">{a.question}</p>
+                        <p className="whitespace-pre-wrap text-content-default">{a.answer ?? t('notAnswered')}</p>
+                    </>
+                ) : (
+                    <p className="text-content-muted">{t('answerMissing')}</p>
+                )}
+            </li>
+        );
+    };
     return (
         <div className="space-y-tight">
             <p className="text-xs font-medium uppercase tracking-wide text-content-muted">{t('citesTitle')}</p>
-            <ul className="space-y-tight" data-testid="proposal-sources">
-                {ids.map((id) => {
-                    const a = answers[id];
-                    return (
-                        <li key={id} className="rounded-md border border-border-subtle bg-bg-muted p-2 text-sm">
-                            {a ? (
-                                <>
-                                    <p className="text-content-muted">{a.question}</p>
-                                    <p className="whitespace-pre-wrap text-content-default">{a.answer ?? t('notAnswered')}</p>
-                                </>
-                            ) : (
-                                <p className="text-content-muted">{t('answerMissing')}</p>
-                            )}
-                        </li>
-                    );
-                })}
-            </ul>
+            {grouped ? (
+                groups.map((g) => (
+                    <div key={g.personaKey ?? 'none'} className="space-y-tight" data-testid="proposal-sources-group">
+                        <p className="text-xs font-medium text-content-emphasis">{g.personaKey && isPersonaKey(g.personaKey) ? t('askedBy', { name: tPersona(`${g.personaKey}.name`) }) : t('askedByNone')}</p>
+                        <ul className="space-y-tight" data-testid="proposal-sources">
+                            {g.items.map((x) => item(x.id))}
+                        </ul>
+                    </div>
+                ))
+            ) : (
+                <ul className="space-y-tight" data-testid="proposal-sources">
+                    {ids.map(item)}
+                </ul>
+            )}
         </div>
     );
 }

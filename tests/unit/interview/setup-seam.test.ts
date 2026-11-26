@@ -10,8 +10,10 @@ import {
     CODE_SETUP_DEFAULTS,
     SETUP_API,
     interviewSetupQuery,
+    isPanelSetup,
     loadSetupOptions,
     packOfName,
+    panelSetup,
     previewEffects,
     setupFromQuery,
     startRequestBody,
@@ -22,7 +24,7 @@ import type { QuestionRow } from '@/app-layer/repositories/interview.repository'
 import type { DefaultsView } from '@/app-layer/usecases/interview-defaults';
 import type { PacksView, PackView } from '@/app-layer/usecases/interview-packs';
 import { PERSONAS_PER_SESSION_MAX, dialEffects, resolveDials } from '@/lib/interview/dial-settings';
-import { PERSONA_KEYS } from '@/lib/interview/vocabulary';
+import { PANEL_PERSONA_KEYS, PERSONA_KEYS, isPanelPersona } from '@/lib/interview/vocabulary';
 import type { MountRefusal } from '@/lib/interview/pack-mount';
 
 function persona(key: string, mountable: boolean, reason: MountRefusal = 'STRUCTURAL_RECORD_REFUSED'): PackView {
@@ -79,7 +81,32 @@ describe('loadSetupOptions (2.3: the packs and the book defaults)', () => {
         expect(o.defaults).toEqual({ ...CODE_SETUP_DEFAULTS, depth: 4, personaKeys: ['socratic', 'ruthless-editor'] });
         expect(o.sources).toEqual({ depth: 'book', detail: 'code', personaKeys: 'book', offerRecommended: 'code', preferChoice: 'code' });
         expect(o.effects).toEqual(s.defaults.effects);
-        expect(o.personas.map((p) => p.key)).toEqual([...PERSONA_KEYS]);
+        // Phase 4.3: the picker offers the six of 2.3; the panel is offered only through its preset.
+        expect(o.personas.map((p) => p.key)).toEqual(PERSONA_KEYS.filter((k) => !isPanelPersona(k)));
+        expect(o.panel).toEqual({ mountable: true, refusal: null });
+    });
+
+    it('offers the Panel preset only when all three of its personas mount, and never opens on a panel default', async () => {
+        const one = await loadSetupOptions('ada', 'b 1', server({ personaKeys: [...PANEL_PERSONA_KEYS] }, ['panel-genre-specialist']).get);
+        expect(one.panel).toEqual({ mountable: false, refusal: 'STRUCTURAL_RECORD_REFUSED' });
+        expect(one.defaults.personaKeys).toEqual([]);
+        const setup = panelSetup({ ...CODE_SETUP_DEFAULTS, depth: 4, personaKeys: ['socratic'] });
+        expect(setup).toEqual({ ...CODE_SETUP_DEFAULTS, depth: 4, personaKeys: ['panel-target-reader', 'panel-ruthless-editor', 'panel-genre-specialist'] });
+        expect(isPanelSetup(setup)).toBe(true);
+        expect(isPanelSetup({ personaKeys: ['panel-target-reader', 'panel-ruthless-editor'] })).toBe(false);
+        // The panel travels through the new-interview query and the start body the server accepts.
+        const back = setupFromQuery(Object.fromEntries(new URLSearchParams(interviewSetupQuery({ scope: 'BOOK' }, setup))));
+        expect(back?.setup.personaKeys).toEqual([...PANEL_PERSONA_KEYS]);
+        expect(InterviewStartInput.parse(startRequestBody({ scope: 'BOOK' }, setup)).personaKeys).toEqual([...PANEL_PERSONA_KEYS]);
+    });
+
+    it('carries a stress test session through the query (Phase 4.3) and the server’s schema', () => {
+        const target = { scope: 'SELECTION' as const, elementIds: ['e1', 'e2'], relationIds: [], stressTestId: 'st1' };
+        const back = setupFromQuery(Object.fromEntries(new URLSearchParams(interviewSetupQuery(target, CODE_SETUP_DEFAULTS))));
+        expect(back?.target).toEqual(target);
+        expect(InterviewStartInput.parse(startRequestBody(target, CODE_SETUP_DEFAULTS)).stressTestId).toBe('st1');
+        expect(() => InterviewStartInput.parse({ scope: 'SELECTION', elementIds: ['e1'], relationIds: ['r1'], stressTestId: 'st1' })).toThrow();
+        expect(() => InterviewStartInput.parse({ scope: 'BOOK', stressTestId: 'st1' })).toThrow();
     });
 
     it('offers a persona that does not mount disabled, with its refusal, and never opens on it', async () => {

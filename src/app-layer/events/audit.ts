@@ -88,7 +88,12 @@ export type AuditAction =
     | 'STORY_THREAD_UPDATED'
     | 'STORY_THREAD_DELETED'
     | 'STORY_THREAD_PROPOSAL_DECIDED'
-    | 'STALE_FLAG_DISMISSED';
+    | 'STALE_FLAG_DISMISSED'
+    // Phase 4.3 (D29): book-level interrogation.
+    | 'STRESS_TEST_REQUESTED'
+    | 'STRESS_TEST_FINISHED'
+    | 'GAP_HUNT_RUN'
+    | 'INTERVIEW_COMPACTED';
 
 export interface AuditEventPayload {
     action: AuditAction;

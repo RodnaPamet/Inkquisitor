@@ -1,0 +1,140 @@
+{
+  "format": "inkquisitor-pack-evaluation/1",
+  "pack": {
+    "name": "persona-panel-ruthless-editor",
+    "version": 1,
+    "contentHash": "sha256:a77e39687348e47d3c98f7ca2e5d82673d4fe09a9fe9623bf7a3128c151b0a7c"
+  },
+  "set": {
+    "hash": "sha256:5e441ec993bd65e4a23306961aa7b1dd166e2b5106612534a74cba844613cff2"
+  },
+  "promptVersion": "question-generation.4.3.0",
+  "promptHash": "sha256:6b7ace7744c5b190e7a6c9125144a9d3751d3667dbe71e646b827b8851bb7d46",
+  "generator": {
+    "kind": "structural",
+    "id": "structural-generator.1"
+  },
+  "ranAt": "2026-11-26T17:44:24.120Z",
+  "answers": [
+    {
+      "caseId": "panel-ruthless-editor-01",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-panel-ruthless-editor-01",
+              "targetsFieldKeys": [
+                "stakes"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the stakes.",
+              "kind": "OPEN",
+              "text": "What stakes matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "panel-ruthless-editor-02",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-panel-ruthless-editor-02",
+              "targetsFieldKeys": [
+                "stakes"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the stakes.",
+              "kind": "OPEN",
+              "text": "What stakes matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "panel-ruthless-editor-03",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-panel-ruthless-editor-03",
+              "targetsFieldKeys": [
+                "climax"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the climax.",
+              "kind": "OPEN",
+              "text": "What climax matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "panel-ruthless-editor-04",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-panel-ruthless-editor-04",
+              "targetsFieldKeys": [
+                "climax"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the climax.",
+              "kind": "OPEN",
+              "text": "What climax matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "panel-ruthless-editor-05",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-panel-ruthless-editor-05",
+              "targetsFieldKeys": [
+                "counter_argument"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the counter argument.",
+              "kind": "OPEN",
+              "text": "What counter argument matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "panel-ruthless-editor-06",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-panel-ruthless-editor-06",
+              "targetsFieldKeys": [
+                "counter_argument"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the counter argument.",
+              "kind": "OPEN",
+              "text": "What counter argument matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    }
+  ]
+}

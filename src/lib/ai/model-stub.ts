@@ -519,6 +519,48 @@ export function stubContinuityAnswer(body: Record<string, unknown>): { contradic
     return { contradictions };
 }
 
+/**
+ * The stub's STRESS TEST answer (Phase 4.3, D29): one weak point for each of the
+ * first two lines of the "elements" block, each a single question citing that
+ * line's tag. It names nobody, so it never invents a name. Pure.
+ */
+export function stubStressTestAnswer(body: Record<string, unknown>): { weakPoints: Array<Record<string, unknown>> } | null {
+    const blocks = fencedBlocks(body);
+    const elements = blocks.get('elements');
+    if (elements === undefined || !blocks.has('book')) return null;
+    const tags = elements
+        .split('\n')
+        .map((l) => /^(E[1-9][0-9]{0,2})\. /.exec(l)?.[1])
+        .filter((t): t is string => t !== undefined)
+        .slice(0, 2);
+    return {
+        weakPoints: tags.map((tag, i) => ({
+            kind: i === 0 ? 'UNMOTIVATED_TURN' : 'COSTLESS_PROTAGONIST',
+            title: i === 0 ? 'A choice with no stated reason' : 'Nothing is lost along the way',
+            questions: [i === 0 ? 'What does this one want badly enough to act on it?' : 'What does this one give up to get there?'],
+            cites: [tag],
+        })),
+    };
+}
+
+/** The stub's GAP RANK answer (Phase 4.3, D29): the first three candidates in order, each reason naming its own field. Pure. */
+export function stubGapRankAnswer(body: Record<string, unknown>): { picks: Array<Record<string, unknown>> } | null {
+    const candidates = fencedBlocks(body).get('candidates');
+    if (candidates === undefined) return null;
+    const picks = candidates
+        .split('\n')
+        .map((l) => /^c(\d{1,2})\. [^›\n]{1,80} › ([^(\n]{1,80}) \(/.exec(l))
+        .filter((m): m is RegExpExecArray => m !== null)
+        .slice(0, 3)
+        .map((m) => ({ candidate: Number(m[1]), reason: `Settling the ${m[2].trim().toLowerCase()} unblocks the most.`, cites: [Number(m[1])] }));
+    return { picks };
+}
+
+/** The stub's ROUNDS SUMMARY answer (Phase 4.3 compaction): one fixed sentence that quotes nothing. Pure. */
+export function stubRoundsSummaryAnswer(body: Record<string, unknown>): { summary: string } | null {
+    return fencedBlocks(body).has('earlier-rounds') ? { summary: 'The earlier rounds covered the chosen fields and left some open.' } : null;
+}
+
 function sse(events: Array<Record<string, unknown>>): string {
     return events.map((e) => `event: ${String(e.type)}\ndata: ${JSON.stringify(e)}\n\n`).join('');
 }
@@ -562,7 +604,7 @@ export async function stubMessagesFetch(input: string | URL | Request, init?: Re
     const model = typeof body.model === 'string' ? body.model : 'stub-model';
     const gather = stubGatherEvents(body, model);
     if (gather) return new Response(sse(gather), { status: 200, headers: { 'content-type': 'text/event-stream' } });
-    const text = JSON.stringify(stubBibleFactsAnswer(body) ?? stubContinuityAnswer(body) ?? stubFactsAnswer(body) ?? stubFindingsAnswer(body) ?? stubFitAnswer(body) ?? stubReconcileAnswer(body) ?? stubAnswer(body));
+    const text = JSON.stringify(stubBibleFactsAnswer(body) ?? stubContinuityAnswer(body) ?? stubStressTestAnswer(body) ?? stubGapRankAnswer(body) ?? stubRoundsSummaryAnswer(body) ?? stubFactsAnswer(body) ?? stubFindingsAnswer(body) ?? stubFitAnswer(body) ?? stubReconcileAnswer(body) ?? stubAnswer(body));
     return new Response(streamedMessage(model, text, { input_tokens: 1_500, output_tokens: Math.max(50, Math.ceil(text.length / 4)) }), {
         status: 200,
         headers: { 'content-type': 'text/event-stream' },

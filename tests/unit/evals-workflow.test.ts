@@ -42,9 +42,10 @@ describe('.github/workflows/evals.yml', () => {
         expect(Object.keys(wf.jobs)).toEqual(['evals']);
     });
 
-    it('runs only when a person dispatches it, with packs, coverage, reconcile, research, rephrase, sources, bible facts, continuity and budget inputs', () => {
+    it('runs only when a person dispatches it, with packs, coverage, reconcile, research, rephrase, sources, bible facts, continuity, book-level and budget inputs (at most ten: GitHub’s limit)', () => {
         expect(Object.keys(wf.on)).toEqual(['workflow_dispatch']);
-        expect(Object.keys(wf.on.workflow_dispatch.inputs ?? {})).toEqual(['packs', 'coverage', 'reconcile', 'research', 'rephrase', 'sources', 'bible_facts', 'continuity', 'budget_usd']);
+        expect(Object.keys(wf.on.workflow_dispatch.inputs ?? {})).toEqual(['packs', 'coverage', 'reconcile', 'research', 'rephrase', 'sources', 'bible_facts', 'continuity', 'book_level', 'budget_usd']);
+        expect(Object.keys(wf.on.workflow_dispatch.inputs ?? {}).length).toBeLessThanOrEqual(10);
         expect(wf.on.workflow_dispatch.inputs!.research.type).toBe('boolean');
         expect(wf.on.workflow_dispatch.inputs!.coverage.type).toBe('boolean');
         expect(wf.on.workflow_dispatch.inputs!.reconcile.type).toBe('boolean');
@@ -63,6 +64,14 @@ describe('.github/workflows/evals.yml', () => {
         const run = job.steps.find((s) => s.run?.includes('packs:evaluate'))!;
         expect(run.env).toMatchObject({ REPHRASE: '${{ inputs.rephrase }}' });
         expect(run.run).toMatch(/if \[ "\$REPHRASE" = "true" \]; then extra="\$extra --rephrase"; fi/);
+    });
+
+    it('runs the book-level interrogation sets (Phase 4.3: stress test, gap ranking, rounds summary) on the same model path', () => {
+        expect(wf.on.workflow_dispatch.inputs!.book_level.type).toBe('boolean');
+        expect(wf.on.workflow_dispatch.inputs!.book_level.default).toBe(false);
+        const run = job.steps.find((s) => s.run?.includes('packs:evaluate'))!;
+        expect(run.env).toMatchObject({ BOOK_LEVEL: '${{ inputs.book_level }}' });
+        expect(run.run).toMatch(/if \[ "\$BOOK_LEVEL" = "true" \]; then extra="\$extra --book-level"; fi/);
     });
 
     it('runs the deep continuity check’s set (Phase 4.2) on the same model path, its record uploaded with the others', () => {

@@ -461,7 +461,7 @@ describe('the series library and its isolation', () => {
         expect(hits.length).toBeGreaterThanOrEqual(2);
         // …but book B (opted out again) reads none of them: not book A's own source, not the series one.
         const b = await runInWorkspaceContext(ctx, (db) => assembleSourceContext(db, ctx, bookB, scope, { vector: query.vectors[0], revision }));
-        expect(b).toEqual({ facts: [], passages: [], truncated: false });
+        expect(b).toEqual({ facts: [], passages: [], truncated: false, factIds: [], passageIds: [] });
         const a = await runInWorkspaceContext(ctx, (db) => assembleSourceContext(db, ctx, bookA, [{ elementId: wrenA, kind: 'CHARACTER', name: 'Wren' }], { vector: query.vectors[0], revision }));
         expect(a.passages.length).toBeGreaterThan(0);
         expect(a.passages.some((p) => p.text.includes('reef'))).toBe(true);

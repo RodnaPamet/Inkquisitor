@@ -175,7 +175,7 @@ export function situationFrontier(id: string, s: Pick<Situation, 'kind' | 'bible
 }
 
 /** Every case of the named pack's set, normalised. */
-export function evalCasesOf(registry: Pick<PackRegistry, 'files' | 'craftEvals' | 'personaEvals' | 'situations' | 'relationEvals'>, name: string): PackEvalCase[] {
+export function evalCasesOf(registry: Pick<PackRegistry, 'files' | 'craftEvals' | 'personaEvals' | 'situations' | 'relationEvals'> & Partial<Pick<PackRegistry, 'personaSituations'>>, name: string): PackEvalCase[] {
     const file = registry.files[name];
     if (!file) throw new Error(`no pack named ${name}`);
     if (file.group === 'relations') {
@@ -213,7 +213,7 @@ export function evalCasesOf(registry: Pick<PackRegistry, 'files' | 'craftEvals' 
     if (!isPersonaKey(file.key)) throw new Error(`pack ${name} names an unknown persona`);
     const persona = file.key;
     return registry.personaEvals[persona].map((c) => {
-        const s: Situation = typeof c.situation === 'string' ? registry.situations[c.situation] : c.situation;
+        const s: Situation = typeof c.situation === 'string' ? (registry.personaSituations?.[persona] ?? registry.situations)[c.situation] : c.situation;
         return {
             id: c.id,
             kind: s.kind,

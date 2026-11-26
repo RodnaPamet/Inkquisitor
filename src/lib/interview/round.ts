@@ -22,6 +22,7 @@
  * (`src/lib/interview/evals/coverage.ts`) run this same function, so the
  * evaluation measures the engine the product runs.
  */
+import type { CompactedSession } from './compaction';
 import type { FieldDef } from '@/lib/bible/template-schema';
 import type { BibleKind } from '@/lib/bible/kinds';
 import {
@@ -93,6 +94,8 @@ export interface RoundInput {
     packs: Pick<PackRegistry, 'craft' | 'personas'> & { relations?: RelationsPack };
     /** Phase 4.0: the retriever's confirmed source facts and passages for the scope, as context only. */
     sourceContext?: PromptSourceContext;
+    /** Phase 4.3: the session's earlier rounds compacted (off by default; `compaction.ts`). */
+    compacted?: CompactedSession;
     /** The cosine thresholds of the embedder's revision (`cosineThresholdsFor`, issue #32 item 1); default: uncalibrated. */
     cosineThresholds?: CosineThresholds;
 }
@@ -422,6 +425,7 @@ export async function produceRound(input: RoundInput, deps: RoundDeps): Promise<
             related: input.related,
             sessionAnswers: input.sessionAnswers,
             sourceContext: input.sourceContext,
+            ...(input.compacted ? { compacted: input.compacted } : {}),
         });
         metrics.generationCalls++;
         const call: RoundCall = {

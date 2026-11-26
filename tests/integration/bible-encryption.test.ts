@@ -43,6 +43,12 @@ import { setFakeApiKey } from '../helpers/fake-anthropic';
 import { createThread } from '@/app-layer/usecases/continuity';
 import { extractPending } from '../helpers/facts';
 import { threadExtractor } from '../helpers/continuity';
+import { getGapHuntPage, runGapHunt } from '@/app-layer/usecases/gap-hunts';
+import { getStressTest } from '@/app-layer/usecases/stress-tests';
+import { InterviewCompactionRepository } from '@/app-layer/repositories/interrogation.repository';
+import { runInWorkspaceContext } from '@/lib/db/rls-middleware';
+import { sanitiseSummaryForStorage } from '@/lib/interview/compaction-prompt';
+import { MOUNTED, runStressTest, scriptedTester } from '../helpers/interrogation';
 
 afterAll(() => prisma.$disconnect());
 
@@ -203,7 +209,26 @@ beforeAll(async () => {
     await createElement(ctx, book.id, { kind: 'CHARACTER', name: 'Mara', summary: vow });
     await extractPending(ctx, book.id, threadExtractor(vow, `Mara will find the hawk ${MARK}`));
     expect(await prisma.storyThreadProposal.count({ where: { bookId: book.id } })).toBe(1);
-}, 60_000);
+
+    // Book-level interrogation (Phase 4.3, D29): a weak point, a ranked gap hunt's reason and a rounds summary, each marked.
+    const stress = await runStressTest(ctx, book.id, { tester: scriptedTester({ weakPoints: [{ kind: 'OTHER', title: `A thin place ${MARK}`, questions: [`What does the ${MARK} cost her?`], cites: ['E1'] }] }) });
+    expect(stress.outcome).toBe('OK');
+    expect((await getStressTest(ctx, book.id, stress.id)).weakPoints).toHaveLength(1);
+    ids.StressTest = stress.id;
+    const undo = setFakeApiKey();
+    try {
+        const gapPage = await getGapHuntPage(ctx, book.id, { gate: MOUNTED });
+        if (!gapPage.ranking.available) throw new Error(`the gap hunt cannot rank: ${gapPage.ranking.reason}`);
+        const first = gapPage.hunt.candidates[0];
+        const hunt = await runGapHunt(ctx, book.id, { confirmWorstCaseMicroUsd: gapPage.ranking.worstMicroUsd }, { gate: MOUNTED, charge: () => undefined, ranker: scriptedTester({ picks: [{ candidate: first.n, reason: `The ${first.fieldLabel.toLowerCase()} holds up the ${MARK} most.`, cites: [first.n] }] }) });
+        expect(hunt.ranked).toBe(true);
+    } finally {
+        undo();
+    }
+    await runInWorkspaceContext(ctx, (db) =>
+        InterviewCompactionRepository.create(db, ctx.workspaceId, { sessionId: ids.Session, throughRound: 1, summary: sanitiseSummaryForStorage(`Round one asked about the ${MARK} want.`), promptVersion: 'rounds-summary.4.3.0', tokensUsed: 1, costMicroUsd: 1 }),
+    );
+}, 90_000);
 
 /** The raw stored values of `field` on every row of `model` this suite wrote, read as the owner. */
 async function rawValues(model: string, field: string): Promise<string[]> {
@@ -214,7 +239,12 @@ async function rawValues(model: string, field: string): Promise<string[]> {
     const byMap = model === 'MapSnapshot';
     const byRelation = model === 'BibleRelationField' || model === 'BibleRelationVersion';
     const bySource = model === 'SourceChunk' || model === 'StoryFact';
-    const byBook = model === 'StoryFactOverride' || model === 'StoryThread' || model === 'StoryThreadProposal';
+    const byBook = model === 'StoryFactOverride' || model === 'StoryThread' || model === 'StoryThreadProposal' || model === 'GapHunt';
+    if (model === 'StressWeakPoint' || model === 'InterviewCompaction') {
+        const col = model === 'StressWeakPoint' ? 'stressTestId' : 'sessionId';
+        const rows = await prisma.$queryRawUnsafe<Array<{ v: string | null }>>(`SELECT "${field}" AS v FROM "${model}" WHERE "${col}" = $1`, model === 'StressWeakPoint' ? ids.StressTest : ids.Session);
+        return rows.map((r) => r.v).filter((v): v is string => v !== null);
+    }
     const where = byElement ? `"elementId" = $1` : bySession ? `"sessionId" = $1` : byRun ? `"runId" = $1` : byBrief ? `"briefId" = $1` : byMap ? `"mapId" = $1` : byRelation ? `"relationId" = $1` : bySource ? `"sourceId" = $1` : byBook ? `"bookId" = $1` : `"id" = $1`;
     const id = byElement ? ids.BibleElement : bySession ? ids.Session : byRun ? ids.Run : byBrief ? ids.ResearchBrief : byMap ? ids.StoryMap : byRelation ? ids.BibleRelation : bySource ? ids.Source : byBook ? ids.Book : ids[model];
     const rows = await prisma.$queryRawUnsafe<Array<{ v: string | null }>>(`SELECT "${field}" AS v FROM "${model}" WHERE ${where}`, id);
@@ -223,7 +253,7 @@ async function rawValues(model: string, field: string): Promise<string[]> {
 
 const manifest = Object.entries(ENCRYPTED_FIELDS).flatMap(([model, fields]) => fields.map((field) => [model, field] as const));
 
-it('the manifest covers the bible, interview and research author text the briefs name', () => {
+it('the manifest covers the bible, interview, research and interrogation author text the briefs name', () => {
     expect(manifest.map(([m, f]) => `${m}.${f}`).sort()).toEqual(
         [
             'BibleElement.summary',
@@ -278,6 +308,10 @@ it('the manifest covers the bible, interview and research author text the briefs
             'StoryThread.note',
             'StoryThreadProposal.title',
             'StoryThreadProposal.quote',
+            'StressWeakPoint.title',
+            'StressWeakPoint.questions',
+            'GapHunt.picks',
+            'InterviewCompaction.summary',
         ].sort(),
     );
 });

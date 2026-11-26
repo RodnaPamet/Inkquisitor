@@ -24,6 +24,12 @@
  *                          `PACKS_NOT_MOUNTABLE`, a `PACK_CHANGED` stop) is
  *   `interviewSetupQuery` / `setupFromQuery`  the setup as the new-interview
  *                          page's query string, and back
+ *   `panelSetup`           Phase 4.3 (D29): THE PANEL PRESET — the book-level
+ *                          panel's three personas (Target Reader, Ruthless
+ *                          Editor, Genre Specialist; 2.3's limit is three), the
+ *                          other dials as the sheet holds them. The panel's
+ *                          personas are offered ONLY through it: the persona
+ *                          picker lists the six of 2.3 (`SetupOptions.personas`)
  *
  * A persona whose pack does not mount here is offered disabled with its
  * refusal (`PersonaOption.refusal`), and is never among the defaults the sheet
@@ -38,7 +44,7 @@ import { BIBLE_KINDS, type BibleKind } from '@/lib/bible/kinds';
 import { bibleFetch } from '@/lib/bible/api-client';
 import { CODE_DEFAULT_DIALS, PERSONAS_PER_SESSION_MAX, dialEffects, type DialEffects } from './dial-settings';
 import { DIAL_MAX, DIAL_MIN, isDial } from './dials';
-import { INTERVIEW_SCOPES, PERSONA_KEYS, isPersonaKey, type PersonaKey } from './vocabulary';
+import { INTERVIEW_SCOPES, PANEL_PERSONA_KEYS, PERSONA_KEYS, isPanelPersona, isPersonaKey, type PersonaKey } from './vocabulary';
 
 /**
  * What a new interview asks about. Phase 3.3 (the canvas): a SELECTION of
@@ -50,7 +56,7 @@ export type InterviewTarget =
     | { scope: 'KIND'; kind: BibleKind }
     | { scope: 'BOOK' }
     /** Phase 4.2 (D28): "Grill me on what changed" names the stale flag; its selection is that flag's one element. */
-    | { scope: 'SELECTION'; elementIds: string[]; relationIds: string[]; staleFlagId?: string }
+    | { scope: 'SELECTION'; elementIds: string[]; relationIds: string[]; staleFlagId?: string; /** Phase 4.3 (D29): a session from a stress test's weak points. */ stressTestId?: string }
     | { scope: 'BETWEEN'; afterElementId: string; beforeElementId: string };
 
 /** Ids a selection's query carries at most (the server's own bound, `SELECTION_ELEMENTS_MAX`). */
@@ -78,7 +84,10 @@ export interface PersonaOption {
 }
 
 export interface SetupOptions {
+    /** The personas the picker offers (2.3's six; never the panel's). */
     personas: PersonaOption[];
+    /** Phase 4.3: the Panel preset, mountable only when all three of its personas mount here. */
+    panel: { mountable: boolean; refusal: string | null };
     /** How many personas one interview may carry (2.3: three). */
     maxPersonas: number;
     /** The effective dials a session would start on, unmountable personas left out. */
@@ -119,19 +128,24 @@ function sourceOf(s: string | undefined): SetupSource {
 export async function loadSetupOptions(slug: string, bookId: string, get: Fetcher = (url) => bibleFetch(url)): Promise<SetupOptions> {
     const [packs, { defaults }] = await Promise.all([get<PacksView>(SETUP_API.packs(slug)), get<{ defaults: DefaultsView }>(SETUP_API.bookDefaults(slug, bookId))]);
     const byKey = new Map(packs.personas.filter((p) => isPersonaKey(p.key)).map((p) => [p.key as PersonaKey, p] as const));
-    const personas: PersonaOption[] = PERSONA_KEYS.filter((k) => byKey.has(k)).map((key) => {
+    const all: PersonaOption[] = PERSONA_KEYS.filter((k) => byKey.has(k)).map((key) => {
         const p = byKey.get(key)!;
         return { key, mountable: p.mountable === true, refusal: p.mountable === true ? null : (p.refusal?.reason ?? 'NO_RECORD') };
     });
+    const personas = all.filter((p) => !isPanelPersona(p.key));
+    const panelOptions = PANEL_PERSONA_KEYS.map((k) => all.find((p) => p.key === k));
+    const panelRefusal = panelOptions.find((p) => !p || !p.mountable);
+    const panel = { mountable: panelRefusal === undefined, refusal: panelRefusal === undefined ? null : (panelRefusal?.refusal ?? 'NO_RECORD') };
     const mountable = new Set(personas.filter((p) => p.mountable).map((p) => p.key));
     const e = defaults.effective;
     return {
         personas,
+        panel,
         maxPersonas: PERSONAS_PER_SESSION_MAX,
         defaults: {
             depth: e.depth,
             detail: e.detail,
-            personaKeys: e.personaKeys.filter((k) => mountable.has(k)).slice(0, PERSONAS_PER_SESSION_MAX),
+            personaKeys: e.personaKeys.filter((k) => mountable.has(k) && !isPanelPersona(k)).slice(0, PERSONAS_PER_SESSION_MAX),
             offerRecommended: e.offerRecommended,
             preferChoice: e.preferChoice,
         },
@@ -154,6 +168,16 @@ function sameSetup(a: InterviewSetup, b: InterviewSetup): boolean {
 /** What the previews show for `setup`: the server's effects while it is the defaults, the same pure rule once the author changes a dial. */
 export function previewEffects(options: SetupOptions, setup: InterviewSetup): DialEffects {
     return sameSetup(options.defaults, setup) ? options.effects : dialEffects(setup);
+}
+
+/** THE PANEL PRESET (Phase 4.3, D29): the panel's three personas in order, every other dial as `setup` holds it. */
+export function panelSetup(setup: InterviewSetup): InterviewSetup {
+    return { ...setup, personaKeys: [...PANEL_PERSONA_KEYS] };
+}
+
+/** Is this setup the panel (its personas exactly the panel's)? */
+export function isPanelSetup(setup: Pick<InterviewSetup, 'personaKeys'>): boolean {
+    return setup.personaKeys.length === PANEL_PERSONA_KEYS.length && PANEL_PERSONA_KEYS.every((k, i) => setup.personaKeys[i] === k);
 }
 
 /** The start route's body for a target and a setup (2.3's `InterviewStartInput`). */
@@ -192,6 +216,7 @@ export function interviewSetupQuery(target: InterviewTarget, setup: InterviewSet
         if (target.elementIds.length > 0) q.set('elements', target.elementIds.join(','));
         if (target.relationIds.length > 0) q.set('relations', target.relationIds.join(','));
         if (target.staleFlagId) q.set('stale', target.staleFlagId);
+        if (target.stressTestId) q.set('stress', target.stressTestId);
     }
     if (target.scope === 'BETWEEN') {
         q.set('after', target.afterElementId);
@@ -234,7 +259,13 @@ export function setupFromQuery(q: Query): { target: InterviewTarget; setup: Inte
         const relationIds = [...new Set(ids('relations'))];
         if (elementIds.length + relationIds.length === 0 || elementIds.length > SELECTION_QUERY_MAX || relationIds.length > SELECTION_QUERY_MAX) return null;
         const stale = one(q, 'stale');
-        target = stale && stale.length <= 64 && elementIds.length === 1 && relationIds.length === 0 ? { scope: 'SELECTION', elementIds, relationIds, staleFlagId: stale } : { scope: 'SELECTION', elementIds, relationIds };
+        const stress = one(q, 'stress');
+        target =
+            stale && stale.length <= 64 && elementIds.length === 1 && relationIds.length === 0
+                ? { scope: 'SELECTION', elementIds, relationIds, staleFlagId: stale }
+                : stress && stress.length <= 64 && elementIds.length > 0 && relationIds.length === 0
+                  ? { scope: 'SELECTION', elementIds, relationIds, stressTestId: stress }
+                  : { scope: 'SELECTION', elementIds, relationIds };
     } else if (scope === 'BETWEEN') {
         const after = one(q, 'after');
         const before = one(q, 'before');

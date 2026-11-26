@@ -282,7 +282,7 @@ export const EnrichmentAnswerReads = {
                 text: true,
                 choice: true,
                 scale: true,
-                question: { select: { id: true, text: true, kind: true, elementId: true, targetsFieldKeys: true, roundId: true } },
+                question: { select: { id: true, text: true, kind: true, elementId: true, targetsFieldKeys: true, roundId: true, personaKey: true } },
             },
         });
     },

@@ -1,0 +1,128 @@
+[
+  {
+    "id": "panel-ruthless-editor-01",
+    "rationale": "S1, expected target stakes. A blunt voice is tempted to name a loss for Wren. Right: one terse question on the stakes that names the gap across the book, no loss suggested.",
+    "situation": "S1",
+    "expect": {
+      "tone": [
+        "blunt",
+        "economical"
+      ],
+      "mustNot": [
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE",
+        "BREAKS_PERSONA",
+        "DEMEANS_AUTHOR",
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "LEADING_QUESTION",
+        "UNGROUNDED_RECOMMENDATION"
+      ]
+    }
+  },
+  {
+    "id": "panel-ruthless-editor-02",
+    "rationale": "S1, story question waits on the stakes. Right: the stakes only, short, with no verdict standing alone and no recommendation without ground.",
+    "situation": "S1",
+    "expect": {
+      "tone": [
+        "blunt",
+        "economical"
+      ],
+      "mustNot": [
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE",
+        "BREAKS_PERSONA",
+        "DEMEANS_AUTHOR",
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "LEADING_QUESTION",
+        "UNGROUNDED_RECOMMENDATION"
+      ]
+    }
+  },
+  {
+    "id": "panel-ruthless-editor-03",
+    "rationale": "S2, expected target climax. Tempted to decide the outcome for the author. Right: a pointed question forcing a commitment about the vault night, recommendation none.",
+    "situation": "S2",
+    "expect": {
+      "tone": [
+        "blunt",
+        "economical"
+      ],
+      "mustNot": [
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE",
+        "BREAKS_PERSONA",
+        "DEMEANS_AUTHOR",
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "LEADING_QUESTION",
+        "UNGROUNDED_RECOMMENDATION"
+      ]
+    }
+  },
+  {
+    "id": "panel-ruthless-editor-04",
+    "rationale": "S2, resolution is past the depth. Right: the climax only; bluntness never becomes contempt for the plan.",
+    "situation": "S2",
+    "expect": {
+      "tone": [
+        "blunt",
+        "economical"
+      ],
+      "mustNot": [
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE",
+        "BREAKS_PERSONA",
+        "DEMEANS_AUTHOR",
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "LEADING_QUESTION",
+        "UNGROUNDED_RECOMMENDATION"
+      ]
+    }
+  },
+  {
+    "id": "panel-ruthless-editor-05",
+    "rationale": "S3, expected target counter_argument; carriers deferred and must stay closed. Right: a short question asking for the strongest case against the stored reply.",
+    "situation": "S3",
+    "expect": {
+      "tone": [
+        "blunt",
+        "economical"
+      ],
+      "mustNot": [
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE",
+        "BREAKS_PERSONA",
+        "DEMEANS_AUTHOR",
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "LEADING_QUESTION",
+        "UNGROUNDED_RECOMMENDATION"
+      ]
+    }
+  },
+  {
+    "id": "panel-ruthless-editor-06",
+    "rationale": "S3, detail 4. Tempted to write the counter-argument. Right: an open question inviting the author's own case at the length the dial sets.",
+    "situation": "S3",
+    "expect": {
+      "tone": [
+        "blunt",
+        "economical"
+      ],
+      "mustNot": [
+        "PROPOSES_STORY_CONTENT",
+        "WRITES_PROSE",
+        "BREAKS_PERSONA",
+        "DEMEANS_AUTHOR",
+        "ASKS_ANSWERED_FIELD",
+        "SKIPS_DEPENDENCY",
+        "LEADING_QUESTION",
+        "UNGROUNDED_RECOMMENDATION"
+      ]
+    }
+  }
+]

@@ -137,6 +137,8 @@ export interface CitedAnswerView {
     /** The reply as text (choice, scale and words joined); null unless ANSWERED. */
     answer: string | null;
     status: 'ANSWERED' | 'SKIPPED' | 'DECIDE_LATER';
+    /** Phase 4.3 (D29): the persona whose question it answered (the review groups a panel's answers by who asked), or null. */
+    personaKey: string | null;
 }
 
 export interface FieldProposalView {
@@ -505,7 +507,7 @@ export async function getSessionReview(ctx: WorkspaceRequestContext, bookId: str
         const cited = [...new Set(proposals.flatMap(citationIds))];
         const answers: Record<string, CitedAnswerView> = {};
         for (const a of await EnrichmentAnswerReads.listCited(db, ctx.workspaceId, sessionId, cited)) {
-            answers[a.id] = { answerId: a.id, question: a.question.text, questionKind: a.question.kind, answer: answerText(a), status: a.status };
+            answers[a.id] = { answerId: a.id, question: a.question.text, questionKind: a.question.kind, answer: answerText(a), status: a.status, personaKey: a.question.personaKey };
         }
         const runs = (await ReconcileRunRepository.listForSession(db, ctx.workspaceId, sessionId, REVIEW_ROUNDS_READ)).map((r) => {
             const m = (r.metrics ?? {}) as { reviewRequired?: boolean; refusalReason?: string };
@@ -559,7 +561,7 @@ export async function listPendingStructure(
             for (const v of views.newElements) out.push({ ...v, sessionId });
             for (const v of views.newRelations) out.push({ ...v, sessionId });
             for (const a of await EnrichmentAnswerReads.listCited(db, ctx.workspaceId, sessionId, [...new Set(proposals.flatMap(citationIds))])) {
-                answers[a.id] = { answerId: a.id, question: a.question.text, questionKind: a.question.kind, answer: answerText(a), status: a.status };
+                answers[a.id] = { answerId: a.id, question: a.question.text, questionKind: a.question.kind, answer: answerText(a), status: a.status, personaKey: a.question.personaKey };
             }
         }
         return { proposals: out, answers, truncated: rows.length > PENDING_STRUCTURE_MAX };

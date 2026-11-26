@@ -27,6 +27,8 @@ export const APP_ROUTES = {
     bookFacts: (workspaceSlug: string, bookId: string) => `${bookPath(workspaceSlug, bookId)}/facts`,
     /** A book's continuity: contradictions, promises, clues, open questions and entries that may be stale (Phase 4.2, D28). */
     continuity: (workspaceSlug: string, bookId: string) => `${bookPath(workspaceSlug, bookId)}/continuity`,
+    /** A book's book-level interrogation: the stress test, the gap hunt and the persona panel (Phase 4.3, D29). */
+    interrogate: (workspaceSlug: string, bookId: string) => `${bookPath(workspaceSlug, bookId)}/interrogate`,
     /** The workspace's series library (Phase 4.0, D26). */
     series: (workspaceSlug: string) => `/w/${encodeURIComponent(workspaceSlug)}/series`,
     /** The series library's facts (Phase 4.0, D26). */

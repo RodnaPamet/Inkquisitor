@@ -262,6 +262,24 @@ function registerDefaultExecutors(): void {
             };
         });
     });
+
+    // Phase 4.3 (D29): one stress test, named by id, run once the author confirmed its cost.
+    executorRegistry.register('stress-test', async (payload) => {
+        const startedAt = new Date().toISOString();
+        const startMs = performance.now();
+        return runJob('stress-test', async () => {
+            const { executeStressTest } = await import('@/app-layer/usecases/stress-tests');
+            const { jobShutdownSignal } = await import('./shutdown-signal');
+            const r = await executeStressTest(payload, { signal: jobShutdownSignal() });
+            return {
+                ...emptyResult('stress-test', startedAt, startMs),
+                itemsScanned: 1,
+                itemsActioned: r.ran ? 1 : 0,
+                itemsSkipped: r.ran ? 0 : 1,
+                details: { stressTestId: payload.stressTestId, outcome: r.outcome },
+            };
+        });
+    });
 }
 
 registerDefaultExecutors();

@@ -13,6 +13,10 @@
  * order, and the book's effective defaults with where each came from. The
  * previews are the server's `effects` for those defaults, and the same pure
  * rule (`dialEffects`) once the author moves a dial (`previewEffects`).
+ *
+ * Phase 4.3 (D29): the PANEL preset (`panelSetup`) questions the book with the
+ * book-level panel — Target Reader, Ruthless Editor and Genre Specialist — in
+ * place of the persona picker; its questions are grouped by who asked.
  */
 import { useEffect, useId, useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -23,7 +27,7 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Sheet } from '@/components/ui/sheet';
 import { ToggleGroup } from '@/components/ui/toggle-group';
 import { APP_ROUTES } from '@/lib/app-routes';
-import { interviewSetupQuery, loadSetupOptions, previewEffects, type InterviewSetup, type InterviewTarget, type SetupOptions, type SetupSource } from '@/lib/interview/setup';
+import { interviewSetupQuery, isPanelSetup, loadSetupOptions, panelSetup, previewEffects, type InterviewSetup, type InterviewTarget, type SetupOptions, type SetupSource } from '@/lib/interview/setup';
 import type { PersonaKey } from '@/lib/interview/vocabulary';
 
 export interface InterviewSetupSheetProps {
@@ -87,6 +91,11 @@ export function InterviewSetupSheet({ open, setOpen, workspaceSlug, bookId, targ
         return same ? t(source === 'book' ? 'sourceBook' : 'sourceWorkspace') : null;
     };
     const refusalText = (code: string | null) => t.has(`packRefusal.${code}`) ? t(`packRefusal.${code}`) : t('packRefusal.generic');
+    const panelOn = setup ? isPanelSetup(setup) : false;
+    const setPanel = (on: boolean) => {
+        if (!setup || !options) return;
+        setSetup(on ? panelSetup(setup) : { ...setup, personaKeys: [...options.defaults.personaKeys] });
+    };
 
     return (
         // `autoFocus`: focus goes into the sheet on open (vaul's default leaves it on the opener).
@@ -121,7 +130,31 @@ export function InterviewSetupSheet({ open, setOpen, workspaceSlug, bookId, targ
                             </p>
                             <SourceNote text={sourceNote('detail')} />
                         </div>
-                        <div role="group" aria-labelledby={`${ids}-persona`} className="space-y-tight">
+                        <div role="group" aria-labelledby={`${ids}-panel`} className="space-y-tight" data-testid="panel-preset">
+                            <p id={`${ids}-panel`} className="text-sm font-medium text-content-emphasis">
+                                {t('panel.title')}
+                            </p>
+                            <div className="flex items-start gap-tight">
+                                <Checkbox
+                                    id={`${ids}-panel-on`}
+                                    checked={panelOn}
+                                    disabled={!options.panel.mountable}
+                                    onCheckedChange={(v) => setPanel(v === true)}
+                                    aria-describedby={`${ids}-panel-help`}
+                                    className="mt-0.5"
+                                />
+                                {/* The help is a description, outside the label, so the checkbox is named "Panel" alone (its help names the personas). */}
+                                <div className="text-sm">
+                                    <label htmlFor={`${ids}-panel-on`} className="font-medium text-content-emphasis">
+                                        {t('panel.label')}
+                                    </label>
+                                    <p id={`${ids}-panel-help`} className="text-xs text-content-muted">
+                                        {options.panel.mountable ? t('panel.help') : refusalText(options.panel.refusal)}
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                        <div role="group" aria-labelledby={`${ids}-persona`} className="space-y-tight" hidden={panelOn}>
                             <p id={`${ids}-persona`} className="text-sm font-medium text-content-emphasis">
                                 {t('persona')}
                             </p>

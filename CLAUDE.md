@@ -31,6 +31,7 @@ npm run packs:evaluate -- --no-packs --rephrase    # "Ask me this differently"'s
 npm run packs:evaluate -- --no-packs --sources     # source fact extraction's set (4.0): its structural record beside it
 npm run packs:evaluate -- --no-packs --bible-facts # bible fact extraction's set (4.1): five synthetic bibles, its structural record beside it
 npm run packs:evaluate -- --no-packs --continuity  # the nightly deep continuity check's set (4.2): its structural record beside it
+npm run packs:evaluate -- --no-packs --book-level  # the stress test's, the gap ranking's and the rounds summary's sets (4.3): their structural records
 npm run packs:evaluate -- --judge                  # also the judge's report over the pack records written (2.H; a report, never a gate)
 npm run docs:build        # the Starlight help site (site/), from docs/user/
 npm run lint              # eslint . (flat config, eslint.config.mjs)
@@ -64,7 +65,7 @@ builds the help site and deploys it only on main when Pages is enabled;
 `postgres-image.yml` publishes `ghcr.io/rodnapamet/inkquisitor-postgres`
 (main only, weekly and on an upstream digest move; build, smoke, Trivy, then
 push); `evals.yml` (**Evals**, dispatch only, not a check) makes real-model
-pack evaluation records (and, with its `reconcile`, `research`, `rephrase`, `sources`, `bible_facts` and `continuity` inputs, the reconcile step's, the research agent's, the rephrase prompt's, source fact extraction's, bible fact extraction's and the deep continuity check's)
+pack evaluation records (and, with its `reconcile`, `research`, `rephrase`, `sources`, `bible_facts`, `continuity` and `book_level` inputs, the reconcile step's, the research agent's, the rephrase prompt's, source fact extraction's, bible fact extraction's, the deep continuity check's and 4.3's three book-level prompts')
 on `secrets.ANTHROPIC_API_KEY` and uploads them as an artifact, committing
 nothing (`tests/unit/evals-workflow.test.ts`); `injection-redteam.yml`
 (**Injection red-team**, nightly once the repository variable
@@ -412,6 +413,26 @@ src/app-layer/usecases/      → continuity (the page, threads, decisions, dismi
 src/app-layer/jobs/          → `continuity-dispatch` (02:23 UTC), `continuity-check` (one per changed book, by run id)
 src/app/api/w/[workspaceSlug]/books/[bookId]/{continuity,threads/**,thread-proposals/**,stale-flags/**}
 src/app/w/[workspaceSlug]/books/[bookId]/continuity → src/components/continuity/ContinuityPage
+```
+
+Phase 4.3 (book-level interrogation, D29) added:
+
+```
+prisma/schema/interrogation.prisma → StressTest (a run; status, outcome, coverage, confirmed "at most"), StressWeakPoint (encrypted,
+                               append-only), GapHunt (candidates, encrypted picks; newest five a book), InterviewCompaction (encrypted
+                               summary, append-only); InterviewSession.stressTestId
+src/lib/stress-test/         → vocabulary (client-safe), input (THE bounded canon, tags, coverage), prompt (STRESS_TEST_PROMPT, deep),
+                               schema, validate (THE weak-point rules), cost (fitStressInput), model-seam.ts, record-gate (D11),
+                               storage; evals/ (set, evaluation, record)
+src/lib/gap-hunt/            → vocabulary, candidates (THE score, code), prompt (GAP_RANK_PROMPT, balanced), schema, validate,
+                               sessions (the three proposed, client-safe), cost, model-seam.ts, record-gate, storage; evals/
+src/lib/interview/           → compaction (THE state block), compaction-prompt (COMPACTION_PROMPT, fast; validateRoundsSummary),
+                               compaction-seam, compaction-gate, persona-groups; packs/personas/panel-{target-reader,ruthless-editor,
+                               genre-specialist}/ (each with its own situations.json); evals/compaction*
+src/app-layer/usecases/      → stress-tests (page, start, the job's work, a session's scope), gap-hunts, interview-compaction
+src/app-layer/jobs/          → `stress-test`, one job per confirmed run, addressed by id
+src/app/api/w/[workspaceSlug]/books/[bookId]/{stress-tests/**,gap-hunts}
+src/app/w/[workspaceSlug]/books/[bookId]/interrogate → src/components/interrogation/InterrogatePage
 ```
 
 ## Rules every change obeys
@@ -1499,6 +1520,60 @@ closed beta with an explicit operator flag (D5, amended 2026-11-19).
   the `upstream-change` data block. After editing the continuity set, prompt or
   schema, re-run `npm run packs:evaluate -- --no-packs --continuity`; the bible
   facts prompt carries the threads (`--bible-facts`).
+- **Book-level interrogation (Phase 4.3; D29).** NOTHING HERE WRITES THE
+  BIBLE: every path ends in questions. THE STRESS TEST runs only on the
+  author's confirmation of its "at most" (`confirmWorstCaseMicroUsd`; less is
+  409 ESTIMATE_CHANGED), which is 2.1's worst case (first attempt plus one
+  repair) over the very blocks the call will send; `fitStressInput` halves the
+  input until that fits the template's per-call budget, else
+  `CALL_OVER_BUDGET` and nothing is sent. One live test a book (advisory lock
+  `stress-test:<bookId>`, 409 STRESS_TEST_IN_PROGRESS). The `stress-test` job
+  (payload ids, `attempts: 1`) re-reads the book and refits: a worst case above
+  the confirmed one stops it STOPPED ESTIMATE_CHANGED with nothing sent; the
+  ceiling, the kill switch, D11 (503 STRESS_TEST_NOT_EVALUATED at start), the
+  rate minute (waited at most `MODEL_RATE_WAIT_MAX_MS`) and an abort stop it
+  with a named outcome; a test whose worker died is CLAIM_EXPIRED after
+  `STALE_STRESS_TEST_MS`. Its input is `buildStressInput`: one character
+  budget in shares across the book, elements, story order, 4.1's top facts,
+  open threads and passages, each shown row given a TAG (`E1`, `F1`, `T1`,
+  `P1`) and counted when cut (`coverage`, shown with the estimate and the run).
+  The model cites tags, never ids; code maps them back and refuses a weak point
+  with an unknown tag (rule 2), and drops a citation whose row is gone at
+  persist (CITATION_GONE when none is left). `validateWeakPoints` holds the
+  rest, in its header's order: questions or nothing (one question, its only
+  question mark), no rewrite (a quoted run past `QUOTED_RUN_WORDS_MAX` words
+  the book does not hold), no invented name (INVENTS_NAME), no copied
+  instruction or prompt; D14 flags. A session from a stress test is a
+  SELECTION of the cited elements and cited facts' subjects with
+  `stressTestId` (`requireStressTestForSession`; STRESS_SCOPE_MISMATCH), its
+  weak points a `weak-points` data block, their fields challenged first. THE
+  GAP HUNT's candidates are code (`computeGapCandidates`; the score in
+  `candidates.ts`'s header); the model only orders the top
+  `GAP_CANDIDATES_MAX`, each reason naming a candidate it cites
+  (`namesCandidate`); with no call possible, or nothing valid, the code's order
+  is stored and shown UNRANKED with its reason (`GAP_UNRANKED_REASONS`), never
+  as the model's. On demand only, never scheduled; a book keeps its newest
+  `GAP_HUNTS_LISTED_MAX`. THE PANEL is the three `panel-*` persona packs,
+  offered only by the setup sheet's Panel preset (`panelSetup` /
+  `isPanelSetup` in `setup.ts`), never in the picker or the defaults (the
+  defaults' schema and CHECK refuse a panel key; a session's list names all
+  three panel personas or none of them, so no panel voice sits beside its
+  namesake); a
+  persona pack may carry its own `situations.json` (`personaSituations`,
+  hashed and scanned like the shared one). Questions are grouped by
+  `groupByPersona` on the session and review pages. COMPACTION
+  (`compactedSessionFor`) rebuilds the request after it BY CODE
+  (`buildSessionState`: scope, pinned packs, every earlier answer and accepted
+  change verbatim, refusals by code) beside the model's summary fenced as model
+  text; never move any of those into the summary. The summary is an ordinary
+  `callStructured` call (ceiling, kill switch, D11, guard, the round's signal),
+  made only when the session's token budget takes its worst case
+  (`compactionCallWorstTokens`) beside the round it serves, stored once
+  per session and range; any failure leaves the round uncompacted.
+  `COMPACTION_ON_BY_DEFAULT` is false until 4.4. All three prompts follow D11
+  with their own records; after editing a set, prompt or schema, re-run
+  `npm run packs:evaluate -- --no-packs --book-level`, and after the question
+  prompt, `npm run packs:evaluate` (and `--rephrase`).
 - **Sanitising author text.** Every author-text write sanitises at the
   usecase layer before it is stored: plain text through `plainLine` /
   `plainBlock` (`src/lib/bible/text.ts`, over `sanitizePlainText`), rich text

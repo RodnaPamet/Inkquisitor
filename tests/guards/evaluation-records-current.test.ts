@@ -36,6 +36,12 @@ import { bibleFactsPromptHash, checkBibleFactsRecord } from '@/lib/facts/evals/e
 import bibleFactsRecord from '@/lib/facts/evals/evaluation-record.json';
 import { checkContinuityRecord, continuityPromptHash } from '@/lib/continuity/evals/evaluation';
 import continuityRecord from '@/lib/continuity/evals/evaluation-record.json';
+import { checkStressTestRecord, stressTestPromptHash } from '@/lib/stress-test/evals/evaluation';
+import stressTestRecord from '@/lib/stress-test/evals/evaluation-record.json';
+import { checkGapRankRecord, gapRankPromptHash } from '@/lib/gap-hunt/evals/evaluation';
+import gapRankRecord from '@/lib/gap-hunt/evals/evaluation-record.json';
+import { checkCompactionRecord, compactionPromptHash } from '@/lib/interview/evals/compaction-evaluation';
+import compactionRecord from '@/lib/interview/evals/compaction-evaluation-record.json';
 
 /** Every exported product prompt, and how its evaluation is re-run. */
 const EVALUATED_PROMPTS: Readonly<Record<string, string>> = {
@@ -48,6 +54,9 @@ const EVALUATED_PROMPTS: Readonly<Record<string, string>> = {
     EXTRACT_PROMPT: 'npm run packs:evaluate -- --no-packs --sources',
     BIBLE_FACTS_PROMPT: 'npm run packs:evaluate -- --no-packs --bible-facts',
     CONTINUITY_PROMPT: 'npm run packs:evaluate -- --no-packs --continuity',
+    STRESS_TEST_PROMPT: 'npm run packs:evaluate -- --no-packs --book-level',
+    GAP_RANK_PROMPT: 'npm run packs:evaluate -- --no-packs --book-level',
+    COMPACTION_PROMPT: 'npm run packs:evaluate -- --no-packs --book-level',
 };
 
 /** Prompts that are not product features, each with the reason it has no product evaluation record. */
@@ -113,6 +122,9 @@ describe('every record pins the prompt and packs as they are now', () => {
         ['EXTRACT_PROMPT', sourcesRecord, extractionPromptHash],
         ['BIBLE_FACTS_PROMPT', bibleFactsRecord, bibleFactsPromptHash],
         ['CONTINUITY_PROMPT', continuityRecord, continuityPromptHash],
+        ['STRESS_TEST_PROMPT', stressTestRecord, stressTestPromptHash],
+        ['GAP_RANK_PROMPT', gapRankRecord, gapRankPromptHash],
+        ['COMPACTION_PROMPT', compactionRecord, compactionPromptHash],
     ] as const)('the %s record names the prompt’s content hash now', (_name, record, current) => {
         expect((record as { promptHash?: string }).promptHash).toBe(current());
     });
@@ -135,6 +147,12 @@ describe('every record pins the prompt and packs as they are now', () => {
         if (!bibleFacts.ok) refusals.push(`bible facts: ${bibleFacts.reason}`);
         const continuity = checkContinuityRecord(continuityRecord);
         if (!continuity.ok) refusals.push(`continuity: ${continuity.reason}`);
+        const stressTest = checkStressTestRecord(stressTestRecord);
+        if (!stressTest.ok) refusals.push(`stress test: ${stressTest.reason}`);
+        const gapRank = checkGapRankRecord(gapRankRecord);
+        if (!gapRank.ok) refusals.push(`gap ranking: ${gapRank.reason}`);
+        const compaction = checkCompactionRecord(compactionRecord);
+        if (!compaction.ok) refusals.push(`rounds summary: ${compaction.reason}`);
         expect(refusals).toEqual([]);
     });
 });

@@ -81,6 +81,7 @@ export function interview(over: { questions?: QuestionView[]; status?: Interview
             stopDetail: null,
             roundBudget: 4,
             roundsRun: 0,
+            stressTestId: null,
             createdAt: '2026-11-19T10:00:00.000Z',
             endedAt: null,
         },

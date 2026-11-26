@@ -45,6 +45,10 @@ import { context, trace } from '@opentelemetry/api';
 import { AsyncLocalStorageContextManager } from '@opentelemetry/context-async-hooks';
 import { InMemorySpanExporter, SimpleSpanProcessor, TracerProvider } from '@opentelemetry/sdk-trace';
 import { prisma } from '@/lib/db';
+import { getGapHuntPage, runGapHunt } from '@/app-layer/usecases/gap-hunts';
+import { defaultGapRanker } from '@/lib/gap-hunt/model-seam';
+import { defaultStressTester } from '@/lib/stress-test/model-seam';
+import { MOUNTED as MOUNTED_INTERROGATION, runStressTest } from '../helpers/interrogation';
 import { saveStoryMap } from '@/app-layer/usecases/story-maps';
 import { searchBook } from '@/app-layer/usecases/book-search';
 import { POST as searchRoute } from '@/app/api/w/[workspaceSlug]/books/[bookId]/search/route';
@@ -59,7 +63,9 @@ import { createElement, updateElementFields } from '@/app-layer/usecases/bible-e
 import { addRelation, saveRelationFields } from '@/app-layer/usecases/bible-relations';
 import { importConceptNote } from '@/app-layer/usecases/bible-import';
 import { callStructured } from '@/app-layer/usecases/model-calls';
-import { getInterview, startInterview } from '@/app-layer/usecases/interviews';
+import { closeRound, getInterview, nextRound, startInterview } from '@/app-layer/usecases/interviews';
+import { defaultRoundsSummarizer } from '@/lib/interview/compaction-seam';
+import { fakeGenerator } from '../helpers/fake-question-generator';
 import { answerQuestion } from '@/app-layer/usecases/interview-answers';
 import { rephraseQuestion } from '@/app-layer/usecases/interview-rephrase';
 import { chargeModelCalls, MODEL_CALLS_LIMIT } from '@/lib/security/model-call-rate-limit';
@@ -290,6 +296,54 @@ it('a marker planted in every author-text path reaches no log line, span, Sentry
     ]);
     const { runId } = await dispatchResearchRun(ctx, bookId, brief.id, { gate: MOUNTED_GATE, enqueue: async () => undefined });
     await executeResearchRun({ workspaceId: ctx.workspaceId, runId }, { gate: MOUNTED_GATE, researcher: (c) => defaultResearcher(c, { fetch: web.fetch }) });
+
+    // Book-level interrogation (Phase 4.3, D29): a stress test over the canon (which carries the marker) whose
+    // weak point quotes it back; a gap hunt ranked by a model that names it; the stored text is encrypted, and
+    // nothing of it reaches a sink.
+    const stressApi = fakeAnthropic([
+        { kind: 'respond', answer: (body) => ({ kind: 'text', text: JSON.stringify({ weakPoints: [{ kind: 'OTHER', title: `The keeper ${MARKER}`, questions: [`What does the keeper ${MARKER} want?`], cites: [/(E\d+)\. \[CHARACTER\]/.exec(JSON.stringify(body.messages))![1]] }] }) }) },
+    ]);
+    const stress = await runStressTest(ctx, bookId, { tester: (c) => defaultStressTester(c, { fetch: stressApi.fetch }) });
+    expect(stress.outcome).toBe('OK');
+    {
+        const restore = setFakeApiKey();
+        try {
+            const page = await getGapHuntPage(ctx, bookId, { gate: MOUNTED_INTERROGATION });
+            // The ranking call MUST be made here: a page that could not rank would plant nothing in the path.
+            if (!page.ranking.available) throw new Error(`the gap ranking was not available (${page.ranking.reason})`);
+            const first = page.hunt.candidates[0];
+            const rankApi = fakeAnthropic([{ kind: 'text', text: JSON.stringify({ picks: [{ candidate: first.n, reason: `${first.fieldLabel} matters for ${MARKER}.`, cites: [first.n] }] }) }]);
+            const ranked = await runGapHunt(ctx, bookId, { confirmWorstCaseMicroUsd: page.ranking.worstMicroUsd }, { gate: MOUNTED_INTERROGATION, charge: () => undefined, ranker: (c) => defaultGapRanker(c, { fetch: rankApi.fetch }) });
+            expect(rankApi.requests).toHaveLength(1);
+            expect(ranked.ranked).toBe(true);
+        } finally {
+            restore();
+        }
+    }
+
+    // Long-session compaction (Phase 4.3, D29; off by default, on here): a session whose answers carry the marker,
+    // its earlier rounds summarised through the real seam by a model that names the marker; the summary is stored
+    // encrypted and reaches no sink.
+    {
+        const restore = setFakeApiKey();
+        try {
+            const summaryApi = fakeAnthropic([{ kind: 'repeat', turn: { kind: 'text', text: JSON.stringify({ summary: `The questions covered what the keeper wants and fears (${MARKER}).` }) } }]);
+            const compacting = { generator: fakeGenerator(), embedder: stubQuestionEmbedder, compaction: { enabled: true, thresholdChars: 10 }, summarizer: (c: typeof ctx) => defaultRoundsSummarizer(c, { fetch: summaryApi.fetch }), charge: () => undefined };
+            const keeper = await createElement(ctx, bookId, { kind: 'CHARACTER', name: marked('Bram'), summary: marked('The relief keeper') });
+            let long = await startInterview(ctx, bookId, { scope: 'ELEMENT', elementId: keeper.id, depth: 5, detail: 3 }, compacting);
+            for (let round = 1; round <= 2; round++) {
+                for (const question of long.round!.questions) await answerQuestion(ctx, bookId, long.session.id, question.id, { text: marked(`Round ${round}: he keeps a tide table.`) }).catch(() => undefined);
+                await closeRound(ctx, bookId, long.session.id, String(long.round!.number), { skipUnanswered: true });
+                long = await nextRound(ctx, bookId, long.session.id, compacting);
+            }
+            expect(summaryApi.requests).toHaveLength(1);
+            const stored = await prisma.$queryRawUnsafe<Array<{ summary: string }>>('SELECT "summary" FROM "InterviewCompaction" WHERE "sessionId" = $1', long.session.id);
+            expect(stored).toHaveLength(1);
+            expect(stored[0].summary.startsWith('v2:')).toBe(true);
+        } finally {
+            restore();
+        }
+    }
 
     // Sources (Phase 4.0): a DOCX whose name and text carry the marker, read into chunks, its
     // facts drawn by a model that quotes it, a second chunk answered with marker-laden invalid output.

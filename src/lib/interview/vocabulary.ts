@@ -43,9 +43,31 @@ export type QuestionOrigin = (typeof QUESTION_ORIGINS)[number];
 export const ANSWER_STATUSES = ['ANSWERED', 'SKIPPED', 'DECIDE_LATER'] as const;
 export type AnswerStatus = (typeof ANSWER_STATUSES)[number];
 
-/** The six interviewer personas (content formats 1.10). Closed. */
-export const PERSONA_KEYS = ['gentle-mentor', 'ruthless-editor', 'socratic', 'devils-advocate', 'target-reader', 'genre-specialist'] as const;
+/**
+ * The interviewer personas (content formats 1.10): the six of Phase 2.3, then
+ * the three BOOK-LEVEL PANEL personas of Phase 4.3 (D29), which question the
+ * whole book together and are offered only through the setup sheet's Panel
+ * preset (`PANEL_PERSONA_KEYS`). Closed; the migration's CHECK holds the same list.
+ */
+export const PERSONA_KEYS = [
+    'gentle-mentor',
+    'ruthless-editor',
+    'socratic',
+    'devils-advocate',
+    'target-reader',
+    'genre-specialist',
+    'panel-target-reader',
+    'panel-ruthless-editor',
+    'panel-genre-specialist',
+] as const;
 export type PersonaKey = (typeof PERSONA_KEYS)[number];
+
+/** The book-level panel (Phase 4.3, D29): Target Reader, Ruthless Editor and Genre Specialist, in that order. */
+export const PANEL_PERSONA_KEYS = ['panel-target-reader', 'panel-ruthless-editor', 'panel-genre-specialist'] as const satisfies readonly PersonaKey[];
+
+export function isPanelPersona(key: string): boolean {
+    return (PANEL_PERSONA_KEYS as readonly string[]).includes(key);
+}
 
 export function isPersonaKey(value: unknown): value is PersonaKey {
     return typeof value === 'string' && (PERSONA_KEYS as readonly string[]).includes(value);

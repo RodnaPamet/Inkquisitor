@@ -195,6 +195,9 @@ describe('wiring', () => {
             StoryFactOverride: ['text'],
             StoryThread: ['title', 'note'],
             StoryThreadProposal: ['title', 'quote'],
+            StressWeakPoint: ['title', 'questions'],
+            GapHunt: ['picks'],
+            InterviewCompaction: ['summary'],
         });
         expect(compileManifest(ENCRYPTED_FIELDS).isEmpty).toBe(false);
     });

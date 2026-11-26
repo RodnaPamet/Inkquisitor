@@ -65,6 +65,8 @@ import { encodeJson, sanitiseQuestionForStorage } from '@/lib/interview/storage'
 import { STATUS_AFTER_STOP, type PersonaKey, type StopReason } from '@/lib/interview/vocabulary';
 import { PENDING_SUBJECT_ID, subjectIdOf } from '@/lib/interview/subjects';
 import { assembleSourceContext, EMPTY_SOURCE_CONTEXT, type SourceContext } from './source-retrieval';
+import { compactedSessionFor, type CompactionDeps } from './interview-compaction';
+import type { FieldRef } from '@/lib/interview/frontier';
 import { challengeableOf, frontierOf, frontierStop, loadInterviewState, nextRoundNumber, stopDetailFor, type InterviewState } from './interview-state';
 import { defaultQuestionEmbedder, findQuestionNeighbours, questionRecord, upsertQuestionVectors, type QuestionEmbedder } from './question-embeddings';
 
@@ -80,7 +82,7 @@ export interface InterviewStream {
 }
 
 /** What a usecase may be handed instead of the deployment's own (tests; the evaluation), and a stream's sink. */
-export interface InterviewDeps {
+export interface InterviewDeps extends Omit<CompactionDeps, 'packRecordMode'> {
     generator?: QuestionGenerator;
     /** `null`: no embedder (deduplication stays lexical). Omitted: the deployment's. */
     embedder?: QuestionEmbedder | null;
@@ -225,14 +227,15 @@ function planOf(state: InterviewState, session: SessionRow): { frontier: Frontie
     const frontier = frontierOf(state, session.depth);
     const challengeable = challengeableOf(frontier, session.depth);
     // Phase 4.2 (D28): a grill on what changed challenges the stale entry's fields first, one a round, each once.
-    const stale = state.stale;
-    const staleFirst = stale
-        ? [...challengeable.filter((r) => r.elementId === stale.elementId && stale.fieldKeys.includes(r.fieldKey)), ...challengeable.filter((r) => !(r.elementId === stale.elementId && stale.fieldKeys.includes(r.fieldKey)))]
-        : challengeable;
+    // Phase 4.3 (D29): a session from a stress test challenges the fields its weak points bear on first, the same way.
+    const focus = state.stale ? [{ elementId: state.stale.elementId, fieldKeys: state.stale.fieldKeys }] : (state.weakPoints?.focus ?? []);
+    const focused = (r: FieldRef) => focus.some((f) => f.elementId === r.elementId && f.fieldKeys.includes(r.fieldKey));
+    const focusFields = focus.reduce((n, f) => n + f.fieldKeys.length, 0);
+    const staleFirst = focus.length > 0 ? [...challengeable.filter(focused), ...challengeable.filter((r) => !focused(r))] : challengeable;
     const plan = planRound({
         frontier: frontier.frontier,
         challengeable: staleFirst,
-        ...(stale ? { challengeAlways: true, challengesMax: Math.min(STALE_CHALLENGES_MAX, Math.max(CHALLENGES_PER_SESSION, stale.fieldKeys.length)) } : {}),
+        ...(focus.length > 0 ? { challengeAlways: true, challengesMax: Math.min(STALE_CHALLENGES_MAX, Math.max(CHALLENGES_PER_SESSION, focusFields)) } : {}),
         challenged: state.challenged,
         challengesPlanned: state.challengesPlanned,
         depth: session.depth,
@@ -434,6 +437,7 @@ export async function generateClaimedRound(
         // Read inside the try: the round is claimed, so a context that cannot be read FAILS the round (and pauses the
         // session, named) rather than leaving it GENERATING until its claim goes stale.
         const sourceContext = claim.contextDeferred ? await withQueryContext(ctx, session, claim, embedder) : claim.sourceContext;
+        const compacted = await compactedSessionFor(ctx, session, claim, { ...deps, packRecordMode: deps.packRecordMode });
         output = await produceRound(
             {
                 bookId: session.bookId,
@@ -449,7 +453,14 @@ export async function generateClaimedRound(
                 asked: state.asked,
                 packs,
                 // Phase 4.2 (D28): a grill on what changed carries the change as one more data block.
-                sourceContext: state.stale ? { ...sourceContext, upstreamChange: state.stale.changeText } : sourceContext,
+                // Phase 4.3 (D29): a session from a stress test carries its weak points as one more data block.
+                sourceContext: {
+                    ...sourceContext,
+                    ...(state.stale ? { upstreamChange: state.stale.changeText } : {}),
+                    ...(state.weakPoints ? { weakPoints: state.weakPoints.text } : {}),
+                },
+                // Phase 4.3: a long session's earlier rounds, compacted (the state block and the summary; off by default).
+                ...(compacted ? { compacted } : {}),
                 // The cosine thresholds of the embedder's revision (issue #32 item 1): calibrated, configured, or the uncalibrated default.
                 cosineThresholds: embedder ? cosineThresholdsFor(embedder.revision, env.DEDUPE_COSINE_THRESHOLDS) : undefined,
             },
