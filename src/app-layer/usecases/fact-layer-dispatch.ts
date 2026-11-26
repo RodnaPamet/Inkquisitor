@@ -30,6 +30,7 @@ import { getEmbeddingProvider, MAX_EMBED_BATCH, vectorContentHash, type Embeddin
 import { decodeFieldValue, type FieldValue } from '@/lib/bible/field-values';
 import { plainBlock } from '@/lib/bible/text';
 import { runInWorkspaceContext, runWithoutRls } from '@/lib/db/rls-middleware';
+import { bibleFactsCallFloor } from '@/lib/facts/cost';
 import { bibleFactGate } from '@/lib/facts/record-gate';
 import {
     ANSWER_MODEL,
@@ -37,13 +38,14 @@ import {
     DISPATCH_EMBEDDINGS_MAX,
     DISPATCH_EXTRACTIONS_MAX,
     EMBEDDING_TASK_ATTEMPTS_MAX,
+    FACT_EXTRACTION_RETRY_MS,
     FACT_EXTRACTION_SETTLE_MS,
     STALE_EXTRACTION_MS,
     STORY_FACT_MODEL,
 } from '@/lib/facts/vocabulary';
 import { logger } from '@/lib/observability/logger';
 import { deploymentPackRecordMode } from './interview-packs';
-import { modelUnavailableReason } from './model-calls';
+import { modelBudgetState, modelUnavailableReason } from './model-calls';
 
 /** Characters of a row's text embedded at most (an embedding is a summary of meaning, not a copy). */
 export const EMBED_TEXT_MAX_CHARS = 8_000;
@@ -56,11 +58,15 @@ export interface DispatchDeps {
     /** Only these workspaces (tests, which share one database; the deployment's dispatcher scans every workspace). */
     workspaceIds?: readonly string[];
     now?: () => Date;
+    /** The least a bible fact call costs at worst (tests: a figure of their own). */
+    callFloorMicroUsd?: () => number;
 }
 
 export interface DispatchResult {
     queued: number;
     enqueueFailed: number;
+    /** Due rows of a workspace whose month had no room: left waiting, STOPPED CEILING, nothing queued. */
+    deferredAtCeiling: number;
     extractionClosed: boolean;
     embedded: number;
     embedDropped: number;
@@ -74,7 +80,7 @@ function defaultExtractionOpen(): boolean {
 /** Run one tick (the job's body). */
 export async function executeFactLayerDispatch(deps: DispatchDeps = {}): Promise<DispatchResult> {
     const now = (deps.now ?? (() => new Date()))();
-    const result: DispatchResult = { queued: 0, enqueueFailed: 0, extractionClosed: false, embedded: 0, embedDropped: 0, embedFailed: 0 };
+    const result: DispatchResult = { queued: 0, enqueueFailed: 0, deferredAtCeiling: 0, extractionClosed: false, embedded: 0, embedDropped: 0, embedFailed: 0 };
     const enqueue = deps.enqueue ?? (async (name, payload, options) => (await import('@/app-layer/jobs/queue')).enqueue(name, payload, options));
 
     // ── Extractions ──
@@ -85,9 +91,19 @@ export async function executeFactLayerDispatch(deps: DispatchDeps = {}): Promise
         );
         const byWorkspace = new Map<string, typeof due>();
         for (const d of due) byWorkspace.set(d.workspaceId, [...(byWorkspace.get(d.workspaceId) ?? []), d]);
+        const floor = (deps.callFloorMicroUsd ?? bibleFactsCallFloor)();
         for (const [workspaceId, rows] of byWorkspace) {
             const scope = { workspaceId, requestId: randomUUID() };
             const marked = await runInWorkspaceContext(scope, async (db) => {
+                // AT THE CEILING, WAIT (owner decision, 2026-11-21): the month's own ledger (settled spend, live
+                // reservations and the least a call costs at worst) is asked BEFORE anything is queued. With no room,
+                // nothing of the workspace is queued: its due rows wait STOPPED CEILING until a later tick finds room —
+                // the next month, or a raised ceiling — and are then queued oldest first.
+                const budget = await modelBudgetState(db, { workspaceId }, floor, undefined, now);
+                if (budget.workspaceCeilingReached) {
+                    result.deferredAtCeiling += await FactExtractionRepository.deferAtCeiling(db, workspaceId, rows.map((r) => r.id), window, new Date(now.getTime() + FACT_EXTRACTION_RETRY_MS));
+                    return [];
+                }
                 const out: Array<{ id: string; attempt: number }> = [];
                 for (const r of rows) if (await FactExtractionRepository.markQueued(db, workspaceId, r.id, now, window)) out.push({ id: r.id, attempt: r.attempts + 1 });
                 return out;

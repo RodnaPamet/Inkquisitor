@@ -109,6 +109,9 @@ function defaultSleep(ms: number, signal?: AbortSignal): Promise<void> {
     });
 }
 
+/** Stops that wait on the deployment or the month, not on the extraction: they count no attempt. */
+const UNCOUNTED_STOPS: ReadonlySet<FactExtractionOutcome> = new Set(['CEILING', 'KILL_SWITCH']);
+
 function statusOf(outcome: FactExtractionOutcome): FactExtractionStatus {
     if (outcome === 'OK' || outcome === 'NO_CHANGE') return 'DONE';
     if (outcome === 'ATTEMPTS_SPENT') return 'FAILED';
@@ -130,6 +133,9 @@ async function end(
             outcome,
             from: claim ? ['RUNNING'] : ['QUEUED'],
             claim,
+            // Owner decision (2026-11-21): a stop at the ceiling or the kill switch spends no attempt, so waiting out a
+            // month (or a switched-off deployment) never ends a save's extraction ATTEMPTS_SPENT.
+            refundAttempt: UNCOUNTED_STOPS.has(outcome),
             nextAttemptAt: status === 'STOPPED' ? new Date(now.getTime() + FACT_EXTRACTION_RETRY_MS) : null,
             metrics: metrics as unknown as Prisma.InputJsonValue,
             at: now,

@@ -49,6 +49,27 @@ export interface ExtractionDueWindow {
     staleBefore: Date;
 }
 
+/** What discovery hands the dispatcher: ids and codes only. */
+const DUE_SELECT = { id: true, workspaceId: true, attempts: true, status: true, outcome: true } as const satisfies Prisma.BibleFactExtractionSelect;
+export type DueExtraction = Prisma.BibleFactExtractionGetPayload<{ select: typeof DUE_SELECT }>;
+
+/** The lists interleaved, first of each, then second of each…, cut at `take`. */
+export function roundRobin<T>(lists: readonly (readonly T[])[], take: number): T[] {
+    const out: T[] = [];
+    for (let i = 0; out.length < take; i++) {
+        let any = false;
+        for (const l of lists) {
+            if (i < l.length) {
+                any = true;
+                out.push(l[i]);
+                if (out.length >= take) break;
+            }
+        }
+        if (!any) break;
+    }
+    return out;
+}
+
 function dueWhere(data: ExtractionDueWindow): Prisma.BibleFactExtractionWhereInput {
     return {
         OR: [
@@ -72,20 +93,37 @@ export const FactExtractionRepository = {
         return db.bibleFactExtraction.findMany({ where: { workspaceId, bookId }, orderBy: [{ createdAt: 'desc' }, { id: 'asc' }], take, select: EXTRACTION_SELECT });
     },
     /**
-     * DISCOVERY (outside RLS, ids only): due extractions across workspaces, oldest first — PENDING ones settled
-     * for `settledBefore`, STOPPED ones whose next attempt is due, and QUEUED or RUNNING ones with no sign of life
-     * since `staleBefore` (a lost job or a dead worker).
+     * DISCOVERY (outside RLS, ids only): due extractions across workspaces — PENDING ones settled for
+     * `settledBefore`, STOPPED ones whose next attempt is due, and QUEUED or RUNNING ones with no sign of life since
+     * `staleBefore` (a lost job or a dead worker) — SHARED FAIRLY (owner decision, 2026-11-21): the workspaces with
+     * due rows (oldest due row first, at most `take` of them) each get up to an even share of `take`, oldest first
+     * within the workspace, and the rows are interleaved round-robin before the cut. One workspace's backlog (a month
+     * of ceiling stops coming due at once) never starves another's new extractions.
      */
-    async listDue(db: PrismaClient, data: ExtractionDueWindow & { take: number; workspaceIds?: readonly string[] }): Promise<Array<{ id: string; workspaceId: string; attempts: number }>> {
-        return db.bibleFactExtraction.findMany({
-            where: {
-                ...(data.workspaceIds ? { workspaceId: { in: [...data.workspaceIds] } } : {}),
-                ...dueWhere(data),
-            },
-            orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+    async listDue(db: PrismaClient, data: ExtractionDueWindow & { take: number; workspaceIds?: readonly string[] }): Promise<DueExtraction[]> {
+        const scope = data.workspaceIds ? { workspaceId: { in: [...data.workspaceIds] } } : {};
+        const groups = await db.bibleFactExtraction.groupBy({
+            by: ['workspaceId'],
+            where: { ...scope, ...dueWhere(data) },
+            _min: { createdAt: true },
+            orderBy: [{ _min: { createdAt: 'asc' } }, { workspaceId: 'asc' }],
             take: data.take,
-            select: { id: true, workspaceId: true, attempts: true },
         });
+        if (groups.length === 0) return [];
+        const share = Math.max(1, Math.ceil(data.take / groups.length));
+        const lists: DueExtraction[][] = [];
+        for (const g of groups) {
+            // One bounded read per workspace with due rows (at most `take` of them): the fair share's own shape.
+            lists.push(
+                await db.bibleFactExtraction.findMany({
+                    where: { workspaceId: g.workspaceId, ...dueWhere(data) },
+                    orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+                    take: share,
+                    select: DUE_SELECT,
+                }),
+            );
+        }
+        return roundRobin(lists, data.take);
     },
     /**
      * Mark a due row QUEUED, counting the attempt — only while it is STILL due by the same window discovery used,
@@ -98,6 +136,19 @@ export const FactExtractionRepository = {
             data: { status: 'QUEUED', queuedAt: at, startedAt: null, attempts: { increment: 1 } },
         });
         return r.count === 1;
+    },
+    /**
+     * The workspace's month has no room (the ledger's own reading, asked by the dispatcher): its due rows WAIT,
+     * STOPPED CEILING, looked at again at `until`, no attempt counted. A stale claim among them is ended with it.
+     * Only while still due (the same window, the same statement).
+     */
+    async deferAtCeiling(db: Db, workspaceId: string, ids: readonly string[], due: ExtractionDueWindow, until: Date): Promise<number> {
+        if (ids.length === 0) return 0;
+        const r = await db.bibleFactExtraction.updateMany({
+            where: { workspaceId, id: { in: [...ids] }, ...dueWhere(due) },
+            data: { status: 'STOPPED', outcome: 'CEILING', nextAttemptAt: until, queuedAt: null, startedAt: null },
+        });
+        return r.count;
     },
     /** QUEUED → RUNNING, conditionally; the claim's identity is `startedAt`. */
     async claim(db: Db, workspaceId: string, id: string, at: Date): Promise<boolean> {
@@ -120,11 +171,14 @@ export const FactExtractionRepository = {
             promptVersion?: string | null;
             metrics: Prisma.InputJsonValue;
             at: Date;
+            /** Give back the attempt the dispatch counted (a stop at the ceiling or the kill switch spends none). */
+            refundAttempt?: boolean;
         },
     ): Promise<boolean> {
         const r = await db.bibleFactExtraction.updateMany({
-            where: { workspaceId, id, status: { in: data.from }, ...(data.claim ? { startedAt: data.claim } : {}) },
+            where: { workspaceId, id, status: { in: data.from }, ...(data.claim ? { startedAt: data.claim } : {}), ...(data.refundAttempt ? { attempts: { gt: 0 } } : {}) },
             data: {
+                ...(data.refundAttempt ? { attempts: { decrement: 1 } } : {}),
                 status: data.status,
                 outcome: data.outcome,
                 nextAttemptAt: data.nextAttemptAt ?? null,

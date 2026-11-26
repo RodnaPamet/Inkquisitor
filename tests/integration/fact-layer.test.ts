@@ -37,6 +37,8 @@ import type { ExtractResult, FactExtractor } from '@/lib/sources/extractor';
 import { fakeGenerator } from '../helpers/fake-question-generator';
 import { setFakeApiKey } from '../helpers/fake-anthropic';
 import { ANY_DUE } from '../helpers/facts';
+import { FACT_EXTRACTION_ATTEMPTS_MAX } from '@/lib/facts/vocabulary';
+import { periodStartOf } from '@/lib/ai/call-record';
 import { ingestText, seedSourceLibrary } from '../helpers/sources';
 import { decideFact, listBookFacts } from '@/app-layer/usecases/source-facts';
 import type { EmbeddingProvider } from '@/lib/ai/embeddings';
@@ -570,5 +572,75 @@ describe('review of 4.1: races and what the context shows', () => {
         const context = await runInWorkspaceContext(ctx, (db) => assembleSourceContext(db, ctx, bookId, [{ elementId: wren.id, kind: 'CHARACTER', name: 'Wren' }], { vector: q.vectors[0], revision: provider.revision }));
         expect(context.facts.some((f) => f.statement === inherited.statement)).toBe(false);
         expect(context.facts).toContainEqual({ subject: inherited.subjectName, statement: 'In this book Mara Qv stays.', from: 'OVERRIDE' });
+    });
+});
+
+describe('owner decisions of 2026-11-21: at the ceiling, wait for next month', () => {
+    const gate = () => ({ mounted: true as const, recordKind: 'structural' as const });
+    const ceiling = (): FactExtractor => ({ extract: async () => ({ ok: false, failure: 'WORKSPACE_CEILING', errorCode: 'CEILING', tokensUsed: 0, costMicroUsd: 0, callIds: [] }) });
+
+    async function spendTheMonth(workspaceId: string, ats: Date[]) {
+        await runWithoutRls({ reason: 'test' }, async (db) => {
+            for (const at of ats) {
+                const periodStart = periodStartOf(at);
+                await db.aiSpendMonth.upsert({ where: { workspaceId_periodStart: { workspaceId, periodStart } }, create: { workspaceId, periodStart, spentMicroUsd: BigInt(1_000_000_000_000) }, update: { spentMicroUsd: BigInt(1_000_000_000_000) } });
+            }
+        });
+    }
+
+    it('a stop at the ceiling counts no attempt: a month of hourly retries never ends a save ATTEMPTS_SPENT', async () => {
+        const owner = await createAccount();
+        const ctx = workspaceCtx(owner);
+        const bookId = (await createBook(ctx, { title: 'Waiting' })).id;
+        await createElement(ctx, bookId, { kind: 'CHARACTER', name: 'Wren', summary: 'Wren wants to cross the river before the spring floods.' });
+        const [row] = await rows(ctx, bookId);
+        for (let i = 0; i <= FACT_EXTRACTION_ATTEMPTS_MAX + 1; i++) {
+            await runInWorkspaceContext(ctx, (db) => FactExtractionRepository.markQueued(db, ctx.workspaceId, row.id, new Date(), ANY_DUE));
+            const r = await executeBibleFactExtraction({ workspaceId: ctx.workspaceId, extractionId: row.id }, { extractor: ceiling, charge: unlimited, gate });
+            expect(r.outcome).toBe('CEILING');
+        }
+        expect((await rows(ctx, bookId))[0]).toMatchObject({ status: 'STOPPED', outcome: 'CEILING', attempts: 0 });
+    });
+
+    it('the dispatcher queues nothing of a workspace whose month is spent, and catches up oldest first once it has room', async () => {
+        const owner = await createAccount();
+        const ctx = workspaceCtx(owner);
+        const bookId = (await createBook(ctx, { title: 'Spent' })).id;
+        await createElement(ctx, bookId, { kind: 'CHARACTER', name: 'Wren', summary: 'Wren wants to cross the river before the spring floods.' });
+        await createElement(ctx, bookId, { kind: 'CHARACTER', name: 'Cal', summary: 'Cal ferries goods across the river by night.' });
+        const oldestFirst = (await rows(ctx, bookId)).map((r) => r.id).reverse();
+        const first = new Date(Date.now() + 60_000);
+        const later = new Date(first.getTime() + 2 * 60 * 60_000);
+        await spendTheMonth(ctx.workspaceId, [first, later]);
+        const tick = async (now: Date) => {
+            const queued: string[] = [];
+            const r = await executeFactLayerDispatch({ enqueue: async (_n, p) => void queued.push((p as { extractionId: string }).extractionId), extractionOpen: () => true, embedder: () => null, workspaceIds: [ctx.workspaceId], now: () => now });
+            return { queued, r };
+        };
+        const spent = await tick(first);
+        expect(spent.queued).toEqual([]);
+        expect(spent.r.deferredAtCeiling).toBe(2);
+        expect((await rows(ctx, bookId)).every((r) => r.status === 'STOPPED' && r.outcome === 'CEILING' && r.attempts === 0 && r.nextAttemptAt!.getTime() > first.getTime())).toBe(true);
+        // Due again, the month still spent: still nothing queued.
+        expect((await tick(later)).queued).toEqual([]);
+        // The month has room (next month, or a raised ceiling): queued, oldest first.
+        await runWithoutRls({ reason: 'test' }, (db) => db.aiSpendMonth.deleteMany({ where: { workspaceId: ctx.workspaceId } }));
+        const resumed = await tick(new Date(later.getTime() + 2 * 60 * 60_000));
+        expect(resumed.queued).toEqual(oldestFirst);
+    });
+
+    it('discovery shares the tick fairly: one workspace’s backlog never starves another’s new extraction', async () => {
+        const busy = workspaceCtx(await createAccount());
+        const quiet = workspaceCtx(await createAccount());
+        const busyBook = (await createBook(busy, { title: 'Backlog' })).id;
+        for (let i = 0; i < 4; i++) await createElement(busy, busyBook, { kind: 'CHARACTER', name: `Wren ${i}`, summary: `Wren ${i} wants to cross the river.` });
+        const quietBook = (await createBook(quiet, { title: 'New' })).id;
+        await createElement(quiet, quietBook, { kind: 'CHARACTER', name: 'Ilse', summary: 'Ilse keeps bees on the observatory roof.' });
+        const due = await runWithoutRls({ reason: 'test' }, (db) => FactExtractionRepository.listDue(db, { ...ANY_DUE, take: 3, workspaceIds: [busy.workspaceId, quiet.workspaceId] }));
+        expect(due.filter((d) => d.workspaceId === quiet.workspaceId)).toHaveLength(1);
+        expect(due.filter((d) => d.workspaceId === busy.workspaceId)).toHaveLength(2);
+        // And within a workspace, oldest first.
+        const busyOldest = (await rows(busy, busyBook)).map((r) => r.id).reverse();
+        expect(due.filter((d) => d.workspaceId === busy.workspaceId).map((d) => d.id)).toEqual(busyOldest.slice(0, 2));
     });
 });

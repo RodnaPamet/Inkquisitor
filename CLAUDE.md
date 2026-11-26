@@ -1353,14 +1353,19 @@ closed beta with an explicit operator flag (D5, amended 2026-11-19).
   minutely `fact-layer-dispatch` job queues due rows (settled for
   `FACT_EXTRACTION_SETTLE_MS`; STOPPED ones when due; stale QUEUED/RUNNING ones)
   as `bible-facts` jobs (payload ids), and only while a call can be made and a
-  record mounts (D11); discovery is the closed `fact-layer-discovery` bypass,
+  record mounts (D11) and the workspace's month has room for the least call
+  (`modelBudgetState` over `bibleFactsCallFloor()`; with none, its rows wait
+  STOPPED CEILING, `deferAtCeiling`, and resume oldest first); discovery is
+  fair-shared between workspaces (`listDue`: an even share each, round-robin)
+  and is the closed `fact-layer-discovery` bypass,
   ids only, and the mark asks the SAME due window in its own statement (never
   re-queue a row another tick queued: its claim is live). `executeBibleFactExtraction`
   SKIPS a superseded version (a newer one of the same entry covers it: a run of
   autosaves is read once), asked before the claim AND again at persist under the
   fact lock (an older version never writes after a newer one), a gone
   subject, a deleted book or an author who may no longer edit; STOPS
-  (resumable, `nextAttemptAt`) at the kill switch, the ceiling, the rate minute
+  (resumable, `nextAttemptAt`; a stop at the ceiling or the kill switch counts
+  no attempt, D27 addendum) at the kill switch, the ceiling, the rate minute
   (waited at most `MODEL_RATE_WAIT_MAX_MS`, never an uncharged call), D11, a
   failed call; otherwise renders the version (`entry-text.ts`) and sends ONLY
   the sections changed since the entry's newest extracted version (its
