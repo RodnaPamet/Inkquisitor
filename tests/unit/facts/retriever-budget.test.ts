@@ -14,6 +14,17 @@ jest.mock('@/app-layer/repositories/source.repository', () => ({
     StoryFactOverrideRepository: { listForBook: jest.fn(async () => []) },
     SourceChunkRepository: { listForSources: jest.fn(async () => []), listByIds: jest.fn(async () => []) },
 }));
+// The entries as they stand: every fact's quote is in its element's current text unless a test takes it out.
+let entrySummary = '';
+jest.mock('@/app-layer/repositories/fact-layer.repository', () => ({
+    BibleVersionReadRepository: {
+        newestElementSnapshots: async () => {
+            const { buildSnapshot, serialiseSnapshot } = jest.requireActual('@/lib/bible/snapshot');
+            return new Map([['el-1', serialiseSnapshot(buildSnapshot({ element: { kind: 'CHARACTER', name: 'Wren', slug: 'wren', status: 'DRAFT', summary: entrySummary, customLabel: null }, fields: [] }))]]);
+        },
+        newestRelationSnapshots: async () => new Map(),
+    },
+}));
 jest.mock('@/app-layer/repositories/vector.repository', () => ({
     getVectorRepository: () => ({
         search: async (_db: unknown, _ws: string, q: Record<string, unknown>) => {
@@ -29,16 +40,24 @@ import { assembleSourceContext, FACTS_TOP_K } from '@/app-layer/usecases/source-
 const ctx = { workspaceId: 'ws', requestId: 'r', userId: 'u', workspaceSlug: 'w', role: 'OWNER', permissions: {} } as never;
 const db = {} as never;
 const scope = [{ elementId: 'el-1', kind: 'CHARACTER' as const, name: 'Wren' }];
-const fact = (id: string, statement: string) => ({ id, subjectElementId: 'el-1', predicate: 'WANT', statement, subjectName: 'Wren', supersededAt: null, bookId: 'book-1', sourceId: null, status: 'CONFIRMED' });
+const fact = (id: string, statement: string) => ({ id, elementId: 'el-1', relationId: null, quote: statement, subjectElementId: 'el-1', predicate: 'WANT', statement, subjectName: 'Wren', supersededAt: null, bookId: 'book-1', sourceId: null, status: 'CONFIRMED' });
+
+/** The scope's live bible facts, each still stated by its element's current text. */
+function serve(rows: Array<ReturnType<typeof fact>>) {
+    bibleAbout.mockResolvedValue(rows);
+    entrySummary = rows.map((r) => r.quote).join(' ');
+}
 
 beforeEach(() => {
     searches.length = 0;
     bibleAbout.mockReset();
+    bibleAbout.mockImplementation(async () => []);
+    entrySummary = '';
     anyByIds.mockReset();
 });
 
 it('related summaries, then the scope’s facts, then the nearest others, the allowed set named in every vector query', async () => {
-    bibleAbout.mockResolvedValue([fact('own-1', 'Wren wants to cross the river.')]);
+    serve([fact('own-1', 'Wren wants to cross the river.')]);
     anyByIds.mockResolvedValue([fact('near-1', 'Cal ferries goods by night.'), { ...fact('other-book', 'Not this book.'), bookId: 'book-2' }]);
     const out = await assembleSourceContext(db, ctx, 'book-1', scope, { vector: [1, 0], revision: 'r' }, 3_000, [{ kind: 'CHARACTER', name: 'Cal', summary: 'A smuggler.' }]);
     expect(out.related).toEqual([{ kind: 'CHARACTER', name: 'Cal', summary: 'A smuggler.' }]);
@@ -52,7 +71,7 @@ it('related summaries, then the scope’s facts, then the nearest others, the al
 });
 
 it('keeps at most FACTS_TOP_K facts and the facts’ share of the budget, and says it cut', async () => {
-    bibleAbout.mockResolvedValue(Array.from({ length: FACTS_TOP_K + 10 }, (_, i) => fact(`f-${i}`, `Fact number ${i} about Wren.`)));
+    serve(Array.from({ length: FACTS_TOP_K + 10 }, (_, i) => fact(`f-${i}`, `Fact number ${i} about Wren.`)));
     anyByIds.mockResolvedValue([]);
     const out = await assembleSourceContext(db, ctx, 'book-1', scope, null, 3_000, null);
     expect(out.facts).toHaveLength(FACTS_TOP_K);
@@ -64,7 +83,7 @@ it('keeps at most FACTS_TOP_K facts and the facts’ share of the budget, and sa
 });
 
 it('cuts the related summaries to their share before any fact is read in', async () => {
-    bibleAbout.mockResolvedValue([fact('own-1', 'Wren wants to cross the river.')]);
+    serve([fact('own-1', 'Wren wants to cross the river.')]);
     const many = Array.from({ length: 40 }, (_, i) => ({ kind: 'CHARACTER' as const, name: `Neighbour ${i}`, summary: 'x'.repeat(500) }));
     const out = await assembleSourceContext(db, ctx, 'book-1', scope, null, 3_000, many);
     expect(out.related!.length).toBeLessThan(40);
@@ -74,8 +93,15 @@ it('cuts the related summaries to their share before any fact is read in', async
 });
 
 it('reads a vector hit back only while it is still CONFIRMED (the query’s own condition, asked again)', async () => {
-    bibleAbout.mockResolvedValue([]);
+    serve([]);
     anyByIds.mockResolvedValue([{ ...fact('near-1', 'Cal ferries goods by night.'), bookId: null, sourceId: 'src-book', status: 'REJECTED' }]);
     const out = await assembleSourceContext(db, ctx, 'book-1', scope, { vector: [1, 0], revision: 'r' }, 3_000, null);
     expect(out.facts).toEqual([]);
+});
+
+it('a bible fact whose quote is gone from its entry as it stands is not shown (the D27 addendum)', async () => {
+    serve([fact('own-1', 'Wren wants to cross the river.'), fact('own-2', 'Wren keeps the lock.')]);
+    entrySummary = 'Wren keeps the lock.';
+    const out = await assembleSourceContext(db, ctx, 'book-1', scope, null, 3_000, null);
+    expect(out.facts.map((f) => f.statement)).toEqual(['Wren keeps the lock.']);
 });

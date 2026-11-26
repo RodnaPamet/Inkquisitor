@@ -1396,7 +1396,11 @@ closed beta with an explicit operator flag (D5, amended 2026-11-19).
   (shared with other books). The book's fact lock (`story-facts:<bookId>`) is
   taken alone, never with a bible lock, and audit is last. Bible facts answer fields at once
   through `PREDICATE_FIELDS` (`bibleFactsCheck`, `bible-facts` in
-  `answered[].by`; 4.1 adds only WORLD_RULE's RULE). EMBEDDINGS: elements, facts
+  `answered[].by`; 4.1 adds only WORLD_RULE's RULE), and only while the fact's
+  quote is still in its entry AS IT STANDS (D27 addendum: `currentEntryTexts`,
+  the newest version of at most `BIBLE_FACT_OWNERS_VERIFIED_MAX` entries, one
+  snapshot decrypted each; a cleared field is asked again at once, the fact
+  itself waiting for the author's NO_LONGER_STATED decision). EMBEDDINGS: elements, facts
   and ANSWERED answers are vector source models (delete triggers; the
   require-source guard, an append-only answer's without a lock); the
   dispatcher embeds each `EmbeddingTask` as its row stands, never on a request;

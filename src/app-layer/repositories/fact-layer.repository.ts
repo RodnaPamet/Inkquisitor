@@ -9,7 +9,7 @@
  * Fact rows themselves (text, encrypted) are written in `source.repository.ts`
  * (`StoryFactRepository.createBibleFacts`, `BibleFactRepository.supersede`).
  */
-import type { Prisma, PrismaClient } from '@prisma/client';
+import { Prisma, type PrismaClient } from '@prisma/client';
 import type { PrismaTx } from '@/lib/db/rls-middleware';
 import type { FactExtractionOutcome, FactExtractionStatus, FactProposalStatus } from '@/lib/facts/vocabulary';
 
@@ -229,6 +229,31 @@ export const BibleVersionReadRepository = {
     async newestRelationVersionId(db: Db, workspaceId: string, relationId: string): Promise<string | null> {
         const row = await db.bibleRelationVersion.findFirst({ where: { workspaceId, relationId }, orderBy: { versionNumber: 'desc' }, select: { id: true } });
         return row?.id ?? null;
+    },
+    /**
+     * The NEWEST version of each of these elements, its snapshot decrypted (the entry as it stands: every save writes
+     * one). The newest ids are found first with no text read, so exactly one snapshot per element is decrypted.
+     */
+    async newestElementSnapshots(db: Db, workspaceId: string, elementIds: readonly string[]): Promise<Map<string, string>> {
+        if (elementIds.length === 0) return new Map();
+        const newest = await db.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+            SELECT DISTINCT ON ("elementId") "id" FROM "BibleEntryVersion"
+            WHERE "workspaceId" = ${workspaceId} AND "elementId" = ANY(${[...elementIds]}::text[])
+            ORDER BY "elementId", "versionNumber" DESC`);
+        if (newest.length === 0) return new Map();
+        const rows = await db.bibleEntryVersion.findMany({ where: { workspaceId, id: { in: newest.map((r) => r.id) } }, take: newest.length, select: { elementId: true, snapshot: true } });
+        return new Map(rows.map((r) => [r.elementId, r.snapshot] as const));
+    },
+    /** The newest version of each of these relations, its snapshot decrypted (as `newestElementSnapshots`). */
+    async newestRelationSnapshots(db: Db, workspaceId: string, relationIds: readonly string[]): Promise<Map<string, string>> {
+        if (relationIds.length === 0) return new Map();
+        const newest = await db.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+            SELECT DISTINCT ON ("relationId") "id" FROM "BibleRelationVersion"
+            WHERE "workspaceId" = ${workspaceId} AND "relationId" = ANY(${[...relationIds]}::text[])
+            ORDER BY "relationId", "versionNumber" DESC`);
+        if (newest.length === 0) return new Map();
+        const rows = await db.bibleRelationVersion.findMany({ where: { workspaceId, id: { in: newest.map((r) => r.id) } }, take: newest.length, select: { relationId: true, snapshot: true } });
+        return new Map(rows.map((r) => [r.relationId, r.snapshot] as const));
     },
     /** Version numbers by id (a proposal's provenance line). */
     async elementVersionNumbers(db: Db, workspaceId: string, ids: readonly string[]): Promise<Map<string, number>> {

@@ -36,7 +36,9 @@
  * is author text: the question generator gets it ONLY as fenced data blocks.
  */
 import type { WorkspaceRequestContext } from '@/app-layer/types';
-import { BibleFactRepository, SourceChunkRepository, StoryFactOverrideRepository, StoryFactRepository } from '@/app-layer/repositories/source.repository';
+import { BibleRelationRepository } from '@/app-layer/repositories/bible.repository';
+import { BibleVersionReadRepository } from '@/app-layer/repositories/fact-layer.repository';
+import { BibleFactRepository, type BibleFactRow, SourceChunkRepository, StoryFactOverrideRepository, StoryFactRepository } from '@/app-layer/repositories/source.repository';
 import { getVectorRepository } from '@/app-layer/repositories/vector.repository';
 import { getFieldDef } from '@/lib/bible/templates';
 import type { BibleKind } from '@/lib/bible/kinds';
@@ -48,6 +50,10 @@ import { createAnalyzer } from '@/lib/search/analyse';
 import { parseQuery } from '@/lib/search/query';
 import { rankDocuments, type SearchDocument } from '@/lib/search/rank';
 import { decodeHeadingPath } from '@/lib/sources/storage';
+import { locateQuote } from '@/lib/sources/quote';
+import { entryText, renderElementEntry, renderRelationEntry } from '@/lib/facts/entry-text';
+import { parseSnapshot } from '@/lib/bible/snapshot';
+import { parseRelationSnapshot } from '@/lib/bible/relation-snapshot';
 import { CHARS_PER_TOKEN, fieldAnsweredBy } from '@/lib/sources/vocabulary';
 import { bookSourceSet } from './source-common';
 
@@ -63,6 +69,8 @@ export const VECTOR_CANDIDATES = 20;
 export const PASSAGE_SHOWN_MAX_CHARS = 1_600;
 /** Facts the context carries at most (the roadmap's top k). */
 export const FACTS_TOP_K = 24;
+/** Entries whose current text a scope's bible facts are read back against at most (one snapshot decrypted each). */
+export const BIBLE_FACT_OWNERS_VERIFIED_MAX = 64;
 /** Live bible facts read for a scope at most (the check and the context). */
 export const BIBLE_FACTS_READ_MAX = 2_000;
 /** The related elements' summaries take at most this share of the budget; the facts at most half of it. */
@@ -96,25 +104,66 @@ export interface SourceContext {
 
 export const EMPTY_SOURCE_CONTEXT: SourceContext = Object.freeze({ facts: [], passages: [], truncated: false });
 
-/** The scope's live bible facts, resolved to the field each answers (4.1). */
-async function resolvedBibleFacts(db: PrismaTx, ctx: WorkspaceRequestContext, bookId: string, elements: readonly ScopeElement[]): Promise<ResolvedFact[]> {
+/**
+ * The entries' CURRENT text, for the facts drawn from them (owner decision, 2026-11-21; the D27 addendum): each
+ * owning element's or relation's newest version rendered as extraction renders it, at most
+ * `BIBLE_FACT_OWNERS_VERIFIED_MAX` entries, one snapshot decrypted each. An entry past the bound is not read, and
+ * its facts are not vouched for.
+ */
+async function currentEntryTexts(db: PrismaTx, ctx: WorkspaceRequestContext, bookId: string, facts: readonly BibleFactRow[]): Promise<Map<string, string>> {
+    const owners: string[] = [];
+    for (const f of facts) {
+        const key = f.elementId ? `e:${f.elementId}` : f.relationId ? `r:${f.relationId}` : null;
+        if (key && !owners.includes(key) && owners.length < BIBLE_FACT_OWNERS_VERIFIED_MAX) owners.push(key);
+    }
+    const elementIds = owners.filter((k) => k.startsWith('e:')).map((k) => k.slice(2));
+    const relationIds = owners.filter((k) => k.startsWith('r:')).map((k) => k.slice(2));
+    const out = new Map<string, string>();
+    for (const [id, snapshot] of await BibleVersionReadRepository.newestElementSnapshots(db, ctx.workspaceId, elementIds)) out.set(`e:${id}`, entryText(renderElementEntry(parseSnapshot(snapshot))));
+    if (relationIds.length > 0) {
+        const snapshots = await BibleVersionReadRepository.newestRelationSnapshots(db, ctx.workspaceId, relationIds);
+        for (const r of await BibleRelationRepository.listByIdsWithEnds(db, ctx.workspaceId, bookId, relationIds)) {
+            const snapshot = snapshots.get(r.id);
+            if (snapshot) out.set(`r:${r.id}`, entryText(renderRelationEntry(parseRelationSnapshot(snapshot), { fromKind: r.from.kind as BibleKind, fromName: r.from.name, toName: r.to.name })));
+        }
+    }
+    return out;
+}
+
+/**
+ * The scope's live bible facts, resolved to the field each answers (4.1) — and only those whose quote is STILL in
+ * their entry as it stands (owner decision, 2026-11-21; the D27 addendum): a field the author cleared is asked
+ * again at once, though the fact itself stays live until the author decides its NO_LONGER_STATED proposal
+ * (rule 1). With `answering`, only facts that answer a field are read back against their entries (the frontier's
+ * check), so no entry is decrypted for a fact that answers nothing.
+ */
+async function resolvedBibleFacts(db: PrismaTx, ctx: WorkspaceRequestContext, bookId: string, elements: readonly ScopeElement[], answering = false): Promise<ResolvedFact[]> {
     const real = elements.filter((e) => e.elementId !== PENDING_SUBJECT_ID);
     if (real.length === 0) return [];
     const byId = new Map(real.map((e) => [e.elementId, e] as const));
     const facts = await BibleFactRepository.listLiveAbout(db, ctx.workspaceId, bookId, real.map((e) => e.elementId), BIBLE_FACTS_READ_MAX);
-    const out: ResolvedFact[] = [];
+    const candidates: Array<{ fact: BibleFactRow; resolved: ResolvedFact }> = [];
     for (const f of facts) {
         const element = f.subjectElementId ? byId.get(f.subjectElementId) : undefined;
         if (!element) continue;
         const key = fieldAnsweredBy(element.kind, f.predicate);
-        out.push({ elementId: element.elementId, kind: element.kind, fieldKey: key && getFieldDef(element.kind, key) ? key : null, subject: element.name, statement: f.statement, from: 'BIBLE', id: f.id });
+        const fieldKey = key && getFieldDef(element.kind, key) ? key : null;
+        if (answering && fieldKey === null) continue;
+        candidates.push({ fact: f, resolved: { elementId: element.elementId, kind: element.kind, fieldKey, subject: element.name, statement: f.statement, from: 'BIBLE', id: f.id } });
+    }
+    if (candidates.length === 0) return [];
+    const texts = await currentEntryTexts(db, ctx, bookId, candidates.map((c) => c.fact));
+    const out: ResolvedFact[] = [];
+    for (const { fact, resolved } of candidates) {
+        const text = texts.get(fact.elementId ? `e:${fact.elementId}` : `r:${fact.relationId}`);
+        if (text !== undefined && locateQuote(fact.quote, text)) out.push(resolved);
     }
     return out;
 }
 
 /** The fields the book's live bible facts answer for these elements (rule 5, 4.1). */
 export async function bibleFactRefs(db: PrismaTx, ctx: WorkspaceRequestContext, bookId: string, elements: readonly ScopeElement[]): Promise<FieldRef[]> {
-    return (await resolvedBibleFacts(db, ctx, bookId, elements)).filter((f) => f.fieldKey !== null).map((f) => ({ elementId: f.elementId, fieldKey: f.fieldKey! }));
+    return (await resolvedBibleFacts(db, ctx, bookId, elements, true)).filter((f) => f.fieldKey !== null).map((f) => ({ elementId: f.elementId, fieldKey: f.fieldKey! }));
 }
 
 /** The frontier's bible check (the header), named `bible-facts` in `answered[].by`. */

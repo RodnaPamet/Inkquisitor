@@ -700,3 +700,28 @@ describe('owner decisions of 2026-11-21: each call’s input is capped, and its 
         expect((await rows(ctx, bookId))[0]).toMatchObject({ status: 'SKIPPED', outcome: 'CALL_OVER_BUDGET', costMicroUsd: BigInt(0) });
     });
 });
+
+describe('owner decisions of 2026-11-21: a cleared field is asked again at once', () => {
+    it('a live bible fact whose quote left its entry stops answering the frontier at once; the fact itself waits for the author', async () => {
+        const owner = await createAccount();
+        const ctx = workspaceCtx(owner);
+        const bookId = (await createBook(ctx, { title: 'Cleared' })).id;
+        const wren = await createElement(ctx, bookId, { kind: 'CHARACTER', name: 'Wren', fields: [{ key: 'role', value: 'The lock keeper’s daughter' }] });
+        const view = await startInterview(ctx, bookId, { scope: 'ELEMENT', elementId: wren.id, depth: 5, detail: 3 }, { generator: fakeGenerator(), embedder: null });
+        await updateElement(ctx, bookId, wren.id, { summary: 'Wren wants to cross the river before the spring floods.', baseVersion: 1 });
+        await extractAll(ctx);
+        expect((await frontierFor(ctx, bookId, view, wren.id)).answeredBy.want).toBe('bible-facts');
+        // The author takes the sentence out. No extraction has run yet: the frontier reads the entry as it stands.
+        await updateElement(ctx, bookId, wren.id, { summary: 'Wren keeps the lock at Harrow Weir.', baseVersion: 2 });
+        const now = await frontierFor(ctx, bookId, view, wren.id);
+        expect(now.asks).toContain('want');
+        expect(now.answeredBy.want).toBeUndefined();
+        // The fact is still live: only the author retires it, through the NO_LONGER_STATED proposal (rule 1).
+        const want = (await bibleFacts(bookId)).find((f) => f.predicate === 'WANT')!;
+        expect(want.supersededAt).toBeNull();
+        await extractAll(ctx);
+        const proposals = await listFactProposals(ctx, bookId);
+        expect(proposals.proposals.some((p) => p.reason === 'NO_LONGER_STATED' && p.older.id === want.id)).toBe(true);
+        expect((await bibleFacts(bookId)).find((f) => f.id === want.id)!.supersededAt).toBeNull();
+    });
+});
