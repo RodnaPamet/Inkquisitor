@@ -182,13 +182,49 @@ function registerDefaultExecutors(): void {
         const startMs = performance.now();
         return runJob('source-ingest', async () => {
             const { executeSourceIngest } = await import('@/app-layer/usecases/source-ingest');
-            const r = await executeSourceIngest(payload);
+            const { jobShutdownSignal } = await import('./shutdown-signal');
+            // #57 item 6: the worker's shutdown aborts the ingestion at its next chunk (STOPPED ABORTED, resumable).
+            const r = await executeSourceIngest(payload, { signal: jobShutdownSignal() });
             return {
                 ...emptyResult('source-ingest', startedAt, startMs),
                 itemsScanned: 1,
                 itemsActioned: r.ran ? 1 : 0,
                 itemsSkipped: r.ran ? 0 : 1,
                 details: { sourceId: payload.sourceId, outcome: r.outcome },
+            };
+        });
+    });
+
+    // Phase 4.1 (D27): the fact layer's minutely dispatcher, and one bible fact extraction per accepted version.
+    executorRegistry.register('fact-layer-dispatch', async () => {
+        const startedAt = new Date().toISOString();
+        const startMs = performance.now();
+        return runJob('fact-layer-dispatch', async () => {
+            const { executeFactLayerDispatch } = await import('@/app-layer/usecases/fact-layer-dispatch');
+            const r = await executeFactLayerDispatch();
+            return {
+                ...emptyResult('fact-layer-dispatch', startedAt, startMs),
+                itemsScanned: r.queued + r.enqueueFailed + r.embedded + r.embedDropped + r.embedFailed,
+                itemsActioned: r.queued + r.embedded,
+                itemsSkipped: r.embedDropped,
+                details: { ...r },
+            };
+        });
+    });
+
+    executorRegistry.register('bible-facts', async (payload) => {
+        const startedAt = new Date().toISOString();
+        const startMs = performance.now();
+        return runJob('bible-facts', async () => {
+            const { executeBibleFactExtraction } = await import('@/app-layer/usecases/bible-facts');
+            const { jobShutdownSignal } = await import('./shutdown-signal');
+            const r = await executeBibleFactExtraction(payload, { signal: jobShutdownSignal() });
+            return {
+                ...emptyResult('bible-facts', startedAt, startMs),
+                itemsScanned: 1,
+                itemsActioned: r.ran ? 1 : 0,
+                itemsSkipped: r.ran ? 0 : 1,
+                details: { extractionId: payload.extractionId, outcome: r.outcome },
             };
         });
     });

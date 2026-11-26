@@ -37,3 +37,7 @@ export const MAX_DIMENSIONS = 4096;
 export const MAX_CHUNK_INDEX = 100_000;
 /** At most this many source models in one search's filter. */
 export const MAX_SEARCH_SOURCE_MODELS = 32;
+/** Source ids a search's `within` filter names at most (a book's own sources and its opted-in series sources: 50 + 50, with room). */
+export const MAX_WITHIN_IDS = 256;
+/** Source ids `presentSources` is asked about at most a call. */
+export const MAX_PRESENT_IDS = 500;

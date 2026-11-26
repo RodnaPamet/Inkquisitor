@@ -7,8 +7,10 @@
 import { answerOf, bibleFetch } from '@/lib/bible/api-client';
 import type { LibraryListing, SourceView } from '@/app-layer/usecases/source-library';
 import type { FactsPage, FactView } from '@/app-layer/usecases/source-facts';
+import type { FactProposalsPage, FactProposalView, ProposalFactView } from '@/app-layer/usecases/fact-proposals';
+import type { FactProposalDecision } from '@/lib/facts/vocabulary';
 
-export type { FactsPage, FactView, LibraryListing, SourceView };
+export type { FactProposalsPage, FactProposalView, FactsPage, FactView, LibraryListing, ProposalFactView, SourceView };
 
 const enc = encodeURIComponent;
 
@@ -42,6 +44,8 @@ export const SOURCES_API = {
     decision: (slug: string, factId: string) => `${ws(slug)}/facts/${enc(factId)}/decision`,
     bulkConfirm: (slug: string) => `${ws(slug)}/facts/bulk-confirm`,
     override: (slug: string, bookId: string, factId: string) => `${ws(slug)}/books/${enc(bookId)}/facts/${enc(factId)}/override`,
+    proposals: (slug: string, bookId: string) => `${ws(slug)}/books/${enc(bookId)}/fact-proposals`,
+    proposalDecision: (slug: string, bookId: string, proposalId: string) => `${ws(slug)}/books/${enc(bookId)}/fact-proposals/${enc(proposalId)}/decision`,
 } as const;
 
 /** The file to the upload route: the body is the file, its name in a header (never the URL). */
@@ -73,6 +77,9 @@ export const sourcesApi = {
         bibleFetch<{ confirmed: number; skipped: number }>(SOURCES_API.bulkConfirm(slug), { method: 'POST', body }),
     setOverride: (slug: string, bookId: string, factId: string, text: string) => bibleFetch<{ factId: string }>(SOURCES_API.override(slug, bookId, factId), { method: 'PUT', body: { text } }),
     clearOverride: (slug: string, bookId: string, factId: string) => bibleFetch<{ cleared: boolean }>(SOURCES_API.override(slug, bookId, factId), { method: 'DELETE' }),
+    proposals: (slug: string, bookId: string) => bibleFetch<FactProposalsPage>(SOURCES_API.proposals(slug, bookId)),
+    decideProposal: (slug: string, bookId: string, proposalId: string, decision: FactProposalDecision) =>
+        bibleFetch<{ proposal: { id: string; status: string } }>(SOURCES_API.proposalDecision(slug, bookId, proposalId), { method: 'POST', body: { decision } }),
 };
 
 /** µUSD as dollars for display ("$0.42"; under a cent "< $0.01"). */

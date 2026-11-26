@@ -51,4 +51,13 @@ export const SCHEDULED_JOBS: readonly ScheduleDefinition[] = [
         description: 'Delete model-call records (AiCallLog: numbers and names, no text) past their retention (Phase 2.H).',
         defaultPayload: {},
     },
+    {
+        // Every minute: an accepted bible version waits FACT_EXTRACTION_SETTLE_MS
+        // and then at most a minute for its extraction (D27), and a vector due at
+        // most a minute.
+        name: 'fact-layer-dispatch',
+        pattern: '* * * * *',
+        description: 'Queue due bible fact extractions and embed due elements, facts and answers (Phase 4.1).',
+        defaultPayload: {},
+    },
 ];

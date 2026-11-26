@@ -8,13 +8,13 @@
   "set": {
     "hash": "sha256:3b062c5000aaa16edd284853ed85d99ac0c0eb7dd0b7b6eb27d3baf806b23f2d"
   },
-  "promptVersion": "question-generation.4.0.0",
-  "promptHash": "sha256:42cda40fa00f5332518e211d5ab5b32bbecc336aee826b82386064090ffdaec3",
+  "promptVersion": "question-generation.4.1.0",
+  "promptHash": "sha256:0e95ca1e3c9b8c578f0a602abbf815607a776bcc8d7d25efd0e8da61aabb660c",
   "generator": {
     "kind": "structural",
     "id": "structural-generator.1"
   },
-  "ranAt": "2026-11-21T08:41:58.708Z",
+  "ranAt": "2026-11-26T07:55:17.368Z",
   "answers": [
     {
       "caseId": "world_rule-01",

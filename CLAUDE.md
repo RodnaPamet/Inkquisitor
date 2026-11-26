@@ -29,6 +29,7 @@ npm run packs:evaluate -- --no-packs --research    # the research agent's sets (
 npm run redteam:injection -- --out redteam-out   # the injection corpus against the REAL model (the nightly workflow runs it; needs a key and a budget)
 npm run packs:evaluate -- --no-packs --rephrase    # "Ask me this differently"'s set (2.H): its structural record beside it
 npm run packs:evaluate -- --no-packs --sources     # source fact extraction's set (4.0): its structural record beside it
+npm run packs:evaluate -- --no-packs --bible-facts # bible fact extraction's set (4.1): five synthetic bibles, its structural record beside it
 npm run packs:evaluate -- --judge                  # also the judge's report over the pack records written (2.H; a report, never a gate)
 npm run docs:build        # the Starlight help site (site/), from docs/user/
 npm run lint              # eslint . (flat config, eslint.config.mjs)
@@ -62,7 +63,7 @@ builds the help site and deploys it only on main when Pages is enabled;
 `postgres-image.yml` publishes `ghcr.io/rodnapamet/inkquisitor-postgres`
 (main only, weekly and on an upstream digest move; build, smoke, Trivy, then
 push); `evals.yml` (**Evals**, dispatch only, not a check) makes real-model
-pack evaluation records (and, with its `reconcile`, `research`, `rephrase` and `sources` inputs, the reconcile step's, the research agent's, the rephrase prompt's and source fact extraction's)
+pack evaluation records (and, with its `reconcile`, `research`, `rephrase`, `sources` and `bible_facts` inputs, the reconcile step's, the research agent's, the rephrase prompt's, source fact extraction's and bible fact extraction's)
 on `secrets.ANTHROPIC_API_KEY` and uploads them as an artifact, committing
 nothing (`tests/unit/evals-workflow.test.ts`); `injection-redteam.yml`
 (**Injection red-team**, nightly once the repository variable
@@ -380,6 +381,21 @@ src/app-layer/usecases/      → source-library (upload, list, remove, opt-in, d
 src/app-layer/jobs/          → `source-ingest`, one job per dispatch, addressed by id
 src/app/api/w/[workspaceSlug]/{books/[bookId]/{sources,series-sources,facts},series/{sources,facts},sources/[sourceId],facts/**}
 src/app/w/[workspaceSlug]/{books/[bookId]/{sources,facts},series,series/facts} → src/components/sources/{SourcesPage,FactsReview}
+```
+
+Phase 4.1 (the fact layer and retrieval, D27) added:
+
+```
+prisma/schema/sources.prisma → StoryFact's kinds (SOURCE_CHUNK, BIBLE_VERSION, RELATION_VERSION) and columns, StoryFactProvenance,
+                               StoryFactProposal (the invalidation record 4.2 extends), BibleFactExtraction (THE outbox), EmbeddingTask
+src/lib/facts/               → vocabulary (client-safe), entry-text (a version as sections; what changed), prompt (BIBLE_FACTS_PROMPT,
+                               graphiti's design), schema, validate, dedupe (claimParts, resolveFacts: THE rules), claim-key, model-seam.ts
+                               (THE wiring to 2.1), record-gate (D11); evals/ (five synthetic bibles, evaluation, record)
+src/app-layer/usecases/      → bible-facts (the `bible-facts` job's work), fact-layer-dispatch (the minutely dispatcher: extractions, embeddings),
+                               fact-proposals (review), source-retrieval (the bible check, the budgeted context)
+src/app-layer/repositories/fact-layer.repository.ts; vector/ `within` (the allowed set in the query) and `presentSources`
+src/app-layer/jobs/          → `fact-layer-dispatch` (every minute), `bible-facts` (one per due outbox row), shutdown-signal (#57 item 6)
+src/app/api/w/[workspaceSlug]/books/[bookId]/fact-proposals/** ; src/components/sources/FactProposalsPanel.tsx (on the Facts page)
 ```
 
 ## Rules every change obeys
@@ -1324,6 +1340,63 @@ closed beta with an explicit operator flag (D5, amended 2026-11-19).
   `StoryFact` is the 4.1 model: extend it, never add a second fact table. After
   editing the extraction set, prompt or schema, re-run
   `npm run packs:evaluate -- --no-packs --sources`.
+- **The fact layer (Phase 4.1; D27).** ONE fact table: a `StoryFact` is a
+  SOURCE_CHUNK fact (4.0, PENDING until the author decides) or a bible fact —
+  BIBLE_VERSION or RELATION_VERSION — drawn from an accepted version and stored
+  CONFIRMED and `automatic`; CHECK `StoryFact_kind_columns` pairs each kind
+  with its columns. A bible fact belongs to its element or relation (cascade:
+  deleting either takes its facts and their proposals; the versions stay with
+  the book), and a relation's removal retracts what it stated. THE OUTBOX: a
+  trigger on each version table writes a `BibleFactExtraction` row (and an
+  `EmbeddingTask` for the element) in the version's own transaction, so a
+  rolled-back save leaves nothing; nothing on the request path enqueues. The
+  minutely `fact-layer-dispatch` job queues due rows (settled for
+  `FACT_EXTRACTION_SETTLE_MS`; STOPPED ones when due; stale QUEUED/RUNNING ones)
+  as `bible-facts` jobs (payload ids), and only while a call can be made and a
+  record mounts (D11); discovery is the closed `fact-layer-discovery` bypass,
+  ids only. `executeBibleFactExtraction` SKIPS a superseded version (a newer
+  one of the same entry covers it: a run of autosaves is read once), a gone
+  subject, a deleted book or an author who may no longer edit; STOPS
+  (resumable, `nextAttemptAt`) at the kill switch, the ceiling, the rate minute
+  (waited at most `MODEL_RATE_WAIT_MAX_MS`, never an uncharged call), D11, a
+  failed call; otherwise renders the version (`entry-text.ts`) and sends ONLY
+  the sections changed since the entry's newest extracted version (its
+  baseline) after the header, with the live facts about its subject(s) shown
+  numbered. One fast call; its cost is counted on the row in a transaction of
+  its own. Validation is 4.0's (`validateFacts`) on the text SHOWN, one item at
+  a time, plus the entry's own: the subject must be the entry's element (a
+  relation's ends), and the span is an offset into the WHOLE entry. Under
+  `BibleFactRepository.lockBook`, `resolveFacts` (pure, `dedupe.ts`): a claim
+  (`claimParts`, keyed by `claimKey` under the workspace subkey; polarity
+  kept) a live fact already holds adds PROVENANCE, never a twin (partial unique
+  `StoryFact_one_live_claim`); a new fact contradicting a live one by RULE (an
+  AGE, LOCATION, OCCUPATION or PLACE_TYPE that plainly differs at an
+  overlapping story time; never a ROLE or a WANT) or by the MODEL (an existing
+  fact it was shown, same subject element) raises a PROPOSAL; an earlier fact
+  of the same entry whose quote is gone raises NO_LONGER_STATED. NOTHING IS
+  INVALIDATED by the job (rule 1): the author decides on the Facts page
+  (`decideFactProposal`, `bible.edit`): INVALIDATE sets `supersededAt` and
+  `invalidatedByFactId` once (trigger) and settles the fact's other pending
+  proposals; KEEP_BOTH and REJECT write only the decision; one proposal per
+  pair, ever (NULLS NOT DISTINCT). Series facts are never resolved against
+  (shared with other books). The book's fact lock (`story-facts:<bookId>`) is
+  taken alone, never with a bible lock, and audit is last. Bible facts answer fields at once
+  through `PREDICATE_FIELDS` (`bibleFactsCheck`, `bible-facts` in
+  `answered[].by`; 4.1 adds only WORLD_RULE's RULE). EMBEDDINGS: elements, facts
+  and ANSWERED answers are vector source models (delete triggers; the
+  require-source guard, an append-only answer's without a lock); the
+  dispatcher embeds each `EmbeddingTask` as its row stands, never on a request.
+  THE CONTEXT (`assembleSourceContext`): one token budget — related summaries
+  (their share), top `FACTS_TOP_K` facts (the scope's bible facts, its confirmed
+  source facts, then the nearest of the book's others), then vector + lexical
+  passages fused by rank; every vector search names its allowed set INSIDE the
+  query (`within`: `chunks-of-sources`, `facts-of-book`), the in-process backend
+  refuses it. With an embedder, a round's context is read AFTER the claim: the
+  query (`contextQueryText`) embedded outside every transaction, then one
+  transaction more (`interview-latency.test.ts`). The worker aborts running
+  ingestions and extractions on shutdown (`abortRunningJobs`). After editing the
+  set, the prompt or its schema, re-run `npm run packs:evaluate -- --no-packs
+  --bible-facts`; a changed `QUESTION_PROMPT` needs `npm run packs:evaluate`.
 - **Sanitising author text.** Every author-text write sanitises at the
   usecase layer before it is stored: plain text through `plainLine` /
   `plainBlock` (`src/lib/bible/text.ts`, over `sanitizePlainText`), rich text

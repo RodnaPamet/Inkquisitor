@@ -457,6 +457,32 @@ export function stubFactsAnswer(body: Record<string, unknown>): { facts: Array<R
     return { facts };
 }
 
+/**
+ * The stub's BIBLE FACT answer (Phase 4.1, D27): each sentence of the entry's
+ * changed lines (after the "Label: " prefix) that opens with one of the entry's
+ * subjects is one fact about it, quoted whole — WANT when it says the subject
+ * wants something, OTHER otherwise — contradicting nothing. Pure.
+ */
+export function stubBibleFactsAnswer(body: Record<string, unknown>): { facts: Array<Record<string, unknown>> } | null {
+    const blocks = fencedBlocks(body);
+    const entry = blocks.get('entry.text');
+    const subjects = blocks.get('entry.subjects');
+    if (entry === undefined || subjects === undefined) return null;
+    const names = subjects.split('\n').map((n) => n.trim()).filter((n) => n !== '');
+    const facts: Array<Record<string, unknown>> = [];
+    for (const line of entry.split('\n')) {
+        const value = line.replace(/^[^:]{1,40}:\s*/, '');
+        for (const sentence of value.split(/(?<=[.!?])\s+/).map((x) => x.trim())) {
+            if (sentence.length < 20 || facts.length >= 6) continue;
+            const subject = names.find((n) => sentence.startsWith(n));
+            if (!subject) continue;
+            const wants = /\bwants?\b/.test(sentence);
+            facts.push({ subject, predicate: wants ? 'WANT' : 'OTHER', object: '', statement: sentence, quote: sentence, storyTimeFrom: '', storyTimeTo: '', contradicts: [] });
+        }
+    }
+    return { facts };
+}
+
 function sse(events: Array<Record<string, unknown>>): string {
     return events.map((e) => `event: ${String(e.type)}\ndata: ${JSON.stringify(e)}\n\n`).join('');
 }
@@ -500,7 +526,7 @@ export async function stubMessagesFetch(input: string | URL | Request, init?: Re
     const model = typeof body.model === 'string' ? body.model : 'stub-model';
     const gather = stubGatherEvents(body, model);
     if (gather) return new Response(sse(gather), { status: 200, headers: { 'content-type': 'text/event-stream' } });
-    const text = JSON.stringify(stubFactsAnswer(body) ?? stubFindingsAnswer(body) ?? stubFitAnswer(body) ?? stubReconcileAnswer(body) ?? stubAnswer(body));
+    const text = JSON.stringify(stubBibleFactsAnswer(body) ?? stubFactsAnswer(body) ?? stubFindingsAnswer(body) ?? stubFitAnswer(body) ?? stubReconcileAnswer(body) ?? stubAnswer(body));
     return new Response(streamedMessage(model, text, { input_tokens: 1_500, output_tokens: Math.max(50, Math.ceil(text.length / 4)) }), {
         status: 200,
         headers: { 'content-type': 'text/event-stream' },

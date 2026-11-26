@@ -57,6 +57,7 @@ model User {
   sourcesUploaded       Source[]            @relation("SourceRequestedBy")
   factDecisions         StoryFact[]         @relation("StoryFactDecidedBy")
   factOverrides         StoryFactOverride[] @relation("StoryFactOverrideBy")
+  factProposalDecisions StoryFactProposal[] @relation("StoryFactProposalDecidedBy")
   /// Phase 3.1: story-map snapshots this person's saves wrote; the link is
   /// cleared (and the snapshot kept) when the person is deleted.
   mapSnapshots          MapSnapshot[]

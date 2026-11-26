@@ -127,6 +127,8 @@ model SourceChunk {
   tokenEstimate Int
   /// When its facts were extracted (the job's cursor); NULL until then.
   extractedAt   DateTime?
+  /// Phase 4.1 (#57 item 2): why the chunk can never be read (it is marked read so the rest completes): REPEATS_PROMPT (CHECK).
+  unreadableReason String?
   createdAt     DateTime  @default(now())
 
   source Source      @relation(fields: [workspaceId, sourceId], references: [workspaceId, id], onDelete: Cascade)
@@ -137,18 +139,46 @@ model SourceChunk {
   @@unique([workspaceId, sourceId, position])
 }
 
-/// A fact about the story, drawn from a source, waiting for the author (rule 1, D23).
+/// A fact about the story (Phase 4.0; extended in 4.1, D27): drawn from a
+/// source passage and waiting for the author (rule 1, D23), or drawn from an
+/// accepted bible version, where it counts at once.
+///
+/// ONE TABLE, THREE KINDS (CHECK `StoryFact_kind_columns`):
+///   SOURCE_CHUNK      `sourceId`, `chunkId`; PENDING until decided; not automatic.
+///   BIBLE_VERSION     `bookId`, `elementId`, `bibleVersionId`, `dedupeKey`; CONFIRMED and automatic.
+///   RELATION_VERSION  `bookId`, `relationId`, `relationVersionId`, `dedupeKey`; CONFIRMED and automatic.
+///
+/// A bible fact goes with its element or relation (cascade); its version is
+/// append-only and goes only with its book. ONE LIVE FACT PER CLAIM: a later
+/// version restating a live bible fact adds a provenance row
+/// (`StoryFactProvenance`), never a second fact (the partial unique index
+/// `StoryFact_one_live_claim`). A live fact is never retired silently: an
+/// older fact a newer one contradicts is PROPOSED for invalidation
+/// (`StoryFactProposal`) and stays live until the author decides; only that
+/// decision sets `supersededAt` and `invalidatedByFactId`, once.
 model StoryFact {
   id               String              @id @default(cuid())
   workspaceId      String
   sourceKind       StoryFactSourceKind @default(SOURCE_CHUNK)
-  sourceId         String
-  chunkId          String
-  /// Its place among its chunk's facts.
+  /// SOURCE_CHUNK: the source and its passage. NULL for a bible fact.
+  sourceId         String?
+  chunkId          String?
+  /// BIBLE_VERSION / RELATION_VERSION: the book, and the element or relation the version is of.
+  bookId           String?
+  elementId        String?
+  relationId       String?
+  /// The accepted version the fact was drawn from (BIBLE_VERSION / RELATION_VERSION).
+  bibleVersionId   String?
+  relationVersionId String?
+  /// Drawn by the product with no decision of the author's: a bible fact (D27). Its source kind says what.
+  automatic        Boolean             @default(false)
+  /// A bible fact's claim, keyed (`workspaceSubkey`, never a plain digest of author text): one live fact per claim in a book.
+  dedupeKey        String?
+  /// Its place among its passage's (or its extraction's) facts.
   position         Int
   /// Who or what it is about, as the source names it (encrypted).
   subjectName      String
-  /// The bible element it is about, when linked (a book library's fact whose subject the book names exactly once); NULL otherwise.
+  /// The bible element it is about, when linked (a book library's fact whose subject the book names exactly once; a bible fact's subject); NULL otherwise.
   subjectElementId String?
   /// What is stated, a code from the closed list (CHECK; `FACT_PREDICATES`).
   predicate        String
@@ -158,7 +188,7 @@ model StoryFact {
   objectLiteral    String?
   /// The fact as one plain sentence (encrypted).
   statement        String
-  /// The exact words of the chunk it rests on (encrypted), and where they are in the chunk's text (verified by code).
+  /// The exact words it rests on (encrypted), and where they are: in the chunk's text, or in the version's rendered entry (verified by code).
   quote            String
   quoteStart       Int
   quoteEnd         Int
@@ -167,8 +197,10 @@ model StoryFact {
   storyTimeTo      String?
   /// When it was stated (extracted).
   statedAt         DateTime            @default(now())
-  /// When a later fact replaced it (4.1's invalidation); NULL while it stands.
+  /// When the author invalidated it (a proposal decided INVALIDATED); NULL while it stands. Set once.
   supersededAt     DateTime?
+  /// The newer fact that invalidated it (set with `supersededAt`; NULL again only if that fact goes).
+  invalidatedByFactId String?
   status           StoryFactStatus     @default(PENDING)
   /// What the author is warned of (D14 applied): POSSIBLE_INSTRUCTION.
   flags            String[]            @default([])
@@ -178,21 +210,179 @@ model StoryFact {
   carriedFromFactId String?
   createdAt        DateTime            @default(now())
 
-  source        Source              @relation(fields: [workspaceId, sourceId], references: [workspaceId, id], onDelete: Cascade)
-  chunk         SourceChunk         @relation(fields: [workspaceId, chunkId], references: [workspaceId, id], onDelete: Cascade)
-  subjectElement BibleElement?      @relation("StoryFactSubject", fields: [subjectElementId], references: [id], onDelete: SetNull)
-  objectElement BibleElement?       @relation("StoryFactObject", fields: [objectElementId], references: [id], onDelete: SetNull)
-  decidedBy     User?               @relation("StoryFactDecidedBy", fields: [decidedById], references: [id], onDelete: SetNull)
-  overrides     StoryFactOverride[]
+  source          Source?               @relation(fields: [workspaceId, sourceId], references: [workspaceId, id], onDelete: Cascade)
+  chunk           SourceChunk?          @relation(fields: [workspaceId, chunkId], references: [workspaceId, id], onDelete: Cascade)
+  book            Book?                 @relation("StoryFactBook", fields: [workspaceId, bookId], references: [workspaceId, id], onDelete: Cascade)
+  element         BibleElement?         @relation("StoryFactElement", fields: [workspaceId, elementId], references: [workspaceId, id], onDelete: Cascade)
+  relation        BibleRelation?        @relation(fields: [workspaceId, relationId], references: [workspaceId, id], onDelete: Cascade)
+  bibleVersion    BibleEntryVersion?    @relation(fields: [bibleVersionId], references: [id], onDelete: Cascade)
+  relationVersion BibleRelationVersion? @relation(fields: [relationVersionId], references: [id], onDelete: Cascade)
+  subjectElement  BibleElement?         @relation("StoryFactSubject", fields: [subjectElementId], references: [id], onDelete: SetNull)
+  objectElement   BibleElement?         @relation("StoryFactObject", fields: [objectElementId], references: [id], onDelete: SetNull)
+  decidedBy       User?                 @relation("StoryFactDecidedBy", fields: [decidedById], references: [id], onDelete: SetNull)
+  invalidatedBy   StoryFact?            @relation("StoryFactInvalidatedBy", fields: [invalidatedByFactId], references: [id], onDelete: SetNull)
+  invalidated     StoryFact[]           @relation("StoryFactInvalidatedBy")
+  overrides       StoryFactOverride[]
+  provenance      StoryFactProvenance[]
+  proposals       StoryFactProposal[]   @relation("StoryFactProposalOlder")
+  proposalsAsNewer StoryFactProposal[]  @relation("StoryFactProposalNewer")
 
   @@unique([workspaceId, id])
   /// A source's facts by status, in chunk order (the Facts page).
   @@index([workspaceId, sourceId, status, chunkId, position])
   /// A chunk's facts.
   @@index([workspaceId, chunkId])
+  /// Phase 4.1: a book's bible facts about one element, live first (the frontier's check, the retriever, an extraction's resolve).
+  @@index([workspaceId, bookId, elementId, supersededAt])
+  /// Phase 4.1: a relation's facts.
+  @@index([workspaceId, relationId])
+  /// Phase 4.1: an element's facts by its foreign key (the cascade), and a book's live facts about some elements (the frontier's check, the retriever).
+  @@index([workspaceId, elementId])
+  @@index([workspaceId, bookId, subjectElementId])
   @@index([subjectElementId])
   @@index([objectElementId])
   @@index([decidedById])
+  @@index([bibleVersionId])
+  @@index([relationVersionId])
+  @@index([invalidatedByFactId])
+}
+
+/// A later accepted version restating a live bible fact (Phase 4.1, D27):
+/// the fact is not written twice, its provenance is. Ids only; append-only.
+model StoryFactProvenance {
+  id                String              @id @default(cuid())
+  workspaceId       String
+  factId            String
+  sourceKind        StoryFactSourceKind
+  bibleVersionId    String?
+  relationVersionId String?
+  createdAt         DateTime            @default(now())
+
+  fact            StoryFact             @relation(fields: [workspaceId, factId], references: [workspaceId, id], onDelete: Cascade)
+  bibleVersion    BibleEntryVersion?    @relation(fields: [bibleVersionId], references: [id], onDelete: Cascade)
+  relationVersion BibleRelationVersion? @relation(fields: [relationVersionId], references: [id], onDelete: Cascade)
+
+  /// One provenance row per fact and version (an extraction run twice writes nothing).
+  @@unique([factId, bibleVersionId])
+  @@unique([factId, relationVersionId])
+  /// A fact's provenance.
+  @@index([workspaceId, factId])
+  @@index([bibleVersionId])
+  @@index([relationVersionId])
+}
+
+/// A live fact proposed for invalidation (Phase 4.1, D27): never resolved
+/// silently. Both facts stay live until the author decides: INVALIDATED (the
+/// older fact is superseded by the newer), KEPT (both true), or REJECTED (not
+/// a contradiction). Minimal on purpose: 4.2's continuity checks extend it.
+/// Ids and codes only. One proposal per pair, ever (a partial-free unique
+/// index over the pair, NULLS NOT DISTINCT, in the migration): a pair the
+/// author decided is never asked again.
+model StoryFactProposal {
+  id           String    @id @default(cuid())
+  workspaceId  String
+  bookId       String
+  /// The older, live fact proposed for invalidation.
+  factId       String
+  /// The newer fact that contradicts it; NULL for NO_LONGER_STATED (its entry no longer says it).
+  newerFactId  String?
+  /// CONTRADICTED | NO_LONGER_STATED (CHECK).
+  reason       String
+  /// Who saw it: RULE (code, the same single-valued predicate) | MODEL (the extraction's own judgement, checked) | TEXT (the quote is gone from the entry) (CHECK).
+  basis        String
+  /// PENDING | INVALIDATED | KEPT | REJECTED (CHECK).
+  status       String    @default("PENDING")
+  /// The extraction that raised it.
+  extractionId String?
+  decidedById  String?
+  decidedAt    DateTime?
+  createdAt    DateTime  @default(now())
+
+  book      Book       @relation(fields: [workspaceId, bookId], references: [workspaceId, id], onDelete: Cascade)
+  fact      StoryFact  @relation("StoryFactProposalOlder", fields: [workspaceId, factId], references: [workspaceId, id], onDelete: Cascade)
+  newerFact StoryFact? @relation("StoryFactProposalNewer", fields: [workspaceId, newerFactId], references: [workspaceId, id], onDelete: Cascade)
+  decidedBy User?      @relation("StoryFactProposalDecidedBy", fields: [decidedById], references: [id], onDelete: SetNull)
+
+  @@unique([workspaceId, id])
+  /// A book's proposals by status, newest first (the Facts page).
+  @@index([workspaceId, bookId, status, createdAt])
+  @@index([workspaceId, factId])
+  @@index([workspaceId, newerFactId])
+  @@index([decidedById])
+}
+
+/// THE FACT EXTRACTION OUTBOX (Phase 4.1, D27): one row per accepted bible
+/// version, element or relation, written IN THE VERSION'S TRANSACTION by a
+/// trigger (a rolled-back save writes none). The minutely `fact-layer-dispatch`
+/// job enqueues a `bible-facts` job for each due row (payload ids only); the
+/// job extracts, resolves and records its outcome here. Idempotent: a DONE or
+/// SKIPPED row is never run again. Counts and codes only.
+model BibleFactExtraction {
+  id                String    @id @default(cuid())
+  workspaceId       String
+  bookId            String
+  /// BIBLE_VERSION | RELATION_VERSION (CHECK; set with exactly its version and subject).
+  kind              String
+  /// The element or relation the version is of (no foreign key: the row outlives a deleted subject, and is then SKIPPED).
+  elementId         String?
+  relationId        String?
+  bibleVersionId    String?   @unique
+  relationVersionId String?   @unique
+  /// PENDING | QUEUED | RUNNING | DONE | SKIPPED | STOPPED | FAILED (CHECK).
+  status            String    @default("PENDING")
+  /// How it ended or paused, a code (CHECK; `FACT_EXTRACTION_OUTCOMES`).
+  outcome           String?
+  attempts          Int       @default(0)
+  /// A STOPPED row is dispatched again no earlier than this.
+  nextAttemptAt     DateTime?
+  factsAdded        Int       @default(0)
+  provenanceAdded   Int       @default(0)
+  proposalsRaised   Int       @default(0)
+  costMicroUsd      BigInt    @default(0)
+  promptVersion     String?
+  /// Counts and codes only (refusals by code, AiCallLog ids). Never text.
+  metrics           Json?
+  createdAt         DateTime  @default(now())
+  /// When it was queued, and claimed (the claim's identity, as a source's `startedAt`).
+  queuedAt          DateTime?
+  startedAt         DateTime?
+  finishedAt        DateTime?
+
+  book            Book                  @relation(fields: [workspaceId, bookId], references: [workspaceId, id], onDelete: Cascade)
+  bibleVersion    BibleEntryVersion?    @relation(fields: [bibleVersionId], references: [id], onDelete: Cascade)
+  relationVersion BibleRelationVersion? @relation(fields: [relationVersionId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, id])
+  /// The dispatcher's scan across workspaces: due rows by status and time.
+  @@index([status, createdAt])
+  /// An element's extractions (its baseline: the newest DONE one).
+  @@index([workspaceId, elementId, status, createdAt])
+  @@index([workspaceId, relationId, status, createdAt])
+  /// A book's extractions, newest first.
+  @@index([workspaceId, bookId, createdAt])
+}
+
+/// A source row whose vector is due (Phase 4.1, D8): an element (its
+/// versions), a fact or an ANSWERED answer, written by trigger with the row.
+/// The minutely dispatcher embeds what it names, as the row stands then,
+/// through the 2.0 store, and deletes the task. Ids only.
+model EmbeddingTask {
+  id          String   @id @default(cuid())
+  workspaceId String
+  /// BibleElement | StoryFact | Answer (CHECK).
+  sourceModel String
+  sourceId    String
+  attempts    Int      @default(0)
+  createdAt   DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  /// One task per source row (a repeat while it waits is the same task).
+  @@unique([workspaceId, sourceModel, sourceId])
+  /// The dispatcher's scan across workspaces, oldest first.
+  @@index([createdAt])
+  /// A workspace's tasks, oldest first.
+  @@index([workspaceId, createdAt])
 }
 
 /// A book drawing on one of the series library's sources (D26: per-book opt-in).

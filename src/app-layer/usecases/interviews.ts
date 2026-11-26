@@ -71,6 +71,7 @@ import { deploymentPackMounts } from './interview-packs';
 import {
     announceClaim,
     claimRound,
+    contextEmbedderOf,
     endSession,
     generateClaimedRound,
     generatorOf,
@@ -203,7 +204,7 @@ export async function startInterview(ctx: WorkspaceRequestContext, bookId: strin
             },
             { db },
         );
-        return { session, claim: await claimRound(db, ctx, session, generator, packContext) };
+        return { session, claim: await claimRound(db, ctx, session, generator, packContext, !contextEmbedderOf(deps)) };
     });
     deps.stream?.emit({ type: 'started', sessionId: started.session.id });
     announceClaim(deps, started.claim);
@@ -330,7 +331,7 @@ export async function nextRound(ctx: WorkspaceRequestContext, bookId: string, se
         await InterviewSessionRepository.lock(db, sessionId);
         const session = await requireSession(db, ctx, bookId, sessionId);
         assertNotEnded(session);
-        return { session, claim: await claimRound(db, ctx, session, generator, packContext) };
+        return { session, claim: await claimRound(db, ctx, session, generator, packContext, !contextEmbedderOf(deps)) };
     });
     announceClaim(deps, claimed.claim);
     if (claimed.claim.kind === 'claimed') await generateClaimedRound(ctx, claimed.session, claimed.claim, deps);

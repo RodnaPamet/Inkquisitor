@@ -43,7 +43,7 @@ import type { BibleKind } from '@/lib/bible/kinds';
 import { getFieldDef, getRelationType, getTemplate, relationFieldDefs } from '@/lib/bible/templates';
 import { plainBlock } from '@/lib/bible/text';
 import type { AskedQuestion } from '@/lib/interview/dedupe';
-import { sourceFactsCheck } from './source-retrieval';
+import { bibleFactsCheck, sourceFactsCheck } from './source-retrieval';
 import { computeFrontier, emptyFrontierReason, refsCheck, type AlreadyAnsweredCheck, type AnswerFact, type BlockedField, type FieldRef, type FrontierResult } from '@/lib/interview/frontier';
 import { slotBeat } from './story-slot';
 import { PENDING_SUBJECT_ID, relationSubjectName, subjectIdOf, type RelationSubject } from '@/lib/interview/subjects';
@@ -312,11 +312,14 @@ export async function loadInterviewState(db: PrismaTx, ctx: WorkspaceRequestCont
     const challengesPlanned = challengesPlannedOf(rounds);
 
     // Phase 4.0 (D23, rule 5): a CONFIRMED fact from the book's sources answers its field; a pending one never does.
-    const sourceCheck = await sourceFactsCheck(db, ctx, session.bookId, scope.rows.map((e) => ({ elementId: e.id, kind: e.kind, name: e.name })));
+    const scopeRows = scope.rows.map((e) => ({ elementId: e.id, kind: e.kind, name: e.name }));
+    const sourceCheck = await sourceFactsCheck(db, ctx, session.bookId, scopeRows);
+    // Phase 4.1 (D27, rule 5): a live fact drawn from an accepted bible version answers its field at once.
+    const bibleCheck = await bibleFactsCheck(db, ctx, session.bookId, scopeRows);
 
     return {
         elements,
-        checks: [...(pending?.checks ?? []), sourceCheck],
+        checks: [...(pending?.checks ?? []), sourceCheck, bibleCheck],
         scopeTruncated: scope.truncated,
         questions,
         latest,

@@ -122,6 +122,24 @@ Apache License, Version 2.0
   dependency of this project. The project is distributed under the Apache
   License, Version 2.0: https://www.apache.org/licenses/LICENSE-2.0
 
+  getzep/graphiti (fact extraction and contradiction prompts)
+  https://github.com/getzep/graphiti (commit b8ea9c5dcba4b0031c9c204f733bcd7ad5e2dadc)
+  Copyright 2024, Zep Software, Inc.
+
+  The design of the bible fact prompt (Phase 4.1, src/lib/facts/prompt.ts) is
+  PORTED from graphiti's prompts: fact extraction as in
+  graphiti_core/prompts/extract_edges.py (facts about named entities, every
+  concrete detail kept, no inferred time) and contradiction detection as in
+  graphiti_core/prompts/dedupe_edges.py (`resolve_edge`: the new fact judged
+  against the existing facts shown, numbered, and the ones it contradicts
+  named "only when the new fact and the existing fact cannot both be true"),
+  folded into one call and adapted to a book's bible; some rule wording is
+  paraphrased or quoted from those files. Deduplication is not ported (it is
+  code), and no graph database is used: facts are stored in PostgreSQL. No
+  graphiti code is imported, linked or redistributed, and it is not a
+  dependency of this project. The project is distributed under the Apache
+  License, Version 2.0: https://www.apache.org/licenses/LICENSE-2.0
+
 BSD 3-Clause License
 
   Snowball (the English stemming algorithm, "Porter2", and its test data)

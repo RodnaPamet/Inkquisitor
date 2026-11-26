@@ -125,6 +125,8 @@ export function createInProcessVectorStore(): VectorStoreBackend {
         },
 
         async search(_db, workspaceId, query: VectorSearchQuery): Promise<VectorMatch[]> {
+            // The isolation filter joins source tables in the query: only the database backend can apply it.
+            if (query.within) throw new VectorStoreError('INVALID_QUERY', 'a `within` filter needs the pgvector backend');
             const rows = workspaces.get(workspaceId);
             if (!rows) return [];
             const models = query.sourceModels ? new Set(query.sourceModels) : null;
@@ -160,6 +162,13 @@ export function createInProcessVectorStore(): VectorStoreBackend {
                 .sort(compareKeys)
                 .slice(0, limit)
                 .map(stored);
+        },
+
+        async presentSources(_db, workspaceId, embeddingRevision, sourceModel, sourceIds): Promise<string[]> {
+            const rows = workspaces.get(workspaceId);
+            if (!rows) return [];
+            const wanted = new Set(sourceIds);
+            return [...new Set([...rows.values()].filter((r) => r.embeddingRevision === embeddingRevision && r.sourceModel === sourceModel && wanted.has(r.sourceId)).map((r) => r.sourceId))];
         },
 
         async listSourceKeys(_db, workspaceId, embeddingRevision, sourceModel, sourceId, limit): Promise<StoredVectorKey[]> {

@@ -8,13 +8,13 @@
   "set": {
     "hash": "sha256:eb370c2da16a5cedf46db37fcba9085cc42c00dae44aac0ff50fb3d3bf08b869"
   },
-  "promptVersion": "question-generation.4.0.0",
-  "promptHash": "sha256:42cda40fa00f5332518e211d5ab5b32bbecc336aee826b82386064090ffdaec3",
+  "promptVersion": "question-generation.4.1.0",
+  "promptHash": "sha256:0e95ca1e3c9b8c578f0a602abbf815607a776bcc8d7d25efd0e8da61aabb660c",
   "generator": {
     "kind": "structural",
     "id": "structural-generator.1"
   },
-  "ranAt": "2026-11-21T08:41:59.312Z",
+  "ranAt": "2026-11-26T07:55:17.907Z",
   "answers": [
     {
       "caseId": "faction-01",

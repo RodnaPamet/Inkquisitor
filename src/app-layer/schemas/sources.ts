@@ -4,6 +4,7 @@
  * before anything is stored.
  */
 import { z } from 'zod';
+import { FACT_PROPOSAL_DECISIONS } from '@/lib/facts/vocabulary';
 import { FACTS_PER_VIEW_MAX, OVERRIDE_TEXT_MAX } from '@/lib/sources/vocabulary';
 
 const id = z.string().min(1).max(64);
@@ -36,3 +37,6 @@ export function filenameFromHeader(value: string | null): string {
         return '';
     }
 }
+
+/** Phase 4.1 (D27): the author's answer to a proposal to invalidate a fact. */
+export const FactProposalDecisionInput = z.object({ decision: z.enum(FACT_PROPOSAL_DECISIONS) }).strict();

@@ -62,6 +62,9 @@ import {
     MAX_SEARCH_K,
     MAX_SEARCH_SOURCE_MODELS,
     MAX_UPSERT_BATCH,
+    MAX_WITHIN_IDS,
+    MAX_PRESENT_IDS,
+    VECTOR_SCOPES,
     VectorStoreError,
     keyOf,
     type InWorkspace,
@@ -135,6 +138,11 @@ const QUERY = z
         k: z.number().int().min(1).max(MAX_SEARCH_K),
         bookId: ROW_ID.optional(),
         sourceModels: z.array(SOURCE_MODEL).min(1).max(MAX_SEARCH_SOURCE_MODELS).optional(),
+        within: z
+            .object({ scope: z.enum(VECTOR_SCOPES), sourceIds: z.array(ROW_ID).max(MAX_WITHIN_IDS), bookId: ROW_ID.optional() })
+            .strict()
+            .refine((w) => w.scope !== 'facts-of-book' || w.bookId !== undefined, 'facts-of-book names its book')
+            .optional(),
     })
     .strict();
 
@@ -232,6 +240,8 @@ export interface VectorRepository {
         sourceId: string,
         options?: { limit?: number },
     ): Promise<StoredVectorKey[]>;
+    /** Which of `sourceIds` (of one model) hold a vector of this revision. */
+    presentSources(db: VectorDb, workspaceId: string, embeddingRevision: string, sourceModel: string, sourceIds: readonly string[]): Promise<string[]>;
     /** Every vector of one source row, every revision: call it in the transaction that deletes the row. */
     deleteSource(db: VectorDb, workspaceId: string, sourceModel: string, sourceId: string): Promise<number>;
     /**
@@ -286,6 +296,16 @@ export function createVectorRepository(store: VectorStoreBackend): VectorReposit
                 const parsed = QUERY.safeParse(query);
                 if (!parsed.success) throw new VectorStoreError('INVALID_QUERY', `invalid field(s): ${fieldsOf(parsed.error)}`);
                 return store.search(db, workspaceId, parsed.data);
+            });
+        },
+
+        presentSources(db, workspaceId, embeddingRevision, sourceModel, sourceIds) {
+            return observed('list_source_keys', workspaceId, async () => {
+                must(WORKSPACE_ID, workspaceId, 'workspaceId');
+                must(EMBEDDING_REVISION, embeddingRevision, 'embeddingRevision');
+                must(SOURCE_MODEL, sourceModel, 'sourceModel');
+                const ids = must(z.array(ROW_ID).max(MAX_PRESENT_IDS), [...sourceIds], 'sourceIds');
+                return store.presentSources(db, workspaceId, embeddingRevision, sourceModel, ids);
             });
         },
 

@@ -42,9 +42,9 @@ describe('.github/workflows/evals.yml', () => {
         expect(Object.keys(wf.jobs)).toEqual(['evals']);
     });
 
-    it('runs only when a person dispatches it, with packs, coverage, reconcile, research, rephrase, sources and budget inputs', () => {
+    it('runs only when a person dispatches it, with packs, coverage, reconcile, research, rephrase, sources, bible facts and budget inputs', () => {
         expect(Object.keys(wf.on)).toEqual(['workflow_dispatch']);
-        expect(Object.keys(wf.on.workflow_dispatch.inputs ?? {})).toEqual(['packs', 'coverage', 'reconcile', 'research', 'rephrase', 'sources', 'budget_usd']);
+        expect(Object.keys(wf.on.workflow_dispatch.inputs ?? {})).toEqual(['packs', 'coverage', 'reconcile', 'research', 'rephrase', 'sources', 'bible_facts', 'budget_usd']);
         expect(wf.on.workflow_dispatch.inputs!.research.type).toBe('boolean');
         expect(wf.on.workflow_dispatch.inputs!.coverage.type).toBe('boolean');
         expect(wf.on.workflow_dispatch.inputs!.reconcile.type).toBe('boolean');
@@ -63,6 +63,14 @@ describe('.github/workflows/evals.yml', () => {
         const run = job.steps.find((s) => s.run?.includes('packs:evaluate'))!;
         expect(run.env).toMatchObject({ REPHRASE: '${{ inputs.rephrase }}' });
         expect(run.run).toMatch(/if \[ "\$REPHRASE" = "true" \]; then extra="\$extra --rephrase"; fi/);
+    });
+
+    it('runs bible fact extraction’s set (Phase 4.1) on the same model path, its record uploaded with the others', () => {
+        expect(wf.on.workflow_dispatch.inputs!.bible_facts.type).toBe('boolean');
+        expect(wf.on.workflow_dispatch.inputs!.bible_facts.default).toBe(false);
+        const run = job.steps.find((s) => s.run?.includes('packs:evaluate'))!;
+        expect(run.env).toMatchObject({ BIBLE_FACTS: '${{ inputs.bible_facts }}' });
+        expect(run.run).toMatch(/if \[ "\$BIBLE_FACTS" = "true" \]; then extra="\$extra --bible-facts"; fi/);
     });
 
     it('runs source fact extraction’s set (Phase 4.0) on the same model path, its record uploaded with the others', () => {

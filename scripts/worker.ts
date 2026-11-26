@@ -30,6 +30,7 @@ import { initTelemetry, shutdownTelemetry } from '../src/lib/observability/instr
 import { initSentry, shutdownSentry } from '../src/lib/observability/sentry';
 import { initMailerFromEnv } from '../src/lib/mailer';
 import { closeRedisClient, createRedisClient, redactRedisUrl, resolveRedisUrl } from '../src/lib/redis';
+import { abortRunningJobs } from '../src/app-layer/jobs/shutdown-signal';
 import { registerSchedules } from '../src/app-layer/jobs/register-schedules';
 import { createJobWorker } from '../src/app-layer/jobs/worker';
 import { executorRegistry } from '../src/app-layer/jobs/executor-registry';
@@ -78,6 +79,8 @@ async function bootstrap(): Promise<void> {
 async function shutdown(signal: string): Promise<void> {
     log.info({ signal }, 'shutdown signal received — closing worker');
     try {
+        // #57 item 6: a running ingestion or extraction stops at its next step (ABORTED, resumable) rather than holding its claim until it goes stale.
+        abortRunningJobs();
         await worker?.close();
         if (connection) await closeRedisClient(connection);
         await shutdownTelemetry();

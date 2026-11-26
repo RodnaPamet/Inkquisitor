@@ -32,6 +32,8 @@ import researchRecord from '@/lib/research/evals/evaluation-record.json';
 import rephraseRecord from '@/lib/interview/evals/rephrase-evaluation-record.json';
 import { checkExtractionRecord, extractionPromptHash } from '@/lib/sources/evals/evaluation';
 import sourcesRecord from '@/lib/sources/evals/evaluation-record.json';
+import { bibleFactsPromptHash, checkBibleFactsRecord } from '@/lib/facts/evals/evaluation';
+import bibleFactsRecord from '@/lib/facts/evals/evaluation-record.json';
 
 /** Every exported product prompt, and how its evaluation is re-run. */
 const EVALUATED_PROMPTS: Readonly<Record<string, string>> = {
@@ -42,6 +44,7 @@ const EVALUATED_PROMPTS: Readonly<Record<string, string>> = {
     FINDINGS_PROMPT: 'npm run packs:evaluate -- --no-packs --research',
     FIT_PROMPT: 'npm run packs:evaluate -- --no-packs --research',
     EXTRACT_PROMPT: 'npm run packs:evaluate -- --no-packs --sources',
+    BIBLE_FACTS_PROMPT: 'npm run packs:evaluate -- --no-packs --bible-facts',
 };
 
 /** Prompts that are not product features, each with the reason it has no product evaluation record. */
@@ -105,6 +108,7 @@ describe('every record pins the prompt and packs as they are now', () => {
         ['GATHER_PROMPT · FINDINGS_PROMPT · FIT_PROMPT', researchRecord, researchPromptHash],
         ['REPHRASE_PROMPT', rephraseRecord, rephrasePromptHash],
         ['EXTRACT_PROMPT', sourcesRecord, extractionPromptHash],
+        ['BIBLE_FACTS_PROMPT', bibleFactsRecord, bibleFactsPromptHash],
     ] as const)('the %s record names the prompt’s content hash now', (_name, record, current) => {
         expect((record as { promptHash?: string }).promptHash).toBe(current());
     });
@@ -123,6 +127,8 @@ describe('every record pins the prompt and packs as they are now', () => {
         if (!rephrase.ok) refusals.push(`rephrase: ${rephrase.reason}`);
         const sources = checkExtractionRecord(sourcesRecord);
         if (!sources.ok) refusals.push(`sources: ${sources.reason}`);
+        const bibleFacts = checkBibleFactsRecord(bibleFactsRecord);
+        if (!bibleFacts.ok) refusals.push(`bible facts: ${bibleFacts.reason}`);
         expect(refusals).toEqual([]);
     });
 });

@@ -21,7 +21,8 @@
  *   ABORTED                   ABORTED: the ingestion stops, resumable
  *   PROVIDER_ERROR            PROVIDER_FAILURE: the chunk is left for a resume
  *   INVALID_OUTPUT            INVALID_OUTPUT: the chunk is left for a resume
- *   AiPromptError             PROMPT_INVALID, logged as the programming error it is
+ *   AiPromptError             PROMPT_INVALID: `REPEATS_PROMPT` when the passage repeats a sentence of the prompt (it is
+ *                             marked unreadable), otherwise logged as the programming error it is
  */
 import type { WorkspaceRequestContext } from '@/app-layer/types';
 import { callStructured } from '@/app-layer/usecases/model-calls';
@@ -56,8 +57,13 @@ export function extractOutcomeOf(err: unknown): ExtractResult {
     if (err instanceof AiProviderError) return failed('PROVIDER_FAILURE', err);
     if (err instanceof AiOutputInvalidError) return failed('INVALID_OUTPUT', err);
     if (err instanceof AiPromptError) {
-        logger.error('sources.prompt_invalid', { component: 'sources', errorCode: err.code });
-        return { ok: false, failure: 'PROMPT_INVALID', errorCode: 'PROMPT_INVALID', tokensUsed: 0, costMicroUsd: 0, callIds: [] };
+        // The one prompt refusal the TEXT causes (Phase 4.1, #57 item 2): a block that repeats a sentence of the
+        // prompt (2.1 refuses a prompt that carries a block's text). It is named apart, so the caller can mark that
+        // passage unreadable; any other is the programming error it is, logged, and left for a resume.
+        const problem = (err.details as { problem?: unknown } | undefined)?.problem;
+        const repeats = typeof problem === 'string' && problem.endsWith('contains author text');
+        if (!repeats) logger.error('sources.prompt_invalid', { component: 'sources', errorCode: err.code });
+        return { ok: false, failure: 'PROMPT_INVALID', errorCode: repeats ? 'REPEATS_PROMPT' : 'PROMPT_INVALID', tokensUsed: 0, costMicroUsd: 0, callIds: [] };
     }
     throw err;
 }

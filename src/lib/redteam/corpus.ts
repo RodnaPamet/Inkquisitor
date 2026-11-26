@@ -16,9 +16,11 @@ import corpusJson from './injection-corpus.json';
  * Phase 3.3 (D24) adds the canvas interview's two: RELATION_ANSWER (an answer
  * given in an edge interview, reconciled with the relation's fields in scope
  * and new relations offered) and RELATION_TEXT (a relation field's stored text,
- * which a relation round's questions are worded around).
+ * which a relation round's questions are worded around). Phase 4.0 adds
+ * SOURCE_UPLOAD (a passage of an uploaded draft, read for facts) and 4.1
+ * BIBLE_ENTRY (an accepted bible entry, read for facts automatically, D27).
  */
-export const INJECTION_SURFACES = ['ANSWER', 'ELEMENT_TEXT', 'IMPORTED_NOTE', 'RESEARCH_PAGE', 'ATTACHED_FILE', 'RELATION_ANSWER', 'RELATION_TEXT', 'SOURCE_UPLOAD'] as const;
+export const INJECTION_SURFACES = ['ANSWER', 'ELEMENT_TEXT', 'IMPORTED_NOTE', 'RESEARCH_PAGE', 'ATTACHED_FILE', 'RELATION_ANSWER', 'RELATION_TEXT', 'SOURCE_UPLOAD', 'BIBLE_ENTRY'] as const;
 export type InjectionSurface = (typeof INJECTION_SURFACES)[number];
 
 export const INJECTION_ATTACKS = [

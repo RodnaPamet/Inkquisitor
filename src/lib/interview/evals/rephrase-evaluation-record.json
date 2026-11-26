@@ -4,12 +4,12 @@
     "hash": "sha256:29ef985abe427cc8eb1b2cb15f071dd8e9add6b4b8d00d8dfcde93cba3d1c21e"
   },
   "promptVersion": "question-rephrase.4.0.0",
-  "promptHash": "sha256:2d9d50d6974466aae9123748bd4ed706f5a7f27130a887d010dc55666ef2ed27",
+  "promptHash": "sha256:1f01f0f446c254b80b486ecadd2c44d74b5160568bf2026df0c4a4f125cdcd0b",
   "generator": {
     "kind": "structural",
     "id": "structural-rephraser.1"
   },
-  "ranAt": "2026-11-21T08:42:03.534Z",
+  "ranAt": "2026-11-26T07:56:15.304Z",
   "answers": [
     {
       "caseId": "rp-01",
