@@ -36,10 +36,12 @@ import { defaultBibleFactExtractor } from '@/lib/facts/model-seam';
 import type { ExtractResult, FactExtractor } from '@/lib/sources/extractor';
 import { fakeGenerator } from '../helpers/fake-question-generator';
 import { setFakeApiKey } from '../helpers/fake-anthropic';
-import { ANY_DUE } from '../helpers/facts';
+import { ANY_DUE, seedFactLayer } from '../helpers/facts';
 import { BIBLE_FACT_PIECE_MAX_CHARS, FACT_EXTRACTION_ATTEMPTS_MAX } from '@/lib/facts/vocabulary';
 import { BIBLE_FACTS_CALL_COST_BUDGET_MICRO_USD } from '@/lib/facts/prompt';
 import { periodStartOf } from '@/lib/ai/call-record';
+import { embedderFrom, type QuestionEmbedder } from '@/app-layer/usecases/question-embeddings';
+import { BibleFactRepository } from '@/app-layer/repositories/source.repository';
 import { ingestText, seedSourceLibrary } from '../helpers/sources';
 import { decideFact, listBookFacts } from '@/app-layer/usecases/source-facts';
 import type { EmbeddingProvider } from '@/lib/ai/embeddings';
@@ -723,5 +725,88 @@ describe('owner decisions of 2026-11-21: a cleared field is asked again at once'
         const proposals = await listFactProposals(ctx, bookId);
         expect(proposals.proposals.some((p) => p.reason === 'NO_LONGER_STATED' && p.older.id === want.id)).toBe(true);
         expect((await bibleFacts(bookId)).find((f) => f.id === want.id)!.supersededAt).toBeNull();
+    });
+});
+
+describe('review of 4.1, hardening: a round whose context cannot be read', () => {
+    async function setup() {
+        const owner = await createAccount();
+        const ctx = workspaceCtx(owner);
+        const bookId = (await createBook(ctx, { title: 'Context' })).id;
+        const wren = await createElement(ctx, bookId, { kind: 'CHARACTER', name: 'Wren', summary: 'Wren keeps the lock at Harrow Weir.' });
+        return { ctx, bookId, wren };
+    }
+    const roundsOf = (ctx: Ctx, sessionId: string) => runWithoutRls({ reason: 'test' }, (db) => db.interviewRound.findMany({ where: { workspaceId: ctx.workspaceId, sessionId }, select: { status: true } }));
+
+    it('a vector search that fails reads the context lexically, and the round opens', async () => {
+        const { ctx, bookId, wren } = await setup();
+        const store = getVectorRepository();
+        const original = store.search.bind(store);
+        const spy = jest.spyOn(store, 'search').mockImplementation(async (db, ws, q) => {
+            if (q.within) throw new Error('vector store down');
+            return original(db, ws, q);
+        });
+        try {
+            const view = await startInterview(ctx, bookId, { scope: 'ELEMENT', elementId: wren.id, depth: 2, detail: 3 }, { generator: fakeGenerator(), embedder: embedderFrom(new StubEmbeddingProvider()) });
+            expect(view.round?.status).toBe('OPEN');
+            expect(spy.mock.calls.some(([, , q]) => q.within !== undefined)).toBe(true);
+        } finally {
+            spy.mockRestore();
+        }
+    });
+
+    it('a context that cannot be read at all FAILS the claimed round, never leaving it GENERATING', async () => {
+        const { ctx, bookId, wren } = await setup();
+        let failNow = false;
+        const real = BibleFactRepository.listLiveAbout.bind(BibleFactRepository);
+        const spy = jest.spyOn(BibleFactRepository, 'listLiveAbout').mockImplementation(async (...args) => {
+            if (failNow) throw new Error('database gone');
+            return real(...args);
+        });
+        const stub = embedderFrom(new StubEmbeddingProvider());
+        // The context query is embedded after the claim and before the context is read: from then on the read fails.
+        const embedder: QuestionEmbedder = { revision: stub.revision, embed: async (texts) => { failNow = true; return stub.embed(texts); } };
+        try {
+            await expect(startInterview(ctx, bookId, { scope: 'ELEMENT', elementId: wren.id, depth: 2, detail: 3 }, { generator: fakeGenerator(), embedder })).rejects.toThrow('database gone');
+        } finally {
+            spy.mockRestore();
+        }
+        const session = await runWithoutRls({ reason: 'test' }, (db) => db.interviewSession.findFirstOrThrow({ where: { workspaceId: ctx.workspaceId, bookId }, select: { id: true, status: true } }));
+        expect((await roundsOf(ctx, session.id)).map((r) => r.status)).toEqual(['FAILED']);
+    });
+});
+
+describe('review of 4.1, hardening: what the database holds', () => {
+    it('app_user cannot delete a provenance row; the cascade from a deleted element still takes it', async () => {
+        const owner = await createAccount();
+        const ctx = workspaceCtx(owner);
+        const bookId = (await createBook(ctx, { title: 'Provenance' })).id;
+        const { elementId } = await seedFactLayer(ctx, bookId, 'Pv');
+        const count = () => runWithoutRls({ reason: 'test' }, (db) => db.storyFactProvenance.count({ where: { workspaceId: ctx.workspaceId } }));
+        expect(await count()).toBeGreaterThan(0);
+        await expect(runInWorkspaceContext(ctx, (db) => db.storyFactProvenance.deleteMany({ where: { workspaceId: ctx.workspaceId } }))).rejects.toThrow(/permission denied/i);
+        expect(await count()).toBeGreaterThan(0);
+        await deleteElement(ctx, bookId, elementId);
+        expect(await count()).toBe(0);
+    });
+
+    it('an invalidation keeps naming its newer fact: cleared only by the newer fact’s deletion', async () => {
+        const owner = await createAccount();
+        const ctx = workspaceCtx(owner);
+        const bookId = (await createBook(ctx, { title: 'Pointer' })).id;
+        await createElement(ctx, bookId, { kind: 'CHARACTER', name: 'Wren', summary: 'Wren is 12 years old.' });
+        await extractAll(ctx, age(12));
+        const wren = (await bibleFacts(bookId))[0].elementId!;
+        await updateElement(ctx, bookId, wren, { summary: 'Wren is 13 years old.', baseVersion: 1 });
+        await extractAll(ctx, age(13));
+        const p = (await listFactProposals(ctx, bookId)).proposals[0];
+        await decideFactProposal(ctx, bookId, p.id, { decision: 'INVALIDATE' });
+        await expect(runInWorkspaceContext(ctx, (db) => db.storyFact.updateMany({ where: { workspaceId: ctx.workspaceId, id: p.older.id }, data: { invalidatedByFactId: null } }))).rejects.toThrow(/STORY_FACT_FIXED/);
+        expect((await bibleFacts(bookId)).find((f) => f.id === p.older.id)!.invalidatedByFactId).toBe(p.newer!.id);
+        // The newer fact deleted: the foreign key's SET NULL passes, the older stays superseded.
+        await runWithoutRls({ reason: 'test' }, (db) => db.storyFact.delete({ where: { id: p.newer!.id } }));
+        const older = (await bibleFacts(bookId)).find((f) => f.id === p.older.id)!;
+        expect(older.invalidatedByFactId).toBeNull();
+        expect(older.supersededAt).not.toBeNull();
     });
 });

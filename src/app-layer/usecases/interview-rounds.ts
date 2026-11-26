@@ -377,7 +377,15 @@ async function withQueryContext(ctx: WorkspaceRequestContext, session: SessionRo
         const [vector] = await embedder.embed([contextQueryText(claim)]);
         if (vector) query = { vector, revision: embedder.revision };
     }
-    return runInWorkspaceContext(ctx, (db) => assembleSourceContext(db, ctx, session.bookId, scopeOf(claim.state), query, undefined, claim.state.related));
+    const read = (q: typeof query) => runInWorkspaceContext(ctx, (db) => assembleSourceContext(db, ctx, session.bookId, scopeOf(claim.state), q, undefined, claim.state.related));
+    if (!query) return read(null);
+    try {
+        return await read(query);
+    } catch (err) {
+        // The vector half failed (the store refused the query): the context is read lexically, as with no embedder.
+        logger.warn('interview.context_vector_failed', { component: 'interview', sessionId: session.id, error: err instanceof Error ? err.name : 'unknown' });
+        return read(null);
+    }
 }
 
 /**
@@ -411,11 +419,13 @@ export async function generateClaimedRound(
     const embedder = contextEmbedderOf(deps);
     const packs = deps.packs ?? getPacks();
     const { state, plan } = claim;
-    const sourceContext = claim.contextDeferred ? await withQueryContext(ctx, session, claim, embedder) : claim.sourceContext;
     const known = new Set(state.asked.map((q) => q.id));
 
     let output: RoundOutput;
     try {
+        // Read inside the try: the round is claimed, so a context that cannot be read FAILS the round (and pauses the
+        // session, named) rather than leaving it GENERATING until its claim goes stale.
+        const sourceContext = claim.contextDeferred ? await withQueryContext(ctx, session, claim, embedder) : claim.sourceContext;
         output = await produceRound(
             {
                 bookId: session.bookId,

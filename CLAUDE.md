@@ -1390,7 +1390,8 @@ closed beta with an explicit operator flag (D5, amended 2026-11-19).
   of the same entry whose quote is gone raises NO_LONGER_STATED. NOTHING IS
   INVALIDATED by the job (rule 1): the author decides on the Facts page
   (`decideFactProposal`, `bible.edit`): INVALIDATE sets `supersededAt` and
-  `invalidatedByFactId` once (trigger) and settles the fact's other pending
+  `invalidatedByFactId` once (trigger; the pointer is cleared only by its
+  foreign key's SET NULL, never while the newer fact stands) and settles the fact's other pending
   proposals; KEEP_BOTH and REJECT write only the decision; one proposal per
   pair, ever (NULLS NOT DISTINCT). Series facts are never resolved against
   (shared with other books). The book's fact lock (`story-facts:<bookId>`) is
@@ -1415,7 +1416,10 @@ closed beta with an explicit operator flag (D5, amended 2026-11-19).
   query (`within`: `chunks-of-sources`, `facts-of-book`), the in-process backend
   refuses it. With an embedder, a round's context is read AFTER the claim: the
   query (`contextQueryText`) embedded outside every transaction, then one
-  transaction more (`interview-latency.test.ts`). The worker aborts running
+  transaction more (`interview-latency.test.ts`), inside the generation's
+  `try` (a context that cannot be read FAILS the round; a failed vector search
+  falls back to the lexical context). `StoryFactProvenance` is append-only by
+  grant as well as by trigger. The worker aborts running
   ingestions and extractions on shutdown (`abortRunningJobs`). After editing the
   set, the prompt or its schema, re-run `npm run packs:evaluate -- --no-packs
   --bible-facts`; a changed `QUESTION_PROMPT` needs `npm run packs:evaluate`.
