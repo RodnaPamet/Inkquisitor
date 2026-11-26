@@ -95,7 +95,7 @@ export const CONTINUITY_OUTCOMES = [
     'MODEL_RATE_LIMITED',
     /** A call failed: resumable from the cursor. */
     'CALL_FAILED',
-    /** The facts tripped the guard: resumable (the page is tried again tomorrow). */
+    /** The facts (or the answer about them) tripped the guard: the night stops, and the pass resumes past that page tomorrow. */
     'GUARD_REFUSED',
     /** Even the smallest call (one subject's facts, cut) is past the per-call budget: resumable once a cheaper model is configured. */
     'CALL_OVER_BUDGET',

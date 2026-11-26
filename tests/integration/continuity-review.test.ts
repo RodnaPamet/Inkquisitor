@@ -12,6 +12,8 @@
  *   the dispatcher ordered a workspace's due books by id, so books that stay due
  *   took every night's places and the rest were never reached
  *   a night stopped after its first call reported every subject still remaining
+ *   a page the guard refused was sent again every night (on the way out, a paid
+ *   call), and the pass never got past it
  */
 import { randomBytes } from 'node:crypto';
 import { prisma } from '@/lib/db';
@@ -182,5 +184,32 @@ describe('the nightly check: coverage and fairness', () => {
         expect(await runNight(ctx, { checker: firstThenFail, callsPerNight: 2, factsPerCall: 1 })).toEqual(['CALL_FAILED']);
         const run = await runWithoutRls({ reason: 'test' }, (db) => db.continuityRun.findFirstOrThrow({ where: { bookId }, select: { subjectsCovered: true, subjectsRemaining: true } }));
         expect(run).toEqual({ subjectsCovered: 1, subjectsRemaining: 2 });
+    });
+});
+
+describe('the nightly check: a page the guard refuses', () => {
+    it('stops the night but is passed over: the next night goes on past it, never retrying it behind the pass', async () => {
+        const ctx = workspaceCtx(await createAccount());
+        const bookId = (await createBook(ctx, { title: 'Guarded' })).id;
+        for (const name of ['Edda', 'Finn']) {
+            await createElement(ctx, bookId, { kind: 'CHARACTER', name, summary: `${name} is 30 years old.` });
+            await extractPending(ctx, bookId, ageExtractor(name));
+        }
+        const shown: string[] = [];
+        // The first subject's page trips the guard every time it is sent; any other page passes.
+        const guarded = () => ({
+            extract: async (request: { data: ReadonlyArray<{ label: string; text: string }> }) => {
+                const text = request.data.find((b) => b.label === 'facts')?.text ?? '';
+                shown.push(text);
+                return shown.length === 1 || text === shown[0]
+                    ? { ok: false as const, failure: 'GUARD_REFUSED' as const, errorCode: 'GUARD', tokensUsed: 0, costMicroUsd: 0, callIds: [] as string[] }
+                    : { ok: true as const, output: { contradictions: [] }, tokensUsed: 1, costMicroUsd: 1, callIds: [] as string[] };
+            },
+        });
+        const night = () => runNight(ctx, { checker: guarded, callsPerNight: 1, factsPerCall: 1 });
+        expect(await night()).toEqual(['GUARD_REFUSED']);
+        expect(await night()).toEqual(['OK']);
+        expect(shown).toHaveLength(2);
+        expect(shown[1]).not.toBe(shown[0]);
     });
 });

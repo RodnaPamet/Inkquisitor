@@ -1674,7 +1674,7 @@
                 "NOT_EVALUATED": "rules only: the deep check is not yet approved for this deployment",
                 "MODEL_RATE_LIMITED": "paused: too many AI calls this minute",
                 "CALL_FAILED": "paused after a failed call; it resumes tomorrow",
-                "GUARD_REFUSED": "paused: the safety check refused a page",
+                "GUARD_REFUSED": "paused: the safety check refused a page, which this check passes over; the rest resumes tomorrow",
                 "CALL_OVER_BUDGET": "paused: one page would cost more than allowed",
                 "ABORTED": "stopped by a restart; it resumes tomorrow",
                 "CLAIM_EXPIRED": "lost and requeued",

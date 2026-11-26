@@ -115,6 +115,8 @@ interface Metrics {
     refusals: Record<string, number>;
     callIds: string[];
     subjectFactsCut: number;
+    /** Subjects of a page the guard refused: passed over in this pass, never retried behind it. */
+    guardRefusedSubjects?: number;
     errorCode?: string;
 }
 
@@ -398,6 +400,14 @@ export async function executeContinuityCheck(payload: { workspaceId: string; run
                     : result.failure === 'ABORTED' ? 'ABORTED'
                     : result.failure === 'GUARD_REFUSED' ? 'GUARD_REFUSED'
                     : 'CALL_FAILED';
+                if (outcome === 'GUARD_REFUSED') {
+                    // The same facts trip the guard the same way every night (on the way out, after a paid call): the
+                    // night stops, but the pass resumes PAST this page, its subjects counted as refused, never retried
+                    // for ever behind it (4.0's rule: a refused chunk yields nothing).
+                    metrics.guardRefusedSubjects = (metrics.guardRefusedSubjects ?? 0) + call.subjectKeys.length;
+                    counts.subjectsRemaining -= call.subjectKeys.length;
+                    return await finish(outcome, claim, { passTarget, passCursor: call.subjectKeys[call.subjectKeys.length - 1] });
+                }
                 return await finish(outcome, claim, { passTarget, passCursor: cursor });
             }
             const v = validateContinuityPairs(result.output, rows.map((r) => r.id));
