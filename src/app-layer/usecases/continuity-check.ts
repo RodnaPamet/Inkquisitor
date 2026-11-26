@@ -151,6 +151,9 @@ const STATUS_OF: Readonly<Record<ContinuityOutcome, ContinuityRunStatus>> = {
     INTERNAL: 'FAILED',
 };
 
+/** Failures that mean nothing reached the provider unless the call reports tokens or cost (the guard and an abort can come either side). */
+const REFUSED_BEFORE_SEND: ReadonlySet<string> = new Set(['KILL_SWITCH', 'WORKSPACE_CEILING', 'AI_UNAVAILABLE', 'PROMPT_INVALID', 'GUARD_REFUSED', 'ABORTED']);
+
 const ORDER_NAME: Readonly<Record<string, string>> = { PLOT_BEAT: 'plot beats', TIMELINE_EVENT: 'timeline events' };
 
 /** A fact's moment of entering the book: when it was written, or (a source fact) confirmed. */
@@ -408,7 +411,8 @@ export async function executeContinuityCheck(payload: { workspaceId: string; run
             }
             const rows = call.facts.map((f) => f.row);
             const result = await checker.extract({ data: blocksOf(rows), bookId: run.bookId }, deps.signal);
-            counts.callsMade++;
+            // A call refused before it was sent (the switch, a limit, no deployment, the input guard) is no call made.
+            if (result.ok || !REFUSED_BEFORE_SEND.has(result.failure) || result.tokensUsed > 0 || result.costMicroUsd > 0) counts.callsMade++;
             metrics.callIds.push(...result.callIds);
             await runInWorkspaceContext(ctx, (db) => ContinuityRunRepository.addCost(db, ctx.workspaceId, run.id, result.costMicroUsd));
             if (!result.ok) {

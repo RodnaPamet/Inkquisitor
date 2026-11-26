@@ -297,3 +297,18 @@ describe('stale flags: written only by the database and the two decisions', () =
         expect(await runWithoutRls({ reason: 'test' }, (db) => db.staleFlag.count({ where: { id: flag.id } }))).toBe(0);
     });
 });
+
+describe('the nightly check: what counts as a call made', () => {
+    it('a call refused before it was sent (the ceiling) is no call made; a sent call that failed is one', async () => {
+        const ctx = workspaceCtx(await createAccount());
+        const bookId = (await createBook(ctx, { title: 'Counted' })).id;
+        await createElement(ctx, bookId, { kind: 'CHARACTER', name: 'Gil', summary: 'Gil is 30 years old.' });
+        await extractPending(ctx, bookId, ageExtractor('Gil'));
+        const failing = (failure: 'WORKSPACE_CEILING' | 'PROVIDER_FAILURE') => () => ({ extract: async () => ({ ok: false as const, failure, errorCode: failure, tokensUsed: 0, costMicroUsd: 0, callIds: [] as string[] }) });
+        const last = () => runWithoutRls({ reason: 'test' }, (db) => db.continuityRun.findFirstOrThrow({ where: { bookId }, orderBy: { createdAt: 'desc' }, select: { outcome: true, callsMade: true, promptVersion: true } }));
+        expect(await runNight(ctx, { checker: failing('WORKSPACE_CEILING') })).toEqual(['CEILING']);
+        expect(await last()).toEqual({ outcome: 'CEILING', callsMade: 0, promptVersion: null });
+        expect(await runNight(ctx, { checker: failing('PROVIDER_FAILURE') })).toEqual(['CALL_FAILED']);
+        expect(await last()).toMatchObject({ outcome: 'CALL_FAILED', callsMade: 1 });
+    });
+});
