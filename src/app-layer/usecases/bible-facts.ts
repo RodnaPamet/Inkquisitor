@@ -36,6 +36,7 @@
  */
 import { randomUUID } from 'node:crypto';
 import type { Prisma } from '@prisma/client';
+import type { AuthorDataBlock } from '@/lib/ai/prompt';
 import type { WorkspaceRequestContext } from '@/app-layer/types';
 import { logEvent } from '@/app-layer/events/audit';
 import { BibleElementRepository, BibleRelationRepository } from '@/app-layer/repositories/bible.repository';
@@ -52,12 +53,14 @@ import { nameKey } from '@/lib/enrichment/validate';
 import { RateLimitedError } from '@/lib/errors/types';
 import { claimKey } from '@/lib/facts/claim-key';
 import { claimParts, resolveFacts, type FactOwner, type LiveFact, type NewFact } from '@/lib/facts/dedupe';
-import { changedSections, entryText, renderElementEntry, renderRelationEntry, sentText, type RenderedEntry } from '@/lib/facts/entry-text';
+import { changedSections, entryText, renderElementEntry, renderRelationEntry, type EntrySection, type RenderedEntry } from '@/lib/facts/entry-text';
+import { planBibleFactCalls } from '@/lib/facts/call-plan';
+import { bibleFactsCallWorstCase } from '@/lib/facts/cost';
 import { defaultBibleFactExtractor } from '@/lib/facts/model-seam';
-import { BIBLE_FACTS_PROMPT_VERSION, bibleFactBlocks, EXISTING_FACTS_SHOWN_MAX } from '@/lib/facts/prompt';
+import { BIBLE_FACTS_CALL_COST_BUDGET_MICRO_USD, BIBLE_FACTS_PROMPT_VERSION, EXISTING_FACTS_SHOWN_MAX } from '@/lib/facts/prompt';
 import { bibleFactGate, type BibleFactGateVerdict } from '@/lib/facts/record-gate';
-import { validateBibleFacts } from '@/lib/facts/validate';
-import { FACT_EXTRACTION_ATTEMPTS_MAX, FACT_EXTRACTION_RETRY_MS, RESUMABLE_EXTRACTION_OUTCOMES, type FactExtractionOutcome, type FactExtractionStatus } from '@/lib/facts/vocabulary';
+import { validateBibleFacts, type BibleFactDraft } from '@/lib/facts/validate';
+import { BIBLE_FACT_PIECE_MAX_CHARS, BIBLE_FACT_PIECE_MIN_CHARS, FACT_EXTRACTION_ATTEMPTS_MAX, FACT_EXTRACTION_RETRY_MS, RESUMABLE_EXTRACTION_OUTCOMES, type FactExtractionOutcome, type FactExtractionStatus } from '@/lib/facts/vocabulary';
 import type { PackRecordMode } from '@/lib/interview/pack-records-config';
 import { logger } from '@/lib/observability/logger';
 import { getPermissionsForRole } from '@/lib/permissions';
@@ -79,6 +82,8 @@ export interface BibleFactDeps {
     /** Charges one model call to the workspace's minute (D17). */
     charge?: (workspaceId: string, calls: number) => void;
     now?: () => Date;
+    /** A call's worst case in µUSD over its data blocks (tests: a figure of their own). */
+    worstCase?: (blocks: readonly AuthorDataBlock[]) => number;
 }
 
 /** How long one extraction waits out a full model-call minute at most before it stops MODEL_RATE_LIMITED. */
@@ -94,6 +99,8 @@ interface RunMetrics {
     callIds: string[];
     duplicatesInVersion: number;
     modelOtherSubject: number;
+    /** Calls the version was sent in (its changed sections, bounded: the D27 addendum). */
+    calls: number;
     errorCode?: string;
 }
 
@@ -185,11 +192,19 @@ async function look(db: PrismaTx, scope: { workspaceId: string; requestId: strin
     return { row, skip: null, ctx: { requestId: scope.requestId, userId: authorId, workspaceId: scope.workspaceId, workspaceSlug: slug, role: membership.role, permissions } };
 }
 
+/** One call's answer and what it was shown. */
+interface CallOutput {
+    output: unknown;
+    sent: string;
+    shown: number;
+}
+
 interface Prepared {
     subject: Subject;
     entry: RenderedEntry;
     whole: string;
-    sent: string;
+    /** The body sections changed since the baseline (sent in bounded calls, `call-plan.ts`). */
+    changedSections: EntrySection[];
     changed: number;
     shown: LiveFact[];
     bookNames: string[];
@@ -273,7 +288,7 @@ async function prepare(db: PrismaTx, ctx: WorkspaceRequestContext, row: FactExtr
         subject,
         entry,
         whole: entryText(entry),
-        sent: sentText(entry, changed),
+        changedSections: changed,
         changed: changed.length,
         shown: live.slice(0, EXISTING_FACTS_SHOWN_MAX),
         bookNames: names.map((n) => n.name),
@@ -285,7 +300,7 @@ async function prepare(db: PrismaTx, ctx: WorkspaceRequestContext, row: FactExtr
 export async function executeBibleFactExtraction(payload: { workspaceId: string; extractionId: string }, deps: BibleFactDeps = {}): Promise<Ended> {
     const now = deps.now ?? (() => new Date());
     const scope = { workspaceId: payload.workspaceId, requestId: randomUUID() };
-    const metrics: RunMetrics = { sectionsChanged: 0, drafted: 0, kept: 0, refusals: {}, callIds: [], duplicatesInVersion: 0, modelOtherSubject: 0 };
+    const metrics: RunMetrics = { sectionsChanged: 0, drafted: 0, kept: 0, refusals: {}, callIds: [], duplicatesInVersion: 0, modelOtherSubject: 0, calls: 0 };
 
     const looked = await runInWorkspaceContext(scope, (db) => look(db, scope, payload.extractionId));
     if (!looked) return { ran: false, outcome: null };
@@ -308,33 +323,49 @@ export async function executeBibleFactExtraction(payload: { workspaceId: string;
     metrics.sectionsChanged = prepared.changed;
 
     try {
-        let output: unknown = { facts: [] };
+        const outputs: CallOutput[] = [];
         if (prepared.changed > 0) {
-            if (deps.signal?.aborted) return end(ctx, row, 'ABORTED', metrics, now(), claim);
-            if (!(await waitForModelRate(ctx, deps.charge ?? chargeModelCalls, deps.sleep ?? defaultSleep, deps.signal))) {
-                return end(ctx, row, deps.signal?.aborted ? 'ABORTED' : 'MODEL_RATE_LIMITED', metrics, now(), claim);
-            }
+            // Bounded calls (the D27 addendum): pieces of at most BIBLE_FACT_PIECE_MAX_CHARS, each call's worst case
+            // inside the per-call cost budget — refused, nothing sent, when even the smallest call is not.
+            const plan = planBibleFactCalls({
+                entry: prepared.entry,
+                changed: prepared.changedSections,
+                subjects: prepared.subject.names,
+                shown: prepared.shown,
+                bookNames: prepared.bookNames,
+                budgetMicroUsd: BIBLE_FACTS_CALL_COST_BUDGET_MICRO_USD,
+                maxChars: BIBLE_FACT_PIECE_MAX_CHARS,
+                minChars: BIBLE_FACT_PIECE_MIN_CHARS,
+                worst: deps.worstCase ?? ((blocks) => bibleFactsCallWorstCase(blocks)),
+            });
+            if (!plan.ok) return end(ctx, row, 'CALL_OVER_BUDGET', { ...metrics, errorCode: 'CALL_OVER_BUDGET' }, now(), claim);
             const extractor = (deps.extractor ?? defaultBibleFactExtractor)(ctx);
-            const data = bibleFactBlocks({ text: prepared.sent, subjects: prepared.subject.names, existing: prepared.shown, bookNames: prepared.bookNames });
-            const result = await extractor.extract({ data, bookId: row.bookId }, deps.signal);
-            metrics.callIds.push(...result.callIds);
-            // What the call cost is counted now, in its own transaction, whatever becomes of the run.
-            await runInWorkspaceContext(ctx, (db) => FactExtractionRepository.addCost(db, ctx.workspaceId, row.id, result.costMicroUsd));
-            if (!result.ok) {
-                metrics.errorCode = result.errorCode;
-                const outcome: FactExtractionOutcome =
-                    result.failure === 'KILL_SWITCH' ? 'KILL_SWITCH'
-                    : result.failure === 'WORKSPACE_CEILING' ? 'CEILING'
-                    : result.failure === 'AI_UNAVAILABLE' ? 'AI_UNAVAILABLE'
-                    : result.failure === 'ABORTED' ? 'ABORTED'
-                    : result.failure === 'GUARD_REFUSED' ? 'GUARD_REFUSED'
-                    : result.failure === 'PROMPT_INVALID' && result.errorCode === 'REPEATS_PROMPT' ? 'REPEATS_PROMPT'
-                    : 'CALL_FAILED';
-                return end(ctx, row, outcome, metrics, now(), claim);
+            for (const call of plan.calls) {
+                if (deps.signal?.aborted) return end(ctx, row, 'ABORTED', metrics, now(), claim);
+                if (!(await waitForModelRate(ctx, deps.charge ?? chargeModelCalls, deps.sleep ?? defaultSleep, deps.signal))) {
+                    return end(ctx, row, deps.signal?.aborted ? 'ABORTED' : 'MODEL_RATE_LIMITED', metrics, now(), claim);
+                }
+                const result = await extractor.extract({ data: call.blocks, bookId: row.bookId }, deps.signal);
+                metrics.calls++;
+                metrics.callIds.push(...result.callIds);
+                // What the call cost is counted now, in its own transaction, whatever becomes of the run.
+                await runInWorkspaceContext(ctx, (db) => FactExtractionRepository.addCost(db, ctx.workspaceId, row.id, result.costMicroUsd));
+                if (!result.ok) {
+                    metrics.errorCode = result.errorCode;
+                    const outcome: FactExtractionOutcome =
+                        result.failure === 'KILL_SWITCH' ? 'KILL_SWITCH'
+                        : result.failure === 'WORKSPACE_CEILING' ? 'CEILING'
+                        : result.failure === 'AI_UNAVAILABLE' ? 'AI_UNAVAILABLE'
+                        : result.failure === 'ABORTED' ? 'ABORTED'
+                        : result.failure === 'GUARD_REFUSED' ? 'GUARD_REFUSED'
+                        : result.failure === 'PROMPT_INVALID' && result.errorCode === 'REPEATS_PROMPT' ? 'REPEATS_PROMPT'
+                        : 'CALL_FAILED';
+                    return end(ctx, row, outcome, metrics, now(), claim);
+                }
+                outputs.push({ output: result.output, sent: call.sent, shown: call.shown });
             }
-            output = result.output;
         }
-        return await persist(ctx, row, claim, prepared, output, metrics, now);
+        return await persist(ctx, row, claim, prepared, outputs, metrics, now);
     } catch (err) {
         logger.error('facts.extraction_failed', { component: 'facts', extractionId: row.id, error: err instanceof Error ? err.name : 'unknown' });
         return end(ctx, row, 'INTERNAL', { ...metrics, errorCode: 'INTERNAL' }, now(), claim);
@@ -342,10 +373,17 @@ export async function executeBibleFactExtraction(payload: { workspaceId: string;
 }
 
 /** Step 4 (the header): one transaction under the book's fact lock; audit last. */
-async function persist(ctx: WorkspaceRequestContext, row: FactExtractionRow, claim: Date, prepared: Prepared, output: unknown, metrics: RunMetrics, now: () => Date): Promise<Ended> {
-    const validation = validateBibleFacts(output, { sent: prepared.sent, entry: prepared.whole, headings: [], subjects: prepared.subject.names, shown: prepared.shown.length });
-    metrics.drafted = validation.drafted;
-    metrics.refusals = validation.refusals;
+async function persist(ctx: WorkspaceRequestContext, row: FactExtractionRow, claim: Date, prepared: Prepared, outputs: readonly CallOutput[], metrics: RunMetrics, now: () => Date): Promise<Ended> {
+    // Each call's answer is held to the text THAT call was shown (the span check per piece); the facts of all the
+    // calls are then one version's facts, deduplicated by their claim key in `resolveFacts`.
+    const facts: BibleFactDraft[] = [];
+    for (const o of outputs) {
+        const v = validateBibleFacts(o.output, { sent: o.sent, entry: prepared.whole, headings: [], subjects: prepared.subject.names, shown: o.shown });
+        metrics.drafted += v.drafted;
+        for (const [code, n] of Object.entries(v.refusals)) metrics.refusals[code] = (metrics.refusals[code] ?? 0) + n;
+        for (const f of v.facts) facts.push({ ...f, position: facts.length });
+    }
+    const validation = { facts };
     const drafts = validation.facts.map((d) => ({ draft: sanitiseFactForStorage(d), subjectIndex: d.subjectIndex, contradicts: d.contradicts }));
     const owner = prepared.subject.owner;
     const fresh: NewFact[] = drafts.map(({ draft, subjectIndex, contradicts }) => {

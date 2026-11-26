@@ -716,7 +716,8 @@ closed beta with an explicit operator flag (D5, amended 2026-11-19).
   no mode in production): `clientForRun` refuses by it and a feature asks it
   BEFORE writing (`modelUnavailableReason`, 503 `AI_UNAVAILABLE` naming the
   reason). A template may carry its per-call cost budget
-  (`costBudgetMicroUsd`, rule 9; logged `overBudget`, not a gate). A failed
+  (`costBudgetMicroUsd`, rule 9; logged `overBudget`, not a gate in 2.1 — a
+  feature may enforce it before the call, as bible fact extraction does). A failed
   call's tokens and cost are on its error (`AiCallError.tokensUsed`,
   `.costMicroUsd`), a successful one's on the
   result (`tokensUsed`, `costMicroUsd`). Tests hand the SDK
@@ -1370,8 +1371,13 @@ closed beta with an explicit operator flag (D5, amended 2026-11-19).
   failed call; otherwise renders the version (`entry-text.ts`) and sends ONLY
   the sections changed since the entry's newest extracted version (its
   baseline) after the header, with the live facts about its subject(s) shown
-  numbered. One fast call; its cost is counted on the row in a transaction of
-  its own. Validation is 4.0's (`validateFacts`) on the text SHOWN, one item at
+  numbered, in BOUNDED fast calls (D27 addendum: `planBibleFactCalls`, pieces
+  of at most `BIBLE_FACT_PIECE_MAX_CHARS` cut at block, sentence or space
+  boundaries, each call's worst case — `bibleFactsCallWorstCase` — inside the
+  per-call cost budget, which is ENFORCED for this prompt: halved, then no
+  names, then fewer facts shown, else `CALL_OVER_BUDGET` and nothing sent; a
+  rich-text value is read by 3.4's HTML reader, never fused across paragraphs);
+  each call's cost is counted on the row in a transaction of its own. Validation is 4.0's (`validateFacts`) on the text each call was SHOWN, one item at
   a time, plus the entry's own: the subject must be the entry's element (a
   relation's ends), and the span is an offset into the WHOLE entry. Under
   `BibleFactRepository.lockBook`, `resolveFacts` (pure, `dedupe.ts`): a claim

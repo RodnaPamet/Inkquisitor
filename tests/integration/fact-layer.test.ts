@@ -37,7 +37,8 @@ import type { ExtractResult, FactExtractor } from '@/lib/sources/extractor';
 import { fakeGenerator } from '../helpers/fake-question-generator';
 import { setFakeApiKey } from '../helpers/fake-anthropic';
 import { ANY_DUE } from '../helpers/facts';
-import { FACT_EXTRACTION_ATTEMPTS_MAX } from '@/lib/facts/vocabulary';
+import { BIBLE_FACT_PIECE_MAX_CHARS, FACT_EXTRACTION_ATTEMPTS_MAX } from '@/lib/facts/vocabulary';
+import { BIBLE_FACTS_CALL_COST_BUDGET_MICRO_USD } from '@/lib/facts/prompt';
 import { periodStartOf } from '@/lib/ai/call-record';
 import { ingestText, seedSourceLibrary } from '../helpers/sources';
 import { decideFact, listBookFacts } from '@/app-layer/usecases/source-facts';
@@ -642,5 +643,60 @@ describe('owner decisions of 2026-11-21: at the ceiling, wait for next month', (
         // And within a workspace, oldest first.
         const busyOldest = (await rows(busy, busyBook)).map((r) => r.id).reverse();
         expect(due.filter((d) => d.workspaceId === busy.workspaceId).map((d) => d.id)).toEqual(busyOldest.slice(0, 2));
+    });
+});
+
+describe('owner decisions of 2026-11-21: each call’s input is capped, and its worst case fits the budget', () => {
+    const gate = () => ({ mounted: true as const, recordKind: 'structural' as const });
+    const paragraph = (i: number) => `Wren remembers the winter of the flood, part ${i}. ${'The river rose over the weir and the lock gates groaned. '.repeat(14)}`.trim();
+
+    it('a long changed field is sent in bounded pieces at paragraph boundaries; a fact stated in two pieces is stored once', async () => {
+        const owner = await createAccount();
+        const ctx = workspaceCtx(owner);
+        const bookId = (await createBook(ctx, { title: 'Long Wound' })).id;
+        // Fifty paragraphs (about 45,000 characters); the first and the last both say Wren keeps the lock.
+        const html = Array.from({ length: 50 }, (_, i) => `<p>${i === 0 || i === 49 ? 'Wren keeps the lock at Harrow Weir. ' : ''}${paragraph(i)}</p>`).join('');
+        await createElement(ctx, bookId, { kind: 'CHARACTER', name: 'Wren', fields: [{ key: 'wound', value: html }] });
+        const sent: string[] = [];
+        const extractor = scripted((data) => {
+            const text = data.find((b) => b.label === 'entry.text')!.text;
+            sent.push(text);
+            const facts: unknown[] = [];
+            if (text.includes('Wren keeps the lock at Harrow Weir.')) facts.push({ subject: 'Wren', predicate: 'OTHER', object: '', statement: 'Wren keeps the lock at Harrow Weir.', quote: 'Wren keeps the lock at Harrow Weir.', storyTimeFrom: '', storyTimeTo: '', contradicts: [] });
+            const part = /part (\d+)\./.exec(text);
+            if (part) facts.push({ subject: 'Wren', predicate: 'BACKSTORY', object: '', statement: `Wren remembers the winter of the flood, part ${part[1]}.`, quote: `Wren remembers the winter of the flood, part ${part[1]}.`, storyTimeFrom: '', storyTimeTo: '', contradicts: [] });
+            return { facts };
+        });
+        expect(await extractAll(ctx, extractor)).toEqual(['OK']);
+        expect(sent.length).toBeGreaterThanOrEqual(3);
+        for (const t of sent) {
+            const body = t.split('\n').slice(2).join('\n');
+            expect(body.length).toBeLessThanOrEqual(BIBLE_FACT_PIECE_MAX_CHARS + 'Formative wound: '.length);
+            // Every piece opens at a paragraph (the header, then its label, then the paragraph's first words).
+            expect(body).toMatch(/^Formative wound: (Wren keeps the lock at Harrow Weir\. )?Wren remembers the winter of the flood, part \d+\./);
+        }
+        const facts = await runInWorkspaceContext(ctx, (db) => db.storyFact.findMany({ where: { workspaceId: ctx.workspaceId, bookId }, select: { statement: true, quoteStart: true } }));
+        expect(facts.filter((f) => f.statement === 'Wren keeps the lock at Harrow Weir.')).toHaveLength(1);
+        // One fact from each call's first part: the calls really were separate pieces.
+        expect(facts.filter((f) => f.statement.startsWith('Wren remembers')).length).toBe(sent.length);
+        const row = (await rows(ctx, bookId))[0];
+        expect(row.costMicroUsd).toBe(BigInt(7 * sent.length));
+    });
+
+    it('a version whose smallest call still has a worst case past the budget sends nothing (CALL_OVER_BUDGET)', async () => {
+        const owner = await createAccount();
+        const ctx = workspaceCtx(owner);
+        const bookId = (await createBook(ctx, { title: 'Too Dear' })).id;
+        await createElement(ctx, bookId, { kind: 'CHARACTER', name: 'Wren', summary: 'Wren wants to cross the river before the spring floods.' });
+        const [row] = await rows(ctx, bookId);
+        await runInWorkspaceContext(ctx, (db) => FactExtractionRepository.markQueued(db, ctx.workspaceId, row.id, new Date(), ANY_DUE));
+        const calls = { n: 0 };
+        const r = await executeBibleFactExtraction(
+            { workspaceId: ctx.workspaceId, extractionId: row.id },
+            { extractor: scripted(() => ({ facts: [] }), calls), charge: unlimited, gate, worstCase: () => BIBLE_FACTS_CALL_COST_BUDGET_MICRO_USD + 1 },
+        );
+        expect(r.outcome).toBe('CALL_OVER_BUDGET');
+        expect(calls.n).toBe(0);
+        expect((await rows(ctx, bookId))[0]).toMatchObject({ status: 'SKIPPED', outcome: 'CALL_OVER_BUDGET', costMicroUsd: BigInt(0) });
     });
 });

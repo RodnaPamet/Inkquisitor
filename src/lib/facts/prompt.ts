@@ -26,7 +26,7 @@ export const BIBLE_FACTS_PURPOSE = 'facts.bible-extract';
 
 /** The call's output budget: a dozen facts, with room for thinking. */
 export const BIBLE_FACTS_MAX_OUTPUT_TOKENS = 3_000;
-/** Rule 9: a version's per-call cost budget, $0.02 on the fast tier. Logged, not a gate. */
+/** Rule 9: one call's cost budget, $0.02 on the fast tier. ENFORCED for this prompt (the D27 addendum): a call whose worst case (`cost.ts`) is past it is never sent (`call-plan.ts`). */
 export const BIBLE_FACTS_CALL_COST_BUDGET_MICRO_USD = 20_000;
 /** Existing facts shown to the call at most (numbered from 1). */
 export const EXISTING_FACTS_SHOWN_MAX = 40;

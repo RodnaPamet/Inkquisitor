@@ -37,7 +37,8 @@ the deployment (the 2.0 embedding provider), never by an external service.
 When the author saves a change to their bible — an element or a relation,
 by hand, by accepting a proposal, by import or by restore — the **text of the
 entry that changed** is sent to Anthropic **automatically**, with no further
-act of the author's: one fast-tier call per saved entry (a run of saves of one
+act of the author's: one fast-tier call per saved entry, or several over pieces of at
+most 20,000 characters when a changed section is longer (a run of saves of one
 entry is read once, at its newest version), carrying the entry's name and kind
 and the sections that changed since it was last read, the facts already
 recorded about it, and the book's element names. It runs in a background job,

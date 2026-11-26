@@ -57,6 +57,12 @@ export const FACT_EXTRACTION_OUTCOMES = [
     'CLAIM_EXPIRED',
     /** Resumed `FACT_EXTRACTION_ATTEMPTS_MAX` times without finishing. Final. */
     'ATTEMPTS_SPENT',
+    /**
+     * Even the smallest call the version could be sent in (its shortest piece, no book names, no existing facts) has
+     * a worst case past the per-call cost budget (rule 9, enforced since the D27 addendum): nothing is sent. Final for
+     * this version (a dearer fast-tier model configured); the entry's next version is tried afresh.
+     */
+    'CALL_OVER_BUDGET',
     'INTERNAL',
 ] as const;
 export type FactExtractionOutcome = (typeof FACT_EXTRACTION_OUTCOMES)[number];
@@ -72,6 +78,20 @@ export const FACT_EXTRACTION_RETRY_MS = 60 * 60 * 1000;
 export const STALE_EXTRACTION_MS = 30 * 60 * 1000;
 /** An extraction resumed this many times ends ATTEMPTS_SPENT. */
 export const FACT_EXTRACTION_ATTEMPTS_MAX = 12;
+/**
+ * ONE CALL'S INPUT (owner decision, 2026-11-21): a version's changed sections are sent in batches of at most this
+ * many characters of section text, a longer section cut into pieces (`pieceSections`). 20,000 characters is about
+ * 5,000 tokens of English (`CHARS_PER_TOKEN`), several pages: room for any summary or field an author writes by hand
+ * in one call, while a pasted chapter (rich text holds up to 100,000) is split. It is also what the per-call budget
+ * takes: 2.1's worst case counts every UTF-8 byte as a token and adds the one repair (the request again, the answer
+ * and the repair turn), so on the default fast model a 20,000-character Latin piece with the prompt, a dozen existing
+ * facts and the book's names stays well inside `BIBLE_FACTS_CALL_COST_BUDGET_MICRO_USD`; a piece that does not (a
+ * script of three bytes a character, a long list of existing facts) is halved again before anything is dropped.
+ */
+export const BIBLE_FACT_PIECE_MAX_CHARS = 20_000;
+/** A piece is never halved below this; past it the call drops the book's names, then the existing facts shown. */
+export const BIBLE_FACT_PIECE_MIN_CHARS = 2_000;
+
 /** Extractions the dispatcher queues at most a tick, across workspaces. */
 export const DISPATCH_EXTRACTIONS_MAX = 200;
 /** Embedding tasks the dispatcher works at most a tick, across workspaces. */
