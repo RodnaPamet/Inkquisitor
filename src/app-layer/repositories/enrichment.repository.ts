@@ -219,6 +219,27 @@ export const EnrichmentProposalRepository = {
     },
 
     /**
+     * Phase 4.4 (owner decision 2026-11-26, A: hold follow-ups): the book's PENDING proposals that change a field of
+     * these elements or relations, and its PENDING new relations between two of these elements — what the question
+     * generators must not ask about until the author decides. Ids and keys only (no encrypted column); bounded.
+     */
+    pendingFieldHolds(db: Db, workspaceId: string, bookId: string, subjects: { elementIds: readonly string[]; relationIds: readonly string[] }, take: number) {
+        const or: Prisma.EnrichmentProposalWhereInput[] = [];
+        if (subjects.elementIds.length > 0) {
+            or.push({ kind: 'FIELD', elementId: { in: [...subjects.elementIds] } });
+            or.push({ kind: 'NEW_RELATION', newFromElementId: { in: [...subjects.elementIds] }, newToElementId: { in: [...subjects.elementIds] } });
+        }
+        if (subjects.relationIds.length > 0) or.push({ kind: 'RELATION_FIELD', relationId: { in: [...subjects.relationIds] } });
+        if (or.length === 0) return Promise.resolve([]);
+        return db.enrichmentProposal.findMany({
+            where: { workspaceId, bookId, status: 'PENDING', OR: or },
+            orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+            take,
+            select: { kind: true, elementId: true, relationId: true, fieldKey: true, newFromElementId: true, newToElementId: true },
+        });
+    },
+
+    /**
      * The book's PENDING structural proposals (Phase 3.3: new elements and new
      * relations), oldest first, decrypted, with their citations: what a story
      * map previews as ghosts and lists beside them. `take` bounds it.

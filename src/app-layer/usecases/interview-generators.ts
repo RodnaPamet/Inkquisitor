@@ -16,12 +16,16 @@
  *                 not yet asked in this session (D30, item 2)
  *   continuity    pending CONTRADICTED proposals whose facts are about an element in scope, OPEN threads about one,
  *                 and timeline gaps among the scope's placed events
+ *   held          the fields with an enrichment proposal still PENDING (an element's FIELD, a relation's
+ *                 RELATION_FIELD) and the pairs with a NEW_RELATION pending between them: no generator asks about
+ *                 one until the author decides it (owner decision 2026-11-26, A: hold follow-ups)
  */
 import type { WorkspaceRequestContext } from '@/app-layer/types';
 import { BibleElementRepository, BibleFieldRepository, BibleRelationRepository } from '@/app-layer/repositories/bible.repository';
 import { QuestionRepository, type SessionRow } from '@/app-layer/repositories/interview.repository';
 import { SourceChunkRepository, SourceRepository, StoryFactRepository } from '@/app-layer/repositories/source.repository';
 import { FactProposalRepository } from '@/app-layer/repositories/fact-layer.repository';
+import { EnrichmentProposalRepository } from '@/app-layer/repositories/enrichment.repository';
 import { StoryThreadRepository } from '@/app-layer/repositories/continuity.repository';
 import type { PrismaTx } from '@/lib/db/rls-middleware';
 import { decodeFieldValue } from '@/lib/bible/field-values';
@@ -31,6 +35,8 @@ import { compareRanks } from '@/lib/bible/story-order';
 import { nameKey } from '@/lib/enrichment/validate';
 import { refKey, type FrontierResult } from '@/lib/interview/frontier';
 import { generatorsOn } from '@/lib/interview/dial-settings';
+import { pairSubjectId } from '@/lib/interview/subjects';
+import { PAIR_ANGLE_FIELD } from '@/lib/interview/generators/wording';
 import { ladderKey, type ContinuityInput, type GeneratorInput, type GeneratorSubject, type PairInput, type PendingFactInput } from '@/lib/interview/generators';
 import { PAIR_ANGLES, type PairAngle } from '@/lib/interview/vocabulary';
 import { decodeHeadingPath } from '@/lib/sources/storage';
@@ -48,6 +54,8 @@ const PAIR_RELATIONS_READ_MAX = 500;
 export const PENDING_FACTS_READ_MAX = 200;
 /** Pending contradictions, open threads read at most. */
 export const CONTINUITY_ITEMS_READ_MAX = 100;
+/** Pending enrichment proposals read to know which fields wait on the author's decision. */
+export const PENDING_PROPOSALS_READ_MAX = 1_000;
 /** Placed timeline events read for gaps at most. */
 const TIMELINE_ORDER_READ_MAX = 2_000;
 
@@ -157,6 +165,7 @@ export async function loadGeneratorInputs(
             const subject = (f.subjectElementId ? byId.get(f.subjectElementId) : undefined) ?? byName.get(nameKey(f.subjectName)) ?? null;
             return subject ? [{ f, subject }] : [];
         });
+        const series = new Set(set.seriesSourceIds);
         const sources = new Map((await SourceRepository.listByIds(db, ctx.workspaceId, [...new Set(resolved.map((r) => r.f.sourceId))])).map((s) => [s.id, s] as const));
         const headings = new Map((await SourceChunkRepository.headingsOf(db, ctx.workspaceId, [...new Set(resolved.map((r) => r.f.chunkId))])).map((c) => [c.id, decodeHeadingPath(c.headingPath)] as const));
         for (const { f, subject } of resolved) {
@@ -169,6 +178,8 @@ export async function loadGeneratorInputs(
                 quote: f.quote,
                 sourceName: sources.get(f.sourceId)?.filename ?? 'your draft',
                 where: path.length > 0 ? path[path.length - 1] : null,
+                // Owner decision 2026-11-26 (B): a series source's fact is decided for every book that uses it.
+                series: series.has(f.sourceId),
             });
         }
     }
@@ -199,7 +210,21 @@ export async function loadGeneratorInputs(
         continuity.push(...(await timelineGaps(db, ctx, session, plain, frontier, askedRefs)));
     }
 
-    return { depth: session.depth, detail: session.detail, enabled, subjects: state.elements, frontier, ladder: { answered, askedInSession }, factsHeld, pairs, pendingFacts, continuity };
+    // HOLD FOLLOW-UPS (owner decision 2026-11-26, A): a field whose proposed change the author has not decided yet is
+    // asked about by no generator until they decide it; a pair with a new relation pending between them likewise.
+    const heldByProposals = new Set<string>();
+    const proposals = await EnrichmentProposalRepository.pendingFieldHolds(db, ctx.workspaceId, session.bookId, { elementIds, relationIds }, PENDING_PROPOSALS_READ_MAX);
+    for (const p of proposals) {
+        if (p.kind === 'FIELD' && p.elementId && p.fieldKey) heldByProposals.add(refKey({ elementId: p.elementId, fieldKey: p.fieldKey }));
+        else if (p.kind === 'RELATION_FIELD' && p.relationId && p.fieldKey) heldByProposals.add(refKey({ elementId: p.relationId, fieldKey: p.fieldKey }));
+    }
+    const pendingLinks = new Set(proposals.flatMap((p) => (p.kind === 'NEW_RELATION' && p.newFromElementId && p.newToElementId ? [[p.newFromElementId, p.newToElementId].sort().join('\u0000')] : [])));
+    for (const p of pairs) {
+        if (!pendingLinks.has([p.firstElementId, p.secondElementId].sort().join('\u0000'))) continue;
+        for (const field of new Set(Object.values(PAIR_ANGLE_FIELD))) heldByProposals.add(refKey({ elementId: pairSubjectId(p.firstElementId, p.secondElementId), fieldKey: field }));
+    }
+
+    return { depth: session.depth, detail: session.detail, enabled, subjects: state.elements, frontier, ladder: { answered, askedInSession }, factsHeld, pairs, pendingFacts, continuity, heldByProposals };
 }
 
 /**

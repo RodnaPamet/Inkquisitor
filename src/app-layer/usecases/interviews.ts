@@ -419,13 +419,15 @@ export async function closeRound(ctx: WorkspaceRequestContext, bookId: string, s
         const factDecisions = await decideFactsFromRound(db, ctx, bookId, questions, latest);
         await InterviewRoundRepository.update(db, ctx.workspaceId, round.id, { status: 'CLOSED', closedAt: new Date() });
         await InterviewSessionRepository.update(db, ctx.workspaceId, sessionId, { roundsRun: session.roundsRun + 1 });
+        // AUDIT LAST (3.H): the facts' audit rows after every fact row is written.
+        await factDecisions.audit();
         await logEvent(
             ctx,
             {
                 action: 'INTERVIEW_ROUND_CLOSED',
                 entityType: 'InterviewRound',
                 entityId: round.id,
-                details: { sessionId, roundNumber, questionCount: questions.length, skippedAtClose: unanswered.length, ...factDecisions },
+                details: { sessionId, roundNumber, questionCount: questions.length, skippedAtClose: unanswered.length, ...factDecisions.counts },
             },
             { db },
         );
@@ -449,11 +451,12 @@ export async function stopInterview(ctx: WorkspaceRequestContext, bookId: string
         // The open or generating round, if any, is the newest: the latest rounds hold it.
         const rounds = await InterviewRoundRepository.listForSession(db, ctx.workspaceId, sessionId, SESSION_ROUNDS_READ);
         let roundsRun = session.roundsRun;
+        const factAudits: Array<() => Promise<void>> = [];
         for (const r of rounds) {
             if (r.status === 'OPEN') {
                 // Phase 4.4 (D30, item 2): the open round's source questions answered yes or no decide their facts as it closes.
                 const asked = (await QuestionRepository.listForRound(db, ctx.workspaceId, sessionId, r.id, SESSION_QUESTIONS_MAX)).filter((q) => q.supersededAt === null);
-                await decideFactsFromRound(db, ctx, bookId, asked, latestAnswers(await AnswerRepository.listForSession(db, ctx.workspaceId, sessionId, SESSION_ANSWERS_MAX)));
+                factAudits.push((await decideFactsFromRound(db, ctx, bookId, asked, latestAnswers(await AnswerRepository.listForSession(db, ctx.workspaceId, sessionId, SESSION_ANSWERS_MAX)))).audit);
                 await InterviewRoundRepository.update(db, ctx.workspaceId, r.id, { status: 'CLOSED', closedAt: new Date() });
                 roundsRun += 1;
             } else if (r.status === 'GENERATING') {
@@ -461,6 +464,8 @@ export async function stopInterview(ctx: WorkspaceRequestContext, bookId: string
             }
         }
         if (roundsRun !== session.roundsRun) await InterviewSessionRepository.update(db, ctx.workspaceId, sessionId, { roundsRun });
+        // AUDIT LAST (3.H): the facts' audit rows after every row this stop writes but the session's end.
+        for (const audit of factAudits) await audit();
         await endSession(db, ctx, { ...session, roundsRun }, 'AUTHOR_STOPPED', { roundsRun });
         return viewOf(db, ctx, bookId, sessionId);
     });

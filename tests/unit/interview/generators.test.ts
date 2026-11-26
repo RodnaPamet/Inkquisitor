@@ -200,6 +200,27 @@ describe('source questions and continuity', () => {
         expect(c[0].value).toBeGreaterThan(frontierRole.value);
     });
 
+    it('a SERIES source’s fact says it is one, and that the answer applies across the series (owner decision 2026-11-26, B)', () => {
+        const s = subject(WREN, 'Wren', 'CHARACTER', {});
+        const [own, series] = generateCandidates(
+            input({
+                subjects: [s],
+                pendingFacts: [
+                    { factId: 'f1', subjectElementId: WREN, fieldKey: 'role', quote: 'Wren keeps the lock.', sourceName: 'draft', where: null },
+                    { factId: 'f2', subjectElementId: WREN, fieldKey: 'want', quote: 'Wren wants the sea.', sourceName: 'book one', where: null, series: true },
+                ],
+            }),
+        ).filter((x) => x.generator === 'SOURCES');
+        expect(own.angle).toBeUndefined();
+        expect(own.worded!.text).toBe('Your source “draft” says “Wren keeps the lock.”. Is that canon?');
+        expect(series.angle).toBe('SERIES');
+        expect(series.worded!.text).toBe('Your series source “book one” says “Wren wants the sea.”. Is that canon for every book in the series?');
+        expect(series.worded!.options).toEqual([SOURCE_YES, SOURCE_NO]);
+        expect(questionTextProblem(series.worded!.text)).toBeNull();
+        // A long series quote is cut so the longer frame still fits.
+        expect(questionTextProblem(sourceQuestion('word '.repeat(200), 'x'.repeat(200), 'y'.repeat(200), true).text)).toBeNull();
+    });
+
     it('a contradiction, an open thread and a timeline gap each become a question landing in a field', () => {
         const wren = subject(WREN, 'Wren', 'CHARACTER', { role: 'x' });
         const plot = subject('el-plot', 'The flood', 'PLOT', {});
@@ -254,6 +275,29 @@ describe('selection: code validates, deduplicates and orders every candidate, be
         expect(selectCandidates(minor, { cap: 10, floor: 0, subjects: subjectsMap([wren]) }).chosen).toHaveLength(1);
         // Nothing at all is not a value fall: the frontier's own stop says why.
         expect(selectCandidates([], { cap: 10, subjects: subjectsMap([wren]) }).valueFell).toBe(false);
+    });
+
+    it('HOLDS a field with a pending proposed change (owner decision 2026-11-26, A): no generator asks about it, counted, until the author decides', () => {
+        const answered = subject(WREN, 'Wren', 'CHARACTER', { want: 'To keep the lock open.' });
+        const pairFields = relationFieldDefs('CHARACTER', 'related_to');
+        const pair = { firstElementId: WREN, secondElementId: IDA, firstName: 'Wren', secondName: 'Ida', answered: new Set<never>(), askedInSession: new Set<never>() };
+        const all = generateCandidates(input({ subjects: [answered], pairs: [pair] }));
+        const subjects = subjectsMap([answered], [[pairSubjectId(WREN, IDA), pairFields]]);
+        const free = selectCandidates(all, { cap: 20, subjects });
+        expect(free.chosen.some((c) => c.generator === 'LADDER' && c.fieldKey === 'want')).toBe(true);
+        expect(free.chosen.some((c) => c.generator === 'FRONTIER' && c.fieldKey === 'role')).toBe(true);
+        expect(free.chosen.some((c) => c.pairElementId === IDA)).toBe(true);
+        expect(free.held).toBe(0);
+        // A pending change to Wren's want (the ladder's field), to her role (the frontier's) and a new relation pending
+        // between Wren and Ida (both of the pair's fields): none is asked, each counted as held.
+        const held = new Set([`${WREN}\u0000want`, `${WREN}\u0000role`, `${pairSubjectId(WREN, IDA)}\u0000nature`, `${pairSubjectId(WREN, IDA)}\u0000significance`]);
+        const waiting = selectCandidates(all, { cap: 20, subjects, held });
+        expect(waiting.chosen.some((c) => c.fieldKey === 'want' || c.fieldKey === 'role' || c.pairElementId === IDA)).toBe(false);
+        expect(waiting.held).toBe(4);
+        expect(waiting.chosen.length).toBe(free.chosen.length - 4);
+        // A source question deciding a fact with no field is never held: it fills no field.
+        const fact = cand({ generator: 'SOURCES', fieldKey: null, value: 90, worded: sourceQuestion('q', 'd', null), storyFactId: 'f' });
+        expect(selectCandidates([fact], { cap: 5, subjects: subjectsMap([wren]), held }).chosen).toHaveLength(1);
     });
 
     it('cuts to the round’s room and at most a small number of pairs a round', () => {

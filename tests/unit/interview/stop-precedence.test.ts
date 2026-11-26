@@ -6,7 +6,10 @@
  * only a session that would need the model pauses for it.
  */
 import type { SessionRow } from '@/app-layer/repositories/interview.repository';
-import { emptyRoundStopReason, stopNow } from '@/app-layer/usecases/interview-rounds';
+import { emptyRoundStopReason, frontierOnlyInputs, planFromInputs, stopNow } from '@/app-layer/usecases/interview-rounds';
+import { frontierOf } from '@/app-layer/usecases/interview-state';
+import { decideStop } from '@/lib/interview/stop';
+import { refKey } from '@/lib/interview/frontier';
 import type { InterviewState } from '@/app-layer/usecases/interview-state';
 import { getTemplate } from '@/lib/bible/templates';
 
@@ -80,5 +83,28 @@ describe('a round left with no question: why it pauses (the seam header’s tabl
         expect(emptyRoundStopReason(m(1, 0))).toBe('NO_ACCEPTABLE_QUESTION');
         expect(emptyRoundStopReason(m(2, 1, { PROVIDER: 1 }))).toBe('NO_ACCEPTABLE_QUESTION');
         expect(emptyRoundStopReason(m(0, 0))).toBe('NO_ACCEPTABLE_QUESTION');
+    });
+});
+
+describe('AWAITING_DECISIONS (Phase 4.4, owner decision 2026-11-26: hold follow-ups)', () => {
+    it('every candidate held by a pending proposal: the session waits, never FRONTIER_EMPTY, and names how many wait', () => {
+        const st = state({});
+        const s = session();
+        const inputs = frontierOnlyInputs(s, st, frontierOf(st, s.depth));
+        const held = new Set(inputs.frontier.frontier.map((f) => refKey(f)));
+        expect(held.size).toBeGreaterThan(0);
+        const stop = stopNow(s, st, undefined, planFromInputs(s, st, { ...inputs, heldByProposals: held }));
+        expect(stop).toMatchObject({ reason: 'AWAITING_DECISIONS', detail: { held: held.size } });
+        // With one field free, that one is asked and nothing stops.
+        const one = new Set([...held].slice(1));
+        expect(stopNow(s, st, undefined, planFromInputs(s, st, { ...inputs, heldByProposals: one }))).toBeNull();
+    });
+
+    it('sits after the length stops and before VALUE_FELL; the frontier’s own stop still comes first', () => {
+        const base = { tokenBudget: 10, tokensUsed: 0, nextRoundTokens: 1, authorStopped: false, roundBudget: null, roundsRun: 0 };
+        expect(decideStop({ ...base, awaitingDecisions: true, valueFell: true })).toBe('AWAITING_DECISIONS');
+        expect(decideStop({ ...base, awaitingDecisions: true, questionBudget: 3, questionsAsked: 3 })).toBe('QUESTION_BUDGET');
+        expect(decideStop({ ...base, awaitingDecisions: true, sessionLimitReached: true })).toBe('SESSION_LIMIT');
+        expect(decideStop({ ...base, awaitingDecisions: true, frontierStop: 'FRONTIER_EMPTY' })).toBe('FRONTIER_EMPTY');
     });
 });

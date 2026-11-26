@@ -19,7 +19,10 @@
  *   6. the session's length (Phase 4.4, D23): a ROUNDS session's rounds (ROUND_BUDGET), a QUESTIONS session's
  *      questions (QUESTION_BUDGET), and for every session the most questions its reads hold (SESSION_LIMIT): each
  *      COMPLETES. An UNTIL_STOPPED session has neither of the first two
- *   7. VALUE_FELL (Phase 4.4, D30): every question left is minor, so rather than pad a round the session PAUSES
+ *   7. AWAITING_DECISIONS (Phase 4.4, owner decision 2026-11-26): nothing can be asked now, but questions wait on
+ *      fields whose proposed change the author has not decided: the session PAUSES until they decide (the next round
+ *      resumes it), rather than finishing with follow-ups still to ask
+ *   8. VALUE_FELL (Phase 4.4, D30): every question left is minor, so rather than pad a round the session PAUSES
  *      and asks the author whether to go on (once they say go on, it is not asked again). Last: it only ever
  *      replaces a round that would otherwise be generated
  *
@@ -52,6 +55,8 @@ export interface StopState {
     questionsAsked?: number;
     /** Phase 4.4: one more round could hold more questions than the session's reads hold. */
     sessionLimitReached?: boolean;
+    /** Phase 4.4 (owner decision 2026-11-26): nothing is chosen, and some candidates wait on a pending proposal's decision. */
+    awaitingDecisions?: boolean;
     /** Phase 4.4 (D30): every candidate left is minor, and the author has not chosen to go on. */
     valueFell?: boolean;
 }
@@ -65,6 +70,7 @@ export function decideStop(state: StopState): StopReason | null {
     if (state.roundBudget !== null && state.roundsRun >= state.roundBudget) return 'ROUND_BUDGET';
     if (state.questionBudget !== null && state.questionBudget !== undefined && (state.questionsAsked ?? 0) >= state.questionBudget) return 'QUESTION_BUDGET';
     if (state.sessionLimitReached) return 'SESSION_LIMIT';
+    if (state.awaitingDecisions) return 'AWAITING_DECISIONS';
     if (state.valueFell) return 'VALUE_FELL';
     return null;
 }

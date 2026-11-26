@@ -811,7 +811,8 @@
             "PACK_NOT_PINNED": "This interview was started before question packs were recorded with it, so it cannot go on. Your answers are kept; start a new interview to continue.",
             "QUESTION_BUDGET": "This interview has asked the questions you chose. Start another to go on.",
             "VALUE_FELL": "The questions left are minor: they would add little to the bible. Go on, or finish here; your answers are kept.",
-            "SESSION_LIMIT": "This interview holds as many questions as one interview can. Start another to go on; your answers are kept."
+            "SESSION_LIMIT": "This interview holds as many questions as one interview can. Start another to go on; your answers are kept.",
+            "AWAITING_DECISIONS": "The questions left follow up changes this interview proposed that you have not reviewed yet. Accept or reject them on the review page, then continue."
         },
         "session": {
             "breadcrumbInterviews": "Interviews",
@@ -905,7 +906,9 @@
                 "RELATIONS": "Relationship",
                 "SOURCES": "From your sources",
                 "CONTINUITY": "Continuity"
-            }
+            },
+            "seriesFact": "Series fact",
+            "seriesFactHint": "This fact comes from a series source: your answer confirms or rejects it for every book in the series that uses that source."
         },
         "panel": {
             "title": "Bible fields this round",

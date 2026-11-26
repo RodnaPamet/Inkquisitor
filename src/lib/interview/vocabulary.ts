@@ -28,6 +28,7 @@ export const STOP_REASONS = [
     'QUESTION_BUDGET',
     'VALUE_FELL',
     'SESSION_LIMIT',
+    'AWAITING_DECISIONS',
 ] as const;
 export type StopReason = (typeof STOP_REASONS)[number];
 
@@ -66,6 +67,14 @@ export type LadderLayer = (typeof LADDER_LAYERS)[number];
 /** Phase 4.4: a pair question's angles (D23: what each wants from the other, where they collide, what is hidden). */
 export const PAIR_ANGLES = ['WANTS', 'COLLIDE', 'HIDDEN'] as const;
 export type PairAngle = (typeof PAIR_ANGLES)[number];
+
+/**
+ * Phase 4.4 (owner decision 2026-11-26, B): a source question's angle. SERIES marks a question about a SERIES source's
+ * fact: answering it decides the fact for every book that draws on that source (as the Facts page does), so the
+ * question says so and the session page shows it.
+ */
+export const SOURCE_ANGLES = ['SERIES'] as const;
+export type SourceAngle = (typeof SOURCE_ANGLES)[number];
 
 export const ANSWER_STATUSES = ['ANSWERED', 'SKIPPED', 'DECIDE_LATER'] as const;
 export type AnswerStatus = (typeof ANSWER_STATUSES)[number];
@@ -132,4 +141,8 @@ export const STATUS_AFTER_STOP: Readonly<Record<StopReason, Exclude<InterviewSta
     VALUE_FELL: 'PAUSED',
     // Phase 4.4: the most questions one session holds (`SESSION_QUESTIONS_MAX`): a new session goes on.
     SESSION_LIMIT: 'COMPLETED',
+    // Phase 4.4 (owner decision 2026-11-26, A): every question left follows up a field whose proposed change the
+    // author has not decided yet; the session waits for those decisions (the next round resumes it), never asking
+    // about a field while a change to it is pending.
+    AWAITING_DECISIONS: 'PAUSED',
 };

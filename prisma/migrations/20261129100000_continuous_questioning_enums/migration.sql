@@ -15,6 +15,8 @@ CREATE TYPE "InterviewLengthMode" AS ENUM ('ROUNDS', 'QUESTIONS', 'UNTIL_STOPPED
 ALTER TYPE "InterviewStopReason" ADD VALUE 'QUESTION_BUDGET';
 ALTER TYPE "InterviewStopReason" ADD VALUE 'VALUE_FELL';
 ALTER TYPE "InterviewStopReason" ADD VALUE 'SESSION_LIMIT';
+-- Owner decision 2026-11-26 (A): every question left is about a field whose proposed change is still pending.
+ALTER TYPE "InterviewStopReason" ADD VALUE 'AWAITING_DECISIONS';
 
 -- AlterEnum
 ALTER TYPE "QuestionOrigin" ADD VALUE 'GENERATOR';

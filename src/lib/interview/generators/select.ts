@@ -2,6 +2,8 @@
  * CODE VALIDATES, DEDUPLICATES AND ORDERS EVERY CANDIDATE (Phase 4.4, D23 and
  * D30 item 1: best value first). Pure.
  *
+ *   hold         a candidate on a field with an enrichment proposal still PENDING (`held`, owner decision 2026-11-26:
+ *                hold follow-ups) is set aside, counted, until the author decides that proposal; then it is asked
  *   validate     the subject is in scope and the field is one of its own (or, a source question, no field); the
  *                value is a whole number 0..100; a code-worded question holds the question rules every question
  *                holds (`questionTextProblem`, `questionOptionsProblem`): refused by name, counted, never softened
@@ -19,6 +21,7 @@
  * The model may reorder only NEAR-EQUAL candidates among those chosen (`tieGroups`, D30 item 4); a score never moves.
  */
 import { questionOptionsProblem, questionTextProblem } from '../candidates';
+import { refKey } from '../frontier';
 import type { QuestionGeneratorKey } from '../vocabulary';
 import type { GeneratorSubject, TargetCandidate } from './index';
 import { MINOR_VALUE_FLOOR, ORDER_TIE_BAND, VALUE_MAX } from './value';
@@ -39,6 +42,8 @@ export interface SelectOptions {
     pairsMax?: number;
     /** Every subject a candidate may name: the scope's, and the pairs'. */
     subjects: ReadonlyMap<string, Pick<GeneratorSubject, 'elementId' | 'fields'>>;
+    /** Fields (`refKey`) with a PENDING enrichment proposal: no candidate on one is chosen (owner decision 2026-11-26, A). */
+    held?: ReadonlySet<string>;
 }
 
 export interface Selection {
@@ -55,6 +60,8 @@ export interface Selection {
     refused: Partial<Record<CandidateRefusal, number>>;
     /** Candidates another candidate on the same field, fact or basis outranked. */
     duplicates: number;
+    /** Valid candidates set aside because their field has a proposed change the author has not decided yet. */
+    held: number;
 }
 
 function refusalOf(c: TargetCandidate, subjects: SelectOptions['subjects']): CandidateRefusal | null {
@@ -83,12 +90,13 @@ export function compareCandidates(a: { c: TargetCandidate; i: number }, b: { c: 
 export function selectCandidates(candidates: readonly TargetCandidate[], options: SelectOptions): Selection {
     const floor = options.floor ?? MINOR_VALUE_FLOOR;
     const pairsMax = options.pairsMax ?? PAIRS_PER_ROUND_MAX;
-    const out: Selection = { chosen: [], remaining: 0, minor: 0, valueFell: false, proposed: {}, refused: {}, duplicates: 0 };
+    const out: Selection = { chosen: [], remaining: 0, minor: 0, valueFell: false, proposed: {}, refused: {}, duplicates: 0, held: 0 };
     const valid: Array<{ c: TargetCandidate; i: number }> = [];
     candidates.forEach((c, i) => {
         out.proposed[c.generator] = (out.proposed[c.generator] ?? 0) + 1;
         const refusal = refusalOf(c, options.subjects);
         if (refusal) out.refused[refusal] = (out.refused[refusal] ?? 0) + 1;
+        else if (c.fieldKey !== null && options.held?.has(refKey({ elementId: c.elementId, fieldKey: c.fieldKey }))) out.held++;
         else valid.push({ c, i });
     });
     valid.sort(compareCandidates);

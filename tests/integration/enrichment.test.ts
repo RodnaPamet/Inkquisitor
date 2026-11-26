@@ -231,7 +231,12 @@ describe('citations (rule 2): refused by code, and by the database', () => {
         const { ctx, bookId, elementId } = await setup();
         const first = await seedReconciledRound(ctx, bookId, elementId);
         const foreign = (await prisma.answer.findFirst({ where: { sessionId: first.sessionId } }))!.id;
-        // A second session (the first round's fields are still empty: nothing accepted).
+        // A second session (the first round's fields are still empty: nothing accepted). Its proposals are rejected
+        // first: while a proposed change to a field is pending no question asks about it (Phase 4.4, owner decision
+        // 2026-11-26), so the second session would ask nothing.
+        for (const p of await prisma.enrichmentProposal.findMany({ where: { sessionId: first.sessionId, status: 'PENDING' }, select: { id: true }, take: 50 })) {
+            await rejectProposal(ctx, bookId, first.sessionId, p.id);
+        }
         const reconciler = scripted((f) => ({
             operations: f.elements[0].scope_field_keys.map((k, i) => ({
                 elementId: f.elements[0].elementId,

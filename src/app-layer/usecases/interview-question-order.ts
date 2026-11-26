@@ -99,6 +99,7 @@ export function orderLine(item: Item, state: Pick<InterviewState, 'elements'>): 
     const generator = item.worded?.generator ?? item.target?.generator ?? 'FRONTIER';
     let what = GENERATOR_WORDS[generator] ?? 'an empty field';
     if (generator === 'RELATIONS') what = "a link's empty field";
+    if (generator === 'SOURCES' && item.worded?.angle === 'SERIES') what = "a fact from the author's series sources to confirm, for every book in the series";
     if (generator === 'LADDER') what = `a follow-up on an answered field: ${LAYER_WORDS[item.worded?.angle ?? ''] ?? 'more depth'}`;
     if (generator === 'CONTINUITY') {
         const ref = item.worded?.continuityRef ?? '';
@@ -127,9 +128,11 @@ export async function orderRoundTies(
     const blocks = questionOrderBlocks(tied.map((it) => orderLine(it, claim.state)));
     // RULE 9, ENFORCED: a call whose worst case passes its per-call budget is not sent.
     if (questionOrderWorstCase(blocks) > QUESTION_ORDER_CALL_COST_BUDGET_MICRO_USD) return code('CALL_OVER_BUDGET');
-    // THE SESSION'S BUDGET, before anything is sent (2.H): the round must still fit beside the call's worst case.
+    // THE SESSION'S BUDGET, before anything is sent (2.H): the round must still fit beside the call's worst case. The
+    // spend is read NOW, not off the claim's row: the round's compaction summary (made since the claim) is charged by then.
     const reserve = nextRoundTokens(session.personaKeys.length, plan.targets.length > 0 || plan.challenge ? Math.max(1, session.personaKeys.length) : 0);
-    if (session.tokensUsed + reserve + questionOrderWorstTokens(blocks) > session.tokenBudget) return code('TOKEN_BUDGET');
+    const spent = (await runInWorkspaceContext(ctx, (db) => InterviewSessionRepository.find(db, ctx.workspaceId, session.bookId, session.id)))?.tokensUsed ?? session.tokensUsed;
+    if (spent + reserve + questionOrderWorstTokens(blocks) > session.tokenBudget) return code('TOKEN_BUDGET');
     try {
         (deps.charge ?? chargeModelCalls)(ctx.workspaceId, 1);
     } catch (err) {

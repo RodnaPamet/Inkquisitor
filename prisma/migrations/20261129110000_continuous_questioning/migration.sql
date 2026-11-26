@@ -114,6 +114,8 @@ ALTER TABLE "Question" ADD CONSTRAINT "Question_angle_known"
         "angle" IS NULL
         OR ("generator" = 'LADDER' AND "angle" IN ('WHAT', 'WHY', 'COST', 'WHO_KNOWS', 'BREAKS', 'EDGE_CASES'))
         OR ("generator" = 'RELATIONS' AND "angle" IN ('WANTS', 'COLLIDE', 'HIDDEN'))
+        -- Owner decision 2026-11-26 (B): a source question about a SERIES source's fact (decided for every book that uses it).
+        OR ("generator" = 'SOURCES' AND "angle" = 'SERIES')
     );
 ALTER TABLE "Question" ADD CONSTRAINT "Question_pair_shape"
     CHECK (
@@ -132,3 +134,39 @@ ALTER TABLE "Question" ADD CONSTRAINT "Question_value_score_bounded"
 -- A code-worded question is a generator's (never the frontier's model wording or a pack's example).
 ALTER TABLE "Question" ADD CONSTRAINT "Question_generator_origin"
     CHECK ("origin" <> 'GENERATOR' OR "generator" <> 'FRONTIER');
+
+-- A SOURCE question's answer decides its fact ONCE (D30, item 2): the pointer to the answer is set only in the write
+-- that moves a PENDING, unflagged fact to its decision, for every writer (the usecase's conditional update is the
+-- friendly answer; this is the guarantee). The function is 4.2's, with that one clause added.
+CREATE OR REPLACE FUNCTION story_fact_fixed() RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+    IF NEW."workspaceId" IS DISTINCT FROM OLD."workspaceId" OR NEW."sourceId" IS DISTINCT FROM OLD."sourceId"
+       OR NEW."chunkId" IS DISTINCT FROM OLD."chunkId" OR NEW."position" IS DISTINCT FROM OLD."position"
+       OR NEW."sourceKind" IS DISTINCT FROM OLD."sourceKind" OR NEW."subjectName" IS DISTINCT FROM OLD."subjectName"
+       OR NEW."predicate" IS DISTINCT FROM OLD."predicate" OR NEW."objectLiteral" IS DISTINCT FROM OLD."objectLiteral"
+       OR NEW."statement" IS DISTINCT FROM OLD."statement" OR NEW."quote" IS DISTINCT FROM OLD."quote"
+       OR NEW."quoteStart" IS DISTINCT FROM OLD."quoteStart" OR NEW."quoteEnd" IS DISTINCT FROM OLD."quoteEnd"
+       OR NEW."storyTimeFrom" IS DISTINCT FROM OLD."storyTimeFrom" OR NEW."storyTimeTo" IS DISTINCT FROM OLD."storyTimeTo"
+       OR NEW."statedAt" IS DISTINCT FROM OLD."statedAt" OR NEW."flags" IS DISTINCT FROM OLD."flags"
+       OR NEW."carriedFromFactId" IS DISTINCT FROM OLD."carriedFromFactId" OR NEW."createdAt" IS DISTINCT FROM OLD."createdAt"
+       OR NEW."bookId" IS DISTINCT FROM OLD."bookId" OR NEW."elementId" IS DISTINCT FROM OLD."elementId"
+       OR NEW."relationId" IS DISTINCT FROM OLD."relationId" OR NEW."bibleVersionId" IS DISTINCT FROM OLD."bibleVersionId"
+       OR NEW."relationVersionId" IS DISTINCT FROM OLD."relationVersionId" OR NEW."automatic" IS DISTINCT FROM OLD."automatic"
+       OR NEW."dedupeKey" IS DISTINCT FROM OLD."dedupeKey" OR NEW."resolvesProposalId" IS DISTINCT FROM OLD."resolvesProposalId"
+       OR (OLD."supersededAt" IS NOT NULL AND NEW."supersededAt" IS DISTINCT FROM OLD."supersededAt")
+       OR (NEW."invalidatedByFactId" IS NOT NULL AND NEW."invalidatedByFactId" IS DISTINCT FROM OLD."invalidatedByFactId" AND OLD."supersededAt" IS NOT NULL)
+       OR (NEW."invalidatedByFactId" IS NULL AND OLD."invalidatedByFactId" IS NOT NULL
+           AND EXISTS (SELECT 1 FROM "StoryFact" n WHERE n."id" = OLD."invalidatedByFactId"))
+       OR (NEW."subjectElementId" IS NOT NULL AND NEW."subjectElementId" IS DISTINCT FROM OLD."subjectElementId")
+       OR (NEW."objectElementId" IS NOT NULL AND NEW."objectElementId" IS DISTINCT FROM OLD."objectElementId")
+       -- Phase 4.4 (D30): an interview answer decides a fact once, and only a PENDING, unflagged one, in the same
+       -- write as the decision; afterwards the pointer may only be cleared (a decision on the Facts page, or the
+       -- answer's deletion by its session's cascade).
+       OR (NEW."decidedByAnswerId" IS NOT NULL AND NEW."decidedByAnswerId" IS DISTINCT FROM OLD."decidedByAnswerId"
+           AND (OLD."status" <> 'PENDING' OR NEW."status" = 'PENDING' OR cardinality(OLD."flags") > 0)) THEN
+        RAISE EXCEPTION 'STORY_FACT_FIXED: only a fact''s decision may change' USING ERRCODE = 'P0001';
+    END IF;
+    RETURN NEW;
+END
+$$;

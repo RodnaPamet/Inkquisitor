@@ -23,7 +23,12 @@ import { answerQuestion } from '@/app-layer/usecases/interview-answers';
 import { rephraseQuestion } from '@/app-layer/usecases/interview-rephrase';
 import { closeRound, nextRound, startInterview, stopInterview } from '@/app-layer/usecases/interviews';
 import { closeRoundAndReconcile } from '@/app-layer/usecases/enrichment-reconcile';
-import { getSessionReview } from '@/app-layer/usecases/enrichment-review';
+import { orderRoundTies } from '@/app-layer/usecases/interview-question-order';
+import { planSession } from '@/app-layer/usecases/interview-rounds';
+import { loadInterviewState } from '@/app-layer/usecases/interview-state';
+import { InterviewSessionRepository } from '@/app-layer/repositories/interview.repository';
+import { runInWorkspaceContext } from '@/lib/db/rls-middleware';
+import { acceptProposal, getSessionReview } from '@/app-layer/usecases/enrichment-review';
 import { decideFact, listBookFacts } from '@/app-layer/usecases/source-facts';
 import { QuestionRepository } from '@/app-layer/repositories/interview.repository';
 import { StoryFactRepository } from '@/app-layer/repositories/source.repository';
@@ -40,6 +45,7 @@ import { fakeGenerator } from '../helpers/fake-question-generator';
 import { FRONTIER_ONLY, stubQuestionEmbedder } from '../helpers/interview';
 import { scripted } from '../helpers/enrichment';
 import { ingestText } from '../helpers/sources';
+import { setSeriesOptIn } from '@/app-layer/usecases/source-library';
 import { fakeAnthropic, setFakeApiKey } from '../helpers/fake-anthropic';
 import { createAccount, workspaceCtx } from '../helpers/workspaces';
 
@@ -264,6 +270,65 @@ describe('source questions (D30, item 2)', () => {
     }, 60_000);
 });
 
+describe('hold follow-ups (owner decision 2026-11-26, A)', () => {
+    it('never follows up a field while a proposed change to it is pending: the session waits AWAITING_DECISIONS, and asks once the author decides', async () => {
+        const { ctx, bookId } = await fresh('Held Over');
+        const elementId = (await createElement(ctx, bookId, { kind: 'CHARACTER', name: 'Wren Holt', fields: [{ key: 'role', value: 'The lock-keeper’s daughter.' }] })).id;
+        // The deepening ladder alone: its one candidate is the stored role's next layer.
+        const deps = { generator: fakeGenerator(), embedder };
+        let view = await startInterview(ctx, bookId, { scope: 'ELEMENT', elementId, depth: 3, detail: 3, generatorsOff: ['FRONTIER', 'RELATIONS', 'SOURCES', 'CONTINUITY'] }, deps);
+        const what = view.round!.questions.find((q) => q.generator === 'LADDER' && q.targetsFieldKeys[0] === 'role')!;
+        expect(what.angle).toBe('WHAT');
+        const words = 'The lock-keeper’s daughter, who opens the lock at night for the smugglers.';
+        await answerQuestion(ctx, bookId, view.session.id, what.id, { text: words });
+        const reconciler = scripted((facts) => {
+            const a = facts.answers.find((x) => x.answer === words)!;
+            return { operations: [{ elementId, fieldKey: 'role', op: 'UPDATE', value: words, cites: [a.answerId] }], newElements: [], newRelations: [] };
+        });
+        const closed = await closeRoundAndReconcile(ctx, bookId, view.session.id, String(view.round!.number), { skipUnanswered: true }, { reconciler });
+        expect(closed.reconcile!.proposed.UPDATE).toBe(1);
+
+        // The role's next layer would be the only question; its proposed change is pending, so nothing is asked and the
+        // session waits for the author's decision rather than finishing with the follow-ups still to ask.
+        view = await nextRound(ctx, bookId, view.session.id, deps);
+        expect(view.session).toMatchObject({ status: 'PAUSED', stopReason: 'AWAITING_DECISIONS' });
+        expect(view.session.stopDetail).toMatchObject({ held: 1 });
+        expect(await prisma.question.count({ where: { sessionId: view.session.id } })).toBe(1);
+        // Asked again before deciding: still waiting, and nothing new is recorded.
+        view = await nextRound(ctx, bookId, view.session.id, deps);
+        expect(view.session.stopReason).toBe('AWAITING_DECISIONS');
+        expect(await prisma.auditLog.count({ where: { action: 'INTERVIEW_ENDED', entityId: view.session.id } })).toBe(1);
+
+        // The author accepts the change: the follow-up goes one layer down.
+        const review = await getSessionReview(ctx, bookId, view.session.id);
+        const proposal = review.fields.find((p) => p.fieldKey === 'role')!;
+        await acceptProposal(ctx, bookId, view.session.id, proposal.id, { baseVersion: proposal.currentVersion });
+        view = await nextRound(ctx, bookId, view.session.id, deps);
+        expect(view.session.status).toBe('ACTIVE');
+        expect(view.round!.questions.map((q) => [q.generator, q.targetsFieldKeys[0], q.angle])).toEqual([['LADDER', 'role', 'WHY']]);
+    }, 60_000);
+});
+
+describe('series facts in an interview (owner decision 2026-11-26, B)', () => {
+    it('a series source’s fact is still confirmed from the interview, and its question says it is a series fact whose answer applies across the series', async () => {
+        const { ctx, bookId } = await fresh('Book Two');
+        const mara = (await createElement(ctx, bookId, { kind: 'CHARACTER', name: 'Mara' })).id;
+        const seriesSource = await ingestText(ctx, { kind: 'series' }, 'Book one. Mara wants to leave the guild for good.', 'book-one.txt');
+        await setSeriesOptIn(ctx, bookId, seriesSource, true);
+        const fact = (await listBookFacts(ctx, bookId)).facts.find((f) => f.provenance.scope === 'SERIES' && f.predicate === 'WANT')!;
+        expect(fact.status).toBe('PENDING');
+
+        const view = await startInterview(ctx, bookId, { scope: 'ELEMENT', elementId: mara, depth: 2, detail: 3 }, { generator: fakeGenerator(), embedder });
+        const q = view.round!.questions.find((x) => x.storyFactId === fact.id)!;
+        expect(q).toMatchObject({ generator: 'SOURCES', angle: 'SERIES', kind: 'EITHER_OR', options: [SOURCE_YES, SOURCE_NO], targetsFieldKeys: ['want'] });
+        expect(q.text).toBe('Your series source “book-one.txt” says “Mara wants to leave the guild for good.”. Is that canon for every book in the series?');
+        await answerQuestion(ctx, bookId, view.session.id, q.id, { choice: SOURCE_YES });
+        await closeRound(ctx, bookId, view.session.id, String(view.round!.number), { skipUnanswered: true });
+        // Decided for the series, as on the Facts page: the one fact every book drawing on that source reads.
+        expect(await prisma.storyFact.findUniqueOrThrow({ where: { id: fact.id }, select: { status: true, bookId: true } })).toMatchObject({ status: 'CONFIRMED', bookId: null });
+    }, 60_000);
+});
+
 describe('source questions under a race', () => {
     it('the write itself is conditional: a decision made on the Facts page after the close read the fact is still not overridden', async () => {
         const { ctx, bookId } = await fresh('A Late Decision');
@@ -283,6 +348,44 @@ describe('source questions under a race', () => {
             spy.mockRestore();
         }
         expect(await prisma.storyFact.findUniqueOrThrow({ where: { id: fact.id }, select: { status: true, decidedByAnswerId: true } })).toEqual({ status: 'REJECTED', decidedByAnswerId: null });
+    }, 60_000);
+});
+
+describe('the close decides its facts before it appends any audit row (AUDIT LAST)', () => {
+    it('does not deadlock with a writer holding a fact row that then appends to the audit chain (as the Facts page and a fact proposal’s decision do)', async () => {
+        const { ctx, bookId } = await fresh('Lock Order');
+        const mara = (await createElement(ctx, bookId, { kind: 'CHARACTER', name: 'Mara' })).id;
+        await ingestText(ctx, { kind: 'book', bookId }, 'Mara wants the salt road reopened before winter. Mara never learned to swim in the bay.', 'draft.txt');
+        const facts = (await listBookFacts(ctx, bookId)).facts;
+        expect(facts).toHaveLength(2);
+        const view = await startInterview(ctx, bookId, { scope: 'ELEMENT', elementId: mara, depth: 2, detail: 3 }, { generator: fakeGenerator(), embedder });
+        const sources = view.round!.questions.filter((q) => q.generator === 'SOURCES');
+        expect(sources).toHaveLength(2);
+        for (const q of sources) await answerQuestion(ctx, bookId, view.session.id, q.id, { choice: SOURCE_YES });
+        // The fact the close decides last: another writer holds its row, and once the close waits on it, appends an audit
+        // row to the same workspace's chain. Had the close appended an audit row for the first fact before it, each would
+        // wait on the other (40P01).
+        const last = sources.map((q) => q.storyFactId!).sort().at(-1)!;
+        let held!: () => void;
+        const holding = new Promise<void>((r) => (held = r));
+        const other = prisma.$transaction(
+            async (tx) => {
+                await tx.$queryRaw`SELECT "id" FROM "StoryFact" WHERE "id" = ${last} FOR UPDATE`;
+                held();
+                for (let i = 0; i < 400; i++) {
+                    const [w] = await prisma.$queryRaw<Array<{ n: bigint }>>`SELECT count(*) AS n FROM pg_locks WHERE NOT granted AND locktype = 'transactionid'`;
+                    if (w.n > BigInt(0)) break;
+                    await new Promise((r) => setTimeout(r, 25));
+                }
+                await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${'audit:' + ctx.workspaceId}))`;
+            },
+            { timeout: 30_000, maxWait: 10_000 },
+        );
+        await holding;
+        const closed = closeRound(ctx, bookId, view.session.id, String(view.round!.number), { skipUnanswered: true });
+        await expect(Promise.all([other, closed])).resolves.toBeDefined();
+        const rows = await prisma.storyFact.findMany({ where: { id: { in: sources.map((q) => q.storyFactId!) } }, select: { status: true }, take: 2 });
+        expect(rows.map((r) => r.status)).toEqual(['CONFIRMED', 'CONFIRMED']);
     }, 60_000);
 });
 
@@ -371,7 +474,72 @@ describe('the tie-break (D30, item 4)', () => {
     });
 });
 
+describe('the tie-break holds the session’s budget as it stands when the call would be sent', () => {
+    it('reads the spend at the call, not off the claim’s row: tokens charged since (a compaction summary) count, and nothing is sent past the budget', async () => {
+        const { ctx, bookId } = await fresh('Spent Since');
+        await createElement(ctx, bookId, { kind: 'CHARACTER', name: 'Ada Rook' });
+        await createElement(ctx, bookId, { kind: 'CHARACTER', name: 'Bram Rook' });
+        const view = await startInterview(ctx, bookId, { scope: 'KIND', kind: 'CHARACTER', depth: 2, detail: 3, generatorsOff: [...FRONTIER_ONLY] }, { generator: fakeGenerator(), embedder });
+        // The plan as a claim held it (two equal roles: a tie), and the session row as the claim read it.
+        const { session, plan, state } = await runInWorkspaceContext(ctx, async (db) => {
+            const row = (await InterviewSessionRepository.find(db, ctx.workspaceId, bookId, view.session.id))!;
+            const st = await loadInterviewState(db, ctx, row);
+            return { session: row, state: st, plan: (await planSession(db, ctx, row, st)).plan };
+        });
+        // Since the claim, the round spent all but a token of the budget (its compaction summary, charged as it is made).
+        await prisma.interviewSession.update({ where: { id: session.id }, data: { tokensUsed: session.tokenBudget - 1 } });
+        const restore = setFakeApiKey();
+        let sent = 0;
+        try {
+            const ordered = await orderRoundTies(ctx, session, { plan, state }, {
+                orderer: () => ({
+                    async extract() {
+                        sent++;
+                        return { ok: true as const, output: { order: [2, 1] }, tokensUsed: 10, costMicroUsd: 1, callIds: [] };
+                    },
+                }),
+            });
+            expect(ordered.metrics).toMatchObject({ status: 'CODE', reason: 'TOKEN_BUDGET' });
+        } finally {
+            restore();
+        }
+        expect(sent).toBe(0);
+    });
+});
+
 describe('the database holds the new rules for any writer', () => {
+    it('lets an answer decide a fact only once, only a pending unflagged one, and only in the decision’s own write', async () => {
+        const { ctx, bookId } = await fresh('Once Only');
+        const mara = (await createElement(ctx, bookId, { kind: 'CHARACTER', name: 'Mara' })).id;
+        await ingestText(ctx, { kind: 'book', bookId }, 'Mara wants the salt road reopened before winter.', 'draft.txt');
+        const fact = (await listBookFacts(ctx, bookId)).facts.find((f) => f.predicate === 'WANT')!;
+        const view = await startInterview(ctx, bookId, { scope: 'ELEMENT', elementId: mara, depth: 2, detail: 3 }, { generator: fakeGenerator(), embedder });
+        const q = view.round!.questions.find((x) => x.storyFactId === fact.id)!;
+        await answerQuestion(ctx, bookId, view.session.id, q.id, { choice: SOURCE_YES });
+        const answer = await prisma.answer.findFirstOrThrow({ where: { questionId: q.id }, select: { id: true } });
+        const set = (sql: string) => prisma.$executeRawUnsafe(sql, fact.id, answer.id);
+        // Not without the decision itself.
+        await expect(set(`UPDATE "StoryFact" SET "decidedByAnswerId" = $2 WHERE "id" = $1`)).rejects.toThrow(/STORY_FACT_FIXED/);
+        // Not a flagged fact.
+        await prisma.$executeRawUnsafe(`ALTER TABLE "StoryFact" DISABLE TRIGGER story_fact_fixed`);
+        try {
+            await prisma.$executeRawUnsafe(`UPDATE "StoryFact" SET "flags" = ARRAY['POSSIBLE_INSTRUCTION'] WHERE "id" = $1`, fact.id);
+        } finally {
+            await prisma.$executeRawUnsafe(`ALTER TABLE "StoryFact" ENABLE TRIGGER story_fact_fixed`);
+        }
+        await expect(set(`UPDATE "StoryFact" SET "status" = 'CONFIRMED', "decidedAt" = now(), "decidedByAnswerId" = $2 WHERE "id" = $1`)).rejects.toThrow(/STORY_FACT_FIXED/);
+        await prisma.$executeRawUnsafe(`ALTER TABLE "StoryFact" DISABLE TRIGGER story_fact_fixed`);
+        try {
+            await prisma.$executeRawUnsafe(`UPDATE "StoryFact" SET "flags" = ARRAY[]::text[] WHERE "id" = $1`, fact.id);
+        } finally {
+            await prisma.$executeRawUnsafe(`ALTER TABLE "StoryFact" ENABLE TRIGGER story_fact_fixed`);
+        }
+        // The decision's own write, from PENDING: admitted; then never moved to another answer or re-set.
+        await set(`UPDATE "StoryFact" SET "status" = 'CONFIRMED', "decidedAt" = now(), "decidedByAnswerId" = $2 WHERE "id" = $1`);
+        await prisma.$executeRawUnsafe(`UPDATE "StoryFact" SET "decidedByAnswerId" = NULL WHERE "id" = $1`, fact.id);
+        await expect(set(`UPDATE "StoryFact" SET "status" = 'REJECTED', "decidedAt" = now(), "decidedByAnswerId" = $2 WHERE "id" = $1`)).rejects.toThrow(/STORY_FACT_FIXED/);
+    });
+
     it('refuses a ROUNDS session with no rounds, a generator list naming all five, an angle on a frontier question, a fact on a non-source question', async () => {
         const { ctx, bookId } = await fresh('Raw Writes');
         const elementId = (await createElement(ctx, bookId, { kind: 'CHARACTER', name: 'Wren Holt' })).id;

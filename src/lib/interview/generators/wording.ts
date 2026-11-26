@@ -97,12 +97,17 @@ export const PAIR_ANGLE_FIELD: Readonly<Record<PairAngle, 'nature' | 'significan
 
 /**
  * A SOURCE QUESTION (D23, D30 item 2): the source's own words, verbatim, and where they are; yes confirms the fact,
- * no rejects it. The quote takes whatever room the template leaves.
+ * no rejects it. The quote takes whatever room the template leaves. A series source's fact says it is one, and that the
+ * answer applies across the series (owner decision 2026-11-26, B).
  */
-export function sourceQuestion(quote: string, sourceName: string, where: string | null): WordedQuestion {
+export function sourceQuestion(quote: string, sourceName: string, where: string | null, series: boolean = false): WordedQuestion {
     const src = name(sourceName);
     const loc = where ? ` (${quoted(where, 40)})` : '';
-    const frame = (q: string) => `Your source “${src}” says “${q}”${loc}. Is that canon?`;
+    // A SERIES source's fact (owner decision 2026-11-26, B) is decided for every book that draws on that source, as on
+    // the Facts page: the question says it is a series fact and that the answer applies across the series.
+    const frame = series
+        ? (q: string) => `Your series source “${src}” says “${q}”${loc}. Is that canon for every book in the series?`
+        : (q: string) => `Your source “${src}” says “${q}”${loc}. Is that canon?`;
     const room = Math.max(12, QUESTION_TEXT_MAX - frame('').length);
     return { kind: 'EITHER_OR', text: frame(quoted(quote, room)), options: [...SOURCE_OPTIONS] };
 }

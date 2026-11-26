@@ -106,6 +106,8 @@ enum InterviewStopReason {
   VALUE_FELL
   /// Phase 4.4: an open-ended session reached the most questions one session holds (the bounded reads' limit).
   SESSION_LIMIT
+  /// Phase 4.4 (owner decision 2026-11-26): every question left is about a field with a pending proposed change; paused until the author decides.
+  AWAITING_DECISIONS
 }
 
 /// A round's life: GENERATING while its questions are being made (a claim:

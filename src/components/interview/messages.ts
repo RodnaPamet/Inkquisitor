@@ -33,6 +33,7 @@ const STOP_MESSAGE_KEYS: Readonly<Record<StopReason, StopReason>> = {
     QUESTION_BUDGET: 'QUESTION_BUDGET',
     VALUE_FELL: 'VALUE_FELL',
     SESSION_LIMIT: 'SESSION_LIMIT',
+    AWAITING_DECISIONS: 'AWAITING_DECISIONS',
 };
 
 /** The refusals the interview words on its own. */

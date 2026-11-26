@@ -369,6 +369,25 @@ it('a panel round groups by who asked, and code-worded questions are their own g
     expect(screen.queryByText('From the craft guidance')).toBeNull();
 });
 
+it('a series source’s question is marked as a series fact, an own source’s is not (owner decision 2026-11-26, B)', async () => {
+    mockFetch({});
+    const series = question({ origin: 'GENERATOR', generator: 'SOURCES', angle: 'SERIES', kind: 'EITHER_OR', options: ['Yes, it is canon', 'No, it is not'], storyFactId: 'f_1', text: 'Your series source “book-one.txt” says “Mara wants the sea.”. Is that canon for every book in the series?' });
+    const own = question({ origin: 'GENERATOR', generator: 'SOURCES', angle: null, kind: 'EITHER_OR', options: ['Yes, it is canon', 'No, it is not'], storyFactId: 'f_2', text: 'Your source “draft.txt” says “Mara keeps the lock.”. Is that canon?' });
+    const { container } = mount({ kind: 'existing', interview: interview({ questions: [series, own] }) });
+    const [first, second] = screen.getAllByTestId('question-card');
+    expect(within(first).getByTestId('series-fact')).toHaveTextContent('Series fact');
+    expect(within(second).queryByTestId('series-fact')).toBeNull();
+    expect(within(second).getByTestId('generator-badge')).toHaveTextContent('From your sources');
+    expect(await axe(container)).toHaveNoViolations();
+});
+
+it('an AWAITING_DECISIONS pause says why and offers Continue (owner decision 2026-11-26, A)', () => {
+    mockFetch({});
+    mount({ kind: 'existing', interview: interview({ status: 'PAUSED', stopReason: 'AWAITING_DECISIONS', roundStatus: 'CLOSED' }) });
+    expect(screen.getByTestId('stop-reason')).toHaveTextContent('Accept or reject them on the review page, then continue.');
+    expect(screen.getByRole('button', { name: 'Continue' })).toBeInTheDocument();
+});
+
 it('a reader sees the interview as text: no answer control, no stop, no next round', async () => {
     mockFetch({});
     const { container } = mount({ kind: 'existing', interview: interview({ questions: [answered(question({ kind: 'CHOICE' }), { choice: 'To stay' })] }) }, { canEdit: false });

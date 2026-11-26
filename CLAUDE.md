@@ -439,7 +439,7 @@ src/app/w/[workspaceSlug]/books/[bookId]/interrogate → src/components/interrog
 Phase 4.4 (continuous, deep questioning, D23 and D30) added:
 
 ```
-prisma/migrations/…_continuous_questioning(_enums) → QuestionGenerator, InterviewLengthMode, QUESTION_BUDGET / VALUE_FELL /
+prisma/migrations/…_continuous_questioning(_enums) → QuestionGenerator, InterviewLengthMode, QUESTION_BUDGET / VALUE_FELL / AWAITING_DECISIONS /
                                SESSION_LIMIT, origin GENERATOR; the session's length and generatorsOff, Question's generator columns,
                                StoryFact.decidedByAnswerId; the six-round CHECK replaced
 src/lib/interview/generators/ → index (THE generators: frontier, ladder, relations, sources, continuity; pure), value (THE score),
@@ -1618,11 +1618,23 @@ closed beta with an explicit operator flag (D5, amended 2026-11-19).
   wording as ever. The four new generators' questions are WORDED BY CODE
   (`wording.ts`, origin GENERATOR; the author's quotes verbatim, a `?` inside
   them full-width; never re-worded — 409 QUESTION_NOT_REPHRASABLE); the stored
-  plan names them by id and field, never their text. A candidate below
+  plan names them by id and field, never their text (the owner kept code wording
+  for 4.4; model wording in the persona's voice is revisited in 4.H, D30). A candidate below
   `MINOR_VALUE_FLOOR` is minor: a round asks only what is above it, and when only
   minor candidates are left the session PAUSES `VALUE_FELL` (last in the
   precedence) until the author says go on (`goOn: true` on the next round sets
-  `minorAccepted`); never padding. THE TIE-BREAK (`QUESTION_ORDER_PROMPT`, fast,
+  `minorAccepted`); never padding. HOLD FOLLOW-UPS (owner decision 2026-11-26, D30): no generator —
+  the frontier's question and a challenge included — asks about a field while an
+  enrichment proposal for it is PENDING (an element's FIELD, a relation's
+  RELATION_FIELD, a pair's pending NEW_RELATION holding both its fields;
+  `pendingFieldHolds` → `heldByProposals` → `selectCandidates`' `held`); when only
+  held candidates are left the session PAUSES `AWAITING_DECISIONS` and the next
+  round resumes it once the author decides. A SERIES source's fact is still decided
+  from the interview for every book that uses it, and its question says so
+  (`sourceQuestion(…, series)`, angle `SERIES`, the "Series fact" badge). A closing
+  round writes its facts' decisions first and their audit rows last
+  (`decideFactsFromRound(…).audit()`): an audit row before a fact row deadlocks
+  with a Facts-page decision. THE TIE-BREAK (`QUESTION_ORDER_PROMPT`, fast,
   D11, enforced per-call budget, charged to `chargeModelCalls` and the session's
   budget) may reorder only the round's first run of near-equal candidates
   (`tieGroups`); its answer counts only as an exact permutation, else the code's

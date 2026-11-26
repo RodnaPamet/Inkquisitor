@@ -235,7 +235,8 @@ model Question {
   /// questions, continuity). Codes, never text.
   generator            QuestionGenerator @default(FRONTIER)
   /// Phase 4.4: a ladder question's layer (WHAT, WHY, COST, WHO_KNOWS, BREAKS, EDGE_CASES) or a pair question's
-  /// angle (WANTS, COLLIDE, HIDDEN). CHECK: a closed list, only on LADDER and RELATIONS.
+  /// angle (WANTS, COLLIDE, HIDDEN), or SERIES on a SOURCES question about a series source's fact (owner decision
+  /// 2026-11-26: its answer applies across the series). CHECK: a closed list, only on LADDER, RELATIONS and SOURCES.
   angle                String?
   /// Phase 4.4 (D30): a RELATIONS question about two elements with no relation yet: the other element (the
   /// first is `elementId`). Its answer may lead to a NEW_RELATION proposal through 2.5/3.3's reconcile.

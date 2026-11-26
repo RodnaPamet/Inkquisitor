@@ -315,6 +315,14 @@ export const QuestionCard = forwardRef<QuestionCardHandle, QuestionCardProps>(fu
                 {q.mode === 'CHALLENGE' ? <StatusBadge variant="warning">{t('challenge')}</StatusBadge> : null}
                 {/* Phase 4.4 (D30): which generator asked, when it was not the frontier (a follow-up, a relationship, a source, continuity). */}
                 {q.generator !== 'FRONTIER' ? <StatusBadge variant="neutral" data-testid="generator-badge">{t(`generatorBadge.${q.generator}`)}</StatusBadge> : null}
+                {/* Owner decision 2026-11-26 (B): a series source's fact is decided for every book that draws on that source. */}
+                {q.generator === 'SOURCES' && q.angle === 'SERIES' ? (
+                    <span data-testid="series-fact">
+                        <StatusBadge variant="warning" tooltip={t('seriesFactHint')}>
+                            {t('seriesFact')}
+                        </StatusBadge>
+                    </span>
+                ) : null}
                 {q.reviewRequired ? (
                     <span data-testid="review-required">
                         <StatusBadge variant="warning" tooltip={t('reviewRequiredHint')}>

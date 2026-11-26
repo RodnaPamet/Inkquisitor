@@ -5,7 +5,7 @@
  * model failure). 503 AI_UNAVAILABLE when no model call can be made (nothing is written);
  * 409 ROUND_OPEN while a round is open. Phase 4.4 (D30): an optional body `{ "goOn": true }` is the author's
  * choice to go on past the minor questions (an interview paused VALUE_FELL); QUESTION_BUDGET and SESSION_LIMIT
- * end it, VALUE_FELL pauses it.
+ * end it; VALUE_FELL pauses it, and AWAITING_DECISIONS until the author decides the proposed changes it waits on.
  */
 import { NextResponse } from 'next/server';
 import { withApiErrorHandling } from '@/lib/errors/api';

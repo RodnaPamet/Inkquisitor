@@ -37,7 +37,7 @@ import type { FieldDef } from '@/lib/bible/template-schema';
 import { kindsAllowed } from '../dials';
 import { refKey, type FieldRef, type FrontierResult } from '../frontier';
 import { pairSubjectId, type PendingSubject, type RelationSubject } from '../subjects';
-import { LADDER_LAYERS, PAIR_ANGLES, type LadderLayer, type PairAngle, type QuestionGeneratorKey } from '../vocabulary';
+import { LADDER_LAYERS, PAIR_ANGLES, type LadderLayer, type PairAngle, type QuestionGeneratorKey, type SourceAngle } from '../vocabulary';
 import { ladderDepthFor } from './ladder-depth';
 import { CONTINUITY_VALUE, PAIR_VALUE, clampValue, frontierValue, ladderValue, sourceValue } from './value';
 import { PAIR_ANGLE_FIELD, contradictionQuestion, ladderQuestion, pairQuestion, sourceQuestion, threadQuestion, timelineGapQuestion, type WordedQuestion } from './wording';
@@ -68,8 +68,8 @@ export interface TargetCandidate {
     value: number;
     /** The question as code worded it; null: the model words it (the frontier, a relation's empty field). */
     worded: WordedQuestion | null;
-    /** A ladder layer or a pair angle. */
-    angle?: LadderLayer | PairAngle;
+    /** A ladder layer, a pair angle, or SERIES on a source question about a series source's fact (owner decision 2026-11-26). */
+    angle?: LadderLayer | PairAngle | SourceAngle;
     /** A pair's second element (the first is the pair subject's). */
     pairElementId?: string;
     /** A source question's fact. */
@@ -111,6 +111,11 @@ export interface PendingFactInput {
     sourceName: string;
     /** Where in the source (its nearest heading), or null. */
     where: string | null;
+    /**
+     * A SERIES source's fact (owner decision 2026-11-26, B): deciding it decides it for every book that draws on the
+     * source, as on the Facts page, so the question says so (`sourceQuestion`) and carries the angle SERIES.
+     */
+    series?: boolean;
 }
 
 export type ContinuityInput =
@@ -132,6 +137,12 @@ export interface GeneratorInput {
     pairs: readonly PairInput[];
     pendingFacts: readonly PendingFactInput[];
     continuity: readonly ContinuityInput[];
+    /**
+     * HOLD FOLLOW-UPS (owner decision 2026-11-26, A): the fields (`refKey` of subject and field: an element's, a
+     * relation's, or a pair's, whose pending NEW_RELATION holds both its fields) with an enrichment proposal still
+     * PENDING. No generator asks about one until the author decides it (`selectCandidates`' `held`).
+     */
+    heldByProposals?: ReadonlySet<string>;
 }
 
 export { ladderDepthFor };
@@ -237,8 +248,9 @@ function sourceCandidates(input: GeneratorInput): TargetCandidate[] {
             level: 1,
             required: field?.required ?? false,
             value: sourceValue(field ? subject.storedText.has(field.key) : false),
-            worded: sourceQuestion(f.quote, f.sourceName, f.where),
+            worded: sourceQuestion(f.quote, f.sourceName, f.where, f.series === true),
             storyFactId: f.factId,
+            ...(f.series ? { angle: 'SERIES' as const } : {}),
         });
     }
     return out;

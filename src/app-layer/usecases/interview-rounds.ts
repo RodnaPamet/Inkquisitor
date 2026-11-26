@@ -81,7 +81,7 @@ import { STATUS_AFTER_STOP, type PersonaKey, type StopReason } from '@/lib/inter
 import { PENDING_SUBJECT_ID, pairOfSubject, pairSubjectId, subjectIdOf } from '@/lib/interview/subjects';
 import { assembleSourceContext, EMPTY_SOURCE_CONTEXT, type SourceContext } from './source-retrieval';
 import { compactedSessionFor, roundAnswersOf, type CompactionDeps } from './interview-compaction';
-import type { FieldRef, FrontierEntry } from '@/lib/interview/frontier';
+import { refKey, type FieldRef, type FrontierEntry } from '@/lib/interview/frontier';
 import { challengeableOf, frontierOf, frontierStop, loadInterviewState, nextRoundNumber, SESSION_QUESTIONS_MAX, stopDetailFor, type InterviewState } from './interview-state';
 
 /** A pair's fields (Phase 4.4): the built-in `related_to`'s, which a NEW_RELATION from its answer would fill. */
@@ -296,13 +296,16 @@ export function planFromInputs(session: SessionRow, state: InterviewState, input
     const focus = state.stale ? [{ elementId: state.stale.elementId, fieldKeys: state.stale.fieldKeys }] : (state.weakPoints?.focus ?? []);
     const focused = (r: FieldRef) => focus.some((f) => f.elementId === r.elementId && f.fieldKeys.includes(r.fieldKey));
     const focusFields = focus.reduce((n, f) => n + f.fieldKeys.length, 0);
-    const staleFirst = focus.length > 0 ? [...challengeable.filter(focused), ...challengeable.filter((r) => !focused(r))] : challengeable;
+    // HOLD FOLLOW-UPS (owner decision 2026-11-26, A): a stored value whose proposed change is still pending is not challenged either.
+    const held = inputs.heldByProposals ?? new Set<string>();
+    const open = challengeable.filter((r) => !held.has(refKey(r)));
+    const staleFirst = focus.length > 0 ? [...open.filter(focused), ...open.filter((r) => !focused(r))] : open;
 
     const left = session.lengthMode === 'QUESTIONS' && session.questionBudget !== null ? Math.max(0, session.questionBudget - questionsAsked(state)) : Number.POSITIVE_INFINITY;
     const cap = Math.min(roundCapFor(session.detail), left);
     const subjects = new Map<string, Pick<GeneratorSubject, 'elementId' | 'fields'>>(state.elements.map((e) => [e.elementId, e] as const));
     for (const p of inputs.pairs) subjects.set(pairSubjectId(p.firstElementId, p.secondElementId), { elementId: pairSubjectId(p.firstElementId, p.secondElementId), fields: PAIR_FIELDS });
-    const selection = selectCandidates(generateCandidates(inputs), { cap, floor: session.minorAccepted ? 0 : MINOR_VALUE_FLOOR, subjects });
+    const selection = selectCandidates(generateCandidates(inputs), { cap, floor: session.minorAccepted ? 0 : MINOR_VALUE_FLOOR, subjects, held });
 
     const byId = new Map(state.elements.map((e) => [e.elementId, e] as const));
     const modelTargets: FrontierEntry[] = selection.chosen.flatMap((c) => {
@@ -364,7 +367,10 @@ export function stopNow(
     const wordedCount = plan.worded?.length ?? 0;
     // Nothing left to ask means no candidate at all: a plan emptied only by its room (a QUESTIONS session's spent
     // budget) is that budget's stop, never FRONTIER_EMPTY.
-    const fromFrontier = selection.valueFell || wordedCount > 0 || selection.remaining > 0 ? null : frontierStop(frontier, plan);
+    // Nothing chosen while some candidates wait on the author's decision of a proposed change (owner decision
+    // 2026-11-26, A): the session is not done, it waits (AWAITING_DECISIONS), and asks them once decided.
+    const awaitingDecisions = selection.held > 0 && selection.chosen.length === 0 && !plan.challenge;
+    const fromFrontier = selection.valueFell || wordedCount > 0 || selection.remaining > 0 || awaitingDecisions ? null : frontierStop(frontier, plan);
     // THE precedence is `decideStop`'s (`src/lib/interview/stop.ts`): the
     // frontier's own stop first — a session with nothing left to ask
     // COMPLETES saying so, even with the kill switch on or a budget spent
@@ -384,6 +390,7 @@ export function stopNow(
         questionBudget: session.lengthMode === 'QUESTIONS' ? session.questionBudget : null,
         questionsAsked: questionsAsked(state),
         sessionLimitReached: state.questions.length + ROUND_QUESTIONS_WORST > SESSION_QUESTIONS_MAX,
+        awaitingDecisions,
         valueFell: selection.valueFell && !session.minorAccepted,
     });
     if (!reason) return null;
@@ -392,6 +399,8 @@ export function stopNow(
             ? { scopeElements: state.elements.length }
             : reason === 'VALUE_FELL'
               ? { minor: selection.minor }
+              : reason === 'AWAITING_DECISIONS'
+                ? { held: selection.held }
               : reason === 'QUESTION_BUDGET'
                 ? { questionsAsked: questionsAsked(state) }
                 : reason === 'SESSION_LIMIT'
@@ -439,7 +448,9 @@ export async function claimRound(
     const stop = stopNow(session, state, planned.modelCalls > 0 ? await modelBudgetSignals(db, ctx, session.detail, planned.modelCalls) : undefined, planned);
     if (stop) {
         // Asked again while already paused for exactly this (a "next round" without `goOn`): nothing new to record.
-        if (!(stop.reason === 'VALUE_FELL' && session.status === 'PAUSED' && session.stopReason === 'VALUE_FELL')) await endSession(db, ctx, session, stop.reason, stop.detail);
+        // Likewise while it still waits on the author's decisions (AWAITING_DECISIONS).
+        const alreadyWaiting = (stop.reason === 'VALUE_FELL' || stop.reason === 'AWAITING_DECISIONS') && session.status === 'PAUSED' && session.stopReason === stop.reason;
+        if (!alreadyWaiting) await endSession(db, ctx, session, stop.reason, stop.detail);
         return { kind: 'stopped', reason: stop.reason };
     }
     if (planned.modelCalls > 0) assertModelAvailable(generator);
@@ -509,7 +520,7 @@ export function storedPlan(plan: RoundPlan, frontier: FrontierResult, selection:
         })),
         frontierSize: frontier.frontier.length,
         blocked: frontier.blocked.length,
-        generators: { proposed: selection.proposed, refused: selection.refused, duplicates: selection.duplicates, remaining: selection.remaining, minor: selection.minor },
+        generators: { proposed: selection.proposed, refused: selection.refused, duplicates: selection.duplicates, remaining: selection.remaining, minor: selection.minor, held: selection.held },
     } as unknown as Prisma.InputJsonValue;
 }
 
