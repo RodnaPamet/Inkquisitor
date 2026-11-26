@@ -14,7 +14,7 @@ bible, interview answers, research briefs, and (from Phase 5) the manuscript.
 
 | Party | What it receives | When | Terms |
 |---|---|---|---|
-| Anthropic (Claude API, Messages endpoint only) | Author text in fenced data blocks; the product's own prompts; the model's answers | Every model feature: interview questions (2.2; since 4.0 with the author's confirmed source facts and relevant passages of their own drafts as context), rephrasing (2.4), enrichment (2.5), research findings and fit (2.6), source fact extraction (4.0: each passage of an uploaded draft, its headings and the book's element names), bible fact extraction (4.1: the text of each accepted bible entry that changed, automatically, with the facts already recorded about it and the book's element names) | Zero data retention (`AI_RETENTION_MODE=zdr`, an organisation arrangement with Anthropic) is the launch gate; standard retention (`standard-beta`) only during the closed beta (decision D5, amended 2026-11-19). Output JSON schemas are code and carry no author text (Anthropic caches schemas outside zero retention). |
+| Anthropic (Claude API, Messages endpoint only) | Author text in fenced data blocks; the product's own prompts; the model's answers | Every model feature: interview questions (2.2; since 4.0 with the author's confirmed source facts and relevant passages of their own drafts as context; since 4.2 a "grill me on what changed" session also carries the upstream entry before and after its change), rephrasing (2.4), enrichment (2.5), research findings and fit (2.6), source fact extraction (4.0: each passage of an uploaded draft, its headings and the book's element names), bible fact extraction (4.1: the text of each accepted bible entry that changed, automatically, with the facts already recorded about it and the book's element names; since 4.2 also the book's open promises, clues and open questions, so it can propose new ones and say one was paid off), the nightly continuity check (4.2: the statements of a changed book's recorded facts, with their subjects' names, story times and places in the story order, automatically, every night) | Zero data retention (`AI_RETENTION_MODE=zdr`, an organisation arrangement with Anthropic) is the launch gate; standard retention (`standard-beta`) only during the closed beta (decision D5, amended 2026-11-19). Output JSON schemas are code and carry no author text (Anthropic caches schemas outside zero retention). |
 
 The messages-only middleware (`src/lib/ai/client.ts`) refuses every other
 Anthropic surface (files, batches, message threads, containers, MCP, beta
@@ -49,6 +49,27 @@ runs only once a real-model evaluation record is committed (D11). Nothing is
 stored at Anthropic beyond the Messages call; the facts are stored encrypted
 in PostgreSQL. The embeddings of elements, facts and answers are made inside
 the deployment (the 2.0 embedding provider), never by an external service.
+
+## The nightly continuity check (Phase 4.2, decision D28)
+
+Every night, with no act of the author's, each book whose bible changed since
+its last check has its **recorded facts** sent to Anthropic: at most two
+deep-tier calls a book a night, each carrying at most a hundred facts — each
+fact's statement, its subject's name, its story time and its place in the
+story order, with the names of the placed elements in that order — so the model
+can name the pairs that cannot both be true. A large book is covered over
+several nights. The calls run in a background job, under the same retention
+mode as every model call, stop cleanly (and resume the next night) at the
+workspace's monthly ceiling (D10) and at the kill switch (`AI_DISABLED=1`), and
+are charged to the workspace's model-call minute (D17); in production they run
+only once a real-model evaluation record is committed (D11). The model's
+answer is numbers and a code (which pairs, of what kind), never text; nothing
+is stored at Anthropic beyond the Messages call, and the proposed
+contradictions are stored in PostgreSQL for the author to decide.
+
+Since 4.2 the bible fact extraction (above) also carries the book's **open
+promises, clues and open questions** (their titles, at most twenty), so it can
+propose new ones and say that one was paid off; no call is added for them.
 
 ## Research: web search and web fetch (Phase 2.6, decision D9)
 

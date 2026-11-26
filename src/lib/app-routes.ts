@@ -25,6 +25,8 @@ export const APP_ROUTES = {
     bookSources: (workspaceSlug: string, bookId: string) => `${bookPath(workspaceSlug, bookId)}/sources`,
     /** The facts a book's sources state, for the author to confirm (Phase 4.0, D23). */
     bookFacts: (workspaceSlug: string, bookId: string) => `${bookPath(workspaceSlug, bookId)}/facts`,
+    /** A book's continuity: contradictions, promises, clues, open questions and entries that may be stale (Phase 4.2, D28). */
+    continuity: (workspaceSlug: string, bookId: string) => `${bookPath(workspaceSlug, bookId)}/continuity`,
     /** The workspace's series library (Phase 4.0, D26). */
     series: (workspaceSlug: string) => `/w/${encodeURIComponent(workspaceSlug)}/series`,
     /** The series library's facts (Phase 4.0, D26). */

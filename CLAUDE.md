@@ -30,6 +30,7 @@ npm run redteam:injection -- --out redteam-out   # the injection corpus against 
 npm run packs:evaluate -- --no-packs --rephrase    # "Ask me this differently"'s set (2.H): its structural record beside it
 npm run packs:evaluate -- --no-packs --sources     # source fact extraction's set (4.0): its structural record beside it
 npm run packs:evaluate -- --no-packs --bible-facts # bible fact extraction's set (4.1): five synthetic bibles, its structural record beside it
+npm run packs:evaluate -- --no-packs --continuity  # the nightly deep continuity check's set (4.2): its structural record beside it
 npm run packs:evaluate -- --judge                  # also the judge's report over the pack records written (2.H; a report, never a gate)
 npm run docs:build        # the Starlight help site (site/), from docs/user/
 npm run lint              # eslint . (flat config, eslint.config.mjs)
@@ -63,7 +64,7 @@ builds the help site and deploys it only on main when Pages is enabled;
 `postgres-image.yml` publishes `ghcr.io/rodnapamet/inkquisitor-postgres`
 (main only, weekly and on an upstream digest move; build, smoke, Trivy, then
 push); `evals.yml` (**Evals**, dispatch only, not a check) makes real-model
-pack evaluation records (and, with its `reconcile`, `research`, `rephrase`, `sources` and `bible_facts` inputs, the reconcile step's, the research agent's, the rephrase prompt's, source fact extraction's and bible fact extraction's)
+pack evaluation records (and, with its `reconcile`, `research`, `rephrase`, `sources`, `bible_facts` and `continuity` inputs, the reconcile step's, the research agent's, the rephrase prompt's, source fact extraction's, bible fact extraction's and the deep continuity check's)
 on `secrets.ANTHROPIC_API_KEY` and uploads them as an artifact, committing
 nothing (`tests/unit/evals-workflow.test.ts`); `injection-redteam.yml`
 (**Injection red-team**, nightly once the repository variable
@@ -395,7 +396,22 @@ src/app-layer/usecases/      → bible-facts (the `bible-facts` job's work), fac
                                fact-proposals (review), source-retrieval (the bible check, the budgeted context)
 src/app-layer/repositories/fact-layer.repository.ts; vector/ `within` (the allowed set in the query) and `presentSources`
 src/app-layer/jobs/          → `fact-layer-dispatch` (every minute), `bible-facts` (one per due outbox row), shutdown-signal (#57 item 6)
-src/app/api/w/[workspaceSlug]/books/[bookId]/fact-proposals/** ; src/components/sources/FactProposalsPanel.tsx (on the Facts page)
+src/app/api/w/[workspaceSlug]/books/[bookId]/fact-proposals/** (decided on the Continuity page since 4.2)
+```
+
+Phase 4.2 (continuity checks and open threads, D28) added:
+
+```
+prisma/schema/continuity.prisma → ContinuityCheck (a book's pass and cursor), ContinuityRun, StoryThread (PROMISE / CLUE / OPEN_QUESTION),
+                               StoryThreadProposal, StaleFlag; StoryFactProposal's kind / DEEP / checkRunId; StoryFact AUTHOR_RESOLUTION
+src/lib/continuity/          → vocabulary (bounds, kinds, outcomes; client-safe), story-clock (D25 ranks), rules (THE detectors), night-plan,
+                               prompt / schema / validate / cost (CONTINUITY_PROMPT, deep tier), model-seam.ts (THE wiring to 2.1),
+                               record-gate (D11), storage (sanitisers), cited, change-text, api-client; evals/ (set, evaluation, record)
+src/app-layer/usecases/      → continuity (the page, threads, decisions, dismissals), continuity-check (the nightly job's work),
+                               continuity-dispatch (the dispatcher), stale-flags; fact-proposals (resolution, AUTHOR_RESOLUTION facts)
+src/app-layer/jobs/          → `continuity-dispatch` (02:23 UTC), `continuity-check` (one per changed book, by run id)
+src/app/api/w/[workspaceSlug]/books/[bookId]/{continuity,threads/**,thread-proposals/**,stale-flags/**}
+src/app/w/[workspaceSlug]/books/[bookId]/continuity → src/components/continuity/ContinuityPage
 ```
 
 ## Rules every change obeys
@@ -1385,7 +1401,8 @@ closed beta with an explicit operator flag (D5, amended 2026-11-19).
   kept) a live fact already holds adds PROVENANCE, never a twin (partial unique
   `StoryFact_one_live_claim`); a new fact contradicting a live one by RULE (an
   AGE, LOCATION, OCCUPATION or PLACE_TYPE that plainly differs at an
-  overlapping story time; never a ROLE or a WANT) or by the MODEL (an existing
+  overlapping story time — since the D28 addendum a LOCATION only when both
+  facts carry a time or a story position; never a ROLE or a WANT) or by the MODEL (an existing
   fact it was shown, same subject element) raises a PROPOSAL; an earlier fact
   of the same entry whose quote is gone raises NO_LONGER_STATED. NOTHING IS
   INVALIDATED by the job (rule 1): the author decides on the Facts page
@@ -1423,6 +1440,65 @@ closed beta with an explicit operator flag (D5, amended 2026-11-19).
   ingestions and extractions on shutdown (`abortRunningJobs`). After editing the
   set, the prompt or its schema, re-run `npm run packs:evaluate -- --no-packs
   --bible-facts`; a changed `QUESTION_PROMPT` needs `npm run packs:evaluate`.
+- **Continuity (Phase 4.2; D28).** CONTRADICTIONS live in `StoryFactProposal`
+  (never a second table): a `kind` (VALUE, WHEREABOUTS, KNOWLEDGE, TIMELINE,
+  OTHER) and a basis (RULE, MODEL, DEEP with its `checkRunId`); before and after
+  come from the story order's ranks alone (`storyClock`, D25), a text story time
+  second. The rules (`rules.ts`) need one linked subject element and are narrow;
+  one pair is raised once in either order. WHEREABOUTS and KNOWLEDGE clash only
+  when BOTH facts carry an overlap-decidable time (`decidedOverlap`: a story
+  time, or a position in one order); a fact with neither is the deep check's
+  (D28 addendum, item 2). VALUE keeps "unknown overlaps everything" (few
+  distinct values per subject). `CONTINUITY_PROPOSALS_PER_RUN_MAX` (1,000 a
+  book a night) is a safety bound and should rarely bind. The
+  author decides (`bible.edit`): keep the newer (`INVALIDATE`), keep the older
+  (`INVALIDATE_NEWER`), both true (`KEEP_BOTH`, an explanation REQUIRED on a
+  contradiction, stored as a CONFIRMED `AUTHOR_RESOLUTION` fact naming the
+  proposal through the fact sanitiser), or not a contradiction (`REJECT`).
+  THE NIGHTLY CHECK (`continuity-dispatch` at 02:23 UTC, fair-share discovery
+  under the closed `continuity-discovery` bypass, ids only; one
+  `continuity-check` per book with a live fact newer than its `coveredThrough`)
+  sweeps CLEARED flags, runs the rules over the whole book (bounded), then deep
+  calls by `planNight`: at most `CONTINUITY_CALLS_PER_NIGHT` (2) of at most
+  `FACTS_PER_CALL_MAX` (100) facts, a subject's facts together, from a stored
+  cursor (`kind:id`; never author text in a cursor), each call's worst case
+  inside the ENFORCED per-call budget (cut, halved, else `CALL_OVER_BUDGET`),
+  each charged to `chargeModelCalls`; the cursor is saved after every call.
+  A pass covers facts stamped up to `CONTINUITY_PASS_SETTLE_MS` (15 min) before
+  its claim, never the claim itself (a fact stamped before it may commit after
+  the read); the rest are the next pass's.
+  A workspace's deep calls spend at most `CONTINUITY_NIGHTLY_SHARE` (10 %) of
+  its monthly ceiling a night (D28 addendum, item 1): measured from the ledger
+  (calls of purpose `continuity.deep-check` charged in the night's window plus
+  their live reservations, which carry `purpose`), checked before each call
+  with its worst case and again by `workspaceAiLedger(ctx, share)` under the
+  spend lock (`limit: 'NIGHTLY_SHARE'`); past it the night stops `NIGHTLY_CAP`.
+  A stop (ceiling, nightly share, kill switch, D11, the rate minute, abort)
+  keeps the cursor and is never FAILED; the rules run even when D11 refuses the model; findings are
+  only proposed. A run lost by its worker (`STALE_CONTINUITY_RUN_MS`) is ended
+  and the book queued again. THE REGISTRIES are one `StoryThread` table (kind,
+  kind-checked state, encrypted title and note, optimistic `version`, no
+  version table: the audit trail is its history). Threads are proposed by 4.1's
+  bible fact call (its output's `threads`, shown the open threads so it can say
+  one was paid off; `validateBibleThreads`, D14 flags), keyed once per book ever;
+  the author accepts, rejects, adds, edits, changes the state and removes (undo
+  toast). Open questions also list DECIDE_LATER answers whose field is empty and
+  pending contradictions, derived, never stored. PROPAGATION DEBT: the trigger
+  `bible_entry_version_stale_flags` raises, in the version's transaction, one
+  `StaleFlag` per (entry, upstream) for every OTHER element whose versions name
+  an ANSWERED answer to a question about the changed element (its own, or a
+  relation's with it at an end; never `aboutPending`); a reorder raises nothing;
+  nothing transitive. Only that trigger raises or re-raises a flag
+  (`stale_flag_guard`, by `pg_trigger_depth()`): a statement may only dismiss
+  or clear an OPEN flag, every other column unchanged, and only a cascade
+  deletes one (app_user holds no DELETE). A flag stands while its entry has not been saved since
+  (`standingStaleFlags`, read; the sweep writes CLEARED) and until dismissed; a
+  later change re-raises it. "Grill me on what changed" is a SELECTION session
+  of that one element with `staleFlagId` (409 STALE_FLAG_GONE otherwise), depth
+  5, its stale fields challenged first, the upstream entry before and after as
+  the `upstream-change` data block. After editing the continuity set, prompt or
+  schema, re-run `npm run packs:evaluate -- --no-packs --continuity`; the bible
+  facts prompt carries the threads (`--bible-facts`).
 - **Sanitising author text.** Every author-text write sanitises at the
   usecase layer before it is stored: plain text through `plainLine` /
   `plainBlock` (`src/lib/bible/text.ts`, over `sanitizePlainText`), rich text

@@ -1,15 +1,15 @@
 {
   "format": "inkquisitor-bible-facts-evaluation/1",
   "set": {
-    "hash": "sha256:ace095bd03c99e373182795442dced42ea5ebcfc1853c67d1a948d40b3753608"
+    "hash": "sha256:24ca50e3871e50861ab5761433df4443947df85842ac26355cca98506239d500"
   },
-  "promptVersion": "bible-facts.4.1.0",
-  "promptHash": "sha256:b10e9e8455727ffc6c3250645f0debaf250fcc6aaddcaffe3936fbc39988ba63",
+  "promptVersion": "bible-facts.4.2.0",
+  "promptHash": "sha256:28a7fad6b2d7a3230404f979254d0a80060f80da94a320c40c62ac6f1d804400",
   "generator": {
     "kind": "structural",
     "id": "reference-bible-extractor.1"
   },
-  "ranAt": "2026-11-26T07:55:21.553Z",
+  "ranAt": "2026-11-26T11:05:54.393Z",
   "answers": [
     {
       "caseId": "bb-01-e1",
@@ -215,6 +215,72 @@
             "contradicts": [
               1
             ]
+          }
+        ]
+      }
+    },
+    {
+      "caseId": "bb-03-e3",
+      "facts": {
+        "facts": [
+          {
+            "subject": "Pell",
+            "predicate": "WANT",
+            "object": "",
+            "statement": "Pell swears to find whoever forged the harbour deed before the spring audit.",
+            "quote": "Pell swears to find whoever forged the harbour deed before the spring audit.",
+            "storyTimeFrom": "",
+            "storyTimeTo": "",
+            "contradicts": []
+          },
+          {
+            "subject": "Pell",
+            "predicate": "POSSESSION",
+            "object": "an ink-stained ledger",
+            "statement": "Pell keeps an ink-stained ledger under the floorboards of the counting house.",
+            "quote": "Pell keeps an ink-stained ledger under the floorboards of the counting house.",
+            "storyTimeFrom": "",
+            "storyTimeTo": "",
+            "contradicts": []
+          }
+        ],
+        "threads": [
+          {
+            "kind": "PROMISE",
+            "title": "Pell will find whoever forged the harbour deed",
+            "quote": "Pell swears to find whoever forged the harbour deed before the spring audit.",
+            "paysOff": 0
+          },
+          {
+            "kind": "CLUE",
+            "title": "An ink-stained ledger under the floorboards",
+            "quote": "an ink-stained ledger under the floorboards of the counting house",
+            "paysOff": 0
+          }
+        ]
+      }
+    },
+    {
+      "caseId": "bb-03-e4",
+      "facts": {
+        "facts": [
+          {
+            "subject": "Pell",
+            "predicate": "EVENT",
+            "object": "",
+            "statement": "Pell unmasks the clerk who forged the harbour deed on the morning of the audit.",
+            "quote": "Pell unmasks the clerk who forged the harbour deed on the morning of the audit.",
+            "storyTimeFrom": "",
+            "storyTimeTo": "",
+            "contradicts": []
+          }
+        ],
+        "threads": [
+          {
+            "kind": "PROMISE",
+            "title": "",
+            "quote": "Pell unmasks the clerk who forged the harbour deed",
+            "paysOff": 2
           }
         ]
       }

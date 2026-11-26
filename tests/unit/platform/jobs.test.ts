@@ -20,8 +20,8 @@ import { OTEL_CARRIER_KEY, readTraceCarrier, stripTraceCarrier } from '@/lib/obs
 afterEach(() => executorRegistry._reset());
 
 describe('executor registry', () => {
-    it('registers the heartbeat, the book purge (Phase 1.H), the call-log retention (2.H), the research run (2.6), the source ingestion (4.0) and the fact layer’s dispatcher and extraction (4.1), nothing else', () => {
-        expect(executorRegistry.listRegistered()).toEqual(['heartbeat', 'book-purge', 'ai-call-log-retention', 'research-run', 'source-ingest', 'fact-layer-dispatch', 'bible-facts']);
+    it('registers the heartbeat, the book purge (Phase 1.H), the call-log retention (2.H), the research run (2.6), the source ingestion (4.0), the fact layer’s dispatcher and extraction (4.1) and the nightly continuity dispatcher and check (4.2), nothing else', () => {
+        expect(executorRegistry.listRegistered()).toEqual(['heartbeat', 'book-purge', 'ai-call-log-retention', 'research-run', 'source-ingest', 'fact-layer-dispatch', 'bible-facts', 'continuity-dispatch', 'continuity-check']);
     });
 
     it('the heartbeat is a no-op that succeeds', async () => {

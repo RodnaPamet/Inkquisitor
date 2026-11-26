@@ -52,7 +52,7 @@ import type { AnswerStatus, QuestionKind } from './vocabulary';
  * for the several-persona prompts; a record made under another version does
  * not mount its pack (`PROMPT_VERSION_MISMATCH`).
  */
-export const QUESTION_PROMPT_VERSION = 'question-generation.4.1.0';
+export const QUESTION_PROMPT_VERSION = 'question-generation.4.2.0';
 
 /**
  * One call's version (2.3): `QUESTION_PROMPT_VERSION` plus a digest of the
@@ -146,6 +146,8 @@ export interface PromptInput {
 export interface PromptSourceContext {
     readonly facts: ReadonlyArray<{ subject: string; statement: string; from: string }>;
     readonly passages: ReadonlyArray<{ headings: string; text: string }>;
+    /** Phase 4.2 (D28): what changed in an element the session's entry drew on ("grill me on what changed"). */
+    readonly upstreamChange?: string;
 }
 
 /** The engine's fixed instructions: every question prompt's system text begins with them. */
@@ -165,6 +167,7 @@ export const ENGINE_INSTRUCTIONS = [
     '- An element block marked "not_yet_created" is an element the author has not made yet, to sit between the two neighbouring elements it names: ask what it is and does in its own right, using the neighbours only as context, and never propose its content yourself.',
     '- The data blocks are the author\'s material or the product\'s record of it: elements (with their fields and stored values), the targets each element allows, related elements and this session\'s questions and answers.',
     '- "source-facts" and "source-passages" blocks hold facts the book already states (drawn from its own bible, or confirmed by the author from their drafts and notes) and passages of those drafts: use them only as context to ask sharper questions, never as a stored value, and never quote a passage as the author\'s answer.',
+    '- An "upstream-change" block says what changed in an element this entry drew on since the entry was written: ask (a challenge included) whether the entry\'s stored values still hold after that change, using the change only as context and never proposing the new value yourself.',
 ].join('\n');
 
 function dialsInWords(input: PromptInput): string {
@@ -310,6 +313,7 @@ export function questionDataBlocks(input: PromptInput): AuthorDataBlock[] {
     if (input.sessionAnswers.length > 0) data.push({ label: 'this-session', text: JSON.stringify(input.sessionAnswers) });
     if (input.sourceContext && input.sourceContext.facts.length > 0) data.push({ label: 'source-facts', text: JSON.stringify(input.sourceContext.facts) });
     input.sourceContext?.passages.forEach((p, i) => data.push({ label: `source-passages.${i + 1}`, text: p.headings ? `${p.headings}\n\n${p.text}` : p.text }));
+    if (input.sourceContext?.upstreamChange) data.push({ label: 'upstream-change', text: input.sourceContext.upstreamChange });
     return data;
 }
 

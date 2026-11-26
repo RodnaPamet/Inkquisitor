@@ -193,6 +193,8 @@ describe('wiring', () => {
             SourceChunk: ['text', 'headingPath'],
             StoryFact: ['subjectName', 'objectLiteral', 'statement', 'quote', 'storyTimeFrom', 'storyTimeTo'],
             StoryFactOverride: ['text'],
+            StoryThread: ['title', 'note'],
+            StoryThreadProposal: ['title', 'quote'],
         });
         expect(compileManifest(ENCRYPTED_FIELDS).isEmpty).toBe(false);
     });

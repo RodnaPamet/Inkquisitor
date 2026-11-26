@@ -67,6 +67,8 @@ import { BibleRelationRepository } from '@/app-layer/repositories/bible.reposito
 import { getRelationType, relationFieldDefs } from '@/lib/bible/templates';
 import { PENDING_SUBJECT_ID, relationSubjectName } from '@/lib/interview/subjects';
 import { defaultLayersFor } from './interview-defaults';
+import { StaleFlagRepository } from '@/app-layer/repositories/continuity.repository';
+import { standingStaleFlags } from './stale-flags';
 import { deploymentPackMounts } from './interview-packs';
 import {
     announceClaim,
@@ -112,6 +114,14 @@ async function viewOf(db: PrismaTx, ctx: WorkspaceRequestContext, bookId: string
     return interviewView(session, state);
 }
 
+/** A stale flag a grill session may start from: the book's, OPEN, not yet cleared by a save, about `elementId`. */
+async function requireStandingFlag(db: PrismaTx, ctx: WorkspaceRequestContext, bookId: string, flagId: string, elementId: string | undefined): Promise<void> {
+    const flag = await StaleFlagRepository.find(db, ctx.workspaceId, bookId, flagId);
+    if (!flag) throw new NotFoundError('Flag not found.');
+    const { standing } = await standingStaleFlags(db, ctx.workspaceId, flag.status === 'OPEN' ? [flag] : []);
+    if (standing.length === 0 || flag.elementId !== elementId) throw new ConflictError('This entry is no longer flagged as possibly stale.', { reason: 'STALE_FLAG_GONE' });
+}
+
 /** The registry and its verdicts a request runs on: the one handed in (tests), else the deployment's. */
 function packContextOf(deps: InterviewDeps): PackContext {
     const registry = deps.packs ?? getPacks();
@@ -144,6 +154,8 @@ export async function startInterview(ctx: WorkspaceRequestContext, bookId: strin
         else if (parsed.scope === 'SELECTION') {
             selection = await resolveSelection(db, ctx, bookId, { elementIds: parsed.elementIds, relationIds: parsed.relationIds });
             kinds = selection.kinds;
+            // Phase 4.2 (D28): "Grill me on what changed" — the flag must stand for this very element, still open.
+            if (parsed.staleFlagId) await requireStandingFlag(db, ctx, bookId, parsed.staleFlagId, selection.elementIds[0]);
         } else if (parsed.scope === 'BETWEEN') {
             slot = await resolveBetweenSlot(db, ctx, bookId, parsed.afterElementId!, parsed.beforeElementId!);
             kinds = [slot.kind];
@@ -152,7 +164,8 @@ export async function startInterview(ctx: WorkspaceRequestContext, bookId: strin
             if (any.length === 0) throw new ValidationError('There is nothing in this book to ask about yet.', { reason: 'SCOPE_EMPTY' });
             kinds = parsed.scope === 'KIND' ? [parsed.kind!] : [...BIBLE_KINDS];
         }
-        const { settings, sources } = resolveDials({ session: parsed, ...(await defaultLayersFor(db, ctx, bookId)) });
+        // A grill on what changed asks at the deepest level, so the stale fields can be challenged (`interview-rounds.ts`).
+        const { settings, sources } = resolveDials({ session: parsed.staleFlagId ? { ...parsed, depth: 5 } : parsed, ...(await defaultLayersFor(db, ctx, bookId)) });
         // A selection with a relation in it is questioned with the relations pack too (Phase 3.3).
         const names = packNamesFor(kinds, settings.personaKeys, { relations: (selection?.relationIds.length ?? 0) > 0 });
         const pinned = pinsFor(names, await packContext.mounts(names));
@@ -169,6 +182,7 @@ export async function startInterview(ctx: WorkspaceRequestContext, bookId: strin
             slotAfterElementId: slot?.afterElementId ?? null,
             slotBeforeElementId: slot?.beforeElementId ?? null,
             slotAct: slot?.act ?? null,
+            staleFlagId: parsed.staleFlagId ?? null,
             depth,
             detail,
             personaKeys,
@@ -193,6 +207,7 @@ export async function startInterview(ctx: WorkspaceRequestContext, bookId: strin
                     scopeElements: session.scopeElementIds.length,
                     scopeRelations: session.scopeRelationIds.length,
                     ...(slot ? { slotAfterElementId: slot.afterElementId, slotBeforeElementId: slot.beforeElementId } : {}),
+                    ...(parsed.staleFlagId ? { staleFlagId: parsed.staleFlagId } : {}),
                     depth,
                     detail,
                     personaKeys,

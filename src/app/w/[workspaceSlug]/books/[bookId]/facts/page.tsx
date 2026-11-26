@@ -17,15 +17,15 @@ export async function generateMetadata(): Promise<Metadata> {
 /**
  * The facts a book's sources state (Phase 4.0, D23): each quoted with its
  * passage, confirmed or rejected by the author; only a confirmed one counts as
- * answered; and (4.1) the possible contradictions among the facts the book's own
- * bible states, decided by the author. A book the workspace does not hold is a 404.
+ * answered. The possible contradictions (4.1) are decided on the Continuity page
+ * (4.2), which this page links to while any wait. A book the workspace does not hold is a 404.
  */
 export default async function BookFactsPage({ params }: { params: Promise<{ workspaceSlug: string; bookId: string }> }) {
     const { workspaceSlug, bookId } = await params;
     const { ctx } = await getWorkspacePageCtx(workspaceSlug);
     const book = await orNotFound(requireBookForPage(ctx, bookId));
     const initial = await orNotFound(listBookFacts(ctx, bookId));
-    // Phase 4.1 (D27): the possible contradictions the author decides, on the same page.
+    // Phase 4.2 (D28): the proposals to invalidate a fact are decided on the Continuity page; this page links there.
     const proposals = await orNotFound(listFactProposals(ctx, bookId));
-    return <FactsReview workspaceSlug={ctx.workspaceSlug} book={{ id: book.id, title: book.title }} initial={initial} canEdit={ctx.permissions.bible.edit} proposals={proposals} />;
+    return <FactsReview workspaceSlug={ctx.workspaceSlug} book={{ id: book.id, title: book.title }} initial={initial} canEdit={ctx.permissions.bible.edit} pendingContinuity={proposals.pending} />;
 }

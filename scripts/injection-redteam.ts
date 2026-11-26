@@ -58,7 +58,7 @@ async function main(): Promise<void> {
         fail(`AI_MONTHLY_CEILING_USD_DEFAULT must be the run's budget, more than 0 and at most ${suite.REDTEAM_BUDGET_MAX_USD} US dollars`, 2);
     }
 
-    const [{ provisionAccountWithWorkspace }, { getPermissionsForRole }, { callStructured, modelUnavailableReason }, { questionGeneratorOver }, { reconcilerOver }, { defaultResearcher }, { prisma }, { defaultFactExtractor }, { defaultBibleFactExtractor }] =
+    const [{ provisionAccountWithWorkspace }, { getPermissionsForRole }, { callStructured, modelUnavailableReason }, { questionGeneratorOver }, { reconcilerOver }, { defaultResearcher }, { prisma }, { defaultFactExtractor }, { defaultBibleFactExtractor }, { defaultContinuityChecker }] =
         await Promise.all([
             import('../src/app-layer/usecases/sign-up'),
             import('../src/lib/permissions'),
@@ -69,6 +69,7 @@ async function main(): Promise<void> {
             import('../src/lib/db'),
             import('../src/lib/sources/model-seam'),
             import('../src/lib/facts/model-seam'),
+            import('../src/lib/continuity/model-seam'),
         ]);
     const unavailable = modelUnavailableReason();
     if (unavailable) fail(`no model call can be made (${unavailable})`, 2);
@@ -111,6 +112,7 @@ async function main(): Promise<void> {
             researcher: defaultResearcher(ctx, { fetch: capture }),
             extractor: defaultFactExtractor(ctx, { fetch: capture }),
             bibleExtractor: defaultBibleFactExtractor(ctx, { fetch: capture }),
+            continuityChecker: defaultContinuityChecker(ctx, { fetch: capture }),
             requests: () => sent,
         });
         const reached = report.cases.filter((v) => !suite.UNREACHED_OUTCOMES.has(v.outcome)).length;

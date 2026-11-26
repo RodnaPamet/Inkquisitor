@@ -49,7 +49,8 @@ export type InterviewTarget =
     | { scope: 'ELEMENT'; elementId: string }
     | { scope: 'KIND'; kind: BibleKind }
     | { scope: 'BOOK' }
-    | { scope: 'SELECTION'; elementIds: string[]; relationIds: string[] }
+    /** Phase 4.2 (D28): "Grill me on what changed" names the stale flag; its selection is that flag's one element. */
+    | { scope: 'SELECTION'; elementIds: string[]; relationIds: string[]; staleFlagId?: string }
     | { scope: 'BETWEEN'; afterElementId: string; beforeElementId: string };
 
 /** Ids a selection's query carries at most (the server's own bound, `SELECTION_ELEMENTS_MAX`). */
@@ -190,6 +191,7 @@ export function interviewSetupQuery(target: InterviewTarget, setup: InterviewSet
     if (target.scope === 'SELECTION') {
         if (target.elementIds.length > 0) q.set('elements', target.elementIds.join(','));
         if (target.relationIds.length > 0) q.set('relations', target.relationIds.join(','));
+        if (target.staleFlagId) q.set('stale', target.staleFlagId);
     }
     if (target.scope === 'BETWEEN') {
         q.set('after', target.afterElementId);
@@ -231,7 +233,8 @@ export function setupFromQuery(q: Query): { target: InterviewTarget; setup: Inte
         const elementIds = [...new Set(ids('elements'))];
         const relationIds = [...new Set(ids('relations'))];
         if (elementIds.length + relationIds.length === 0 || elementIds.length > SELECTION_QUERY_MAX || relationIds.length > SELECTION_QUERY_MAX) return null;
-        target = { scope: 'SELECTION', elementIds, relationIds };
+        const stale = one(q, 'stale');
+        target = stale && stale.length <= 64 && elementIds.length === 1 && relationIds.length === 0 ? { scope: 'SELECTION', elementIds, relationIds, staleFlagId: stale } : { scope: 'SELECTION', elementIds, relationIds };
     } else if (scope === 'BETWEEN') {
         const after = one(q, 'after');
         const before = one(q, 'before');

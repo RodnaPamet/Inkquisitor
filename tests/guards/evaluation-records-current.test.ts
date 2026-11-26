@@ -34,6 +34,8 @@ import { checkExtractionRecord, extractionPromptHash } from '@/lib/sources/evals
 import sourcesRecord from '@/lib/sources/evals/evaluation-record.json';
 import { bibleFactsPromptHash, checkBibleFactsRecord } from '@/lib/facts/evals/evaluation';
 import bibleFactsRecord from '@/lib/facts/evals/evaluation-record.json';
+import { checkContinuityRecord, continuityPromptHash } from '@/lib/continuity/evals/evaluation';
+import continuityRecord from '@/lib/continuity/evals/evaluation-record.json';
 
 /** Every exported product prompt, and how its evaluation is re-run. */
 const EVALUATED_PROMPTS: Readonly<Record<string, string>> = {
@@ -45,6 +47,7 @@ const EVALUATED_PROMPTS: Readonly<Record<string, string>> = {
     FIT_PROMPT: 'npm run packs:evaluate -- --no-packs --research',
     EXTRACT_PROMPT: 'npm run packs:evaluate -- --no-packs --sources',
     BIBLE_FACTS_PROMPT: 'npm run packs:evaluate -- --no-packs --bible-facts',
+    CONTINUITY_PROMPT: 'npm run packs:evaluate -- --no-packs --continuity',
 };
 
 /** Prompts that are not product features, each with the reason it has no product evaluation record. */
@@ -109,6 +112,7 @@ describe('every record pins the prompt and packs as they are now', () => {
         ['REPHRASE_PROMPT', rephraseRecord, rephrasePromptHash],
         ['EXTRACT_PROMPT', sourcesRecord, extractionPromptHash],
         ['BIBLE_FACTS_PROMPT', bibleFactsRecord, bibleFactsPromptHash],
+        ['CONTINUITY_PROMPT', continuityRecord, continuityPromptHash],
     ] as const)('the %s record names the prompt’s content hash now', (_name, record, current) => {
         expect((record as { promptHash?: string }).promptHash).toBe(current());
     });
@@ -129,6 +133,8 @@ describe('every record pins the prompt and packs as they are now', () => {
         if (!sources.ok) refusals.push(`sources: ${sources.reason}`);
         const bibleFacts = checkBibleFactsRecord(bibleFactsRecord);
         if (!bibleFacts.ok) refusals.push(`bible facts: ${bibleFacts.reason}`);
+        const continuity = checkContinuityRecord(continuityRecord);
+        if (!continuity.ok) refusals.push(`continuity: ${continuity.reason}`);
         expect(refusals).toEqual([]);
     });
 });

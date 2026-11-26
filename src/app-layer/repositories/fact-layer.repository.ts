@@ -39,8 +39,26 @@ const EXTRACTION_SELECT = {
 } as const satisfies Prisma.BibleFactExtractionSelect;
 export type FactExtractionRow = Prisma.BibleFactExtractionGetPayload<{ select: typeof EXTRACTION_SELECT }>;
 
-const PROPOSAL_SELECT = { id: true, bookId: true, factId: true, newerFactId: true, reason: true, basis: true, status: true, decidedAt: true, createdAt: true } as const satisfies Prisma.StoryFactProposalSelect;
+const PROPOSAL_SELECT = { id: true, bookId: true, factId: true, newerFactId: true, reason: true, basis: true, kind: true, status: true, decidedAt: true, createdAt: true } as const satisfies Prisma.StoryFactProposalSelect;
 export type FactProposalRow = Prisma.StoryFactProposalGetPayload<{ select: typeof PROPOSAL_SELECT }>;
+
+/**
+ * Every proposal (decided or not) between two of these facts, as `older|newer` keys (Phase 4.2). The facts are named
+ * as two id lists, never one OR branch per pair: a nightly rule sweep over a large subject names tens of thousands of
+ * pairs, and as branches they ran past PostgreSQL's bind-parameter limit in one query (or, cut into slices, past the
+ * transaction's timeout), failing the whole run every night. The ids are a bounded fact read's, so their pairs bound
+ * the rows.
+ */
+async function proposedPairsAmong(db: Db, workspaceId: string, factIds: readonly string[]): Promise<Set<string>> {
+    const ids = [...new Set(factIds)];
+    if (ids.length < 2) return new Set();
+    const rows = await db.storyFactProposal.findMany({
+        where: { workspaceId, factId: { in: ids }, newerFactId: { in: ids } },
+        take: ids.length * (ids.length - 1),
+        select: { factId: true, newerFactId: true },
+    });
+    return new Set(rows.map((r) => `${r.factId}|${r.newerFactId}`));
+}
 
 /** When an extraction is due (the dispatcher's window): discovery and the mark ask the same predicate. */
 export interface ExtractionDueWindow {
@@ -282,11 +300,45 @@ export const FactProposalRepository = {
     async raise(
         db: Db,
         workspaceId: string,
-        rows: ReadonlyArray<{ bookId: string; factId: string; newerFactId: string | null; reason: 'CONTRADICTED' | 'NO_LONGER_STATED'; basis: 'RULE' | 'MODEL' | 'TEXT'; extractionId: string }>,
+        rows: ReadonlyArray<{
+            bookId: string;
+            factId: string;
+            newerFactId: string | null;
+            reason: 'CONTRADICTED' | 'NO_LONGER_STATED';
+            basis: 'RULE' | 'MODEL' | 'TEXT' | 'DEEP';
+            /** Phase 4.2: a contradiction's kind (NULL for NO_LONGER_STATED). */
+            kind: string | null;
+            extractionId?: string | null;
+            checkRunId?: string | null;
+        }>,
     ): Promise<number> {
         if (rows.length === 0) return 0;
-        const r = await db.storyFactProposal.createMany({ data: rows.map((x) => ({ workspaceId, ...x })), skipDuplicates: true });
+        // Phase 4.2: a pair already proposed in EITHER order (decided or not) is never proposed again; the unique
+        // key is directional, so the reverse is asked here, under the caller's book fact lock.
+        const pairs = rows.filter((r) => r.newerFactId !== null);
+        const held = await proposedPairsAmong(db, workspaceId, pairs.flatMap((r) => [r.factId, r.newerFactId!]));
+        const fresh = rows.filter((r) => r.newerFactId === null || !held.has(`${r.newerFactId}|${r.factId}`));
+        if (fresh.length === 0) return 0;
+        const r = await db.storyFactProposal.createMany({ data: fresh.map((x) => ({ workspaceId, ...x })), skipDuplicates: true });
         return r.count;
+    },
+    /** Phase 4.2: the unordered pairs among these that the book already holds a proposal for (decided or not). */
+    async heldPairs(db: Db, workspaceId: string, pairs: ReadonlyArray<{ a: string; b: string }>): Promise<Set<string>> {
+        const out = new Set<string>();
+        for (const key of await proposedPairsAmong(db, workspaceId, pairs.flatMap((p) => [p.a, p.b]))) {
+            const [a, b] = key.split('|');
+            out.add(`${a}|${b}`).add(`${b}|${a}`);
+        }
+        return out;
+    },
+    /** Phase 4.2: a book's pending proposals of one reason (the Continuity page's contradictions, its no-longer-stated facts). */
+    async listPendingByReason(db: Db, workspaceId: string, bookId: string, reason: 'CONTRADICTED' | 'NO_LONGER_STATED', take: number): Promise<FactProposalRow[]> {
+        return db.storyFactProposal.findMany({ where: { workspaceId, bookId, status: 'PENDING', reason }, orderBy: [{ createdAt: 'desc' }, { id: 'asc' }], take, select: PROPOSAL_SELECT });
+    },
+    async countPendingByReason(db: Db, workspaceId: string, bookId: string): Promise<{ contradicted: number; noLongerStated: number }> {
+        const rows = await db.storyFactProposal.groupBy({ by: ['reason'], where: { workspaceId, bookId, status: 'PENDING' }, _count: { _all: true }, orderBy: { reason: 'asc' }, take: 4 });
+        const of = (r: string) => rows.find((x) => x.reason === r)?._count._all ?? 0;
+        return { contradicted: of('CONTRADICTED'), noLongerStated: of('NO_LONGER_STATED') };
     },
     async listForBook(db: Db, workspaceId: string, bookId: string, status: FactProposalStatus, take: number): Promise<FactProposalRow[]> {
         return db.storyFactProposal.findMany({ where: { workspaceId, bookId, status }, orderBy: [{ createdAt: 'desc' }, { id: 'asc' }], take, select: PROPOSAL_SELECT });
@@ -306,6 +358,16 @@ export const FactProposalRepository = {
     async settleOthersForFact(db: Db, workspaceId: string, factId: string, data: { decidedById: string; at: Date }): Promise<number> {
         const r = await db.storyFactProposal.updateMany({ where: { workspaceId, factId, status: 'PENDING' }, data: { status: 'INVALIDATED', decidedById: data.decidedById, decidedAt: data.at } });
         return r.count;
+    },
+    /**
+     * Phase 4.2: close every other PENDING proposal a fact the author has just invalidated stands in (as the older or
+     * the newer): a contradiction with a fact no longer live has nothing left to decide. Settled INVALIDATED where it was
+     * the older, INVALIDATED_NEWER where it was the newer (4.1 left the second kind pending: its 4.H note).
+     */
+    async settleAllForFact(db: Db, workspaceId: string, factId: string, data: { decidedById: string; at: Date }): Promise<number> {
+        const older = await db.storyFactProposal.updateMany({ where: { workspaceId, factId, status: 'PENDING' }, data: { status: 'INVALIDATED', decidedById: data.decidedById, decidedAt: data.at } });
+        const newer = await db.storyFactProposal.updateMany({ where: { workspaceId, newerFactId: factId, status: 'PENDING', reason: 'CONTRADICTED' }, data: { status: 'INVALIDATED_NEWER', decidedById: data.decidedById, decidedAt: data.at } });
+        return older.count + newer.count;
     },
 };
 

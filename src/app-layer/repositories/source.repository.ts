@@ -452,6 +452,38 @@ export const StoryFactRepository = {
         }
         return out;
     },
+    /**
+     * Phase 4.2 (D28): the author's explanation of a contradiction they resolved as "both true", as a fact of its own
+     * (AUTHOR_RESOLUTION): CONFIRMED by being written, never automatic, its quote the explanation itself, naming the
+     * proposal it resolves. The text is `sanitiseExplanationForStorage`'s.
+     */
+    async createResolutionFact(
+        db: Db,
+        workspaceId: string,
+        data: { bookId: string; resolvesProposalId: string; subjectName: string; subjectElementId: string | null; statement: string; decidedById: string; at: Date },
+    ): Promise<{ id: string }> {
+        return db.storyFact.create({
+            data: {
+                workspaceId,
+                sourceKind: 'AUTHOR_RESOLUTION',
+                bookId: data.bookId,
+                resolvesProposalId: data.resolvesProposalId,
+                automatic: false,
+                position: 0,
+                subjectName: data.subjectName,
+                subjectElementId: data.subjectElementId,
+                predicate: 'OTHER',
+                statement: data.statement,
+                quote: data.statement,
+                quoteStart: 0,
+                quoteEnd: data.statement.length,
+                status: 'CONFIRMED',
+                decidedById: data.decidedById,
+                decidedAt: data.at,
+            },
+            select: { id: true },
+        });
+    },
     /** Confirm these facts, each only while it is PENDING and unflagged (the bulk confirm). Returns how many moved. */
     async confirmPending(db: Db, workspaceId: string, ids: readonly string[], data: { decidedById: string; decidedAt: Date }): Promise<number> {
         if (ids.length === 0) return 0;

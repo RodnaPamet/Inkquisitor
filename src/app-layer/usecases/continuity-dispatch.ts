@@ -1,0 +1,62 @@
+/**
+ * THE NIGHTLY CONTINUITY DISPATCHER (Phase 4.2, D28): the body of the
+ * `continuity-dispatch` job, scheduled once a night.
+ *
+ * It finds the live books CHANGED since their last complete deep check (a fact
+ * written or a book-library source fact confirmed since, or a pass under way:
+ * `ContinuityDiscovery.listDueBooks`, the one read outside row-level security,
+ * `continuity-discovery`, ids only, fair-shared between workspaces and bounded
+ * by `CONTINUITY_DISPATCH_MAX`) and, in each book's own workspace, ends any of
+ * its runs lost for `STALE_CONTINUITY_RUN_MS` (STOPPED CLAIM_EXPIRED,
+ * resumable), creates one QUEUED run and enqueues a `continuity-check` job for
+ * it (payload ids only). A book unchanged since its last pass is not queued at
+ * all, so a quiet book costs nothing. The kill switch, the ceiling and D11 are
+ * the run's to meet: its rules still run, and its deep step stops resumably.
+ */
+import { randomUUID } from 'node:crypto';
+import { ContinuityDiscovery, ContinuityRunRepository } from '@/app-layer/repositories/continuity.repository';
+import type { JobName, JobPayload } from '@/app-layer/jobs/types';
+import { CONTINUITY_DISPATCH_MAX, STALE_CONTINUITY_RUN_MS } from '@/lib/continuity/vocabulary';
+import { runInWorkspaceContext, runWithoutRls } from '@/lib/db/rls-middleware';
+import { logger } from '@/lib/observability/logger';
+
+export interface ContinuityDispatchDeps {
+    enqueue?: <T extends JobName>(name: T, payload: JobPayload<T>, options?: { jobId?: string }) => Promise<unknown>;
+    /** Only these workspaces (tests, which share one database). */
+    workspaceIds?: readonly string[];
+    now?: () => Date;
+    /** Books queued at most (tests: a smaller bound than `CONTINUITY_DISPATCH_MAX`). */
+    take?: number;
+}
+
+export interface ContinuityDispatchResult {
+    due: number;
+    queued: number;
+    expired: number;
+    enqueueFailed: number;
+}
+
+export async function executeContinuityDispatch(deps: ContinuityDispatchDeps = {}): Promise<ContinuityDispatchResult> {
+    const now = (deps.now ?? (() => new Date()))();
+    const staleBefore = new Date(now.getTime() - STALE_CONTINUITY_RUN_MS);
+    const enqueue = deps.enqueue ?? (async (name, payload, options) => (await import('@/app-layer/jobs/queue')).enqueue(name, payload, options));
+    const result: ContinuityDispatchResult = { due: 0, queued: 0, expired: 0, enqueueFailed: 0 };
+    const due = await runWithoutRls({ reason: 'continuity-discovery' }, (db) => ContinuityDiscovery.listDueBooks(db, { take: deps.take ?? CONTINUITY_DISPATCH_MAX, staleBefore, workspaceIds: deps.workspaceIds }));
+    result.due = due.length;
+    for (const book of due) {
+        const scope = { workspaceId: book.workspaceId, requestId: randomUUID() };
+        const run = await runInWorkspaceContext(scope, async (db) => {
+            result.expired += await ContinuityRunRepository.expireStale(db, book.workspaceId, book.bookId, staleBefore, now);
+            return ContinuityRunRepository.create(db, book.workspaceId, book.bookId);
+        });
+        try {
+            await enqueue('continuity-check', { workspaceId: book.workspaceId, runId: run.id }, { jobId: `continuity-check-${run.id}` });
+            result.queued++;
+        } catch (err) {
+            // The run stays QUEUED; with no sign of life it is ended and the book queued again once stale.
+            result.enqueueFailed++;
+            logger.warn('continuity.enqueue_failed', { component: 'continuity', workspaceId: book.workspaceId, runId: run.id, error: err instanceof Error ? err.name : 'unknown' });
+        }
+    }
+    return result;
+}

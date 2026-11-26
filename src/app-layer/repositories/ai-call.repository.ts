@@ -106,6 +106,20 @@ export const AiCallRepository = {
     },
 
     /**
+     * What the calls of ONE purpose have charged since `since` (their records) and still hold (their live
+     * reservations, but `exceptCallId`'s), for the workspace (Phase 4.2, D28 addendum: the deep continuity check's
+     * nightly share). Read under `lockSpend` when it decides a reservation.
+     */
+    async purposeSpendSince(db: Db, workspaceId: string, purpose: string, since: Date, now: Date, exceptCallId?: string): Promise<{ chargedMicroUsd: number; reservedMicroUsd: number }> {
+        const charged = await db.aiCallLog.aggregate({ where: { workspaceId, purpose, startedAt: { gte: since } }, _sum: { costMicroUsd: true } });
+        const held = await db.aiSpendReservation.aggregate({
+            where: { workspaceId, purpose, expiresAt: { gt: now }, ...(exceptCallId ? { id: { not: exceptCallId } } : {}) },
+            _sum: { amountMicroUsd: true },
+        });
+        return { chargedMicroUsd: Number(charged._sum.costMicroUsd ?? 0), reservedMicroUsd: Number(held._sum.amountMicroUsd ?? 0) };
+    },
+
+    /**
      * Under the lock: hold `amountMicroUsd` for `callId` if it fits, replacing
      * the call's earlier reservation (a repair re-reserves). The caller has
      * taken `lockSpend` in this transaction.
@@ -113,7 +127,7 @@ export const AiCallRepository = {
     async reserve(
         db: Db,
         workspaceId: string,
-        input: { callId: string; periodStart: Date; amountMicroUsd: number; ceilingMicroUsd: number; expiresAt: Date; now: Date },
+        input: { callId: string; periodStart: Date; amountMicroUsd: number; ceilingMicroUsd: number; expiresAt: Date; now: Date; purpose?: string },
     ): Promise<{ ok: boolean } & MonthSpend> {
         const spend = await AiCallRepository.monthSpend(db, workspaceId, input.periodStart, input.now, input.callId);
         if (spend.spentMicroUsd + spend.reservedMicroUsd + input.amountMicroUsd > input.ceilingMicroUsd) {
@@ -127,6 +141,7 @@ export const AiCallRepository = {
                 periodStart: input.periodStart,
                 amountMicroUsd: input.amountMicroUsd,
                 expiresAt: input.expiresAt,
+                purpose: input.purpose ?? null,
             },
             update: { amountMicroUsd: input.amountMicroUsd, expiresAt: input.expiresAt },
         });

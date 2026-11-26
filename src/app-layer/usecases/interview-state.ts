@@ -55,6 +55,12 @@ import { decodeOptions, decodeRecommendation, decodeScaleLabels } from '@/lib/in
 import { isPersonaKey, type AnswerStatus, type StopReason } from '@/lib/interview/vocabulary';
 import { PERSONA_DISPLAY_NAMES } from '@/lib/interview/packs';
 import { parsePackPins } from '@/lib/interview/pack-mount';
+import { acceptedFieldsCiting, citedAnswersOf, StaleFlagRepository } from '@/app-layer/repositories/continuity.repository';
+import { BibleVersionReadRepository } from '@/app-layer/repositories/fact-layer.repository';
+import { upstreamChangeText } from '@/lib/continuity/change-text';
+import { answersAbout } from '@/lib/continuity/cited';
+import { renderElementEntry } from '@/lib/facts/entry-text';
+import { parseSnapshot } from '@/lib/bible/snapshot';
 
 /** At most this many elements a kind or book session questions (a larger scope is cut, and says so). */
 export const SCOPE_ELEMENTS_MAX = 60;
@@ -112,6 +118,12 @@ export interface InterviewState {
     rounds: RoundRow[];
     challenged: FieldRef[];
     challengesPlanned: number;
+    /**
+     * Phase 4.2 (D28): a "grill me on what changed" session's stale entry, the fields of it the change may touch
+     * (those its accepted proposals drew from answers about the changed element; every filled one when none can be
+     * told), and what changed, as text (author text: a fenced data block only).
+     */
+    stale?: { elementId: string; fieldKeys: string[]; changeText: string };
 }
 
 export async function requireSession(db: PrismaTx, ctx: WorkspaceRequestContext, bookId: string, sessionId: string): Promise<SessionRow> {
@@ -317,7 +329,10 @@ export async function loadInterviewState(db: PrismaTx, ctx: WorkspaceRequestCont
     // Phase 4.1 (D27, rule 5): a live fact drawn from an accepted bible version answers its field at once.
     const bibleCheck = await bibleFactsCheck(db, ctx, session.bookId, scopeRows);
 
+    const stale = session.staleFlagId ? await staleContext(db, ctx, session, elements) : undefined;
+
     return {
+        ...(stale ? { stale } : {}),
         elements,
         checks: [...(pending?.checks ?? []), sourceCheck, bibleCheck],
         scopeTruncated: scope.truncated,
@@ -332,6 +347,27 @@ export async function loadInterviewState(db: PrismaTx, ctx: WorkspaceRequestCont
         challengesPlanned,
     };
 }
+
+/** Phase 4.2 (D28): what a grill session on what changed reads (the header of `InterviewState.stale`). */
+async function staleContext(db: PrismaTx, ctx: WorkspaceRequestContext, session: SessionRow, elements: readonly RoundElement[]): Promise<InterviewState['stale']> {
+    const flag = await StaleFlagRepository.find(db, ctx.workspaceId, session.bookId, session.staleFlagId!);
+    const entry = flag ? elements.find((e) => e.elementId === flag.elementId && !e.relation && !e.pending) : undefined;
+    if (!flag || !entry) return undefined;
+    const after = await BibleVersionReadRepository.elementVersion(db, ctx.workspaceId, flag.upstreamVersionId);
+    if (!after) return undefined;
+    const before = flag.baseVersionId ? await BibleVersionReadRepository.elementVersion(db, ctx.workspaceId, flag.baseVersionId) : null;
+    const changeText = upstreamChangeText(before ? renderElementEntry(parseSnapshot(before.snapshot)) : null, renderElementEntry(parseSnapshot(after.snapshot)));
+    const cited = await citedAnswersOf(db, ctx.workspaceId, session.bookId, flag.elementId, CITED_VERSIONS_READ_MAX);
+    const relationIds = [...new Set(cited.map((c) => c.questionRelationId).filter((x): x is string => !!x))];
+    const ends = new Map((await BibleRelationRepository.listByIdsWithEnds(db, ctx.workspaceId, session.bookId, relationIds)).map((r) => [r.id, { fromElementId: r.fromElementId, toElementId: r.toElementId }] as const));
+    const about = answersAbout(flag.upstreamElementId, cited, ends);
+    const filled = [...entry.storedText.keys()];
+    const drawn = (await acceptedFieldsCiting(db, ctx.workspaceId, flag.elementId, about, CITED_VERSIONS_READ_MAX)).filter((k) => entry.storedText.has(k));
+    return { elementId: flag.elementId, fieldKeys: drawn.length > 0 ? drawn : filled, changeText };
+}
+
+/** A stale entry's citing versions (and accepted proposals) read at most for a grill session. */
+const CITED_VERSIONS_READ_MAX = 50;
 
 /**
  * The challenges the session has spent of its per-session limit: those planned

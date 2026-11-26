@@ -28,6 +28,12 @@
  *       evaluation-record.json). Re-run after editing the set, the bible fact
  *       prompt or its output schema.
  *
+ *   npm run packs:evaluate -- --continuity [--no-packs]
+ *       also the deep continuity check's set (Phase 4.2, D28): the reference
+ *       checker's record beside the set (src/lib/continuity/evals/
+ *       evaluation-record.json). Re-run after editing the set, the continuity
+ *       prompt or its output schema.
+ *
  *   npm run packs:evaluate -- --research [--no-packs]
  *       also the research agent's evaluation sets (Phase 2.6): the
  *       deterministic researcher's record is written beside the sets
@@ -91,6 +97,32 @@ import { EXTRACT_PROMPT_VERSION } from '../src/lib/sources/prompt';
 import { BIBLE_FACTS_RECORD_FORMAT, bibleFactsPromptHash, checkBibleFactsRecord, modelBibleFactsAnswers, structuralBibleFactsRecord } from '../src/lib/facts/evals/evaluation';
 import { bibleFactEvalSet } from '../src/lib/facts/evals/eval-set';
 import { BIBLE_FACTS_PROMPT_VERSION } from '../src/lib/facts/prompt';
+
+import { CONTINUITY_RECORD_FORMAT, continuityPromptHash, checkContinuityRecord, modelContinuityAnswers, structuralContinuityRecord } from '../src/lib/continuity/evals/evaluation';
+import { continuityEvalSet } from '../src/lib/continuity/evals/eval-set';
+import { CONTINUITY_PROMPT_VERSION } from '../src/lib/continuity/prompt';
+
+/** Where the structural continuity record is written (beside the set), relative to the repository. */
+const CONTINUITY_RECORD_RELATIVE = 'src/lib/continuity/evals/evaluation-record.json';
+
+/** The deep continuity check's set (4.2): the record written to `file` and checked as the gate checks it. */
+async function runContinuityEvaluation(checker: FactExtractor | null, modelId: string | null, file: string): Promise<{ passed: boolean; detail: string }> {
+    const record = checker
+        ? {
+              format: CONTINUITY_RECORD_FORMAT,
+              set: { ...continuityEvalSet },
+              promptVersion: CONTINUITY_PROMPT_VERSION,
+              promptHash: continuityPromptHash(),
+              generator: { kind: 'model' as const, id: modelId ?? 'model' },
+              ranAt: new Date().toISOString(),
+              answers: await modelContinuityAnswers(checker),
+          }
+        : structuralContinuityRecord();
+    mkdirSync(path.dirname(file), { recursive: true });
+    writeFileSync(file, JSON.stringify(record, null, 2) + '\n');
+    const check = checkContinuityRecord(record);
+    return check.ok ? { passed: true, detail: `${check.grades.length} cases, precision ${check.precision === null ? 'not assessed' : check.precision.toFixed(2)}` } : { passed: false, detail: `${check.reason}: ${check.detail}` };
+}
 
 /** Where the structural bible fact record is written (beside the set), relative to the repository. */
 const BIBLE_FACTS_RECORD_RELATIVE = 'src/lib/facts/evals/evaluation-record.json';
@@ -175,7 +207,7 @@ function fail(message: string, code: number): never {
 }
 
 /** The wired model generator in a throwaway workspace, and what it closes. */
-async function modelGenerator(): Promise<{ generator: QuestionGenerator; reconciler: Reconciler; researcher: Researcher; extractor: FactExtractor; extractorId: string; bibleExtractor: FactExtractor; bibleExtractorId: string; judge: Judge; id: string; reconcilerId: string; rephraserId: string; close: () => Promise<void> }> {
+async function modelGenerator(): Promise<{ generator: QuestionGenerator; reconciler: Reconciler; researcher: Researcher; extractor: FactExtractor; extractorId: string; bibleExtractor: FactExtractor; bibleExtractorId: string; continuityChecker: FactExtractor; continuityCheckerId: string; judge: Judge; id: string; reconcilerId: string; rephraserId: string; close: () => Promise<void> }> {
     if (!process.env.ANTHROPIC_API_KEY?.trim()) fail('ANTHROPIC_API_KEY is not set: a model run never falls back to the structural generator', 2);
     if (!process.env.DATABASE_URL) fail('a model run needs DATABASE_URL (a migrated database: the call ledger and the spend ceiling live there)', 2);
     const budget = (() => {
@@ -231,7 +263,10 @@ async function modelGenerator(): Promise<{ generator: QuestionGenerator; reconci
     const { defaultBibleFactExtractor } = await import('../src/lib/facts/model-seam');
     const { BIBLE_FACTS_PROMPT } = await import('../src/lib/facts/prompt');
     const bibleExtractor = defaultBibleFactExtractor(ctx);
-    return { generator, reconciler, researcher, extractor, extractorId: modelForTier(EXTRACT_PROMPT.tier), bibleExtractor, bibleExtractorId: modelForTier(BIBLE_FACTS_PROMPT.tier), judge, id, reconcilerId: modelForTier(RECONCILE_PROMPT.tier), rephraserId: modelForTier(REPHRASE_PROMPT.tier), close: () => prisma.$disconnect() };
+    const { defaultContinuityChecker } = await import('../src/lib/continuity/model-seam');
+    const { CONTINUITY_PROMPT } = await import('../src/lib/continuity/prompt');
+    const continuityChecker = defaultContinuityChecker(ctx);
+    return { generator, reconciler, researcher, extractor, extractorId: modelForTier(EXTRACT_PROMPT.tier), bibleExtractor, bibleExtractorId: modelForTier(BIBLE_FACTS_PROMPT.tier), continuityChecker, continuityCheckerId: modelForTier(CONTINUITY_PROMPT.tier), judge, id, reconcilerId: modelForTier(RECONCILE_PROMPT.tier), rephraserId: modelForTier(REPHRASE_PROMPT.tier), close: () => prisma.$disconnect() };
 }
 
 async function main(): Promise<void> {
@@ -290,7 +325,13 @@ async function main(): Promise<void> {
             const file = args.out ? path.join(path.resolve(args.out), 'bible-facts', 'evaluation-record.json') : path.resolve(BIBLE_FACTS_RECORD_RELATIVE);
             bibleFacts = await runBibleFactsEvaluation(model?.bibleExtractor ?? null, model?.bibleExtractorId ?? null, file);
         }
+        let continuity = null;
+        if (args.continuity) {
+            const file = args.out ? path.join(path.resolve(args.out), 'continuity', 'evaluation-record.json') : path.resolve(CONTINUITY_RECORD_RELATIVE);
+            continuity = await runContinuityEvaluation(model?.continuityChecker ?? null, model?.continuityCheckerId ?? null, file);
+        }
         for (const line of summaryLines(results, coverage, model ? spent : null, reconcile)) out(line);
+        if (continuity) out(`Continuity: ${continuity.passed ? 'passed' : 'NOT passed'} (${continuity.detail}).`);
         if (bibleFacts) out(`Bible facts: ${bibleFacts.passed ? 'passed' : 'NOT passed'} (${bibleFacts.detail}).`);
         if (sources) out(`Sources: ${sources.passed ? 'passed' : 'NOT passed'} (${sources.detail}).`);
         if (research) out(`Research: ${research.passed ? 'passed' : 'NOT passed'} (${research.detail}).`);
@@ -304,6 +345,7 @@ async function main(): Promise<void> {
             (!research || research.passed) &&
             (!sources || sources.passed) &&
             (!bibleFacts || bibleFacts.passed) &&
+            (!continuity || continuity.passed) &&
             (!rephrase || rephrase.passed);
         process.exitCode = ok ? 0 : 1;
     } finally {

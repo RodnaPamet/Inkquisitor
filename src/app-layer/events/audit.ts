@@ -81,7 +81,14 @@ export type AuditAction =
     | 'STORY_FACT_OVERRIDE_SET'
     | 'STORY_FACT_OVERRIDE_CLEARED'
     | 'BIBLE_FACTS_EXTRACTED'
-    | 'STORY_FACT_PROPOSAL_DECIDED';
+    | 'STORY_FACT_PROPOSAL_DECIDED'
+    // Phase 4.2 (D28): the nightly continuity check, the registries, propagation debt.
+    | 'CONTINUITY_CHECKED'
+    | 'STORY_THREAD_CREATED'
+    | 'STORY_THREAD_UPDATED'
+    | 'STORY_THREAD_DELETED'
+    | 'STORY_THREAD_PROPOSAL_DECIDED'
+    | 'STALE_FLAG_DISMISSED';
 
 export interface AuditEventPayload {
     action: AuditAction;

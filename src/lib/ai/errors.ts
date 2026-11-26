@@ -166,7 +166,7 @@ export class AiToolUseRefusedError extends AiCallError {
 /** The workspace's monthly spend ceiling would be passed by this call's worst case. Nothing was sent. 429. */
 export class AiSpendCeilingError extends AiCallError {
     constructor(
-        details: { spentMicroUsd: number; reservedMicroUsd: number; worstCaseMicroUsd: number; ceilingMicroUsd: number; period: string },
+        details: { spentMicroUsd: number; reservedMicroUsd: number; worstCaseMicroUsd: number; ceilingMicroUsd: number; period: string; limit?: 'MONTH' | 'NIGHTLY_SHARE' },
         callId: string | null,
     ) {
         super('The monthly AI spend limit for this workspace has been reached.', 'AI_SPEND_CEILING', 429, 'SPEND_CEILING', callId, details);

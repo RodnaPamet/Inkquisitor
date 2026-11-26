@@ -125,6 +125,14 @@ test('axe finds no WCAG 2.1 AA violation on the bible pages and dialogs', async 
     await page.goto(`/w/${slug}/series/facts`);
     await expect(main.getByRole('heading', { level: 1, name: 'Series facts' })).toBeVisible();
     await expectNoAxeViolations(page, 'series facts');
+
+    // Phase 4.2: the Continuity page, not assessed (the stubbed-model spec walks it with a contradiction and a stale entry).
+    await page.goto(`/w/${slug}/books/${bookId}/continuity`);
+    await expect(main.getByRole('heading', { level: 1, name: 'Continuity' })).toBeVisible();
+    await expectNoAxeViolations(page, 'book continuity');
+    await main.locator('#thread-add').click();
+    await expectNoAxeViolations(page, 'add a thread dialog', '[role="dialog"]');
+    await page.keyboard.press('Escape');
 });
 
 test('axe finds no WCAG 2.1 AA violation on the story maps, the type picker, the element sheet and the embedded maps (Phase 3.2)', async ({ page }) => {

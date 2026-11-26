@@ -1,6 +1,6 @@
 /**
  * POST …/books/:bookId/fact-proposals/:proposalId/decision — decide a proposal (Phase 4.1, D27; `bible.edit`).
- * Body: `{ decision: 'INVALIDATE' | 'KEEP_BOTH' | 'REJECT' }`. 409 PROPOSAL_DECIDED for one already decided.
+ * Body: `{ decision: 'INVALIDATE' | 'INVALIDATE_NEWER' | 'KEEP_BOTH' | 'REJECT', explanation? }` (4.2: a contradiction kept both carries the explanation). 409 PROPOSAL_DECIDED for one already decided.
  */
 import { NextResponse } from 'next/server';
 import { withApiErrorHandling } from '@/lib/errors/api';

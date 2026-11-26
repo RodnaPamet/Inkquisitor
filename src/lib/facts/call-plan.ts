@@ -10,7 +10,7 @@
  *      existing facts shown and the book's names.
  *   2. A call whose worst case is past the budget is HALVED (its batch re-cut at half its size), down to
  *      `minChars`: smaller pieces before less context.
- *   3. A batch at the floor that still does not fit drops the book's names, then shows fewer existing facts
+ *   3. A batch at the floor that still does not fit drops the book's names (and, since 4.2, the open threads), then shows fewer existing facts
  *      (halving to none). The facts shown to a call are always a PREFIX of the version's shown list, so a
  *      `contradicts` number means the same fact in every call.
  *   4. Nothing fits: the plan is refused, and nothing is sent (`CALL_OVER_BUDGET`).
@@ -18,14 +18,17 @@
  * Facts drawn from several calls are deduplicated by the caller through the claim key, as within one call.
  */
 import type { AuthorDataBlock } from '@/lib/ai/prompt';
+import { OPEN_THREADS_SHOWN_MAX } from '@/lib/continuity/vocabulary';
 import { batchChars, pieceSections, sentText, type EntrySection, type RenderedEntry } from './entry-text';
-import { bibleFactBlocks, type ShownFact } from './prompt';
+import { bibleFactBlocks, type ShownFact, type ShownThread } from './prompt';
 
 export interface PlannedCall {
     /** What this call is shown of the entry (its header and its batch): the text its quotes are checked against. */
     readonly sent: string;
     /** How many of the version's shown facts this call is shown (a prefix). */
     readonly shown: number;
+    /** Phase 4.2: how many of the book's open threads this call is shown (all, or none once it sheds context). */
+    readonly threadsShown: number;
     /** The call's data blocks. */
     readonly blocks: AuthorDataBlock[];
     /** Its worst case, µUSD (at most the budget). */
@@ -40,6 +43,8 @@ export function planBibleFactCalls(input: {
     subjects: readonly string[];
     shown: readonly ShownFact[];
     bookNames: readonly string[];
+    /** Phase 4.2: the book's open threads (a pay-off names one); shed with the names. */
+    openThreads?: readonly ShownThread[];
     budgetMicroUsd: number;
     maxChars: number;
     minChars: number;
@@ -49,8 +54,9 @@ export function planBibleFactCalls(input: {
     const queue = pieceSections(input.changed, input.maxChars);
     const shape = (batch: readonly EntrySection[], shown: number, names: boolean): PlannedCall => {
         const sent = sentText(input.entry, batch);
-        const blocks = bibleFactBlocks({ text: sent, subjects: input.subjects, existing: input.shown.slice(0, shown), bookNames: names ? input.bookNames : [] });
-        return { sent, shown, blocks, worstMicroUsd: input.worst(blocks) };
+        const openThreads = names ? (input.openThreads ?? []) : [];
+        const blocks = bibleFactBlocks({ text: sent, subjects: input.subjects, existing: input.shown.slice(0, shown), bookNames: names ? input.bookNames : [], openThreads });
+        return { sent, shown, threadsShown: Math.min(openThreads.length, OPEN_THREADS_SHOWN_MAX), blocks, worstMicroUsd: input.worst(blocks) };
     };
     let smallest = Number.POSITIVE_INFINITY;
     while (queue.length > 0) {

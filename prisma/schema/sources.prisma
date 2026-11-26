@@ -208,6 +208,8 @@ model StoryFact {
   decidedAt        DateTime?
   /// The superseded source's fact whose decision this one carried over.
   carriedFromFactId String?
+  /// Phase 4.2 (D28), AUTHOR_RESOLUTION: the contradiction the author resolved as "both true", this fact being their explanation.
+  resolvesProposalId String?
   createdAt        DateTime            @default(now())
 
   source          Source?               @relation(fields: [workspaceId, sourceId], references: [workspaceId, id], onDelete: Cascade)
@@ -222,6 +224,7 @@ model StoryFact {
   decidedBy       User?                 @relation("StoryFactDecidedBy", fields: [decidedById], references: [id], onDelete: SetNull)
   invalidatedBy   StoryFact?            @relation("StoryFactInvalidatedBy", fields: [invalidatedByFactId], references: [id], onDelete: SetNull)
   invalidated     StoryFact[]           @relation("StoryFactInvalidatedBy")
+  resolvesProposal StoryFactProposal?   @relation("StoryFactResolution", fields: [workspaceId, resolvesProposalId], references: [workspaceId, id], onDelete: Cascade)
   overrides       StoryFactOverride[]
   provenance      StoryFactProvenance[]
   proposals       StoryFactProposal[]   @relation("StoryFactProposalOlder")
@@ -245,6 +248,8 @@ model StoryFact {
   @@index([bibleVersionId])
   @@index([relationVersionId])
   @@index([invalidatedByFactId])
+  /// Phase 4.2: a contradiction's explanation.
+  @@index([workspaceId, resolvesProposalId])
 }
 
 /// A later accepted version restating a live bible fact (Phase 4.1, D27):
@@ -292,8 +297,13 @@ model StoryFactProposal {
   basis        String
   /// PENDING | INVALIDATED | KEPT | REJECTED (CHECK).
   status       String    @default("PENDING")
+  /// Phase 4.2 (D28), CONTRADICTED: what cannot both hold — VALUE (a changed detail at one time), WHEREABOUTS (two places at
+  /// once), KNOWLEDGE (who knows what when), TIMELINE (an impossible order), OTHER (CHECK). NULL for NO_LONGER_STATED.
+  kind         String?
   /// The extraction that raised it.
   extractionId String?
+  /// Phase 4.2: the nightly continuity run that raised it (basis RULE or DEEP).
+  checkRunId   String?
   decidedById  String?
   decidedAt    DateTime?
   createdAt    DateTime  @default(now())
@@ -302,6 +312,8 @@ model StoryFactProposal {
   fact      StoryFact  @relation("StoryFactProposalOlder", fields: [workspaceId, factId], references: [workspaceId, id], onDelete: Cascade)
   newerFact StoryFact? @relation("StoryFactProposalNewer", fields: [workspaceId, newerFactId], references: [workspaceId, id], onDelete: Cascade)
   decidedBy User?      @relation("StoryFactProposalDecidedBy", fields: [decidedById], references: [id], onDelete: SetNull)
+  /// Phase 4.2: the explanation the author gave when both are true (it becomes a fact).
+  explanations StoryFact[] @relation("StoryFactResolution")
 
   @@unique([workspaceId, id])
   /// A book's proposals by status, newest first (the Facts page).

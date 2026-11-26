@@ -111,6 +111,8 @@ model AiSpendReservation {
   amountMicroUsd BigInt
   /// Past this instant the reservation is no longer counted (its process died).
   expiresAt      DateTime
+  /// Phase 4.2 (D28 addendum): the purpose of the call it holds, so a purpose's nightly share is counted under the lock.
+  purpose        String?
   createdAt      DateTime @default(now())
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)

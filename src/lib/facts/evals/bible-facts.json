@@ -206,6 +206,88 @@
       }
     },
     {
+      "id": "bb-03-e3",
+      "bible": "bb-03",
+      "genre": "mystery: a character's first version sets up a promise and plants a clue (Phase 4.2 threads)",
+      "kind": "element",
+      "subjects": ["Pell"],
+      "header": [
+        {"key": "name", "label": "Name", "text": "Pell"},
+        {"key": "kind", "label": "Kind", "text": "Character"}
+      ],
+      "body": [
+        {"key": "summary", "label": "Summary", "text": "Pell swears to find whoever forged the harbour deed before the spring audit."},
+        {"key": "physical_presence", "label": "Physical presence", "text": "Pell keeps an ink-stained ledger under the floorboards of the counting house."}
+      ],
+      "changed": ["summary", "physical_presence"],
+      "bookNames": ["Pell", "The Lantern Guild"],
+      "existing": [],
+      "expect": [
+        {"subject": "Pell", "predicate": "WANT", "mustContain": ["forged", "harbour deed"]},
+        {"subject": "Pell", "predicate": "POSSESSION", "mustContain": ["ledger"]}
+      ],
+      "expectRestated": [],
+      "expectContradicted": [],
+      "mustNotContradict": [],
+      "expectNoLongerStated": [],
+      "mustNotContain": [],
+      "openThreads": [],
+      "expectThreads": [
+        {"kind": "PROMISE", "mustContain": ["forged", "harbour deed"]},
+        {"kind": "CLUE", "mustContain": ["ink-stained ledger"]}
+      ],
+      "expectPaysOff": [],
+      "reference": {
+        "facts": [
+          {"subject": "Pell", "predicate": "WANT", "object": "", "statement": "Pell swears to find whoever forged the harbour deed before the spring audit.", "quote": "Pell swears to find whoever forged the harbour deed before the spring audit.", "storyTimeFrom": "", "storyTimeTo": "", "contradicts": []},
+          {"subject": "Pell", "predicate": "POSSESSION", "object": "an ink-stained ledger", "statement": "Pell keeps an ink-stained ledger under the floorboards of the counting house.", "quote": "Pell keeps an ink-stained ledger under the floorboards of the counting house.", "storyTimeFrom": "", "storyTimeTo": "", "contradicts": []}
+        ],
+        "threads": [
+          {"kind": "PROMISE", "title": "Pell will find whoever forged the harbour deed", "quote": "Pell swears to find whoever forged the harbour deed before the spring audit.", "paysOff": 0},
+          {"kind": "CLUE", "title": "An ink-stained ledger under the floorboards", "quote": "an ink-stained ledger under the floorboards of the counting house", "paysOff": 0}
+        ]
+      }
+    },
+    {
+      "id": "bb-03-e4",
+      "bible": "bb-03",
+      "genre": "mystery: a later version pays off the open promise (Phase 4.2: a pay-off proposed, citing where)",
+      "kind": "element",
+      "subjects": ["Pell"],
+      "header": [
+        {"key": "name", "label": "Name", "text": "Pell"},
+        {"key": "kind", "label": "Kind", "text": "Character"}
+      ],
+      "body": [
+        {"key": "summary", "label": "Summary", "text": "Pell unmasks the clerk who forged the harbour deed on the morning of the audit."}
+      ],
+      "changed": ["summary"],
+      "bookNames": ["Pell", "The Lantern Guild"],
+      "existing": [],
+      "expect": [
+        {"subject": "Pell", "predicate": "EVENT", "mustContain": ["unmasks", "clerk"]}
+      ],
+      "expectRestated": [],
+      "expectContradicted": [],
+      "mustNotContradict": [],
+      "expectNoLongerStated": [],
+      "mustNotContain": [],
+      "openThreads": [
+        {"kind": "CLUE", "title": "An ink-stained ledger under the floorboards"},
+        {"kind": "PROMISE", "title": "Pell will find whoever forged the harbour deed"}
+      ],
+      "expectThreads": [],
+      "expectPaysOff": [2],
+      "reference": {
+        "facts": [
+          {"subject": "Pell", "predicate": "EVENT", "object": "", "statement": "Pell unmasks the clerk who forged the harbour deed on the morning of the audit.", "quote": "Pell unmasks the clerk who forged the harbour deed on the morning of the audit.", "storyTimeFrom": "", "storyTimeTo": "", "contradicts": []}
+        ],
+        "threads": [
+          {"kind": "PROMISE", "title": "", "quote": "Pell unmasks the clerk who forged the harbour deed", "paysOff": 2}
+        ]
+      }
+    },
+    {
       "id": "bb-04-e1",
       "bible": "bb-04",
       "genre": "historical: a timeline event's first version, with its story time",

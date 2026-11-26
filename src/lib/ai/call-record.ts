@@ -67,6 +67,8 @@ export type ReserveResult =
           readonly spentMicroUsd: number;
           readonly reservedMicroUsd: number;
           readonly ceilingMicroUsd: number;
+          /** Which limit refused it: the month's ceiling (the default), or a purpose's nightly share (Phase 4.2). */
+          readonly limit?: 'MONTH' | 'NIGHTLY_SHARE';
       };
 
 export interface ReserveRequest {
@@ -79,6 +81,8 @@ export interface ReserveRequest {
     readonly ttlMs: number;
     /** The call's start: the month it is charged to. */
     readonly startedAt: Date;
+    /** The call's purpose (the template's), held on the reservation so a purpose's share can be counted. */
+    readonly purpose?: string;
 }
 
 /** Where a call's money and record go. */

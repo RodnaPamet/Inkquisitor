@@ -85,6 +85,9 @@ import { defaultBibleFactExtractor } from '@/lib/facts/model-seam';
 import { executeFactLayerDispatch } from '@/app-layer/usecases/fact-layer-dispatch';
 import { extractPending } from '../helpers/facts';
 import { StubEmbeddingProvider } from '@/lib/ai/embeddings/stub-provider';
+import { createThread, decideThreadProposal, getContinuityPage, updateThread } from '@/app-layer/usecases/continuity';
+import { decideFactProposal } from '@/app-layer/usecases/fact-proposals';
+import { runNight } from '../helpers/continuity';
 
 /** One word that appears nowhere but in author text: any sink holding it holds author text. */
 const MARKER = 'Zyxquorblemarkh';
@@ -318,7 +321,11 @@ it('a marker planted in every author-text path reaches no log line, span, Sentry
             kind: 'repeat',
             turn: {
                 kind: 'text',
-                text: JSON.stringify({ facts: [{ subject: marked('Ilse'), predicate: 'WANT', object: MARKER, statement: `${marked('Ilse')} wants to keep the light burning.`, quote: marked('To keep the light burning.'), storyTimeFrom: '', storyTimeTo: '', contradicts: [] }] }),
+                text: JSON.stringify({
+                    facts: [{ subject: marked('Ilse'), predicate: 'WANT', object: MARKER, statement: `${marked('Ilse')} wants to keep the light burning.`, quote: marked('To keep the light burning.'), storyTimeFrom: '', storyTimeTo: '', contradicts: [] }],
+                    // Phase 4.2 (D28): a thread proposed from the entry, its title and quote carrying the marker.
+                    threads: [{ kind: 'PROMISE', title: marked('To keep the light burning'), quote: marked('To keep the light burning.'), paysOff: 0 }],
+                }),
             },
         },
     ]);
@@ -328,6 +335,27 @@ it('a marker planted in every author-text path reaches no log line, span, Sentry
     const embedded = await executeFactLayerDispatch({ extractionOpen: () => false, embedder: () => new StubEmbeddingProvider(), workspaceIds: [ctx.workspaceId] });
     expect(embedded).toMatchObject({ embedFailed: 0 });
     expect(embedded.embedded).toBeGreaterThan(0);
+
+    // Continuity (Phase 4.2, D28): the proposed thread accepted, a thread by hand and its edit, a contradiction kept
+    // both with an explanation, a stale flag dismissed, the nightly check read over the marked facts, the page read.
+    const threadPage = await getContinuityPage(ctx, bookId);
+    expect(threadPage.threadProposals.items.length).toBeGreaterThan(0);
+    await decideThreadProposal(ctx, bookId, threadPage.threadProposals.items[0].id, { decision: 'ACCEPT' });
+    const handThread = await createThread(ctx, bookId, { kind: 'CLUE', title: marked('A wet boot'), note: marked('Planted early') });
+    await updateThread(ctx, bookId, handThread.id, { baseVersion: 1, title: marked('A wet boot by the door') });
+    // A second live fact beside the extracted one: its row copied in SQL (its sealed text with it), its claim key its own (64 hex, the key's shape).
+    const extractedFact = await prisma.storyFact.findFirstOrThrow({ where: { bookId, sourceKind: 'BIBLE_VERSION' }, select: { id: true } });
+    const factColumns = (await prisma.$queryRaw<Array<{ name: string }>>`SELECT column_name AS name FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = 'StoryFact'`)
+        .map((c) => c.name)
+        .filter((c) => !['id', 'dedupeKey', 'createdAt'].includes(c));
+    const columnList = factColumns.map((c) => `"${c}"`).join(', ');
+    await prisma.$executeRawUnsafe(`INSERT INTO "StoryFact" ("id", "dedupeKey", ${columnList}) SELECT $1, md5("dedupeKey") || md5("id"), ${columnList} FROM "StoryFact" WHERE "id" = $2`, `${extractedFact.id}x`, extractedFact.id);
+    const twoFacts = await prisma.storyFact.findMany({ where: { bookId, sourceKind: 'BIBLE_VERSION' }, orderBy: { createdAt: 'asc' }, take: 2, select: { id: true } });
+    expect(twoFacts).toHaveLength(2);
+    const pr = await prisma.storyFactProposal.create({ data: { workspaceId: ctx.workspaceId, bookId, factId: twoFacts[0].id, newerFactId: twoFacts[1].id, reason: 'CONTRADICTED', basis: 'RULE', kind: 'VALUE' }, select: { id: true } });
+    await decideFactProposal(ctx, bookId, pr.id, { decision: 'KEEP_BOTH', explanation: marked('Both hold at different times') });
+    await runNight(ctx, { checker: () => ({ extract: async () => ({ ok: true as const, output: { contradictions: [{ first: 1, second: 2, kind: 'OTHER' }] }, tokensUsed: 1, costMicroUsd: 1, callIds: [] as string[] }) }) });
+    await getContinuityPage(ctx, bookId);
 
     // The paths were really taken (a vacuous pass is no pass).
     expect(logged.length).toBeGreaterThan(10);

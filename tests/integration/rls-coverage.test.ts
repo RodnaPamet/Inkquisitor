@@ -33,6 +33,7 @@ import { seedAiCall, seedReservation } from '../helpers/ai-calls';
 import { seedStoryMap } from '../helpers/canvas';
 import { seedSourceLibrary } from '../helpers/sources';
 import { seedFactLayer } from '../helpers/facts';
+import { seedContinuity } from '../helpers/continuity';
 import { createAccount, workspaceCtx } from '../helpers/workspaces';
 import { setBookInterviewDefaults, setWorkspaceInterviewDefaults } from '@/app-layer/usecases/interview-defaults';
 
@@ -101,9 +102,17 @@ async function isolationLeaks(table: string, self: string, other: string): Promi
     const row = { ...source.row };
     if (col !== 'id' && 'id' in row) row.id = `rls-probe-${randomBytes(6).toString('hex')}`;
     if ('slug' in row) row.slug = `rls-probe-${randomBytes(6).toString('hex')}`;
+    // Phase 4.2: a thread's (or a proposal's) element is checked by a BEFORE trigger (STORY_THREAD_SUBJECT_FOREIGN),
+    // which fires before RLS's WITH CHECK: the probe copies the row without its element, so RLS is what is asked.
+    if ((table === 'StoryThread' || table === 'StoryThreadProposal') && 'subjectElementId' in row) row.subjectElementId = null;
+    if (table === 'StoryThreadProposal' && 'dedupeKey' in row) row.dedupeKey = randomBytes(32).toString('hex');
     let outcome: 'inserted' | 'refused-by-rls' | string = 'inserted';
     try {
         await prisma.$transaction(async (tx) => {
+            // A stale flag is raised only by a version's save (`stale_flag_guard`, a BEFORE trigger refusing any other
+            // insert, before RLS's WITH CHECK): the probe sets the guard aside, as the owner, inside its own rolled-back
+            // transaction, so RLS is what is asked. The guard has its own test (continuity-review).
+            if (table === 'StaleFlag') await tx.$executeRawUnsafe('ALTER TABLE "StaleFlag" DISABLE TRIGGER stale_flag_guard');
             await tx.$executeRaw`SET LOCAL ROLE app_user`;
             await tx.$executeRaw`SELECT set_config('app.workspace_id', ${self}, true)`;
             await tx.$executeRawUnsafe(`INSERT INTO "${table}" SELECT * FROM json_populate_record(NULL::"${table}", $1::json)`, JSON.stringify(row));
@@ -156,6 +165,9 @@ beforeAll(async () => {
     // The fact layer (4.1): bible facts, a provenance row and a proposal (the outbox and embedding tasks come with the versions).
     await seedFactLayer(workspaceCtx(a), aBook.bookId, 'rls-a');
     await seedFactLayer(workspaceCtx(b), bBook.bookId, 'rls-b');
+    // Continuity (4.2): a thread by hand and one proposed, a stale flag, a nightly run and its state.
+    await seedContinuity(workspaceCtx(a), aBook.bookId, 'rls-a');
+    await seedContinuity(workspaceCtx(b), bBook.bookId, 'rls-b');
     // The model layer's ledger (2.1): a settled call and a live reservation.
     await seedAiCall(workspaceCtx(a), aBook.bookId, 'rls-a');
     await seedAiCall(workspaceCtx(b), bBook.bookId, 'rls-b');
@@ -215,6 +227,11 @@ it('there is something to cover: zero tables is never complete coverage', () => 
             'StoryFactProposal',
             'BibleFactExtraction',
             'EmbeddingTask',
+            'ContinuityCheck',
+            'ContinuityRun',
+            'StoryThread',
+            'StoryThreadProposal',
+            'StaleFlag',
         ]),
     );
 });

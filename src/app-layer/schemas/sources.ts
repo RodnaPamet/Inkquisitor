@@ -4,6 +4,7 @@
  * before anything is stored.
  */
 import { z } from 'zod';
+import { EXPLANATION_MAX } from '@/lib/continuity/vocabulary';
 import { FACT_PROPOSAL_DECISIONS } from '@/lib/facts/vocabulary';
 import { FACTS_PER_VIEW_MAX, OVERRIDE_TEXT_MAX } from '@/lib/sources/vocabulary';
 
@@ -39,4 +40,5 @@ export function filenameFromHeader(value: string | null): string {
 }
 
 /** Phase 4.1 (D27): the author's answer to a proposal to invalidate a fact. */
-export const FactProposalDecisionInput = z.object({ decision: z.enum(FACT_PROPOSAL_DECISIONS) }).strict();
+/** Phase 4.2 (D28): keeping both of a contradiction carries the author's explanation (it becomes a fact). */
+export const FactProposalDecisionInput = z.object({ decision: z.enum(FACT_PROPOSAL_DECISIONS), explanation: z.string().max(EXPLANATION_MAX * 4).optional() }).strict();

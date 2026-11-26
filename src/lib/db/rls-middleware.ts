@@ -137,6 +137,12 @@ export type RlsBypassReason =
      * marked, enqueued or embedded inside its own workspace's context.
      */
     | 'fact-layer-discovery'
+    /**
+     * The nightly continuity dispatcher (Phase 4.2, D28) finding the books changed
+     * since their last deep check, in every workspace: ids only; each book's run is
+     * then created and queued inside its own workspace's context.
+     */
+    | 'continuity-discovery'
     /** Tests exercising the bypass path or seeding rows. */
     | 'test';
 
@@ -148,6 +154,7 @@ const KNOWN_REASONS: ReadonlySet<RlsBypassReason> = new Set<RlsBypassReason>([
     'book-purge-discovery',
     'ai-call-log-retention',
     'fact-layer-discovery',
+    'continuity-discovery',
     'test',
 ]);
 

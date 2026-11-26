@@ -11,6 +11,7 @@ import { FACT_QUOTE_MAX_CHARS } from '@/lib/sources/quote';
 import { FACTS_PER_CHUNK_MAX, OBJECT_RAW_MAX, STATEMENT_RAW_MAX, STORY_TIME_RAW_MAX, SUBJECT_RAW_MAX, type FactOutput } from '@/lib/sources/schema';
 import { FACT_PREDICATES } from '@/lib/sources/vocabulary';
 import { EXISTING_FACTS_SHOWN_MAX } from './prompt';
+import { OPEN_THREADS_SHOWN_MAX, THREAD_KINDS, THREAD_TITLE_MAX, THREADS_PER_CALL_MAX, type ThreadKind } from '@/lib/continuity/vocabulary';
 
 export const BibleFactOutputSchema = z
     .object({
@@ -26,7 +27,31 @@ export const BibleFactOutputSchema = z
     .strict();
 export type BibleFactOutput = z.infer<typeof BibleFactOutputSchema>;
 
-export const BibleFactsOutputSchema = z.object({ facts: z.array(BibleFactOutputSchema).max(FACTS_PER_CHUNK_MAX) }).strict();
+/** Phase 4.2 (D28): a thread the entry sets up (`paysOff` 0) or pays off (`paysOff` n: the n-th open thread shown). */
+export const BibleThreadOutputSchema = z
+    .object({
+        kind: z.enum(THREAD_KINDS),
+        title: z.string().max(THREAD_TITLE_MAX * 4),
+        quote: z.string().max(FACT_QUOTE_MAX_CHARS),
+        paysOff: z.number().int().min(0).max(OPEN_THREADS_SHOWN_MAX),
+    })
+    .strict();
+export type BibleThreadOutput = z.infer<typeof BibleThreadOutputSchema>;
+
+export const BibleFactsOutputSchema = z.object({ facts: z.array(BibleFactOutputSchema).max(FACTS_PER_CHUNK_MAX), threads: z.array(BibleThreadOutputSchema).max(THREADS_PER_CALL_MAX) }).strict();
+
+/** The threads, each read on its own (an answer without the member, as 4.1's were, has none). */
+export function parseBibleThreadsOutput(raw: unknown): { items: Array<{ kind: ThreadKind; title: string; quote: string; paysOff: number }>; malformed: number } {
+    const list = raw && typeof raw === 'object' && Array.isArray((raw as { threads?: unknown }).threads) ? (raw as { threads: unknown[] }).threads : [];
+    const items: Array<{ kind: ThreadKind; title: string; quote: string; paysOff: number }> = [];
+    let malformed = 0;
+    for (const item of list) {
+        const parsed = BibleThreadOutputSchema.safeParse(item);
+        if (!parsed.success) malformed++;
+        else items.push(parsed.data);
+    }
+    return { items, malformed };
+}
 
 /** Each item read on its own: the well-formed ones (as 4.0's fact items, with their `contradicts`), and how many were not. */
 export function parseBibleFactsOutput(raw: unknown): { items: Array<{ fact: FactOutput; contradicts: number[] }>; malformed: number } {

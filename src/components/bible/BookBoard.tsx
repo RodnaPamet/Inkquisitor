@@ -35,7 +35,7 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
-import { BookOpenCheck, FileDown, FileText, Flame, Library, MessagesSquare, Plus, Search, Trash2, Upload, Waypoints } from 'lucide-react';
+import { BookOpenCheck, FileDown, FileText, Flame, Library, MessagesSquare, Plus, Search, Trash2, Upload, Waypoints, GitCompareArrows } from 'lucide-react';
 import { InterviewLauncher } from '@/components/interview/InterviewLauncher';
 import { BookSearch } from '@/components/search/BookSearch';
 import { buttonVariants } from '@/components/ui/button-variants';
@@ -75,6 +75,7 @@ export function BookBoard({ workspaceSlug, book, kinds, board, canEdit, canDelet
     const tSetup = useTranslations('interview.setup');
     const tResearch = useTranslations('research');
     const tSources = useTranslations('sources');
+    const tContinuity = useTranslations('continuity');
     const tCanvas = useTranslations('canvas.kinds');
     const [creating, setCreating] = useState<{ kind: BibleKind | null } | null>(null);
     const [importing, setImporting] = useState(false);
@@ -108,6 +109,10 @@ export function BookBoard({ workspaceSlug, book, kinds, board, canEdit, canDelet
                         <Link href={APP_ROUTES.bookFacts(workspaceSlug, book.id)} className={buttonVariants({ variant: 'secondary' })} id="book-facts">
                             <BookOpenCheck className="size-4" aria-hidden="true" />
                             {tSources('facts.title')}
+                        </Link>
+                        <Link href={APP_ROUTES.continuity(workspaceSlug, book.id)} className={buttonVariants({ variant: 'secondary' })} id="book-continuity">
+                            <GitCompareArrows className="size-4" aria-hidden="true" />
+                            {tContinuity('title')}
                         </Link>
                         {STORY_MAP_KINDS.map((kind) => (
                             <Link
