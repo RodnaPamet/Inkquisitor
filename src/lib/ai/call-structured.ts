@@ -472,6 +472,7 @@ export async function callStructured<S extends z.ZodType>(
             ceilingMicroUsd: ceiling,
             ttlMs: timeoutMs + RESERVATION_GRACE_MS,
             startedAt,
+            purpose: template.purpose,
         });
         if (!held.ok) {
             const details = {
@@ -480,6 +481,7 @@ export async function callStructured<S extends z.ZodType>(
                 worstCaseMicroUsd: worstCase,
                 ceilingMicroUsd: held.ceilingMicroUsd,
                 period: spendPeriod(startedAt),
+                limit: held.limit ?? 'MONTH',
             };
             throw new CallEnd('CEILING', 'SPEND_CEILING', (id) => new AiSpendCeilingError(details, id));
         }

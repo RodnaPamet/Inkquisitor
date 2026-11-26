@@ -1669,6 +1669,7 @@
                 "BOOK_DELETED": "the book was deleted",
                 "NO_ACTOR": "no member may edit this bible",
                 "CEILING": "paused at this month’s AI spend limit; it resumes when there is room",
+                "NIGHTLY_CAP": "paused at tonight’s share of the AI spend limit; it resumes tomorrow night",
                 "KILL_SWITCH": "paused: AI is switched off",
                 "AI_UNAVAILABLE": "paused: AI is not available here",
                 "NOT_EVALUATED": "rules only: the deep check is not yet approved for this deployment",

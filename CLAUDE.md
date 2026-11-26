@@ -1463,9 +1463,15 @@ closed beta with an explicit operator flag (D5, amended 2026-11-19).
   `FACTS_PER_CALL_MAX` (100) facts, a subject's facts together, from a stored
   cursor (`kind:id`; never author text in a cursor), each call's worst case
   inside the ENFORCED per-call budget (cut, halved, else `CALL_OVER_BUDGET`),
-  each charged to `chargeModelCalls`; the cursor is saved after every call. A
-  stop (ceiling, kill switch, D11, the rate minute, abort) keeps the cursor and
-  is never FAILED; the rules run even when D11 refuses the model; findings are
+  each charged to `chargeModelCalls`; the cursor is saved after every call.
+  A workspace's deep calls spend at most `CONTINUITY_NIGHTLY_SHARE` (10 %) of
+  its monthly ceiling a night (D28 addendum, item 1): measured from the ledger
+  (calls of purpose `continuity.deep-check` charged in the night's window plus
+  their live reservations, which carry `purpose`), checked before each call
+  with its worst case and again by `workspaceAiLedger(ctx, share)` under the
+  spend lock (`limit: 'NIGHTLY_SHARE'`); past it the night stops `NIGHTLY_CAP`.
+  A stop (ceiling, nightly share, kill switch, D11, the rate minute, abort)
+  keeps the cursor and is never FAILED; the rules run even when D11 refuses the model; findings are
   only proposed. A run lost by its worker (`STALE_CONTINUITY_RUN_MS`) is ended
   and the book queued again. THE REGISTRIES are one `StoryThread` table (kind,
   kind-checked state, encrypted title and note, optimistic `version`, no

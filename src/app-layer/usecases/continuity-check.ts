@@ -19,7 +19,10 @@
  *               per-call cost budget (ENFORCED). Before each: the kill switch, a
  *               deployment that can make no call, or no evaluation record it
  *               accepts (D11) stops the night resumably; the model-call minute is
- *               waited out (never an uncharged call). 2.1 checks the monthly
+ *               waited out (never an uncharged call). The workspace's NIGHTLY
+ *               SHARE of the month (D28 addendum) is checked with the call's
+ *               worst case (NIGHTLY_CAP: resumable, the book waits for the next
+ *               night), and again by the ledger as the call reserves. 2.1 checks the monthly
  *               ceiling: CEILING stops the night RESUMABLY and counts as no
  *               failure (the D27 addendum's rule). Each call's pairs are checked
  *               (`validateContinuityPairs`) and PROPOSED with basis DEEP; its cost
@@ -53,9 +56,9 @@ import { BibleFactRepository } from '@/app-layer/repositories/source.repository'
 import { WorkspaceRepository } from '@/app-layer/repositories/workspace.repository';
 import type { AuthorDataBlock } from '@/lib/ai/prompt';
 import { continuityCallWorstCase } from '@/lib/continuity/cost';
-import { defaultContinuityChecker, type ContinuityChecker } from '@/lib/continuity/model-seam';
+import { defaultContinuityChecker, NIGHTLY_SHARE_REFUSED, type ContinuityChecker } from '@/lib/continuity/model-seam';
 import { planNight, subjectOrderKey, type PlannedFact } from '@/lib/continuity/night-plan';
-import { CONTINUITY_CALL_COST_BUDGET_MICRO_USD, CONTINUITY_PROMPT_VERSION, continuityBlocks, type CheckedFactLine } from '@/lib/continuity/prompt';
+import { CONTINUITY_CALL_COST_BUDGET_MICRO_USD, CONTINUITY_PROMPT_VERSION, CONTINUITY_PURPOSE, continuityBlocks, type CheckedFactLine } from '@/lib/continuity/prompt';
 import { continuityGate, type ContinuityGateVerdict } from '@/lib/continuity/record-gate';
 import { detectRuleContradictions, type RuleFact } from '@/lib/continuity/rules';
 import { NO_ORDER, storyClock, type StoryClock } from '@/lib/continuity/story-clock';
@@ -67,6 +70,8 @@ import {
     CONTINUITY_FACTS_PER_CALL_MIN,
     CONTINUITY_FACTS_READ_MAX,
     CONTINUITY_LIST_MAX,
+    CONTINUITY_NIGHT_WINDOW_MS,
+    CONTINUITY_NIGHTLY_SHARE,
     CONTINUITY_PROPOSALS_PER_RUN_MAX,
     type ContinuityOutcome,
     type ContinuityRunStatus,
@@ -79,7 +84,9 @@ import { getPermissionsForRole } from '@/lib/permissions';
 import { chargeModelCalls } from '@/lib/security/model-call-rate-limit';
 import { defaultSleep, waitForModelRate } from './bible-facts';
 import { deploymentPackRecordMode } from './interview-packs';
-import { modelUnavailableReason } from './model-calls';
+import { modelUnavailableReason, nightlyShareSpent, type NightlyShare } from './model-calls';
+import { env } from '@/env';
+import { monthlyCeilingMicroUsd } from '@/lib/ai/config';
 import { bookSourceSet } from './source-common';
 import { standingStaleFlags } from './stale-flags';
 
@@ -95,6 +102,8 @@ export interface ContinuityCheckDeps {
     worstCase?: (blocks: readonly AuthorDataBlock[]) => number;
     /** The night's bound (tests: a smaller one). */
     callsPerNight?: number;
+    /** The workspace's nightly share in µUSD (tests: a figure of their own; default `CONTINUITY_NIGHTLY_SHARE` of the month's ceiling). */
+    nightlyCapMicroUsd?: number;
     factsPerCall?: number;
 }
 
@@ -129,6 +138,7 @@ const STATUS_OF: Readonly<Record<ContinuityOutcome, ContinuityRunStatus>> = {
     BOOK_DELETED: 'SKIPPED',
     NO_ACTOR: 'SKIPPED',
     CEILING: 'STOPPED',
+    NIGHTLY_CAP: 'STOPPED',
     KILL_SWITCH: 'STOPPED',
     AI_UNAVAILABLE: 'STOPPED',
     NOT_EVALUATED: 'STOPPED',
@@ -379,10 +389,20 @@ export async function executeContinuityCheck(payload: { workspaceId: string; run
         counts.subjectsRemaining = plan.remaining + plan.covered;
         if (plan.calls.length === 0 && plan.overBudget) return await finish('CALL_OVER_BUDGET', claim, { passTarget, passCursor: keep.passCursor });
 
-        const checker = (deps.checker ?? defaultContinuityChecker)(ctx);
+        // The night's share of the month (D28 addendum): every deep call of the workspace in the night's window counts,
+        // whatever its book; checked here with this call's worst case, and again by the ledger as the call reserves.
+        const share: NightlyShare = {
+            purpose: CONTINUITY_PURPOSE,
+            since: new Date(claim.getTime() - CONTINUITY_NIGHT_WINDOW_MS),
+            capMicroUsd: deps.nightlyCapMicroUsd ?? Math.floor(CONTINUITY_NIGHTLY_SHARE * monthlyCeilingMicroUsd(env)),
+        };
+        const checker = (deps.checker ?? ((c: WorkspaceRequestContext) => defaultContinuityChecker(c, {}, share)))(ctx);
         let cursor = keep.passCursor;
         for (const call of plan.calls) {
             if (deps.signal?.aborted) return await finish('ABORTED', claim, { passTarget, passCursor: cursor });
+            const callWorst = worst(blocksOf(call.facts.map((f) => f.row)));
+            const spentTonight = await runInWorkspaceContext(ctx, (db) => nightlyShareSpent(db, ctx, share));
+            if (spentTonight + callWorst > share.capMicroUsd) return await finish('NIGHTLY_CAP', claim, { passTarget, passCursor: cursor });
             if (!(await waitForModelRate(ctx, deps.charge ?? chargeModelCalls, deps.sleep ?? defaultSleep, deps.signal))) {
                 return await finish(deps.signal?.aborted ? 'ABORTED' : 'MODEL_RATE_LIMITED', claim, { passTarget, passCursor: cursor });
             }
@@ -395,7 +415,7 @@ export async function executeContinuityCheck(payload: { workspaceId: string; run
                 metrics.errorCode = result.errorCode;
                 const outcome: ContinuityOutcome =
                     result.failure === 'KILL_SWITCH' ? 'KILL_SWITCH'
-                    : result.failure === 'WORKSPACE_CEILING' ? 'CEILING'
+                    : result.failure === 'WORKSPACE_CEILING' ? (result.errorCode === NIGHTLY_SHARE_REFUSED ? 'NIGHTLY_CAP' : 'CEILING')
                     : result.failure === 'AI_UNAVAILABLE' ? 'AI_UNAVAILABLE'
                     : result.failure === 'ABORTED' ? 'ABORTED'
                     : result.failure === 'GUARD_REFUSED' ? 'GUARD_REFUSED'

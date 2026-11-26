@@ -14,14 +14,17 @@
  *   a night stopped after its first call reported every subject still remaining
  *   a page the guard refused was sent again every night (on the way out, a paid
  *   call), and the pass never got past it
+ *   (D28 addendum) no per-workspace nightly bound: a workspace's changed books
+ *   could spend its month in a night
  */
-import { randomBytes } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { prisma } from '@/lib/db';
 import { runInWorkspaceContext, runWithoutRls } from '@/lib/db/rls-middleware';
 import { createBook } from '@/app-layer/usecases/books';
 import { createElement, updateElement } from '@/app-layer/usecases/bible-elements';
 import { decideThreadProposal, getContinuityPage } from '@/app-layer/usecases/continuity';
 import { executeContinuityDispatch } from '@/app-layer/usecases/continuity-dispatch';
+import { workspaceAiLedger } from '@/app-layer/usecases/model-calls';
 import { decideFact, listBookFacts } from '@/app-layer/usecases/source-facts';
 import { dispatchIngestion, uploadSource } from '@/app-layer/usecases/source-library';
 import { executeSourceIngest } from '@/app-layer/usecases/source-ingest';
@@ -213,5 +216,54 @@ describe('the nightly check: a page the guard refuses', () => {
         expect(await night()).toEqual(['OK']);
         expect(shown).toHaveLength(2);
         expect(shown[1]).not.toBe(shown[0]);
+    });
+});
+
+describe('the nightly share of the month (D28 addendum, item 1)', () => {
+    const PURPOSE = 'continuity.deep-check';
+
+    it('the ledger holds the share under its lock: a second reservation of the purpose past it is refused, another purpose is not', async () => {
+        const ctx = workspaceCtx(await createAccount());
+        const share = { purpose: PURPOSE, since: new Date(Date.now() - 60_000), capMicroUsd: 5_000_000 };
+        const ledger = workspaceAiLedger(ctx, share);
+        const ask = (callId: string, amountMicroUsd: number, purpose = PURPOSE) =>
+            ledger.reserve({ callId, amountMicroUsd, ceilingMicroUsd: 50_000_000, ttlMs: 60_000, startedAt: new Date(), purpose });
+        expect(await ask(randomUUID(), 3_000_000)).toMatchObject({ ok: true });
+        // A concurrent book's call of the same night: 3 + 3 > 5.
+        expect(await ask(randomUUID(), 3_000_000)).toMatchObject({ ok: false, limit: 'NIGHTLY_SHARE', reservedMicroUsd: 3_000_000, ceilingMicroUsd: 5_000_000 });
+        expect(await ask(randomUUID(), 3_000_000, 'facts.bible-extract')).toMatchObject({ ok: true });
+    });
+
+    it('a book past the night’s share waits, whichever book spent it: NIGHTLY_CAP, resumable, no call made; the next night it goes on', async () => {
+        const ctx = workspaceCtx(await createAccount());
+        const books: string[] = [];
+        for (const title of ['Spender', 'Waiter']) {
+            const bookId = (await createBook(ctx, { title })).id;
+            await createElement(ctx, bookId, { kind: 'CHARACTER', name: `Jo${title}`, summary: `Jo${title} is 30 years old.` });
+            await extractPending(ctx, bookId, ageExtractor(`Jo${title}`));
+            books.push(bookId);
+        }
+        // Tonight one book's deep calls have already charged $4.90 of the $5 share.
+        await runWithoutRls({ reason: 'test' }, (db) =>
+            db.aiCallLog.create({
+                data: {
+                    id: randomUUID(), workspaceId: ctx.workspaceId, bookId: books[0], purpose: PURPOSE, promptId: 'continuity.deep-check', promptVersion: 'continuity-deep.4.2.0',
+                    tier: 'DEEP', model: 'claude-opus-5-5', attempts: 1, inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0,
+                    costMicroUsd: BigInt(4_900_000), costEstimated: false, worstCaseMicroUsd: BigInt(750_000), durationMs: 1, outcome: 'OK',
+                    guardRuleIds: [], guardReviewRequired: false, startedAt: new Date(),
+                },
+            }),
+        );
+        let calls = 0;
+        const counting = () => ({ extract: async () => (calls++, { ok: true as const, output: { contradictions: [] }, tokensUsed: 1, costMicroUsd: 1, callIds: [] as string[] }) });
+        const capped = { checker: counting, nightlyCapMicroUsd: 5_000_000, worstCase: () => 200_000 };
+        expect((await runNight(ctx, capped)).sort()).toEqual(['NIGHTLY_CAP', 'NIGHTLY_CAP']);
+        expect(calls).toBe(0);
+        const runs = await runWithoutRls({ reason: 'test' }, (db) => db.continuityRun.findMany({ where: { workspaceId: ctx.workspaceId }, select: { status: true, callsMade: true } }));
+        expect(runs.every((r) => r.status === 'STOPPED' && r.callsMade === 0)).toBe(true);
+        // The next night (13 hours on): the earlier spend is outside its window, and both books go on.
+        const later = new Date(Date.now() + 13 * 60 * 60 * 1000);
+        expect((await runNight(ctx, { ...capped, now: () => later })).sort()).toEqual(['OK', 'OK']);
+        expect(calls).toBe(2);
     });
 });

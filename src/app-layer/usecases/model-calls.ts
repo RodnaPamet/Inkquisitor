@@ -40,8 +40,26 @@ import {
     type ServerToolLoopResult,
 } from '@/lib/ai/server-tool-loop';
 
-/** The ledger of one workspace, over `AiCallLog`, `AiSpendMonth` and `AiSpendReservation`. */
-export function workspaceAiLedger(ctx: Pick<WorkspaceRequestContext, 'workspaceId' | 'requestId' | 'userId'>): AiLedger {
+/**
+ * A purpose's NIGHTLY SHARE of the month (Phase 4.2, D28 addendum, item 1): the calls of `purpose` since `since` may
+ * have charged and still hold at most `capMicroUsd` in the workspace. Checked by the ledger under its spend lock with
+ * each reservation, so it holds across books and concurrent jobs.
+ */
+export interface NightlyShare {
+    readonly purpose: string;
+    readonly since: Date;
+    readonly capMicroUsd: number;
+}
+
+/** What `share`'s purpose has charged and holds since its `since` (a read in the caller's transaction, no lock). */
+export async function nightlyShareSpent(db: PrismaTx, ctx: Pick<WorkspaceRequestContext, 'workspaceId'>, share: NightlyShare): Promise<number> {
+    const now = await AiCallRepository.dbNow(db);
+    const s = await AiCallRepository.purposeSpendSince(db, ctx.workspaceId, share.purpose, share.since, now);
+    return s.chargedMicroUsd + s.reservedMicroUsd;
+}
+
+/** The ledger of one workspace, over `AiCallLog`, `AiSpendMonth` and `AiSpendReservation` (and a purpose's nightly share, when given). */
+export function workspaceAiLedger(ctx: Pick<WorkspaceRequestContext, 'workspaceId' | 'requestId' | 'userId'>, share?: NightlyShare): AiLedger {
     return {
         async reserve(request) {
             const periodStart = periodStartOf(request.startedAt);
@@ -63,7 +81,22 @@ export function workspaceAiLedger(ctx: Pick<WorkspaceRequestContext, 'workspaceI
                     });
                     recordReservationsReleased(released.length, reservedMicroUsd);
                 }
+                const period = spendPeriod(request.startedAt);
+                if (share && request.purpose === share.purpose) {
+                    const used = await AiCallRepository.purposeSpendSince(db, ctx.workspaceId, share.purpose, share.since, now, request.callId);
+                    if (used.chargedMicroUsd + used.reservedMicroUsd + request.amountMicroUsd > share.capMicroUsd) {
+                        return {
+                            ok: false as const,
+                            period,
+                            spentMicroUsd: used.chargedMicroUsd,
+                            reservedMicroUsd: used.reservedMicroUsd,
+                            ceilingMicroUsd: share.capMicroUsd,
+                            limit: 'NIGHTLY_SHARE' as const,
+                        };
+                    }
+                }
                 const held = await AiCallRepository.reserve(db, ctx.workspaceId, {
+                    purpose: request.purpose,
                     callId: request.callId,
                     periodStart,
                     amountMicroUsd: request.amountMicroUsd,
@@ -71,7 +104,6 @@ export function workspaceAiLedger(ctx: Pick<WorkspaceRequestContext, 'workspaceI
                     expiresAt: new Date(now.getTime() + request.ttlMs),
                     now,
                 });
-                const period = spendPeriod(request.startedAt);
                 return held.ok
                     ? { ok: true as const, period }
                     : {
@@ -100,8 +132,9 @@ export async function callStructured<S extends z.ZodType>(
     ctx: WorkspaceRequestContext,
     input: Omit<StructuredCallInput<S>, 'requestedById'>,
     deps: Omit<StructuredCallDeps, 'ledger'> = {},
+    options: { share?: NightlyShare } = {},
 ): Promise<StructuredCallResult<z.infer<S>>> {
-    return callStructuredCore({ ...input, requestedById: ctx.userId }, { ...deps, ledger: workspaceAiLedger(ctx) });
+    return callStructuredCore({ ...input, requestedById: ctx.userId }, { ...deps, ledger: workspaceAiLedger(ctx, options.share) });
 }
 
 /**

@@ -85,6 +85,8 @@ export const CONTINUITY_OUTCOMES = [
     'NO_ACTOR',
     /** The workspace's monthly ceiling (D10): resumable, never a failure (the D27 addendum's rule). */
     'CEILING',
+    /** The workspace's NIGHTLY SHARE of the month is spent (D28 addendum): resumable, never a failure; the book waits for the next night. */
+    'NIGHTLY_CAP',
     /** `AI_DISABLED=1`: resumable. */
     'KILL_SWITCH',
     /** No model call can be made in this deployment: resumable. */
@@ -108,7 +110,19 @@ export const CONTINUITY_OUTCOMES = [
 export type ContinuityOutcome = (typeof CONTINUITY_OUTCOMES)[number];
 
 /** Outcomes that stop a run resumably and count as no failure (the ceiling, the switch, the deployment). */
-export const UNCOUNTED_CONTINUITY_STOPS: ReadonlySet<ContinuityOutcome> = new Set(['CEILING', 'KILL_SWITCH', 'AI_UNAVAILABLE', 'NOT_EVALUATED']);
+export const UNCOUNTED_CONTINUITY_STOPS: ReadonlySet<ContinuityOutcome> = new Set(['CEILING', 'NIGHTLY_CAP', 'KILL_SWITCH', 'AI_UNAVAILABLE', 'NOT_EVALUATED']);
+
+/**
+ * THE NIGHTLY SHARE (D28 addendum, item 1, decided 2026-11-26): the deep check may spend at most this share of the
+ * workspace's monthly ceiling (the one the ledger applies) a night — $5 of $50 — across all its books and concurrent
+ * runs. Measured from the ledger: what deep continuity calls have charged (their records) and still hold (their live
+ * reservations) in the night's window, checked before each call with its worst case and again by the ledger under its
+ * spend lock as the call reserves. A book past it waits for the next night (least recently checked first); the rules,
+ * which are free, still run.
+ */
+export const CONTINUITY_NIGHTLY_SHARE = 0.1;
+/** The night's window: calls started this long before a run's claim count against its share (one night; a nightly schedule is 24 h apart). */
+export const CONTINUITY_NIGHT_WINDOW_MS = 12 * 60 * 60 * 1000;
 
 /**
  * ONE NIGHT'S BOUND, per book (D28): at most `CONTINUITY_CALLS_PER_NIGHT` deep calls, each over at most

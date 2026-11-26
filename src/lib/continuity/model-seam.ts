@@ -12,7 +12,8 @@
  * AI_UNAVAILABLE stop the night, resumable; the rest are the call's own failure.
  */
 import type { WorkspaceRequestContext } from '@/app-layer/types';
-import { callStructured } from '@/app-layer/usecases/model-calls';
+import { callStructured, type NightlyShare } from '@/app-layer/usecases/model-calls';
+import { AiSpendCeilingError } from '@/lib/ai/errors';
 import type { StructuredCallDeps, StructuredCallInput, StructuredCallResult } from '@/lib/ai/call-structured';
 import type { FactExtractor } from '@/lib/sources/extractor';
 import { extractOutcomeOf } from '@/lib/sources/model-seam';
@@ -31,13 +32,23 @@ export function continuityCheckerOver(call: ContinuityCaller): ContinuityChecker
                 const r = await call({ template: CONTINUITY_PROMPT, data: request.data, schema: ContinuityOutputSchema, bookId: request.bookId, signal });
                 return { ok: true as const, output: r.value, tokensUsed: r.tokensUsed, costMicroUsd: r.costMicroUsd, callIds: [r.callId] };
             } catch (err) {
-                return extractOutcomeOf(err);
+                // The night's share of the month (D28 addendum), refused by the ledger under its lock: named apart from the
+                // month's ceiling, so the night stops NIGHTLY_CAP.
+                const share = err instanceof AiSpendCeilingError && (err.details as { limit?: unknown } | undefined)?.limit === 'NIGHTLY_SHARE';
+                const outcome = extractOutcomeOf(err);
+                return share && !outcome.ok ? { ...outcome, errorCode: NIGHTLY_SHARE_REFUSED } : outcome;
             }
         },
     } satisfies ContinuityChecker);
 }
 
-/** The deployment's checker, in the context's workspace, as its user. `deps` is the tests' fetch seam. */
-export function defaultContinuityChecker(ctx: WorkspaceRequestContext, deps: Pick<StructuredCallDeps, 'fetch' | 'timeoutMs'> = {}): ContinuityChecker {
-    return continuityCheckerOver((input) => callStructured(ctx, input, deps));
+/** The error code a call refused at the night's share carries (`extractOutcomeOf`'s WORKSPACE_CEILING otherwise). */
+export const NIGHTLY_SHARE_REFUSED = 'NIGHTLY_SHARE';
+
+/**
+ * The deployment's checker, in the context's workspace, as its user, its every reservation held to the night's share
+ * (`share`, D28 addendum) by the ledger. `deps` is the tests' fetch seam.
+ */
+export function defaultContinuityChecker(ctx: WorkspaceRequestContext, deps: Pick<StructuredCallDeps, 'fetch' | 'timeoutMs'> = {}, share?: NightlyShare): ContinuityChecker {
+    return continuityCheckerOver((input) => callStructured(ctx, input, deps, { share }));
 }
