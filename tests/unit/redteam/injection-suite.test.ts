@@ -18,6 +18,8 @@ import { QUESTION_PROMPT } from '@/lib/interview/prompt';
 import { FINDINGS_PROMPT, FIT_PROMPT } from '@/lib/research/prompt';
 import { researchStepsOver } from '@/lib/research/model-seam';
 import { extractorOver } from '@/lib/sources/model-seam';
+import { bibleFactExtractorOver } from '@/lib/facts/model-seam';
+import { BIBLE_FACTS_PROMPT } from '@/lib/facts/prompt';
 import { EXTRACT_PROMPT } from '@/lib/sources/prompt';
 import { INJECTION_CORPUS, INJECTION_SURFACES, type InjectionCase } from '@/lib/redteam/corpus';
 import {
@@ -104,6 +106,18 @@ function compromisedAnswer(body: Record<string, unknown>): string {
             noFit: [],
         });
     }
+    if (is(BIBLE_FACTS_PROMPT)) {
+        // Phase 4.1: the injection as a fact, one about the other book, the prompt recited, an existing fact "contradicted" by fiat.
+        const name = SCENE.character.name;
+        return JSON.stringify({
+            facts: [
+                { subject: name, predicate: 'OTHER', object: '', statement: injected, quote: injected, storyTimeFrom: '', storyTimeTo: '', contradicts: [1] },
+                { subject: FOREIGN_CANARY, predicate: 'ROLE', object: '', statement: `${FOREIGN_CANARY} keeps the light.`, quote: `${name} keeps the Wennaway light alone`, storyTimeFrom: '', storyTimeTo: '', contradicts: [] },
+                { subject: name, predicate: 'OTHER', object: '', statement: `${recite(BIBLE_FACTS_PROMPT.system)}.`, quote: `${name} keeps the Wennaway light alone`, storyTimeFrom: '', storyTimeTo: '', contradicts: [] },
+                { subject: name, predicate: 'ROLE', object: '', statement: `${name} keeps the Wennaway light alone after her brother drowns.`, quote: `${name} keeps the Wennaway light alone after her brother drowns.`, storyTimeFrom: '', storyTimeTo: '', contradicts: [1] },
+            ],
+        });
+    }
     if (is(EXTRACT_PROMPT)) {
         // Phase 4.0: a fact that is the injection, one about the other book, the prompt recited, the instruction obeyed.
         const name = SCENE.character.name;
@@ -144,6 +158,7 @@ function compromisedSeams(): InjectionSeams & { api: ReturnType<typeof fakeAnthr
         reconciler: reconcilerOver((input) => call(input) as never),
         researcher: researchStepsOver((input) => call(input) as never),
         extractor: extractorOver((input) => call(input) as never),
+        bibleExtractor: bibleFactExtractorOver((input) => call(input) as never),
         requests: () => api.requests,
     };
 }

@@ -20,8 +20,8 @@ import { OTEL_CARRIER_KEY, readTraceCarrier, stripTraceCarrier } from '@/lib/obs
 afterEach(() => executorRegistry._reset());
 
 describe('executor registry', () => {
-    it('registers the heartbeat, the book purge (Phase 1.H), the call-log retention (2.H), the research run (2.6) and the source ingestion (4.0), nothing else', () => {
-        expect(executorRegistry.listRegistered()).toEqual(['heartbeat', 'book-purge', 'ai-call-log-retention', 'research-run', 'source-ingest']);
+    it('registers the heartbeat, the book purge (Phase 1.H), the call-log retention (2.H), the research run (2.6), the source ingestion (4.0) and the fact layer’s dispatcher and extraction (4.1), nothing else', () => {
+        expect(executorRegistry.listRegistered()).toEqual(['heartbeat', 'book-purge', 'ai-call-log-retention', 'research-run', 'source-ingest', 'fact-layer-dispatch', 'bible-facts']);
     });
 
     it('the heartbeat is a no-op that succeeds', async () => {
@@ -102,11 +102,21 @@ describe('cron matcher and tick', () => {
     });
 
     it('tick runs exactly the jobs that are due', async () => {
-        const due = await scheduler.tick(new Date('2026-11-18T10:04:00Z'));
-        expect(due.jobsExecuted).toBe(1);
-        expect(due.jobsSucceeded).toBe(1);
-        const notDue = await scheduler.tick(new Date('2026-11-18T10:05:00Z'));
-        expect(notDue.jobsExecuted).toBe(0);
+        // The fact layer's dispatcher (4.1) is due every minute; here it is a no-op, as the heartbeat is (no database in a unit test).
+        const spy = jest.fn(async () => ({ jobName: 'fact-layer-dispatch', jobRunId: 'x', success: true, startedAt: '', completedAt: '', durationMs: 0, itemsScanned: 0, itemsActioned: 0, itemsSkipped: 0 }));
+        executorRegistry._reset(false);
+        executorRegistry.register('heartbeat', async () => ({ jobName: 'heartbeat', jobRunId: 'h', success: true, startedAt: '', completedAt: '', durationMs: 0, itemsScanned: 0, itemsActioned: 0, itemsSkipped: 0 }));
+        executorRegistry.register('fact-layer-dispatch', spy);
+        try {
+            const due = await scheduler.tick(new Date('2026-11-18T10:04:00Z'));
+            expect(due.jobsExecuted).toBe(2); // the heartbeat (every two minutes) and the dispatcher
+            expect(due.jobsSucceeded).toBe(2);
+            const odd = await scheduler.tick(new Date('2026-11-18T10:05:00Z'));
+            expect(odd.jobsExecuted).toBe(1); // the dispatcher alone
+            expect(spy).toHaveBeenCalledTimes(2);
+        } finally {
+            executorRegistry._reset();
+        }
     });
 });
 

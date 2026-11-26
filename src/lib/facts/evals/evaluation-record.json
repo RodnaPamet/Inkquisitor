@@ -1,0 +1,352 @@
+{
+  "format": "inkquisitor-bible-facts-evaluation/1",
+  "set": {
+    "hash": "sha256:ace095bd03c99e373182795442dced42ea5ebcfc1853c67d1a948d40b3753608"
+  },
+  "promptVersion": "bible-facts.4.1.0",
+  "promptHash": "sha256:b10e9e8455727ffc6c3250645f0debaf250fcc6aaddcaffe3936fbc39988ba63",
+  "generator": {
+    "kind": "structural",
+    "id": "reference-bible-extractor.1"
+  },
+  "ranAt": "2026-11-26T07:55:21.553Z",
+  "answers": [
+    {
+      "caseId": "bb-01-e1",
+      "facts": {
+        "facts": [
+          {
+            "subject": "Wren",
+            "predicate": "AGE",
+            "object": "12 years old",
+            "statement": "Wren is 12 years old.",
+            "quote": "Wren is 12 years old",
+            "storyTimeFrom": "",
+            "storyTimeTo": "",
+            "contradicts": []
+          },
+          {
+            "subject": "Wren",
+            "predicate": "ABILITY",
+            "object": "",
+            "statement": "Wren has never learned to swim.",
+            "quote": "has never learned to swim",
+            "storyTimeFrom": "",
+            "storyTimeTo": "",
+            "contradicts": []
+          },
+          {
+            "subject": "Wren",
+            "predicate": "ROLE",
+            "object": "the lock keeper's daughter",
+            "statement": "Wren is the lock keeper's daughter at Harrow Weir.",
+            "quote": "Wren is the lock keeper's daughter at Harrow Weir.",
+            "storyTimeFrom": "",
+            "storyTimeTo": "",
+            "contradicts": []
+          },
+          {
+            "subject": "Wren",
+            "predicate": "APPEARANCE",
+            "object": "a burn scar across her left hand",
+            "statement": "Wren has a burn scar across her left hand.",
+            "quote": "Wren has a burn scar across her left hand.",
+            "storyTimeFrom": "",
+            "storyTimeTo": "",
+            "contradicts": []
+          },
+          {
+            "subject": "Wren",
+            "predicate": "WANT",
+            "object": "",
+            "statement": "Wren wants to cross the river before the spring floods.",
+            "quote": "Wren wants to cross the river before the spring floods.",
+            "storyTimeFrom": "",
+            "storyTimeTo": "",
+            "contradicts": []
+          }
+        ]
+      }
+    },
+    {
+      "caseId": "bb-01-e2",
+      "facts": {
+        "facts": [
+          {
+            "subject": "Wren",
+            "predicate": "AGE",
+            "object": "13 years old",
+            "statement": "Wren is 13 years old.",
+            "quote": "Wren is 13 years old",
+            "storyTimeFrom": "",
+            "storyTimeTo": "",
+            "contradicts": [
+              1
+            ]
+          },
+          {
+            "subject": "Wren",
+            "predicate": "ABILITY",
+            "object": "",
+            "statement": "Wren has never learned to swim.",
+            "quote": "has never learned to swim",
+            "storyTimeFrom": "",
+            "storyTimeTo": "",
+            "contradicts": []
+          }
+        ]
+      }
+    },
+    {
+      "caseId": "bb-02-e1",
+      "facts": {
+        "facts": [
+          {
+            "subject": "Station Kestrel",
+            "predicate": "LOCATION",
+            "object": "Varo",
+            "statement": "Station Kestrel orbits the gas giant Varo.",
+            "quote": "Station Kestrel orbits the gas giant Varo",
+            "storyTimeFrom": "",
+            "storyTimeTo": "",
+            "contradicts": []
+          },
+          {
+            "subject": "Station Kestrel",
+            "predicate": "PLACE_TYPE",
+            "object": "an orbital refinery station",
+            "statement": "Station Kestrel is an orbital refinery station.",
+            "quote": "An orbital refinery station",
+            "storyTimeFrom": "",
+            "storyTimeTo": "",
+            "contradicts": []
+          },
+          {
+            "subject": "Station Kestrel",
+            "predicate": "RULE",
+            "object": "",
+            "statement": "Station Kestrel can only be reached by the monthly supply shuttle.",
+            "quote": "Station Kestrel can only be reached by the monthly supply shuttle.",
+            "storyTimeFrom": "",
+            "storyTimeTo": "",
+            "contradicts": []
+          }
+        ]
+      }
+    },
+    {
+      "caseId": "bb-02-e2",
+      "facts": {
+        "facts": [
+          {
+            "subject": "Commander Osei",
+            "predicate": "OCCUPATION",
+            "object": "station commander",
+            "statement": "Commander Osei is the station commander.",
+            "quote": "Commander Osei is the station commander",
+            "storyTimeFrom": "",
+            "storyTimeTo": "",
+            "contradicts": [
+              1
+            ]
+          },
+          {
+            "subject": "Commander Osei",
+            "predicate": "RELATIONSHIP",
+            "object": "Station Kestrel",
+            "statement": "Commander Osei has run Station Kestrel for six years.",
+            "quote": "has run Station Kestrel for six years",
+            "storyTimeFrom": "",
+            "storyTimeTo": "",
+            "contradicts": []
+          }
+        ]
+      }
+    },
+    {
+      "caseId": "bb-03-e1",
+      "facts": {
+        "facts": [
+          {
+            "subject": "The Lantern Guild",
+            "predicate": "PURPOSE",
+            "object": "",
+            "statement": "The Lantern Guild keeps the city's records of debts.",
+            "quote": "The Lantern Guild keeps the city's records of debts.",
+            "storyTimeFrom": "",
+            "storyTimeTo": "",
+            "contradicts": []
+          },
+          {
+            "subject": "The Lantern Guild",
+            "predicate": "MEMBERSHIP",
+            "object": "",
+            "statement": "Only clerks who have served ten years may join the Lantern Guild.",
+            "quote": "Only clerks who have served ten years may join the Lantern Guild.",
+            "storyTimeFrom": "",
+            "storyTimeTo": "",
+            "contradicts": []
+          },
+          {
+            "subject": "The Lantern Guild",
+            "predicate": "POWER_BASE",
+            "object": "",
+            "statement": "The Lantern Guild holds every deed in the city.",
+            "quote": "The Lantern Guild holds every deed in the city.",
+            "storyTimeFrom": "",
+            "storyTimeTo": "",
+            "contradicts": []
+          }
+        ]
+      }
+    },
+    {
+      "caseId": "bb-03-e2",
+      "facts": {
+        "facts": [
+          {
+            "subject": "The Lantern Guild",
+            "predicate": "MEMBERSHIP",
+            "object": "",
+            "statement": "Any clerk may join the Lantern Guild after a single year of service.",
+            "quote": "Any clerk may join the Lantern Guild after a single year of service.",
+            "storyTimeFrom": "",
+            "storyTimeTo": "",
+            "contradicts": [
+              1
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "caseId": "bb-04-e1",
+      "facts": {
+        "facts": [
+          {
+            "subject": "The Fire at Mill Lane",
+            "predicate": "EVENT",
+            "object": "",
+            "statement": "In the fire at Mill Lane, the mill burns down and three workers die.",
+            "quote": "The mill on Mill Lane burns down in the winter of 1891 and three workers die.",
+            "storyTimeFrom": "the winter of 1891",
+            "storyTimeTo": "",
+            "contradicts": []
+          }
+        ]
+      }
+    },
+    {
+      "caseId": "bb-04-e2",
+      "facts": {
+        "facts": [
+          {
+            "subject": "Agnes Ward",
+            "predicate": "LOCATION",
+            "object": "Bradford",
+            "statement": "Agnes Ward lives in Bradford, above her uncle's shop.",
+            "quote": "Agnes Ward lives in Bradford, above her uncle's shop.",
+            "storyTimeFrom": "1891",
+            "storyTimeTo": "",
+            "contradicts": []
+          }
+        ]
+      }
+    },
+    {
+      "caseId": "bb-05-e1",
+      "facts": {
+        "facts": [
+          {
+            "subject": "Maya Okafor",
+            "predicate": "OCCUPATION",
+            "object": "pastry chef",
+            "statement": "Maya Okafor is a pastry chef in Lisbon.",
+            "quote": "Maya Okafor is a pastry chef in Lisbon.",
+            "storyTimeFrom": "",
+            "storyTimeTo": "",
+            "contradicts": []
+          }
+        ]
+      }
+    },
+    {
+      "caseId": "bb-05-e2",
+      "facts": {
+        "facts": [
+          {
+            "subject": "Maya Okafor",
+            "predicate": "OCCUPATION",
+            "object": "pastry chef",
+            "statement": "Maya Okafor is a pastry chef in Lisbon.",
+            "quote": "Maya Okafor is a pastry chef in Lisbon.",
+            "storyTimeFrom": "",
+            "storyTimeTo": "",
+            "contradicts": []
+          },
+          {
+            "subject": "Maya Okafor",
+            "predicate": "WANT",
+            "object": "",
+            "statement": "Maya Okafor wants to open her own bakery by the river.",
+            "quote": "Maya Okafor wants to open her own bakery by the river.",
+            "storyTimeFrom": "",
+            "storyTimeTo": "",
+            "contradicts": []
+          }
+        ]
+      }
+    },
+    {
+      "caseId": "adv-01",
+      "facts": {
+        "facts": [
+          {
+            "subject": "Tomas Reyes",
+            "predicate": "OCCUPATION",
+            "object": "ferryman",
+            "statement": "Tomas Reyes is a ferryman on the Douro.",
+            "quote": "Tomas Reyes is a ferryman on the Douro.",
+            "storyTimeFrom": "",
+            "storyTimeTo": "",
+            "contradicts": []
+          }
+        ]
+      }
+    },
+    {
+      "caseId": "adv-02",
+      "facts": {
+        "facts": [
+          {
+            "subject": "Ilse Brandt",
+            "predicate": "OCCUPATION",
+            "object": "",
+            "statement": "Ilse Brandt keeps bees on the roof of the old observatory.",
+            "quote": "Ilse Brandt keeps bees on the roof of the old observatory.",
+            "storyTimeFrom": "",
+            "storyTimeTo": "",
+            "contradicts": []
+          }
+        ]
+      }
+    },
+    {
+      "caseId": "adv-03",
+      "facts": {
+        "facts": [
+          {
+            "subject": "The Salt Road",
+            "predicate": "LOCATION",
+            "object": "",
+            "statement": "The Salt Road runs from the coast to the mountain mines.",
+            "quote": "The Salt Road runs from the coast to the mountain mines.",
+            "storyTimeFrom": "",
+            "storyTimeTo": "",
+            "contradicts": []
+          }
+        ]
+      }
+    }
+  ]
+}

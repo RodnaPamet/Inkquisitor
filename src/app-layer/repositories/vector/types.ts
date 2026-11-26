@@ -39,7 +39,29 @@ export {
     MAX_SEARCH_K,
     MAX_SEARCH_SOURCE_MODELS,
     MAX_UPSERT_BATCH,
+    MAX_WITHIN_IDS,
+    MAX_PRESENT_IDS,
 } from '../vector-search-params';
+
+/**
+ * A search's ISOLATION FILTER, applied INSIDE the query (Phase 4.1, #57 item 3):
+ * only vectors whose source row is in the caller's allowed set are ranked, so a
+ * book's top k is never a workspace's top k cut down after the fact. Each scope
+ * is a reviewed predicate over the source table, named here and nowhere else;
+ * the backend joins the source row under the caller's RLS.
+ *
+ *   chunks-of-sources   a `SourceChunk` whose `sourceId` is one of `sourceIds`
+ *   facts-of-book       a live, CONFIRMED `StoryFact` that is the book's own
+ *                       (`bookId`) or drawn from one of `sourceIds`
+ */
+export const VECTOR_SCOPES = ['chunks-of-sources', 'facts-of-book'] as const;
+export type VectorScope = (typeof VECTOR_SCOPES)[number];
+export interface VectorScopeFilter {
+    scope: VectorScope;
+    sourceIds: readonly string[];
+    /** `facts-of-book`: the book whose own facts count. */
+    bookId?: string;
+}
 
 /** The transaction a backend runs on: the caller's, inside `runInWorkspaceContext`. */
 export type VectorDb = Prisma.TransactionClient;
@@ -89,6 +111,8 @@ export interface VectorSearchQuery {
     bookId?: string;
     /** Only these source models; absent = every model. */
     sourceModels?: readonly string[];
+    /** Only vectors whose source row is in this allowed set, filtered in the query (above). */
+    within?: VectorScopeFilter;
 }
 
 /** A search hit: a reference to read back under RLS, and a cosine similarity. */
@@ -138,6 +162,8 @@ export interface VectorStoreBackend {
         sourceId: string,
         limit: number,
     ): Promise<StoredVectorKey[]>;
+    /** Which of `sourceIds` (of one model) hold a vector of this revision (an ingestion's resume, #57 item 1). */
+    presentSources(db: VectorDb, workspaceId: string, embeddingRevision: string, sourceModel: string, sourceIds: readonly string[]): Promise<string[]>;
     /** Every vector of one source, every revision. */
     deleteSource(db: VectorDb, workspaceId: string, sourceModel: string, sourceId: string): Promise<number>;
     /**

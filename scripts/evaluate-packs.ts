@@ -22,6 +22,12 @@
  *       evaluation-record.json). Re-run after editing the set, the extraction
  *       prompt or its output schema.
  *
+ *   npm run packs:evaluate -- --bible-facts [--no-packs]
+ *       also bible fact extraction's set (Phase 4.1, D27): the reference
+ *       extractor's record beside the set (src/lib/facts/evals/
+ *       evaluation-record.json). Re-run after editing the set, the bible fact
+ *       prompt or its output schema.
+ *
  *   npm run packs:evaluate -- --research [--no-packs]
  *       also the research agent's evaluation sets (Phase 2.6): the
  *       deterministic researcher's record is written beside the sets
@@ -81,6 +87,32 @@ import type { FactExtractor } from '../src/lib/sources/extractor';
 import { checkExtractionRecord, EXTRACTION_RECORD_FORMAT, extractionPromptHash, modelExtractionAnswers, structuralExtractionRecord } from '../src/lib/sources/evals/evaluation';
 import { extractionEvalSet } from '../src/lib/sources/evals/eval-set';
 import { EXTRACT_PROMPT_VERSION } from '../src/lib/sources/prompt';
+
+import { BIBLE_FACTS_RECORD_FORMAT, bibleFactsPromptHash, checkBibleFactsRecord, modelBibleFactsAnswers, structuralBibleFactsRecord } from '../src/lib/facts/evals/evaluation';
+import { bibleFactEvalSet } from '../src/lib/facts/evals/eval-set';
+import { BIBLE_FACTS_PROMPT_VERSION } from '../src/lib/facts/prompt';
+
+/** Where the structural bible fact record is written (beside the set), relative to the repository. */
+const BIBLE_FACTS_RECORD_RELATIVE = 'src/lib/facts/evals/evaluation-record.json';
+
+/** Bible fact extraction's set (4.1): the record written to `file` and checked as the gate checks it. */
+async function runBibleFactsEvaluation(extractor: FactExtractor | null, modelId: string | null, file: string): Promise<{ passed: boolean; detail: string }> {
+    const record = extractor
+        ? {
+              format: BIBLE_FACTS_RECORD_FORMAT,
+              set: { ...bibleFactEvalSet },
+              promptVersion: BIBLE_FACTS_PROMPT_VERSION,
+              promptHash: bibleFactsPromptHash(),
+              generator: { kind: 'model' as const, id: modelId ?? 'model' },
+              ranAt: new Date().toISOString(),
+              answers: await modelBibleFactsAnswers(extractor),
+          }
+        : structuralBibleFactsRecord();
+    mkdirSync(path.dirname(file), { recursive: true });
+    writeFileSync(file, JSON.stringify(record, null, 2) + '\n');
+    const check = checkBibleFactsRecord(record);
+    return check.ok ? { passed: true, detail: `${check.grades.length} cases` } : { passed: false, detail: `${check.reason}: ${check.detail}` };
+}
 
 /** Where the structural extraction record is written (beside the set), relative to the repository. */
 const SOURCES_RECORD_RELATIVE = 'src/lib/sources/evals/evaluation-record.json';
@@ -143,7 +175,7 @@ function fail(message: string, code: number): never {
 }
 
 /** The wired model generator in a throwaway workspace, and what it closes. */
-async function modelGenerator(): Promise<{ generator: QuestionGenerator; reconciler: Reconciler; researcher: Researcher; extractor: FactExtractor; extractorId: string; judge: Judge; id: string; reconcilerId: string; rephraserId: string; close: () => Promise<void> }> {
+async function modelGenerator(): Promise<{ generator: QuestionGenerator; reconciler: Reconciler; researcher: Researcher; extractor: FactExtractor; extractorId: string; bibleExtractor: FactExtractor; bibleExtractorId: string; judge: Judge; id: string; reconcilerId: string; rephraserId: string; close: () => Promise<void> }> {
     if (!process.env.ANTHROPIC_API_KEY?.trim()) fail('ANTHROPIC_API_KEY is not set: a model run never falls back to the structural generator', 2);
     if (!process.env.DATABASE_URL) fail('a model run needs DATABASE_URL (a migrated database: the call ledger and the spend ceiling live there)', 2);
     const budget = (() => {
@@ -196,7 +228,10 @@ async function modelGenerator(): Promise<{ generator: QuestionGenerator; reconci
     const { defaultFactExtractor } = await import('../src/lib/sources/model-seam');
     const { EXTRACT_PROMPT } = await import('../src/lib/sources/prompt');
     const extractor = defaultFactExtractor(ctx);
-    return { generator, reconciler, researcher, extractor, extractorId: modelForTier(EXTRACT_PROMPT.tier), judge, id, reconcilerId: modelForTier(RECONCILE_PROMPT.tier), rephraserId: modelForTier(REPHRASE_PROMPT.tier), close: () => prisma.$disconnect() };
+    const { defaultBibleFactExtractor } = await import('../src/lib/facts/model-seam');
+    const { BIBLE_FACTS_PROMPT } = await import('../src/lib/facts/prompt');
+    const bibleExtractor = defaultBibleFactExtractor(ctx);
+    return { generator, reconciler, researcher, extractor, extractorId: modelForTier(EXTRACT_PROMPT.tier), bibleExtractor, bibleExtractorId: modelForTier(BIBLE_FACTS_PROMPT.tier), judge, id, reconcilerId: modelForTier(RECONCILE_PROMPT.tier), rephraserId: modelForTier(REPHRASE_PROMPT.tier), close: () => prisma.$disconnect() };
 }
 
 async function main(): Promise<void> {
@@ -250,7 +285,13 @@ async function main(): Promise<void> {
             const file = args.out ? path.join(path.resolve(args.out), 'sources', 'evaluation-record.json') : path.resolve(SOURCES_RECORD_RELATIVE);
             sources = await runSourcesEvaluation(model?.extractor ?? null, model?.extractorId ?? null, file);
         }
+        let bibleFacts = null;
+        if (args.bibleFacts) {
+            const file = args.out ? path.join(path.resolve(args.out), 'bible-facts', 'evaluation-record.json') : path.resolve(BIBLE_FACTS_RECORD_RELATIVE);
+            bibleFacts = await runBibleFactsEvaluation(model?.bibleExtractor ?? null, model?.bibleExtractorId ?? null, file);
+        }
         for (const line of summaryLines(results, coverage, model ? spent : null, reconcile)) out(line);
+        if (bibleFacts) out(`Bible facts: ${bibleFacts.passed ? 'passed' : 'NOT passed'} (${bibleFacts.detail}).`);
         if (sources) out(`Sources: ${sources.passed ? 'passed' : 'NOT passed'} (${sources.detail}).`);
         if (research) out(`Research: ${research.passed ? 'passed' : 'NOT passed'} (${research.detail}).`);
         if (judgeReport) out(`Judge (${judgeReport.basis}): ${judgeReport.status}; ${judgeReport.failures.length} failing items; ${judgeReport.behaviours.map((b) => `${b.behaviour} ${b.passRate === null ? 'not judged' : `${(b.passRate * 100).toFixed(0)}%`}`).join(', ')}.`);
@@ -262,6 +303,7 @@ async function main(): Promise<void> {
             (!reconcile || reconcile.passed) &&
             (!research || research.passed) &&
             (!sources || sources.passed) &&
+            (!bibleFacts || bibleFacts.passed) &&
             (!rephrase || rephrase.passed);
         process.exitCode = ok ? 0 : 1;
     } finally {

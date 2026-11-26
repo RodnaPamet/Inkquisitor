@@ -66,6 +66,10 @@ model Book {
   sourceLibraries   SourceLibrary[]
   seriesSources     BookSeriesSource[]
   factOverrides     StoryFactOverride[]
+  /// Phase 4.1 (D27): facts drawn from the book's accepted versions, the proposals to invalidate a fact, the extraction outbox.
+  bibleFacts        StoryFact[]           @relation("StoryFactBook")
+  factProposals     StoryFactProposal[]
+  factExtractions   BibleFactExtraction[]
   /// Phase 3.1: the book's story maps, at most one of each kind.
   storyMaps         StoryMap[]
   /// Phase 3.3: the history of the book's relations (it outlives each relation).
@@ -117,6 +121,8 @@ model BibleElement {
   /// Phase 4.0: source facts linked to this element.
   factsAbout          StoryFact[] @relation("StoryFactSubject")
   factsAsObject       StoryFact[] @relation("StoryFactObject")
+  /// Phase 4.1 (D27): the facts its accepted versions state; they go with it.
+  bibleFacts          StoryFact[] @relation("StoryFactElement")
   /// Phase 3.1: where this element is drawn on the book's story maps; the
   /// nodes go with the element.
   mapNodes            MapNode[]
@@ -187,6 +193,8 @@ model BibleRelation {
   /// changes proposed to its fields; they go with it.
   questions           Question[]
   enrichmentProposals EnrichmentProposal[]
+  /// Phase 4.1 (D27): the facts its accepted versions state; they go with it (a removed relation no longer states them).
+  facts               StoryFact[]
 
   @@unique([fromElementId, toElementId, type])
   /// Phase 3.3: the key a relation field references (the workspace in every foreign key).
@@ -239,6 +247,10 @@ model BibleEntryVersion {
 
   book   Book  @relation(fields: [workspaceId, bookId], references: [workspaceId, id], onDelete: Cascade)
   author User? @relation(fields: [authorId], references: [id], onDelete: SetNull)
+  /// Phase 4.1 (D27): its fact extraction (the outbox row, written with it by trigger), the facts it states, the provenance it adds.
+  factExtraction  BibleFactExtraction?
+  facts           StoryFact[]
+  factProvenance  StoryFactProvenance[]
 
   @@unique([elementId, versionNumber])
   @@index([workspaceId, bookId])
@@ -296,6 +308,10 @@ model BibleRelationVersion {
 
   book   Book  @relation(fields: [workspaceId, bookId], references: [workspaceId, id], onDelete: Cascade)
   author User? @relation(fields: [authorId], references: [id], onDelete: SetNull)
+  /// Phase 4.1 (D27): as an element version's.
+  factExtraction  BibleFactExtraction?
+  facts           StoryFact[]
+  factProvenance  StoryFactProvenance[]
 
   @@unique([relationId, versionNumber])
   @@index([workspaceId, bookId])

@@ -98,6 +98,8 @@ export const PREDICATE_FIELDS: Readonly<Partial<Record<string, Readonly<Partial<
     CHARACTER: Object.freeze({ ROLE: 'role', WANT: 'want', APPEARANCE: 'physical_presence' }),
     SETTING: Object.freeze({ PLACE_TYPE: 'place_type' }),
     FACTION: Object.freeze({ PURPOSE: 'purpose', MEMBERSHIP: 'membership', POWER_BASE: 'power_base' }),
+    // Phase 4.1 (D27): a RULE stated about a world rule IS that rule's statement. The only widening 4.1 makes.
+    WORLD_RULE: Object.freeze({ RULE: 'rule_statement' }),
 });
 
 /** The field a confirmed fact with this predicate answers on an element of this kind, or null. */

@@ -32,6 +32,7 @@ import { seedResearchRun } from '../helpers/research';
 import { seedAiCall, seedReservation } from '../helpers/ai-calls';
 import { seedStoryMap } from '../helpers/canvas';
 import { seedSourceLibrary } from '../helpers/sources';
+import { seedFactLayer } from '../helpers/facts';
 import { createAccount, workspaceCtx } from '../helpers/workspaces';
 import { setBookInterviewDefaults, setWorkspaceInterviewDefaults } from '@/app-layer/usecases/interview-defaults';
 
@@ -81,7 +82,14 @@ async function isolationLeaks(table: string, self: string, other: string): Promi
     // asked (the question is invisible to `self`: VECTOR_SOURCE_MISSING), so
     // the probe copies a vector of the fixture source, which has no guard.
     // Unordered, LIMIT 1 picked either, and the test failed now and then.
-    const sourceFilter = table === 'VectorEmbedding' ? ` AND "sourceModel" NOT IN ('Question', 'SourceChunk')` : '';
+    // A fact linked to an element is refused by its element trigger (STORY_FACT_ELEMENT_FOREIGN, a BEFORE trigger, so
+    // before RLS's WITH CHECK): the probe copies an unlinked one (Phase 4.1's bible facts are always linked).
+    const sourceFilter =
+        table === 'VectorEmbedding'
+            ? ` AND "sourceModel" NOT IN ('Question', 'SourceChunk', 'BibleElement', 'StoryFact', 'Answer')`
+            : table === 'StoryFact'
+              ? ` AND "subjectElementId" IS NULL AND "objectElementId" IS NULL`
+              : '';
     const [source] = await prisma.$queryRawUnsafe<Array<{ row: Record<string, unknown> }>>(
         `SELECT row_to_json(t) AS row FROM "${table}" t WHERE "${col}" = $1${sourceFilter} LIMIT 1`,
         other,
@@ -145,6 +153,9 @@ beforeAll(async () => {
     // The source library (Phase 4.0): a book source and a series source, chunks, facts, an opt-in and an override.
     await seedSourceLibrary(workspaceCtx(a), aBook.bookId, 'rls-a');
     await seedSourceLibrary(workspaceCtx(b), bBook.bookId, 'rls-b');
+    // The fact layer (4.1): bible facts, a provenance row and a proposal (the outbox and embedding tasks come with the versions).
+    await seedFactLayer(workspaceCtx(a), aBook.bookId, 'rls-a');
+    await seedFactLayer(workspaceCtx(b), bBook.bookId, 'rls-b');
     // The model layer's ledger (2.1): a settled call and a live reservation.
     await seedAiCall(workspaceCtx(a), aBook.bookId, 'rls-a');
     await seedAiCall(workspaceCtx(b), bBook.bookId, 'rls-b');
@@ -200,6 +211,10 @@ it('there is something to cover: zero tables is never complete coverage', () => 
             'StoryFact',
             'BookSeriesSource',
             'StoryFactOverride',
+            'StoryFactProvenance',
+            'StoryFactProposal',
+            'BibleFactExtraction',
+            'EmbeddingTask',
         ]),
     );
 });

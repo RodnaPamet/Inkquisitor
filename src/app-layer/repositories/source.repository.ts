@@ -75,7 +75,21 @@ const FACT_SELECT = {
     carriedFromFactId: true,
     createdAt: true,
 } as const satisfies Prisma.StoryFactSelect;
-export type StoryFactRow = Prisma.StoryFactGetPayload<{ select: typeof FACT_SELECT }>;
+type RawFactRow = Prisma.StoryFactGetPayload<{ select: typeof FACT_SELECT }>;
+/**
+ * A SOURCE fact (Phase 4.0): its source and passage are set. Every read below names
+ * `sourceKind: 'SOURCE_CHUNK'`, so a bible fact (Phase 4.1, no source) is never read,
+ * decided or bulk-confirmed through this repository (`sourceFacts` drops one defensively).
+ */
+export type StoryFactRow = Omit<RawFactRow, 'sourceId' | 'chunkId'> & { sourceId: string; chunkId: string };
+
+const SOURCE_KIND = { sourceKind: 'SOURCE_CHUNK' } as const;
+
+function sourceFacts(rows: readonly RawFactRow[]): StoryFactRow[] {
+    const out: StoryFactRow[] = [];
+    for (const r of rows) if (r.sourceId !== null && r.chunkId !== null) out.push({ ...r, sourceId: r.sourceId, chunkId: r.chunkId });
+    return out;
+}
 
 export const SourceLibraryRepository = {
     async findForBook(db: Db, workspaceId: string, bookId: string): Promise<SourceLibraryRow | null> {
@@ -238,6 +252,11 @@ export const SourceChunkRepository = {
         const r = await db.sourceChunk.updateMany({ where: { workspaceId, id, extractedAt: null }, data: { extractedAt: at } });
         return r.count === 1;
     },
+    /** Mark a chunk read that can never be read, with why (#57 item 2): the rest of the source completes. */
+    async markUnreadable(db: Db, workspaceId: string, id: string, at: Date, reason: 'REPEATS_PROMPT'): Promise<boolean> {
+        const r = await db.sourceChunk.updateMany({ where: { workspaceId, id, extractedAt: null }, data: { extractedAt: at, unreadableReason: reason } });
+        return r.count === 1;
+    },
 };
 
 export interface FactViewFilter {
@@ -246,6 +265,56 @@ export interface FactViewFilter {
     /** Keyset: facts after this (chunk position order is by chunk id then position). */
     after?: { chunkId: string; position: number } | null;
     take: number;
+}
+
+/** A live bible fact (Phase 4.1, D27) as the resolver, the frontier's check and the retriever read it. */
+const BIBLE_FACT_SELECT = {
+    id: true,
+    sourceKind: true,
+    bookId: true,
+    elementId: true,
+    relationId: true,
+    bibleVersionId: true,
+    relationVersionId: true,
+    dedupeKey: true,
+    subjectName: true,
+    subjectElementId: true,
+    predicate: true,
+    objectElementId: true,
+    objectLiteral: true,
+    statement: true,
+    quote: true,
+    storyTimeFrom: true,
+    storyTimeTo: true,
+    statedAt: true,
+    supersededAt: true,
+} as const satisfies Prisma.StoryFactSelect;
+export type BibleFactRow = Prisma.StoryFactGetPayload<{ select: typeof BIBLE_FACT_SELECT }>;
+
+const BIBLE_KINDS = { sourceKind: { in: ['BIBLE_VERSION', 'RELATION_VERSION'] } } as const satisfies Prisma.StoryFactWhereInput;
+
+/** One fact drawn from an accepted version: CONFIRMED and automatic (D27). The text is `sanitiseFactForStorage`'s. */
+export interface BibleFactInsert {
+    sourceKind: 'BIBLE_VERSION' | 'RELATION_VERSION';
+    bookId: string;
+    elementId: string | null;
+    relationId: string | null;
+    bibleVersionId: string | null;
+    relationVersionId: string | null;
+    dedupeKey: string;
+    position: number;
+    subjectName: string;
+    subjectElementId: string | null;
+    predicate: string;
+    objectElementId: string | null;
+    objectLiteral: string | null;
+    statement: string;
+    quote: string;
+    quoteStart: number;
+    quoteEnd: number;
+    storyTimeFrom: string | null;
+    storyTimeTo: string | null;
+    flags: string[];
 }
 
 export const StoryFactRepository = {
@@ -301,50 +370,144 @@ export const StoryFactRepository = {
         });
     },
     async find(db: Db, workspaceId: string, id: string): Promise<StoryFactRow | null> {
-        return db.storyFact.findFirst({ where: { workspaceId, id }, select: FACT_SELECT });
+        const row = await db.storyFact.findFirst({ where: { workspaceId, id, ...SOURCE_KIND }, select: FACT_SELECT });
+        return row ? (sourceFacts([row])[0] ?? null) : null;
     },
     async listByIds(db: Db, workspaceId: string, ids: readonly string[]): Promise<StoryFactRow[]> {
         if (ids.length === 0) return [];
-        return db.storyFact.findMany({ where: { workspaceId, id: { in: [...ids] } }, take: ids.length, select: FACT_SELECT });
+        return sourceFacts(await db.storyFact.findMany({ where: { workspaceId, id: { in: [...ids] }, ...SOURCE_KIND }, take: ids.length, select: FACT_SELECT }));
     },
     /** A view's facts: these sources, optionally one status, in chunk order, keyset after a fact. */
     async listForView(db: Db, workspaceId: string, filter: FactViewFilter): Promise<StoryFactRow[]> {
         if (filter.sourceIds.length === 0) return [];
         const after = filter.after ? { OR: [{ chunkId: { gt: filter.after.chunkId } }, { chunkId: filter.after.chunkId, position: { gt: filter.after.position } }] } : {};
-        return db.storyFact.findMany({
-            where: { workspaceId, sourceId: { in: [...filter.sourceIds] }, supersededAt: null, ...(filter.status ? { status: filter.status } : {}), ...after },
-            orderBy: [{ chunkId: 'asc' }, { position: 'asc' }],
-            take: filter.take,
-            select: FACT_SELECT,
-        });
+        return sourceFacts(
+            await db.storyFact.findMany({
+                where: { workspaceId, sourceId: { in: [...filter.sourceIds] }, ...SOURCE_KIND, supersededAt: null, ...(filter.status ? { status: filter.status } : {}), ...after },
+                orderBy: [{ chunkId: 'asc' }, { position: 'asc' }],
+                take: filter.take,
+                select: FACT_SELECT,
+            }),
+        );
     },
     async countByStatus(db: Db, workspaceId: string, sourceIds: readonly string[]): Promise<Array<{ status: StoryFactStatus; count: number }>> {
         if (sourceIds.length === 0) return [];
-        const rows = await db.storyFact.groupBy({ by: ['status'], where: { workspaceId, sourceId: { in: [...sourceIds] }, supersededAt: null }, _count: { _all: true } });
+        const rows = await db.storyFact.groupBy({ by: ['status'], where: { workspaceId, sourceId: { in: [...sourceIds] }, ...SOURCE_KIND, supersededAt: null }, _count: { _all: true } });
         return rows.map((r) => ({ status: r.status, count: r._count._all }));
     },
-    /** The decided facts of a source (a re-upload's carry-over). */
+    /**
+     * The decided facts of a source (a re-upload's carry-over). A fact the author INVALIDATED (4.1: `supersededAt`, a
+     * proposal decided) is not among them: its CONFIRMED status is the decision the author has since withdrawn, and
+     * carrying it would bring the claim back live in the next version with nobody deciding (rule 1). The same claim
+     * in the new version is PENDING, for the author to decide again.
+     */
     async listDecidedForSource(db: Db, workspaceId: string, sourceId: string, take: number): Promise<StoryFactRow[]> {
-        return db.storyFact.findMany({ where: { workspaceId, sourceId, status: { in: ['CONFIRMED', 'REJECTED'] } }, orderBy: [{ chunkId: 'asc' }, { position: 'asc' }], take, select: FACT_SELECT });
+        return sourceFacts(await db.storyFact.findMany({ where: { workspaceId, sourceId, ...SOURCE_KIND, status: { in: ['CONFIRMED', 'REJECTED'] }, supersededAt: null }, orderBy: [{ chunkId: 'asc' }, { position: 'asc' }], take, select: FACT_SELECT }));
     },
     /** The confirmed facts of these sources (the frontier's check and the retriever). */
     async listConfirmed(db: Db, workspaceId: string, sourceIds: readonly string[], take: number): Promise<StoryFactRow[]> {
         if (sourceIds.length === 0) return [];
-        return db.storyFact.findMany({ where: { workspaceId, sourceId: { in: [...sourceIds] }, status: 'CONFIRMED', supersededAt: null }, orderBy: [{ chunkId: 'asc' }, { position: 'asc' }], take, select: FACT_SELECT });
+        return sourceFacts(await db.storyFact.findMany({ where: { workspaceId, sourceId: { in: [...sourceIds] }, ...SOURCE_KIND, status: 'CONFIRMED', supersededAt: null }, orderBy: [{ chunkId: 'asc' }, { position: 'asc' }], take, select: FACT_SELECT }));
     },
     /** Decide a fact (or change its decision). */
     async decide(db: Db, workspaceId: string, id: string, data: { status: 'CONFIRMED' | 'REJECTED'; decidedById: string; decidedAt: Date }): Promise<boolean> {
-        const r = await db.storyFact.updateMany({ where: { workspaceId, id, supersededAt: null }, data: { status: data.status, decidedById: data.decidedById, decidedAt: data.decidedAt } });
+        const r = await db.storyFact.updateMany({ where: { workspaceId, id, ...SOURCE_KIND, supersededAt: null }, data: { status: data.status, decidedById: data.decidedById, decidedAt: data.decidedAt } });
         return r.count === 1;
+    },
+    /** Write a version's new facts (the caller holds the book's fact lock and has resolved them: one live fact per claim). */
+    async createBibleFacts(db: Db, workspaceId: string, rows: readonly BibleFactInsert[], at: Date): Promise<Array<{ id: string; dedupeKey: string | null }>> {
+        const out: Array<{ id: string; dedupeKey: string | null }> = [];
+        for (const r of rows) {
+            out.push(
+                await db.storyFact.create({
+                    data: {
+                        workspaceId,
+                        sourceKind: r.sourceKind,
+                        bookId: r.bookId,
+                        elementId: r.elementId,
+                        relationId: r.relationId,
+                        bibleVersionId: r.bibleVersionId,
+                        relationVersionId: r.relationVersionId,
+                        automatic: true,
+                        dedupeKey: r.dedupeKey,
+                        position: r.position,
+                        subjectName: r.subjectName,
+                        subjectElementId: r.subjectElementId,
+                        predicate: r.predicate,
+                        objectElementId: r.objectElementId,
+                        objectLiteral: r.objectLiteral,
+                        statement: r.statement,
+                        quote: r.quote,
+                        quoteStart: r.quoteStart,
+                        quoteEnd: r.quoteEnd,
+                        storyTimeFrom: r.storyTimeFrom,
+                        storyTimeTo: r.storyTimeTo,
+                        flags: r.flags,
+                        status: 'CONFIRMED',
+                        decidedAt: at,
+                    },
+                    select: { id: true, dedupeKey: true },
+                }),
+            );
+        }
+        return out;
     },
     /** Confirm these facts, each only while it is PENDING and unflagged (the bulk confirm). Returns how many moved. */
     async confirmPending(db: Db, workspaceId: string, ids: readonly string[], data: { decidedById: string; decidedAt: Date }): Promise<number> {
         if (ids.length === 0) return 0;
         const r = await db.storyFact.updateMany({
-            where: { workspaceId, id: { in: [...ids] }, status: 'PENDING', supersededAt: null, flags: { isEmpty: true } },
+            where: { workspaceId, id: { in: [...ids] }, ...SOURCE_KIND, status: 'PENDING', supersededAt: null, flags: { isEmpty: true } },
             data: { status: 'CONFIRMED', decidedById: data.decidedById, decidedAt: data.decidedAt },
         });
         return r.count;
+    },
+};
+
+/** Bible facts (Phase 4.1, D27): read by the bible fact job, the frontier, the retriever and the review; their one write here is the author's invalidation. Inserts are `StoryFactRepository.createBibleFacts` (the sanitiser guard). */
+export const BibleFactRepository = {
+    /** A book's live bible facts about these subject elements (both an element's and a relation's), oldest first. */
+    async listLiveAbout(db: Db, workspaceId: string, bookId: string, subjectElementIds: readonly string[], take: number): Promise<BibleFactRow[]> {
+        if (subjectElementIds.length === 0) return [];
+        return db.storyFact.findMany({
+            where: { workspaceId, bookId, ...BIBLE_KINDS, supersededAt: null, subjectElementId: { in: [...subjectElementIds] } },
+            orderBy: [{ statedAt: 'asc' }, { id: 'asc' }],
+            take,
+            select: BIBLE_FACT_SELECT,
+        });
+    },
+    /** The live facts one entry (an element, or a relation) owns, oldest first. */
+    async listLiveOwnedBy(db: Db, workspaceId: string, bookId: string, owner: { elementId: string } | { relationId: string }, take: number): Promise<BibleFactRow[]> {
+        return db.storyFact.findMany({ where: { workspaceId, bookId, ...BIBLE_KINDS, supersededAt: null, ...owner }, orderBy: [{ statedAt: 'asc' }, { id: 'asc' }], take, select: BIBLE_FACT_SELECT });
+    },
+    /** A book's live bible facts (the retriever's ranked pool), newest first. */
+    async listLiveForBook(db: Db, workspaceId: string, bookId: string, take: number): Promise<BibleFactRow[]> {
+        return db.storyFact.findMany({ where: { workspaceId, bookId, ...BIBLE_KINDS, supersededAt: null }, orderBy: [{ statedAt: 'desc' }, { id: 'asc' }], take, select: BIBLE_FACT_SELECT });
+    },
+    /** Facts of any kind by id, scoped to a book's bible facts or the given sources (proposals name both kinds). */
+    async listAnyByIds(db: Db, workspaceId: string, ids: readonly string[]): Promise<Array<BibleFactRow & { sourceId: string | null; chunkId: string | null; status: StoryFactStatus }>> {
+        if (ids.length === 0) return [];
+        return db.storyFact.findMany({ where: { workspaceId, id: { in: [...ids] } }, take: ids.length, select: { ...BIBLE_FACT_SELECT, sourceId: true, chunkId: true, status: true } });
+    },
+    /** Invalidate a live fact, once (the author's INVALIDATE decision on a proposal). */
+    async supersede(db: Db, workspaceId: string, id: string, data: { at: Date; byFactId: string | null }): Promise<boolean> {
+        const r = await db.storyFact.updateMany({ where: { workspaceId, id, supersededAt: null }, data: { supersededAt: data.at, invalidatedByFactId: data.byFactId } });
+        return r.count === 1;
+    },
+    /** The book library's live, confirmed source facts linked to these elements (a resolve's other side). */
+    async listConfirmedSourceFactsAbout(db: Db, workspaceId: string, sourceIds: readonly string[], subjectElementIds: readonly string[], take: number): Promise<StoryFactRow[]> {
+        if (sourceIds.length === 0 || subjectElementIds.length === 0) return [];
+        return sourceFacts(
+            await db.storyFact.findMany({
+                where: { workspaceId, sourceId: { in: [...sourceIds] }, ...SOURCE_KIND, status: 'CONFIRMED', supersededAt: null, subjectElementId: { in: [...subjectElementIds] } },
+                orderBy: [{ statedAt: 'asc' }, { id: 'asc' }],
+                take,
+                select: FACT_SELECT,
+            }),
+        );
+    },
+    /** Serialises a book's fact writes (the bible fact job's resolve and persist, a proposal's decision). */
+    async lockBook(db: Db, bookId: string) {
+        await db.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${'story-facts:' + bookId}))`;
     },
 };
 

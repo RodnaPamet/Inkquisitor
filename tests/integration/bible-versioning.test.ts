@@ -200,7 +200,9 @@ describe('append-only in the database', () => {
             /BIBLE_VERSION_APPEND_ONLY/,
         );
         await expect(prisma.bibleEntryVersion.deleteMany({ where: { elementId: el.id } })).rejects.toThrow(/BIBLE_VERSION_APPEND_ONLY/);
-        await expect(prisma.$executeRawUnsafe('TRUNCATE "BibleEntryVersion"')).rejects.toThrow(/BIBLE_VERSION_APPEND_ONLY/);
+        // Phase 4.1: facts and their extraction rows reference a version, so a plain TRUNCATE is refused before the trigger is asked.
+        await expect(prisma.$executeRawUnsafe('TRUNCATE "BibleEntryVersion"')).rejects.toThrow(/BIBLE_VERSION_APPEND_ONLY|cannot truncate a table referenced in a foreign key constraint/);
+        await expect(prisma.$executeRawUnsafe('TRUNCATE "BibleEntryVersion" CASCADE')).rejects.toThrow(/BIBLE_VERSION_APPEND_ONLY/);
         expect(await versionCount(el.id)).toBe(1);
     });
 

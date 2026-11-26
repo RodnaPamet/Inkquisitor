@@ -52,7 +52,7 @@ import type { AnswerStatus, QuestionKind } from './vocabulary';
  * for the several-persona prompts; a record made under another version does
  * not mount its pack (`PROMPT_VERSION_MISMATCH`).
  */
-export const QUESTION_PROMPT_VERSION = 'question-generation.4.0.0';
+export const QUESTION_PROMPT_VERSION = 'question-generation.4.1.0';
 
 /**
  * One call's version (2.3): `QUESTION_PROMPT_VERSION` plus a digest of the
@@ -164,7 +164,7 @@ export const ENGINE_INSTRUCTIONS = [
     '- An element block that carries a "relation" is the LINK between two elements, not either element: its fields describe the link (how it began, what each side wants, how one leads to the other); ask about the link itself, and leave what either end is like to that end\'s own entry.',
     '- An element block marked "not_yet_created" is an element the author has not made yet, to sit between the two neighbouring elements it names: ask what it is and does in its own right, using the neighbours only as context, and never propose its content yourself.',
     '- The data blocks are the author\'s material or the product\'s record of it: elements (with their fields and stored values), the targets each element allows, related elements and this session\'s questions and answers.',
-    '- "source-facts" and "source-passages" blocks hold facts the author confirmed from their own drafts and notes, and passages of those drafts: use them only as context to ask sharper questions, never as a stored value, and never quote a passage as the author\'s answer.',
+    '- "source-facts" and "source-passages" blocks hold facts the book already states (drawn from its own bible, or confirmed by the author from their drafts and notes) and passages of those drafts: use them only as context to ask sharper questions, never as a stored value, and never quote a passage as the author\'s answer.',
 ].join('\n');
 
 function dialsInWords(input: PromptInput): string {

@@ -304,7 +304,13 @@ enum StoryFactStatus {
   REJECTED
 }
 
-/// Where a fact comes from (Phase 4.0). 4.1 adds the answer and the accepted version.
+/// Where a fact comes from (Phase 4.0; 4.1, D27): a passage of an uploaded
+/// source (confirmed by the author), or an accepted bible version — an
+/// element's or a relation's — whose facts count at once. An answer reaches
+/// the fact layer through the version that accepted it (its
+/// `sourceAnswerIds`), never on its own (rule 1).
 enum StoryFactSourceKind {
   SOURCE_CHUNK
+  BIBLE_VERSION
+  RELATION_VERSION
 }

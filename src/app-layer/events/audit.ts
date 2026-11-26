@@ -79,7 +79,9 @@ export type AuditAction =
     | 'STORY_FACT_DECIDED'
     | 'STORY_FACTS_BULK_CONFIRMED'
     | 'STORY_FACT_OVERRIDE_SET'
-    | 'STORY_FACT_OVERRIDE_CLEARED';
+    | 'STORY_FACT_OVERRIDE_CLEARED'
+    | 'BIBLE_FACTS_EXTRACTED'
+    | 'STORY_FACT_PROPOSAL_DECIDED';
 
 export interface AuditEventPayload {
     action: AuditAction;

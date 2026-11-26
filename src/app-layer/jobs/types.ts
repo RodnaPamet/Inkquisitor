@@ -83,12 +83,33 @@ export interface SourceIngestPayload {
     sourceId: string;
 }
 
+/**
+ * Phase 4.1 (D27): the fact layer's minutely dispatcher. No payload: it finds
+ * due bible fact extractions and embedding tasks itself
+ * (`usecases/fact-layer-dispatch.ts`).
+ */
+export type FactLayerDispatchPayload = Record<string, never>;
+
+/**
+ * One bible fact extraction (Phase 4.1, D27): the outbox row's id and its
+ * workspace, never the version's text. The executor reads the version, rebuilds
+ * its author's context from their CURRENT membership (skipped if they may no
+ * longer edit the bible) and extracts (`usecases/bible-facts.ts`). Idempotent: a
+ * row that is no longer QUEUED is left alone.
+ */
+export interface BibleFactsPayload {
+    workspaceId: string;
+    extractionId: string;
+}
+
 export interface JobPayloadMap {
     heartbeat: HeartbeatPayload;
     'book-purge': BookPurgePayload;
     'research-run': ResearchRunPayload;
     'ai-call-log-retention': AiCallLogRetentionPayload;
     'source-ingest': SourceIngestPayload;
+    'fact-layer-dispatch': FactLayerDispatchPayload;
+    'bible-facts': BibleFactsPayload;
 }
 
 export type JobName = keyof JobPayloadMap;
@@ -141,6 +162,23 @@ export const JOB_DEFAULTS: Record<JobName, JobDefaults> = {
         attempts: 1,
         backoff: { type: 'fixed', delay: 0 },
         removeOnComplete: 100,
+        removeOnFail: 200,
+    },
+    'fact-layer-dispatch': {
+        // One attempt: the next minute is the retry, and every row it would
+        // have dispatched is still due then.
+        attempts: 1,
+        backoff: { type: 'fixed', delay: 0 },
+        removeOnComplete: 50,
+        removeOnFail: 100,
+    },
+    'bible-facts': {
+        // One attempt: an extraction that stops records its outcome and the
+        // dispatcher queues it again when it is due, so a call is never repeated
+        // by the queue behind the row's back.
+        attempts: 1,
+        backoff: { type: 'fixed', delay: 0 },
+        removeOnComplete: 200,
         removeOnFail: 200,
     },
 };

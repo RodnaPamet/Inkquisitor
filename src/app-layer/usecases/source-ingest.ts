@@ -89,6 +89,8 @@ interface IngestMetrics {
     callIds: string[];
     embedded: number;
     embedFailed: boolean;
+    /** Chunks marked unreadable (#57 item 2: they repeat a sentence of the prompt). */
+    unreadable: number;
     errorCode?: string;
 }
 
@@ -169,9 +171,20 @@ async function embedChunks(ctx: WorkspaceRequestContext, source: SourceRow, clai
     }
     let after = -1;
     for (;;) {
-        const page = await runInWorkspaceContext(ctx, (db) => SourceChunkRepository.listForSource(db, ctx.workspaceId, source.id, after, MAX_EMBED_BATCH));
-        if (page.length === 0) break;
-        after = page[page.length - 1].position;
+        const read = await runInWorkspaceContext(ctx, async (db) => {
+            const rows = await SourceChunkRepository.listForSource(db, ctx.workspaceId, source.id, after, MAX_EMBED_BATCH);
+            // #57 item 1: only the chunks with no vector of this revision yet, on every pass, so a first pass whose
+            // embedding failed is retried by the resume rather than leaving retrieval lexical for good.
+            const present = new Set(await getVectorRepository().presentSources(db, ctx.workspaceId, provider.revision, SOURCE_CHUNK_MODEL, rows.map((c) => c.id)));
+            return { rows, missing: rows.filter((c) => !present.has(c.id)) };
+        });
+        if (read.rows.length === 0) break;
+        after = read.rows[read.rows.length - 1].position;
+        const page = read.missing;
+        if (page.length === 0) {
+            if (read.rows.length < MAX_EMBED_BATCH) break;
+            continue;
+        }
         const result = await provider.embed(page.map((c) => c.text), { inputType: 'passage' });
         if (!result.ok) {
             logger.warn('sources.embedding_failed', { component: 'sources', sourceId: source.id, reason: result.reason, count: page.length });
@@ -192,14 +205,14 @@ async function embedChunks(ctx: WorkspaceRequestContext, source: SourceRow, clai
             await SourceRepository.touch(db, ctx.workspaceId, source.id, claim);
         });
         metrics.embedded += page.length;
-        if (page.length < MAX_EMBED_BATCH) break;
+        if (read.rows.length < MAX_EMBED_BATCH) break;
     }
 }
 
 /** Run one ingestion (the job's body). */
 export async function executeSourceIngest(payload: { workspaceId: string; sourceId: string }, deps: SourceIngestDeps = {}): Promise<{ ran: boolean; outcome: SourceOutcome | null }> {
     const scope = { workspaceId: payload.workspaceId, requestId: randomUUID() };
-    const metrics: IngestMetrics = { chunksRead: 0, chunksFailed: 0, guardRefused: 0, factsKept: 0, factsCarried: 0, drafted: 0, refusals: {}, failures: {}, callIds: [], embedded: 0, embedFailed: false };
+    const metrics: IngestMetrics = { chunksRead: 0, chunksFailed: 0, guardRefused: 0, factsKept: 0, factsCarried: 0, drafted: 0, refusals: {}, failures: {}, callIds: [], embedded: 0, embedFailed: false, unreadable: 0 };
 
     // 1. The source, the requester's current standing, the deployment.
     const claimed = await runInWorkspaceContext(scope, async (db) => {
@@ -248,8 +261,8 @@ export async function executeSourceIngest(payload: { workspaceId: string; source
     const carriedBy = carriedByClaim(read.carried);
 
     try {
-        // 2. Embed (only on a first pass: a resume's chunks are embedded already, and an upsert of the same text writes nothing).
-        if (source.chunksDone === 0) await embedChunks(ctx, source, claim, deps.embedder ? deps.embedder() : (() => { const p = getEmbeddingProvider(); return p.ok ? p.provider : null; })(), metrics);
+        // 2. Embed what has no vector yet (every pass: a resume retries a failed first pass, #57 item 1).
+        await embedChunks(ctx, source, claim, deps.embedder ? deps.embedder() : (() => { const p = getEmbeddingProvider(); return p.ok ? p.provider : null; })(), metrics);
 
         // 3. Extract, chunk by chunk.
         const extractor = (deps.extractor ?? defaultFactExtractor)(ctx);
@@ -282,10 +295,14 @@ export async function executeSourceIngest(payload: { workspaceId: string; source
                         await runInWorkspaceContext(ctx, (db) => SourceRepository.advance(db, ctx.workspaceId, source.id, claim, { chunksDone: 0, facts: 0, spentMicroUsd: result.costMicroUsd }));
                         return { ran: true, outcome: await finish(ctx, source, stopOutcome(result.failure), { ...metrics, errorCode: result.errorCode }, await pendingOf(ctx, source.id), claim) };
                     }
-                    const yieldsNothing = result.failure === 'GUARD_REFUSED';
-                    if (yieldsNothing) metrics.guardRefused++;
+                    // #57 item 2: a chunk that repeats a sentence of the prompt can never be sent (2.1 refuses the
+                    // request it would make); it is marked read, unreadable with its reason, and the rest completes.
+                    const unreadable = result.failure === 'PROMPT_INVALID' && result.errorCode === 'REPEATS_PROMPT';
+                    const yieldsNothing = result.failure === 'GUARD_REFUSED' || unreadable;
+                    if (unreadable) metrics.unreadable++;
+                    else if (yieldsNothing) metrics.guardRefused++;
                     else metrics.chunksFailed++;
-                    const still = await persistChunk(ctx, source, claim, chunk, [], yieldsNothing, result.costMicroUsd);
+                    const still = await persistChunk(ctx, source, claim, chunk, [], yieldsNothing, result.costMicroUsd, unreadable ? 'REPEATS_PROMPT' : null);
                     if (!still) return { ran: true, outcome: null };
                     continue;
                 }
@@ -387,16 +404,37 @@ function factRow(
  * is read) and the spend, while the source is still RUNNING (a removed source
  * or a stale claim writes nothing). Returns whether the source still runs.
  */
-async function persistChunk(ctx: WorkspaceRequestContext, source: SourceRow, claim: Date, chunk: SourceChunkRow, rows: FactInsert[], read: boolean, costMicroUsd: number): Promise<boolean> {
-    return runInWorkspaceContext(ctx, async (db) => {
-        await SourceRepository.lock(db, source.id);
-        const now = await SourceRepository.find(db, ctx.workspaceId, source.id);
-        // Still RUNNING, and still under THIS worker's claim: a stale claim re-dispatched and claimed again belongs to its new worker.
-        if (!now || now.status !== 'RUNNING' || now.startedAt?.getTime() !== claim.getTime()) return false;
-        if (read) {
-            if (!(await SourceChunkRepository.markExtracted(db, ctx.workspaceId, chunk.id, new Date()))) return true;
-            await StoryFactRepository.createMany(db, ctx.workspaceId, rows);
+async function persistChunk(
+    ctx: WorkspaceRequestContext,
+    source: SourceRow,
+    claim: Date,
+    chunk: SourceChunkRow,
+    rows: FactInsert[],
+    read: boolean,
+    costMicroUsd: number,
+    unreadable: 'REPEATS_PROMPT' | null = null,
+): Promise<boolean> {
+    try {
+        return await runInWorkspaceContext(ctx, async (db) => {
+            await SourceRepository.lock(db, source.id);
+            const now = await SourceRepository.find(db, ctx.workspaceId, source.id);
+            // Still RUNNING, and still under THIS worker's claim: a stale claim re-dispatched and claimed again belongs to its new worker.
+            if (!now || now.status !== 'RUNNING' || now.startedAt?.getTime() !== claim.getTime()) return false;
+            if (read) {
+                const marked = unreadable
+                    ? await SourceChunkRepository.markUnreadable(db, ctx.workspaceId, chunk.id, new Date(), unreadable)
+                    : await SourceChunkRepository.markExtracted(db, ctx.workspaceId, chunk.id, new Date());
+                if (!marked) return true;
+                await StoryFactRepository.createMany(db, ctx.workspaceId, rows);
+            }
+            return SourceRepository.advance(db, ctx.workspaceId, source.id, claim, { chunksDone: read ? 1 : 0, facts: read ? rows.length : 0, spentMicroUsd: costMicroUsd });
+        });
+    } catch (err) {
+        // #57 item 5: the call was made and paid for; a database error writing its result must not lose its cost.
+        // Counted in a transaction of its own, under the same claim, then the failure goes on to end the run.
+        if (costMicroUsd > 0) {
+            await runInWorkspaceContext(ctx, (db) => SourceRepository.advance(db, ctx.workspaceId, source.id, claim, { chunksDone: 0, facts: 0, spentMicroUsd: costMicroUsd })).catch(() => undefined);
         }
-        return SourceRepository.advance(db, ctx.workspaceId, source.id, claim, { chunksDone: read ? 1 : 0, facts: read ? rows.length : 0, spentMicroUsd: costMicroUsd });
-    });
+        throw err;
+    }
 }

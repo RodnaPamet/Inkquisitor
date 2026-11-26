@@ -24,6 +24,8 @@ import { createBook } from '@/app-layer/usecases/books';
 import { createElement } from '@/app-layer/usecases/bible-elements';
 import { startInterview } from '@/app-layer/usecases/interviews';
 import { defaultQuestionGenerator } from '@/lib/interview/model-seam';
+import { embedderFrom, type QuestionEmbedder } from '@/app-layer/usecases/question-embeddings';
+import { StubEmbeddingProvider } from '@/lib/ai/embeddings/stub-provider';
 import type { QuestionGenerator } from '@/lib/interview/generator';
 import type { InterviewStreamEvent } from '@/lib/interview/stream-events';
 import { createAccount, workspaceCtx } from '../helpers/workspaces';
@@ -37,6 +39,16 @@ afterAll(() => prisma.$disconnect());
  * with a reason: each is a database round trip the author waits on.
  */
 const TRANSACTIONS_BEFORE_FIRST_QUESTION_MAX = 3;
+
+/**
+ * Phase 4.1 (D27): with a query embedder the round's context is searched by
+ * meaning as well as by its words. The query is embedded in the deployment
+ * (D8, non-model work, counted below) OUTSIDE every transaction — after the
+ * claim, never inside it — and the context is read in ONE transaction more.
+ * So: one transaction more than without an embedder, one embedding before the
+ * first call, and still exactly one model call before the first question.
+ */
+const TRANSACTIONS_BEFORE_FIRST_QUESTION_WITH_QUERY_MAX = TRANSACTIONS_BEFORE_FIRST_QUESTION_MAX + 1;
 
 const before = { ...process.env };
 afterEach(() => {
@@ -97,4 +109,62 @@ it('the first event and the targets precede every model call; the first question
     // And the committed round arrives after the last call, as one transaction more.
     expect(first('committed')).toBeUndefined(); // `committed` is the transport's (stream-response.ts), not the usecase's
     expect(log.filter((e) => e.type === 'draft').length).toBeGreaterThanOrEqual(callsStarted);
+});
+
+it('with a query embedder: the embedding is counted non-model work after the claim, outside every transaction, then one transaction more; the first question still follows ONE call', async () => {
+    const owner = await createAccount();
+    const ctx = workspaceCtx(owner);
+    const bookId = (await createBook(ctx, { title: 'The Long Thaw' })).id;
+    const elementId = (await createElement(ctx, bookId, { kind: 'CHARACTER', name: 'Ilse' })).id;
+
+    process.env.AI_MODEL_STUB = '1';
+    delete process.env.ANTHROPIC_API_KEY;
+    const real = defaultQuestionGenerator(ctx);
+    const original = rls.runInWorkspaceContext;
+    const tx = jest.spyOn(rls, 'runInWorkspaceContext');
+    let callsStarted = 0;
+    let embeds = 0;
+    let openTransactions = 0;
+    const counting = embedderFrom(new StubEmbeddingProvider());
+    const embedder: QuestionEmbedder = {
+        revision: counting.revision,
+        async embed(texts) {
+            embeds++;
+            // Never inside a transaction: a provider call would hold a connection while it waits.
+            expect(openTransactions).toBe(0);
+            return counting.embed(texts);
+        },
+    };
+    tx.mockImplementation(async (...args: Parameters<typeof rls.runInWorkspaceContext>) => {
+        openTransactions++;
+        try {
+            return await original(...args);
+        } finally {
+            openTransactions--;
+        }
+    });
+    let embedsAtFirstCall = -1;
+    const generator: QuestionGenerator = {
+        unavailableReason: () => real.unavailableReason(),
+        async generateCandidates(request, signal) {
+            if (callsStarted++ === 0) embedsAtFirstCall = embeds;
+            return real.generateCandidates(request, signal);
+        },
+    };
+    const log: Array<{ type: InterviewStreamEvent['type']; callsStarted: number; embeds: number; transactions: number }> = [];
+    await startInterview(
+        ctx,
+        bookId,
+        { scope: 'ELEMENT', elementId, depth: 2, detail: 3, personaKeys: ['gentle-mentor', 'socratic'] },
+        { generator, embedder, stream: { emit: (e) => log.push({ type: e.type, callsStarted, embeds, transactions: tx.mock.calls.length }), ready: () => undefined } },
+    );
+    const first = (type: InterviewStreamEvent['type']) => log.find((e) => e.type === type)!;
+    // The targets are on the wire before the query is embedded, and before any call.
+    expect(first('planned')).toMatchObject({ callsStarted: 0, embeds: 0 });
+    // Exactly one embedding (the context query) precedes the first call.
+    expect(embedsAtFirstCall).toBe(1);
+    const draft = first('draft');
+    expect(draft.callsStarted).toBe(1);
+    expect(draft.transactions).toBeLessThanOrEqual(TRANSACTIONS_BEFORE_FIRST_QUESTION_WITH_QUERY_MAX);
+    expect(draft.transactions).toBeGreaterThan(TRANSACTIONS_BEFORE_FIRST_QUESTION_MAX - 1);
 });

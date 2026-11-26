@@ -63,7 +63,7 @@ import { env } from '@/env';
 import { encodeJson, sanitiseQuestionForStorage } from '@/lib/interview/storage';
 import { STATUS_AFTER_STOP, type PersonaKey, type StopReason } from '@/lib/interview/vocabulary';
 import { PENDING_SUBJECT_ID, subjectIdOf } from '@/lib/interview/subjects';
-import { assembleSourceContext, type SourceContext } from './source-retrieval';
+import { assembleSourceContext, EMPTY_SOURCE_CONTEXT, type SourceContext } from './source-retrieval';
 import { challengeableOf, frontierOf, frontierStop, loadInterviewState, nextRoundNumber, stopDetailFor, type InterviewState } from './interview-state';
 import { defaultQuestionEmbedder, findQuestionNeighbours, questionRecord, upsertQuestionVectors, type QuestionEmbedder } from './question-embeddings';
 
@@ -213,7 +213,7 @@ export async function endSession(
 
 export type ClaimOutcome =
     | { kind: 'stopped'; reason: StopReason }
-    | { kind: 'claimed'; roundId: string; roundNumber: number; plan: RoundPlan; state: InterviewState; sourceContext: SourceContext };
+    | { kind: 'claimed'; roundId: string; roundNumber: number; plan: RoundPlan; state: InterviewState; sourceContext: SourceContext; contextDeferred: boolean };
 
 /** The scope's plain elements (no relation, no element not yet created): what the retriever reads facts and passages for. */
 function scopeOf(state: InterviewState) {
@@ -279,7 +279,15 @@ function alreadyPausedFor(session: SessionRow, detail: { problem: string; packs:
  * pack whose file changed since the session started — or one it never pinned
  * (a session from before pinning) — pauses it `PACK_CHANGED`.
  */
-export async function claimRound(db: PrismaTx, ctx: WorkspaceRequestContext, session: SessionRow, generator: QuestionGenerator, packs: PackContext): Promise<ClaimOutcome> {
+export async function claimRound(
+    db: PrismaTx,
+    ctx: WorkspaceRequestContext,
+    session: SessionRow,
+    generator: QuestionGenerator,
+    packs: PackContext,
+    /** Phase 4.1: read the round's context now (lexical), or after the claim with a query embedding (`contextEmbedderOf`). */
+    contextNow: boolean = true,
+): Promise<ClaimOutcome> {
     const state = await loadInterviewState(db, ctx, session);
     for (const r of state.rounds) {
         if (r.status === 'OPEN') throw new ConflictError('Close the open round first.', { reason: 'ROUND_OPEN', roundNumber: r.number });
@@ -338,11 +346,46 @@ export async function claimRound(db: PrismaTx, ctx: WorkspaceRequestContext, ses
         // Resuming a paused session: it is active again, and its stop is history.
         await InterviewSessionRepository.update(db, ctx.workspaceId, session.id, { status: 'ACTIVE', stopReason: null, stopDetail: Prisma.DbNull, endedAt: null });
     }
-    // Phase 4.0: the scope's confirmed source facts and its most relevant passages, read in the claim's own
-    // transaction (no extra round trip before the first question): lexical ranking only here, since a
-    // query embedding would be a provider call inside a transaction.
-    const sourceContext = await assembleSourceContext(db, ctx, session.bookId, scopeOf(state), null);
-    return { kind: 'claimed', roundId: round.id, roundNumber, plan, state, sourceContext };
+    // Phase 4.0 / 4.1: the round's context (related summaries, the top facts, the most relevant passages). With no
+    // query embedder it is read here, in the claim's own transaction, lexically (no extra round trip before the
+    // first question). With one, it is read AFTER the claim (`withQueryContext`): the query is embedded outside
+    // every transaction — never a provider call inside one — and the context read in one transaction more.
+    const sourceContext = contextNow ? await assembleSourceContext(db, ctx, session.bookId, scopeOf(state), null, undefined, state.related) : EMPTY_SOURCE_CONTEXT;
+    return { kind: 'claimed', roundId: round.id, roundNumber, plan, state, sourceContext, contextDeferred: !contextNow };
+}
+
+/** The embedder a round's context query uses (Phase 4.1, D27): the deps' (`null`: none), else the deployment's. */
+export function contextEmbedderOf(deps: InterviewDeps): QuestionEmbedder | null {
+    return deps.embedder === undefined ? defaultQuestionEmbedder() : deps.embedder;
+}
+
+/** The text a round's context query embeds: the scope's names and the round's targets, short, never an answer. */
+export function contextQueryText(claim: Extract<ClaimOutcome, { kind: 'claimed' }>): string {
+    const names = [...new Set(claim.state.elements.map((e) => e.name).filter((n) => n.trim() !== ''))];
+    const targets = [...new Set(claim.plan.targets.map((t) => t.fieldKey.replace(/_/g, ' ')))];
+    return [...names, ...targets].join(' ').slice(0, 400);
+}
+
+/**
+ * The deferred context (Phase 4.1, D27): embed the query in the deployment (D8), OUTSIDE every transaction, then
+ * read the context in one transaction with it — vector hits (filtered to the book's allowed set in the query) fused
+ * with the lexical ranker's. An embedding that fails reads the context lexically: it never fails the round.
+ */
+async function withQueryContext(ctx: WorkspaceRequestContext, session: SessionRow, claim: Extract<ClaimOutcome, { kind: 'claimed' }>, embedder: QuestionEmbedder | null): Promise<SourceContext> {
+    let query: { vector: readonly number[]; revision: string } | null = null;
+    if (embedder) {
+        const [vector] = await embedder.embed([contextQueryText(claim)]);
+        if (vector) query = { vector, revision: embedder.revision };
+    }
+    const read = (q: typeof query) => runInWorkspaceContext(ctx, (db) => assembleSourceContext(db, ctx, session.bookId, scopeOf(claim.state), q, undefined, claim.state.related));
+    if (!query) return read(null);
+    try {
+        return await read(query);
+    } catch (err) {
+        // The vector half failed (the store refused the query): the context is read lexically, as with no embedder.
+        logger.warn('interview.context_vector_failed', { component: 'interview', sessionId: session.id, error: err instanceof Error ? err.name : 'unknown' });
+        return read(null);
+    }
 }
 
 /**
@@ -373,13 +416,16 @@ export async function generateClaimedRound(
     deps: InterviewDeps,
 ): Promise<void> {
     const generator = generatorOf(ctx, deps);
-    const embedder = deps.embedder === undefined ? defaultQuestionEmbedder() : deps.embedder;
+    const embedder = contextEmbedderOf(deps);
     const packs = deps.packs ?? getPacks();
-    const { state, plan, sourceContext } = claim;
+    const { state, plan } = claim;
     const known = new Set(state.asked.map((q) => q.id));
 
     let output: RoundOutput;
     try {
+        // Read inside the try: the round is claimed, so a context that cannot be read FAILS the round (and pauses the
+        // session, named) rather than leaving it GENERATING until its claim goes stale.
+        const sourceContext = claim.contextDeferred ? await withQueryContext(ctx, session, claim, embedder) : claim.sourceContext;
         output = await produceRound(
             {
                 bookId: session.bookId,
@@ -389,7 +435,8 @@ export async function generateClaimedRound(
                 personaKeys: session.personaKeys,
                 plan,
                 elements: state.elements,
-                related: state.related,
+                // The related summaries the context's budget kept (4.1), else the state's.
+                related: sourceContext.related ? [...sourceContext.related] : state.related,
                 sessionAnswers: state.promptAnswers,
                 asked: state.asked,
                 packs,

@@ -65,6 +65,7 @@ import {
     type VectorDb,
     type VectorMatch,
     type VectorRecord,
+    type VectorScopeFilter,
     type VectorSearchQuery,
     type VectorStoreBackend,
 } from './types';
@@ -139,6 +140,7 @@ export function buildSearchQuery(workspaceId: string, query: VectorSearchQuery, 
     const distance = Prisma.sql`("embedding" <=> (${q}::vector(${d})))`;
     const book = query.bookId !== undefined ? Prisma.sql`AND "bookId" = ${query.bookId}` : Prisma.empty;
     const models = query.sourceModels ? Prisma.sql`AND "sourceModel" = ANY(${[...query.sourceModels]}::text[])` : Prisma.empty;
+    const within = query.within ? withinSql(workspaceId, query.within) : Prisma.empty;
     return Prisma.sql`
         SELECT "sourceModel", "sourceId", "chunkIndex", "bookId", "contentHash", 1 - ${distance} AS score
         FROM ${TABLE}
@@ -146,8 +148,30 @@ export function buildSearchQuery(workspaceId: string, query: VectorSearchQuery, 
           AND "embeddingRevision" = ${query.embeddingRevision}
           ${book}
           ${models}
+          ${within}
         ORDER BY ${distance}, "sourceModel" COLLATE "C", "sourceId" COLLATE "C", "chunkIndex"
         LIMIT ${query.k}`;
+}
+
+/**
+ * A `within` scope as SQL (`types.ts`, VECTOR_SCOPES): the source row is joined by id IN the query, under the
+ * caller's RLS, so the ranking is over the allowed set and nothing else. Each scope names its model too, so a
+ * vector of another model never passes for an allowed one.
+ */
+export function withinSql(workspaceId: string, w: VectorScopeFilter): Prisma.Sql {
+    const ids = [...w.sourceIds];
+    switch (w.scope) {
+        case 'chunks-of-sources':
+            return Prisma.sql`AND "sourceModel" = 'SourceChunk' AND EXISTS (
+                SELECT 1 FROM "SourceChunk" p WHERE p."id" = ${TABLE}."sourceId" AND p."workspaceId" = ${workspaceId} AND p."sourceId" = ANY(${ids}::text[]))`;
+        case 'facts-of-book':
+            return Prisma.sql`AND "sourceModel" = 'StoryFact' AND EXISTS (
+                SELECT 1 FROM "StoryFact" p WHERE p."id" = ${TABLE}."sourceId" AND p."workspaceId" = ${workspaceId}
+                  AND p."supersededAt" IS NULL AND p."status" = 'CONFIRMED'
+                  AND (p."bookId" = ${w.bookId ?? null} OR p."sourceId" = ANY(${ids}::text[])))`;
+        default:
+            throw new VectorStoreError('INVALID_QUERY', 'unknown within scope');
+    }
 }
 
 type SearchRow = {
@@ -359,6 +383,16 @@ export function createPgvectorStore(): VectorStoreBackend {
                 contentHash: r.contentHash,
                 score: Number(r.score),
             }));
+        },
+
+        async presentSources(db, workspaceId, embeddingRevision, sourceModel, sourceIds): Promise<string[]> {
+            await assertReady(db, workspaceId);
+            if (sourceIds.length === 0) return [];
+            const rows = await db.$queryRaw<Array<{ sourceId: string }>>(Prisma.sql`
+                SELECT DISTINCT "sourceId" FROM ${TABLE}
+                WHERE "workspaceId" = ${workspaceId} AND "embeddingRevision" = ${embeddingRevision}
+                  AND "sourceModel" = ${sourceModel} AND "sourceId" = ANY(${[...sourceIds]}::text[])`);
+            return rows.map((r) => r.sourceId);
         },
 
         async listKeys(db, workspaceId, embeddingRevision, limit): Promise<StoredVectorKey[]> {

@@ -105,9 +105,25 @@ describe('a full map: 500 nodes and 1,500 edges', () => {
 
 describe('arrange runs off the main thread', () => {
     const layoutOnMain = computeAutoLayout as jest.MockedFunction<typeof computeAutoLayout>;
-    const realLayout = jest.requireActual('@/lib/canvas/canvas-auto-layout').computeAutoLayout as typeof computeAutoLayout;
+    /** Every laid-out node moved by a fixed offset: linear, and different from where it stood. */
+    function shiftedLayout(job: AutoLayoutJob): Record<string, { x: number; y: number }> {
+        const only = job.nodeIds ? new Set(job.nodeIds) : null;
+        const positions: Record<string, { x: number; y: number }> = {};
+        for (const node of job.nodes) {
+            if (only && !only.has(node.id)) continue;
+            positions[node.id] = { x: node.position.x + 137, y: node.position.y + 91 };
+        }
+        return positions;
+    }
 
-    /** A stand-in for the browser's worker: it answers a macrotask later, as a real one would, with the real layout. */
+    /**
+     * A stand-in for the browser's worker: it answers a macrotask later, as a
+     * real one would. What it answers is a cheap, deterministic layout (every
+     * node shifted), not dagre: these tests are about WHERE the layout runs and
+     * how its answer is applied, and dagre over 500 nodes and 1,500 edges inside
+     * jsdom ran past Jest's 120 s on a loaded CI runner (PR #59) — a verdict a
+     * wall clock decided. Dagre's own output is tested in `canvas-auto-layout`.
+     */
     function fakeWorker(posted: AutoLayoutJob[]): LayoutWorkerPort {
         const port: LayoutWorkerPort = {
             onmessage: null,
@@ -116,7 +132,7 @@ describe('arrange runs off the main thread', () => {
             postMessage: (job) => {
                 posted.push(job);
                 setTimeout(() => {
-                    const { positions } = realLayout(job.nodes, job.edges, job.direction, job.nodeIds ? new Set(job.nodeIds) : undefined);
+                    const positions = shiftedLayout(job);
                     port.onmessage?.({ data: { id: job.id, positions } satisfies AutoLayoutReply });
                 }, 20);
             },

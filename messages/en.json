@@ -1574,7 +1574,9 @@
             "OVERRIDE_EMPTY": "Write the book's own answer in words.",
             "NOT_A_SERIES_SOURCE": "Only a series source can be drawn on.",
             "FACT_SUPERSEDED": "This fact has been replaced.",
-            "generic": "That did not work. Try again."
+            "generic": "That did not work. Try again.",
+            "PROPOSAL_DECIDED": "That was already decided. The list is refreshed.",
+            "FACT_NOT_LIVE": "That fact no longer stands. The list is refreshed."
         },
         "facts": {
             "title": "Facts",
@@ -1641,6 +1643,31 @@
                 "RULE": "rule of the world",
                 "OTHER": "other"
             }
+        },
+        "proposals": {
+            "title": "Possible contradictions",
+            "help": "Facts drawn from your bible count as soon as you save an entry. When a newer entry says something an older fact cannot also be true alongside, or an entry no longer says what it did, nothing is changed: you decide here.",
+            "count": "{count} to decide",
+            "truncated": "Showing the first {shown}; decide these to see the rest.",
+            "contradicted": "A newer fact may contradict an older one",
+            "noLongerStated": "Your entry no longer says this",
+            "basis": {
+                "RULE": "The two give different values for the same thing.",
+                "MODEL": "Read as contradictory when the newer entry was saved.",
+                "TEXT": "The words this fact rests on are no longer in its entry."
+            },
+            "older": "Older",
+            "newer": "Newer",
+            "originElement": "From your bible: {element} (version {version})",
+            "originElementNoVersion": "From your bible: {element}",
+            "originRelation": "From your bible: {relation}",
+            "originSource": "From {file} (version {version})",
+            "originUnknown": "From an entry that is no longer in the book",
+            "invalidate": "The older fact no longer holds",
+            "invalidateGone": "This fact no longer holds",
+            "keepBoth": "Both are true",
+            "reject": "Not a contradiction",
+            "decided": "Decided."
         }
     }
 }

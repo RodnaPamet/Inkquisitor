@@ -35,6 +35,8 @@ model Workspace {
   interviewDefaults WorkspaceInterviewDefaults?
   /// Phase 4.0: the workspace's source libraries (its series library, and every book's).
   sourceLibraries   SourceLibrary[]
+  /// Phase 4.1: the vectors waiting to be (re)embedded.
+  embeddingTasks    EmbeddingTask[]
 }
 
 /// A person's role in a workspace. One per (workspace, user).

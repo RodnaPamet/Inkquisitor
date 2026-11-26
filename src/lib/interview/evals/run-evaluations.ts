@@ -34,6 +34,9 @@
  *   --sources                also run source fact extraction's set (Phase 4.0):
  *                            its record beside it (src/lib/sources/evals/), or
  *                            DIR/sources/ under --out.
+ *   --bible-facts            also run bible fact extraction's set (Phase 4.1):
+ *                            its record beside it (src/lib/facts/evals/), or
+ *                            DIR/bible-facts/ under --out.
  *   --research               also run the research agent's sets (Phase 2.6:
  *                            research and adversarial briefs over a fake web)
  *                            and write its record: beside the sets
@@ -86,6 +89,7 @@ export interface EvalArgs {
     research: boolean;
     /** Also run source fact extraction's evaluation (Phase 4.0). */
     sources?: boolean;
+    bibleFacts?: boolean;
     /** Also run the rephrase prompt's evaluation (Phase 2.H). */
     rephrase: boolean;
     /** Also judge the ungraded behaviours of the pack records written (Phase 2.H). */
@@ -107,6 +111,7 @@ export function parseEvalArgs(argv: readonly string[]): EvalArgs {
         else if (a === '--reconcile') args.reconcile = true;
         else if (a === '--research') args.research = true;
         else if (a === '--sources') args.sources = true;
+        else if (a === '--bible-facts') args.bibleFacts = true;
         else if (a === '--rephrase') args.rephrase = true;
         else if (a === '--judge') args.judge = true;
         else if (a === '--no-packs') args.packs = [];

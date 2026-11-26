@@ -81,6 +81,9 @@ import { dispatchIngestion, uploadSource } from '@/app-layer/usecases/source-lib
 import { executeSourceIngest } from '@/app-layer/usecases/source-ingest';
 import { decideFact, listBookFacts, setFactOverride } from '@/app-layer/usecases/source-facts';
 import { defaultFactExtractor } from '@/lib/sources/model-seam';
+import { defaultBibleFactExtractor } from '@/lib/facts/model-seam';
+import { executeFactLayerDispatch } from '@/app-layer/usecases/fact-layer-dispatch';
+import { extractPending } from '../helpers/facts';
 import { StubEmbeddingProvider } from '@/lib/ai/embeddings/stub-provider';
 
 /** One word that appears nowhere but in author text: any sink holding it holds author text. */
@@ -308,6 +311,24 @@ it('a marker planted in every author-text path reaches no log line, span, Sentry
     const broken = fakeAnthropic([{ kind: 'repeat', turn: { kind: 'text', text: JSON.stringify({ wrong: MARKER }) } }]);
     await executeSourceIngest({ workspaceId: ctx.workspaceId, sourceId: invalidSource.id }, { extractor: (c) => defaultFactExtractor(c, { fetch: broken.fetch }), embedder: () => new StubEmbeddingProvider() });
 
+    // Bible facts (Phase 4.1, D27): every accepted version extracted by a model that quotes the marker back
+    // (the facts stored, encrypted), then elements, facts and answers embedded in the background.
+    const bibleModel = fakeAnthropic([
+        {
+            kind: 'repeat',
+            turn: {
+                kind: 'text',
+                text: JSON.stringify({ facts: [{ subject: marked('Ilse'), predicate: 'WANT', object: MARKER, statement: `${marked('Ilse')} wants to keep the light burning.`, quote: marked('To keep the light burning.'), storyTimeFrom: '', storyTimeTo: '', contradicts: [] }] }),
+            },
+        },
+    ]);
+    const extracted = await extractPending(ctx, bookId, () => defaultBibleFactExtractor(ctx, { fetch: bibleModel.fetch }));
+    expect(extracted).toContain('OK');
+    expect(await prisma.storyFact.count({ where: { bookId, sourceKind: 'BIBLE_VERSION' } })).toBeGreaterThan(0);
+    const embedded = await executeFactLayerDispatch({ extractionOpen: () => false, embedder: () => new StubEmbeddingProvider(), workspaceIds: [ctx.workspaceId] });
+    expect(embedded).toMatchObject({ embedFailed: 0 });
+    expect(embedded.embedded).toBeGreaterThan(0);
+
     // The paths were really taken (a vacuous pass is no pass).
     expect(logged.length).toBeGreaterThan(10);
     expect(exporter.getFinishedSpans().some((s) => s.name === 'api.request')).toBe(true);
@@ -326,6 +347,8 @@ it('a marker planted in every author-text path reaches no log line, span, Sentry
     expect(read['audit details']).toContain('SOURCE_INGEST_FINISHED');
     expect(read['audit details']).toContain('STORY_FACT_OVERRIDE_SET');
     expect(read.AiCallLog).toContain('sources.extract-facts');
+    expect(read.AiCallLog).toContain('facts.bible-extract');
+    expect(read['audit details']).toContain('BIBLE_FACTS_EXTRACTED');
     expect(read.Sentry).toContain('Error');
     for (const [sink, text] of Object.entries(read)) {
         expect([sink, text.toLowerCase().includes(MARKER.toLowerCase())]).toEqual([sink, false]);

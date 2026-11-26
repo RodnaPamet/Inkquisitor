@@ -564,12 +564,13 @@ describe('the PDF export and the audit trail', () => {
         await importConceptNote(ctx, target.id, { text: 'A secret concept' }, clean);
         const rows = await prisma.auditLog.findMany({
             where: { workspaceId: owner.workspaceId, action: { in: ['BIBLE_EXPORTED', 'BIBLE_BUNDLE_IMPORTED', 'BIBLE_CONCEPT_NOTE_IMPORTED'] } },
-            select: { action: true, detailsJson: true },
+            select: { action: true, entityId: true, detailsJson: true },
         });
         expect(new Set(rows.map((r) => r.action))).toEqual(new Set(['BIBLE_EXPORTED', 'BIBLE_BUNDLE_IMPORTED', 'BIBLE_CONCEPT_NOTE_IMPORTED']));
         const all = JSON.stringify(rows.map((r) => r.detailsJson));
         for (const secret of ['Mara', 'ferrywoman', 'secret concept', 'Salt']) expect([secret, all.includes(secret)]).toEqual([secret, false]);
-        const imported = rows.find((r) => r.action === 'BIBLE_BUNDLE_IMPORTED')!.detailsJson as Record<string, unknown>;
+        // THIS import's row (the workspace holds earlier ones, and an unordered read returns them in any order).
+        const imported = rows.find((r) => r.action === 'BIBLE_BUNDLE_IMPORTED' && r.entityId === target.id)!.detailsJson as Record<string, unknown>;
         expect(imported).toMatchObject({ elementsCreated: 5, versionsWritten: 5, relationsCreated: 3 });
     });
 });

@@ -131,6 +131,12 @@ export type RlsBypassReason =
      * than its own floor.
      */
     | 'ai-call-log-retention'
+    /**
+     * The minutely fact-layer dispatcher (Phase 4.1, D27) finding due bible fact
+     * extractions and embedding tasks in every workspace: ids only; each is then
+     * marked, enqueued or embedded inside its own workspace's context.
+     */
+    | 'fact-layer-discovery'
     /** Tests exercising the bypass path or seeding rows. */
     | 'test';
 
@@ -141,6 +147,7 @@ const KNOWN_REASONS: ReadonlySet<RlsBypassReason> = new Set<RlsBypassReason>([
     'audit-verification',
     'book-purge-discovery',
     'ai-call-log-retention',
+    'fact-layer-discovery',
     'test',
 ]);
 

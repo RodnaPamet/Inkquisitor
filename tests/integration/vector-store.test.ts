@@ -110,7 +110,7 @@ describe('upsert and search through the seam', () => {
             await recordFor(texts.want, { sourceId: ids.want, bookId: aBible.bookId }),
             await recordFor(texts.fear, { sourceId: ids.fear, bookId: aBible.bookId }),
             await recordFor(texts.guild, { sourceId: ids.guild, bookId: aBible.bookId }),
-            await recordFor(texts.want, { sourceModel: 'BibleElement', sourceId: ids.element, bookId: aBible.bookId }),
+            await recordFor(texts.want, { sourceModel: 'FixtureElement', sourceId: ids.element, bookId: aBible.bookId }),
         ];
         expect(await inA((db) => repo.upsert(db, a.workspaceId, records))).toEqual({ inserted: 4, updated: 0, unchanged: 0 });
     });
@@ -143,7 +143,7 @@ describe('upsert and search through the seam', () => {
     it('a source-model filter and the book scope narrow the population', async () => {
         const embedding = await queryFor(texts.want);
         const elements = await inA((db) =>
-            repo.search(db, a.workspaceId, { embeddingRevision: REV, embedding, k: 10, sourceModels: ['BibleElement'] }),
+            repo.search(db, a.workspaceId, { embeddingRevision: REV, embedding, k: 10, sourceModels: ['FixtureElement'] }),
         );
         expect(elements.map((h) => h.sourceId)).toEqual([ids.element]);
         const otherBook = await inA((db) =>

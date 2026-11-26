@@ -14,7 +14,7 @@ bible, interview answers, research briefs, and (from Phase 5) the manuscript.
 
 | Party | What it receives | When | Terms |
 |---|---|---|---|
-| Anthropic (Claude API, Messages endpoint only) | Author text in fenced data blocks; the product's own prompts; the model's answers | Every model feature: interview questions (2.2; since 4.0 with the author's confirmed source facts and relevant passages of their own drafts as context), rephrasing (2.4), enrichment (2.5), research findings and fit (2.6), source fact extraction (4.0: each passage of an uploaded draft, its headings and the book's element names) | Zero data retention (`AI_RETENTION_MODE=zdr`, an organisation arrangement with Anthropic) is the launch gate; standard retention (`standard-beta`) only during the closed beta (decision D5, amended 2026-11-19). Output JSON schemas are code and carry no author text (Anthropic caches schemas outside zero retention). |
+| Anthropic (Claude API, Messages endpoint only) | Author text in fenced data blocks; the product's own prompts; the model's answers | Every model feature: interview questions (2.2; since 4.0 with the author's confirmed source facts and relevant passages of their own drafts as context), rephrasing (2.4), enrichment (2.5), research findings and fit (2.6), source fact extraction (4.0: each passage of an uploaded draft, its headings and the book's element names), bible fact extraction (4.1: the text of each accepted bible entry that changed, automatically, with the facts already recorded about it and the book's element names) | Zero data retention (`AI_RETENTION_MODE=zdr`, an organisation arrangement with Anthropic) is the launch gate; standard retention (`standard-beta`) only during the closed beta (decision D5, amended 2026-11-19). Output JSON schemas are code and carry no author text (Anthropic caches schemas outside zero retention). |
 
 The messages-only middleware (`src/lib/ai/client.ts`) refuses every other
 Anthropic surface (files, batches, message threads, containers, MCP, beta
@@ -30,6 +30,24 @@ same retention mode as every model call. It happens only after the author has
 seen the estimated cost and confirmed it, per source; uploading alone sends
 nothing. The uploaded file is never stored (only its extracted passages,
 encrypted at rest in PostgreSQL); the passages' embeddings are made inside
+the deployment (the 2.0 embedding provider), never by an external service.
+
+## Bible fact extraction (Phase 4.1, decision D27)
+
+When the author saves a change to their bible — an element or a relation,
+by hand, by accepting a proposal, by import or by restore — the **text of the
+entry that changed** is sent to Anthropic **automatically**, with no further
+act of the author's: one fast-tier call per saved entry, or several over pieces of at
+most 20,000 characters when a changed section is longer (a run of saves of one
+entry is read once, at its newest version), carrying the entry's name and kind
+and the sections that changed since it was last read, the facts already
+recorded about it, and the book's element names. It runs in a background job,
+under the same retention mode as every model call, and stops cleanly at the
+workspace's monthly ceiling (D10) and at the kill switch (`AI_DISABLED=1`);
+it is charged to the workspace's model-call minute (D17). In production it
+runs only once a real-model evaluation record is committed (D11). Nothing is
+stored at Anthropic beyond the Messages call; the facts are stored encrypted
+in PostgreSQL. The embeddings of elements, facts and answers are made inside
 the deployment (the 2.0 embedding provider), never by an external service.
 
 ## Research: web search and web fetch (Phase 2.6, decision D9)
