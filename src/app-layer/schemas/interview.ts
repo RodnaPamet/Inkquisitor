@@ -9,8 +9,9 @@ import { BIBLE_KINDS } from '@/lib/bible/kinds';
 import { RAW_INPUT_FACTOR } from '@/lib/bible/field-values';
 import { DETAIL, DIAL_MAX, DIAL_MIN } from '@/lib/interview/dials';
 import { OPTION_MAX } from '@/lib/interview/candidates';
-import { INTERVIEW_SCOPES, PANEL_PERSONA_KEYS, PERSONA_KEYS, isPanelPersona } from '@/lib/interview/vocabulary';
+import { INTERVIEW_SCOPES, PANEL_PERSONA_KEYS, PERSONA_KEYS, QUESTION_GENERATORS, isPanelPersona } from '@/lib/interview/vocabulary';
 import { PERSONAS_PER_SESSION_MAX } from '@/lib/interview/dial-settings';
+import { SESSION_QUESTIONS_CHOSEN_MAX, SESSION_ROUNDS_MAX } from '@/lib/interview/session-length';
 
 const id = z.string().min(1).max(64);
 const dial = z.number().int().min(DIAL_MIN).max(DIAL_MAX);
@@ -40,13 +41,30 @@ const defaultsPersonaList = personaList.refine((list) => !list.some(isPanelPerso
  * the layer below (session → book → workspace → code default). `personaKeys:
  * []` is a setting — no persona — not an absence.
  */
+/**
+ * Phase 4.4 (D30): the question generators switched off — known, none twice, and never all five (a session with no
+ * generator has nothing it could ask).
+ */
+const generatorList = z
+    .array(z.enum(QUESTION_GENERATORS))
+    .max(QUESTION_GENERATORS.length - 1)
+    .refine((list) => new Set(list).size === list.length, { message: 'A generator is named at most once.' });
+
 const dialFields = {
     depth: dial.nullish(),
     detail: dial.nullish(),
     personaKeys: sessionPersonaList.nullish(),
     offerRecommended: z.boolean().nullish(),
     preferChoice: z.boolean().nullish(),
+    generatorsOff: generatorList.nullish(),
 };
+
+/** Phase 4.4 (D23): how long the session runs, the author's choice: rounds, questions, or until they stop. */
+export const SessionLengthInput = z.discriminatedUnion('mode', [
+    z.object({ mode: z.literal('ROUNDS'), rounds: z.number().int().min(1).max(SESSION_ROUNDS_MAX) }).strict(),
+    z.object({ mode: z.literal('QUESTIONS'), questions: z.number().int().min(1).max(SESSION_QUESTIONS_CHOSEN_MAX) }).strict(),
+    z.object({ mode: z.literal('UNTIL_STOPPED') }).strict(),
+]);
 
 /** The longest written answer any detail accepts, before sanitising (raw bound). */
 export const ANSWER_TEXT_RAW_MAX = Math.max(...Object.values(DETAIL).map((d) => d.answerMax)) * RAW_INPUT_FACTOR;
@@ -72,6 +90,8 @@ export const InterviewStartInput = z
         stressTestId: id.optional(),
         /** The session's own dials (Phase 2.3: up to three personas); unset ones come from the book's and workspace's defaults. */
         ...dialFields,
+        /** Phase 4.4 (D23): the session's length; omitted, `DEFAULT_SESSION_LENGTH`. */
+        length: SessionLengthInput.optional(),
     })
     .strict()
     .superRefine((v, ctx) => {
@@ -111,6 +131,10 @@ export const InterviewDefaultsInput = z.object({ ...dialFields, personaKeys: def
 export type InterviewDefaultsInput = z.infer<typeof InterviewDefaultsInput>;
 
 export const CloseRoundInput = z.object({ skipUnanswered: z.boolean().optional() }).strict();
+
+/** Phase 4.4 (D30): the next round's body — `goOn: true` is the author's choice to go on past the minor questions (VALUE_FELL). */
+export const NextRoundInput = z.object({ goOn: z.literal(true).optional() }).strict();
+export type NextRoundInput = z.infer<typeof NextRoundInput>;
 export type CloseRoundInput = z.infer<typeof CloseRoundInput>;
 
 /** A round number in a path, bounded to PostgreSQL's integer. */

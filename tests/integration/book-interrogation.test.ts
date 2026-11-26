@@ -441,9 +441,11 @@ describe('the persona panel', () => {
         const view = await startInterview(ctx, book.bookId, { scope: 'BOOK', depth: 3, detail: 3, personaKeys: [...PANEL_PERSONA_KEYS] }, { generator, embedder: stubQuestionEmbedder });
         expect(view.session.personaKeys).toEqual([...PANEL_PERSONA_KEYS]);
         expect(view.session.packs!.map((p) => p.name)).toEqual(expect.arrayContaining(PANEL_PERSONA_KEYS.map((k) => `persona-${k}`)));
-        const groups = groupByPersona(view.round!.questions);
+        // Phase 4.4: the model-worded questions are the panel's; a code-worded one (a follow-up, a pair) is no persona's.
+        const worded = view.round!.questions.filter((q) => q.origin !== 'GENERATOR');
+        const groups = groupByPersona(worded);
         expect(groups.map((g) => g.personaKey).sort()).toEqual([...PANEL_PERSONA_KEYS].sort());
-        expect(view.round!.questions.every((q) => q.personaName !== null)).toBe(true);
+        expect(worded.every((q) => q.personaName !== null)).toBe(true);
         // Each persona's call carried its own pack.
         expect(generator.calls.map((c) => c.personaKey).sort()).toEqual([...PANEL_PERSONA_KEYS].sort());
     }, 60_000);

@@ -24,6 +24,16 @@
  *              OVERRIDE_NOT_INHERITED for any other). The series fact is not
  *              touched. Clearing it is the same key.
  *
+ *   interview Phase 4.4 (D30, item 2): a source question answered in an
+ *              interview decides its fact when its round closes — yes confirms,
+ *              no rejects — exactly as `decide` does (`decideFactInTx`, the one
+ *              writer of a fact's decision), recording the answer it came from
+ *              (`decidedByAnswerId`). Only a fact still PENDING, unflagged and in
+ *              the book's source set is decided this way: the interview never
+ *              overrides a decision the author made, and a flagged fact (D14)
+ *              is decided on the Facts page alone. A decision on the Facts page
+ *              clears the answer's.
+ *
  * Nothing here writes the bible, and nothing calls a model.
  */
 import type { StoryFactStatus } from '@prisma/client';
@@ -41,6 +51,7 @@ import { decodeHeadingPath, sanitiseOverrideForStorage, SourceTextNotStorableErr
 import { signViewToken, verifyViewToken, type FactsViewScope } from '@/lib/sources/view-token';
 import { FACT_STATUSES, FACTS_PER_VIEW_MAX, fieldAnsweredBy, type FactStatus } from '@/lib/sources/vocabulary';
 import { OverrideInput } from '@/app-layer/schemas/sources';
+import { SOURCE_NO, SOURCE_YES } from '@/lib/interview/generators/wording';
 import { requireBook } from './bible-common';
 import { bookSourceSet, LIBRARY_READ_MAX, requireSource } from './source-common';
 import { factCounts } from './source-library';
@@ -214,6 +225,36 @@ async function requireFact(db: PrismaTx, ctx: WorkspaceRequestContext, factId: s
     return fact;
 }
 
+/** A fact decision's audit row, written by the caller once every row of its transaction is written (AUDIT LAST). */
+type FactDecisionAudit = Parameters<typeof logEvent>[1];
+
+/**
+ * THE ONE WRITER OF A FACT'S DECISION (the Facts page's and, since 4.4, the interview's), in the caller's transaction.
+ * `fromAnswerId` names the interview answer a decision came from: such a decision is made only while the fact is still
+ * PENDING and unflagged (write once from the interview). Answers the audit row to write when it wrote, else null; the
+ * caller writes it LAST, after every other row of its transaction (3.H: the audit lock is held to commit, so a row
+ * written after it can deadlock with a writer holding that row and waiting to append its own audit row).
+ */
+async function writeFactDecision(
+    db: PrismaTx,
+    ctx: WorkspaceRequestContext,
+    fact: Pick<StoryFactRow, 'id' | 'sourceId' | 'predicate' | 'flags'>,
+    decision: 'CONFIRM' | 'REJECT',
+    fromAnswerId: string | null = null,
+): Promise<FactDecisionAudit | null> {
+    const status = decision === 'CONFIRM' ? 'CONFIRMED' : 'REJECTED';
+    const wrote = await StoryFactRepository.decide(db, ctx.workspaceId, fact.id, { status, decidedById: ctx.userId, decidedAt: new Date(), decidedByAnswerId: fromAnswerId, onlyPending: fromAnswerId !== null });
+    if (!wrote) return null;
+    return { action: 'STORY_FACT_DECIDED', entityType: 'StoryFact', entityId: fact.id, details: { sourceId: fact.sourceId, status, predicate: fact.predicate, flagged: fact.flags.length > 0, ...(fromAnswerId ? { fromAnswerId } : {}) } };
+}
+
+/** One fact's decision and its audit row, in the caller's transaction (the Facts page's single decision). */
+async function decideFactInTx(db: PrismaTx, ctx: WorkspaceRequestContext, fact: Pick<StoryFactRow, 'id' | 'sourceId' | 'predicate' | 'flags'>, decision: 'CONFIRM' | 'REJECT'): Promise<boolean> {
+    const audit = await writeFactDecision(db, ctx, fact, decision);
+    if (audit) await logEvent(ctx, audit, { db });
+    return audit !== null;
+}
+
 /** Confirm or reject one fact (`bible.edit`). */
 export async function decideFact(ctx: WorkspaceRequestContext, factId: string, decision: 'CONFIRM' | 'REJECT'): Promise<{ id: string; status: FactStatus }> {
     await assertPermission(ctx, 'bible.edit');
@@ -221,11 +262,55 @@ export async function decideFact(ctx: WorkspaceRequestContext, factId: string, d
     return runInWorkspaceContext(ctx, async (db) => {
         const fact = await requireFact(db, ctx, factId);
         if (fact.supersededAt) throw new ConflictError('This fact has been replaced.', { reason: 'FACT_SUPERSEDED' });
-        const status = decision === 'CONFIRM' ? 'CONFIRMED' : 'REJECTED';
-        await StoryFactRepository.decide(db, ctx.workspaceId, fact.id, { status, decidedById: ctx.userId, decidedAt: new Date() });
-        await logEvent(ctx, { action: 'STORY_FACT_DECIDED', entityType: 'StoryFact', entityId: fact.id, details: { sourceId: fact.sourceId, status, predicate: fact.predicate, flagged: fact.flags.length > 0 } }, { db });
-        return { id: fact.id, status };
+        await decideFactInTx(db, ctx, fact, decision);
+        return { id: fact.id, status: decision === 'CONFIRM' ? 'CONFIRMED' : 'REJECTED' };
     });
+}
+
+/**
+ * Phase 4.4 (D30, item 2): the decisions a closing round's SOURCE questions make, in the round's close transaction
+ * (the caller holds the session's lock and has asked `bible.edit`): each one whose latest answer is ANSWERED with the
+ * yes option confirms its fact, with the no option rejects it, naming that answer. Only a fact still pending,
+ * unflagged and in the book's source set is decided; the rest are counted. Codes and counts only.
+ *
+ * The rows are written here, in fact-id order; their audit rows are NOT: the caller writes them with `audit()` after
+ * every other row of its transaction (AUDIT LAST). No fact or bible lock is taken: a decision is one conditional
+ * update of the fact's own row, as on the Facts page.
+ */
+export async function decideFactsFromRound(
+    db: PrismaTx,
+    ctx: WorkspaceRequestContext,
+    bookId: string,
+    questions: ReadonlyArray<{ id: string; generator: string; storyFactId: string | null }>,
+    latest: ReadonlyMap<string, { id: string; status: string; choice: string | null }>,
+): Promise<{ counts: { factsConfirmed: number; factsRejected: number; factsNotDecided: number }; audit: () => Promise<void> }> {
+    const out = { factsConfirmed: 0, factsRejected: 0, factsNotDecided: 0 };
+    const audits: FactDecisionAudit[] = [];
+    const audit = async () => {
+        for (const a of audits) await logEvent(ctx, a, { db });
+    };
+    const asked = questions.flatMap((q) => {
+        const a = latest.get(q.id);
+        if (q.generator !== 'SOURCES' || !q.storyFactId || !a || a.status !== 'ANSWERED') return [];
+        const decision = a.choice === SOURCE_YES ? ('CONFIRM' as const) : a.choice === SOURCE_NO ? ('REJECT' as const) : null;
+        return decision ? [{ factId: q.storyFactId, answerId: a.id, decision }] : [];
+    });
+    if (asked.length === 0) return { counts: out, audit };
+    asked.sort((a, b) => (a.factId < b.factId ? -1 : a.factId > b.factId ? 1 : 0));
+    const set = await bookSourceSet(db, ctx, bookId);
+    const visible = new Set([...set.bookSourceIds, ...set.seriesSourceIds]);
+    const facts = new Map((await StoryFactRepository.listByIds(db, ctx.workspaceId, [...new Set(asked.map((x) => x.factId))])).map((f) => [f.id, f] as const));
+    for (const x of asked) {
+        const fact = facts.get(x.factId);
+        const wrote = fact && visible.has(fact.sourceId) && fact.status === 'PENDING' && fact.flags.length === 0 && !fact.supersededAt ? await writeFactDecision(db, ctx, fact, x.decision, x.answerId) : null;
+        if (!wrote) out.factsNotDecided++;
+        else {
+            audits.push(wrote);
+            if (x.decision === 'CONFIRM') out.factsConfirmed++;
+            else out.factsRejected++;
+        }
+    }
+    return { counts: out, audit };
 }
 
 export interface BulkConfirmInput {

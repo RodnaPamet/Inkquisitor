@@ -101,8 +101,12 @@ test('a persona panel: the Panel preset questions the book, grouped by who asked
     const groups = main.getByTestId('persona-group');
     await expect(groups.first()).toBeVisible({ timeout: 30_000 });
     expect(await groups.count()).toBeGreaterThanOrEqual(2);
-    const personas = await groups.evaluateAll((els) => els.map((e) => e.getAttribute('data-persona')));
+    // Every group a persona asked is a panel persona's; code-worded questions (Phase 4.4: no persona asked them) are
+    // their own group, with no persona.
+    const personas = (await groups.evaluateAll((els) => els.map((e) => e.getAttribute('data-persona')))).filter((p): p is string => p !== null);
+    expect(personas.length).toBeGreaterThanOrEqual(2);
     for (const p of personas) expect(p).toMatch(/^panel-(target-reader|ruthless-editor|genre-specialist)$/);
-    await expect(groups.first()).toContainText('Asked by');
-    await answerFirst(groups.first().getByTestId('question-card').first(), page);
+    const panelGroup = main.locator('[data-testid="persona-group"][data-persona]').first();
+    await expect(panelGroup).toContainText('Asked by');
+    await answerFirst(panelGroup.getByTestId('question-card').first(), page);
 });

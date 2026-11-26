@@ -23,21 +23,24 @@
  * of questions already asked (code deduplicates against every one of them
  * anyway, from the database).
  *
- * OFF BY DEFAULT (`COMPACTION_ON_BY_DEFAULT`, decided in 4.3): a session runs at
- * most six rounds of at most nine questions (`roundBudgetFor`,
- * `SESSION_QUESTIONS_MAX`), so its `this-session` block stays far below the
- * threshold and a summary would only add a call. 4.4's "until I stop" removes
- * that cap, and turns it on (a reviewed one-line change). The mechanism, its
- * threshold, its prompt, its evaluation and its record ship now, and the tests
- * run it on.
+ * ON SINCE PHASE 4.4 (`COMPACTION_ON_BY_DEFAULT`; D29 shipped it off "until
+ * 4.4", D30 item 5 turns it on): a session's length is the author's now (D23 —
+ * rounds, questions, or until they stop), so a long session's `this-session`
+ * block does pass the threshold. The threshold still decides WHEN: a short
+ * session never compacts (fewer than two rounds answered, or below
+ * `COMPACTION_THRESHOLD_CHARS`). The 4.3 review found the summary call must fit
+ * the session's budget beside the round it serves; 4.4 reserves it there
+ * (`compactionReserveTokens` in the stop check, and `COMPACTION_TOKENS_PER_ROUND`
+ * in every session's budget), so an open-ended session is not stalled for want
+ * of its summary.
  *
  * Everything here is pure and deterministic given its inputs.
  */
 import type { AuthorDataBlock } from '@/lib/ai/prompt';
 import type { PromptAnswer } from './prompt';
 
-/** The brake: false until 4.4 (the header). A deps override turns it on for a request (tests, the evaluation). */
-export const COMPACTION_ON_BY_DEFAULT = false;
+/** The brake: on since 4.4 (the header). A deps override turns it off for a request (tests, the evaluation). */
+export const COMPACTION_ON_BY_DEFAULT = true;
 /** Compaction fires when the `this-session` block would pass this many characters (about 6,000 tokens). */
 export const COMPACTION_THRESHOLD_CHARS = 24_000;
 /** Rounds kept verbatim at the end (the last one). */

@@ -6,7 +6,8 @@
 import { getTemplate } from '@/lib/bible/templates';
 import { computeFrontier } from '@/lib/interview/frontier';
 import { CODE_DEFAULT_DIALS, dialEffects, isPersonaList, nextRoundGenerationTokens, resolveDials, type DialSettings } from '@/lib/interview/dial-settings';
-import { DETAIL, DEPTH, MAX_ROUNDS, TOKENS_PER_GENERATION_CALL, TOKENS_PER_RECONCILE_CALL } from '@/lib/interview/dials';
+import { DETAIL, DEPTH, TOKENS_PER_GENERATION_CALL, TOKENS_PER_RECONCILE_CALL } from '@/lib/interview/dials';
+import { COMPACTION_TOKENS_PER_ROUND, ORDER_CALL_TOKENS } from '@/lib/interview/session-length';
 import { getPacks } from '@/lib/interview/packs';
 import { planRound } from '@/lib/interview/plan';
 import { buildGenerationRequest, maxOutputTokensFor } from '@/lib/interview/prompt';
@@ -15,7 +16,7 @@ describe('precedence: session > book > workspace > code default, per dial', () =
     it('with no layer, the code default', () => {
         expect(resolveDials({})).toEqual({
             settings: { ...CODE_DEFAULT_DIALS, personaKeys: [] },
-            sources: { depth: 'code', detail: 'code', personaKeys: 'code', offerRecommended: 'code', preferChoice: 'code' },
+            sources: { depth: 'code', detail: 'code', personaKeys: 'code', offerRecommended: 'code', preferChoice: 'code', generatorsOff: 'code' },
         });
     });
 
@@ -25,8 +26,8 @@ describe('precedence: session > book > workspace > code default, per dial', () =
             book: { detail: 4, personaKeys: ['gentle-mentor', 'ruthless-editor'] },
             workspace: { depth: 2, detail: 1, offerRecommended: false },
         });
-        expect(r.settings).toEqual({ depth: 2, detail: 4, personaKeys: ['socratic'], offerRecommended: false, preferChoice: false });
-        expect(r.sources).toEqual({ depth: 'workspace', detail: 'book', personaKeys: 'session', offerRecommended: 'workspace', preferChoice: 'code' });
+        expect(r.settings).toEqual({ depth: 2, detail: 4, personaKeys: ['socratic'], offerRecommended: false, preferChoice: false, generatorsOff: [] });
+        expect(r.sources).toEqual({ depth: 'workspace', detail: 'book', personaKeys: 'session', offerRecommended: 'workspace', preferChoice: 'code', generatorsOff: 'code' });
     });
 
     it('null and undefined pass the dial on; false and [] are settings', () => {
@@ -59,13 +60,16 @@ describe('precedence: session > book > workspace > code default, per dial', () =
 });
 
 describe('what a dial moves: budgets', () => {
-    const base: DialSettings = { depth: 3, detail: 3, personaKeys: [], offerRecommended: true, preferChoice: false };
+    const base: DialSettings = { depth: 3, detail: 3, personaKeys: [], offerRecommended: true, preferChoice: false, generatorsOff: [] };
 
-    it('depth: the levels in reach and the rounds, increasing, at most six', () => {
+    it('depth: the levels in reach and the ladder’s layers, increasing — never the rounds (Phase 4.4, D23: the six-round limit goes)', () => {
         const rounds = [1, 2, 3, 4, 5].map((depth) => dialEffects({ ...base, depth }));
         expect(rounds.map((e) => e.levelsInReach)).toEqual([1, 2, 3, 4, 5]);
-        expect(rounds.map((e) => e.roundBudget)).toEqual([2, 3, 4, 5, 6]);
-        expect(Math.max(...rounds.map((e) => e.roundBudget))).toBe(MAX_ROUNDS);
+        expect(rounds.map((e) => e.ladderLayers)).toEqual([2, 3, 4, 5, 6]);
+        // The rounds are the session's length, whatever the depth.
+        expect(new Set(rounds.map((e) => e.roundBudget))).toEqual(new Set([4]));
+        expect(dialEffects({ ...base, depth: 5 }, { mode: 'ROUNDS', rounds: 20 }).roundBudget).toBe(20);
+        expect(dialEffects({ ...base, depth: 1 }, { mode: 'UNTIL_STOPPED' }).roundBudget).toBeNull();
         expect(rounds.map((e) => e.depthEmphasis)).toEqual([1, 2, 3, 4, 5].map((d) => DEPTH[d].emphasis));
     });
 
@@ -84,7 +88,8 @@ describe('what a dial moves: budgets', () => {
         const three = dialEffects({ ...base, personaKeys: ['socratic', 'gentle-mentor', 'ruthless-editor'] });
         expect(none.generationCallsPerRound).toBe(1);
         expect(three.generationCallsPerRound).toBe(3);
-        expect(three.tokenBudget).toBe(4 * 3 * TOKENS_PER_GENERATION_CALL + 4 * TOKENS_PER_RECONCILE_CALL);
+        // Phase 4.4: each round also sets aside the tie-break and compaction (`tokensPerRound`).
+        expect(three.tokenBudget).toBe(4 * (3 * TOKENS_PER_GENERATION_CALL + TOKENS_PER_RECONCILE_CALL + ORDER_CALL_TOKENS + COMPACTION_TOKENS_PER_ROUND));
         expect(three.tokenBudget).toBeGreaterThan(none.tokenBudget);
         expect(nextRoundGenerationTokens(0)).toBe(TOKENS_PER_GENERATION_CALL);
         expect(nextRoundGenerationTokens(3)).toBe(3 * TOKENS_PER_GENERATION_CALL);
@@ -115,7 +120,7 @@ describe('what a dial moves: the prompt', () => {
             }),
         };
     }
-    const base: DialSettings = { depth: 3, detail: 3, personaKeys: [], offerRecommended: true, preferChoice: false };
+    const base: DialSettings = { depth: 3, detail: 3, personaKeys: [], offerRecommended: true, preferChoice: false, generatorsOff: [] };
 
     it('depth changes the emphasis sentence and how far the targets reach', () => {
         const shallow = request({ ...base, depth: 1 });

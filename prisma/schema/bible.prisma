@@ -123,6 +123,8 @@ model BibleElement {
   relationsTo         BibleRelation[]      @relation("BibleRelationTo")
   interviews          InterviewSession[]
   questions           Question[]
+  /// Phase 4.4: pair questions naming this element as the other end.
+  pairQuestions       Question[]           @relation("QuestionPairElement")
   /// Phase 2.5: proposed changes to this element's fields.
   enrichmentProposals EnrichmentProposal[]
   /// Phase 2.6: research proposals for this element's fields.

@@ -69,9 +69,32 @@ export function relationSubjectName(r: Pick<RelationSubject, 'fromName' | 'toNam
     return `${r.fromName} — ${r.label} — ${r.toName}`;
 }
 
-/** The subject a stored question is about: its relation, the pending element, or its element. */
-export function subjectIdOf(q: { elementId: string; relationId: string | null; aboutPending: boolean }): string {
+/**
+ * Phase 4.4 (D30): a PAIR — two elements of the session's scope with no relation yet ("What does Wren want from the
+ * Harbourmaster?"). Its subject id is `pair:<first>:<second>` (cuids hold no colon, so it is never an element's or a
+ * relation's id), its fields the built-in `related_to`'s, nothing stored. A question about it is filed under the first
+ * element with `Question.pairElementId` naming the second; its answer may lead reconcile to propose a NEW_RELATION
+ * between the two (2.5 / 3.3), which the author accepts or rejects as ever.
+ */
+export const PAIR_SUBJECT_PREFIX = 'pair:';
+
+export function pairSubjectId(firstElementId: string, secondElementId: string): string {
+    return `${PAIR_SUBJECT_PREFIX}${firstElementId}:${secondElementId}`;
+}
+
+/** The two elements a pair subject id names, or null for any other subject id. */
+export function pairOfSubject(subjectId: string): { firstElementId: string; secondElementId: string } | null {
+    if (!subjectId.startsWith(PAIR_SUBJECT_PREFIX)) return null;
+    const rest = subjectId.slice(PAIR_SUBJECT_PREFIX.length);
+    const at = rest.indexOf(':');
+    if (at <= 0 || at === rest.length - 1 || rest.indexOf(':', at + 1) !== -1) return null;
+    return { firstElementId: rest.slice(0, at), secondElementId: rest.slice(at + 1) };
+}
+
+/** The subject a stored question is about: its relation, the pending element, a pair (Phase 4.4), or its element. */
+export function subjectIdOf(q: { elementId: string; relationId: string | null; aboutPending: boolean; pairElementId?: string | null }): string {
     if (q.relationId) return q.relationId;
     if (q.aboutPending) return PENDING_SUBJECT_ID;
+    if (q.pairElementId) return pairSubjectId(q.elementId, q.pairElementId);
     return q.elementId;
 }

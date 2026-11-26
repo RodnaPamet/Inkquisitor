@@ -14,6 +14,12 @@ import { fakeGenerator } from './fake-question-generator';
 
 export const stubQuestionEmbedder = embedderFrom(new StubEmbeddingProvider());
 
+/**
+ * Phase 4.4 (D30): the four generators beside the frontier switched off — for a test about the frontier's own rules
+ * (rule 5, what a round targets, the stop precedence), which the ladder's follow-ups on answered fields would cross.
+ */
+export const FRONTIER_ONLY = ['LADDER', 'RELATIONS', 'SOURCES', 'CONTINUITY'] as const;
+
 /** An element interview with its first round generated and its first question answered. */
 export async function seedInterview(ctx: WorkspaceRequestContext, bookId: string, elementId: string, marker = 'seed') {
     const view = await startInterview(ctx, bookId, { scope: 'ELEMENT', elementId, depth: 2, detail: 3 }, { generator: fakeGenerator(), embedder: stubQuestionEmbedder });

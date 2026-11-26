@@ -313,6 +313,16 @@ export const QuestionCard = forwardRef<QuestionCardHandle, QuestionCardProps>(fu
                 <span className="font-semibold text-content-emphasis">{t('question', { number })}</span>
                 <StatusBadge variant="info">{tKind(q.kind)}</StatusBadge>
                 {q.mode === 'CHALLENGE' ? <StatusBadge variant="warning">{t('challenge')}</StatusBadge> : null}
+                {/* Phase 4.4 (D30): which generator asked, when it was not the frontier (a follow-up, a relationship, a source, continuity). */}
+                {q.generator !== 'FRONTIER' ? <StatusBadge variant="neutral" data-testid="generator-badge">{t(`generatorBadge.${q.generator}`)}</StatusBadge> : null}
+                {/* Owner decision 2026-11-26 (B): a series source's fact is decided for every book that draws on that source. */}
+                {q.generator === 'SOURCES' && q.angle === 'SERIES' ? (
+                    <span data-testid="series-fact">
+                        <StatusBadge variant="warning" tooltip={t('seriesFactHint')}>
+                            {t('seriesFact')}
+                        </StatusBadge>
+                    </span>
+                ) : null}
                 {q.reviewRequired ? (
                     <span data-testid="review-required">
                         <StatusBadge variant="warning" tooltip={t('reviewRequiredHint')}>
@@ -377,7 +387,8 @@ export const QuestionCard = forwardRef<QuestionCardHandle, QuestionCardProps>(fu
                     <Button variant="secondary" size="sm" onClick={() => void act('later')} loading={busy === 'later'} data-testid="decide-later">
                         {t('decideLater')}
                     </Button>
-                    {q.answer === null ? (
+                    {/* Phase 4.4: a question code worded from the author's own material (a quote, a follow-up) is never re-worded. */}
+                    {q.answer === null && q.origin !== 'GENERATOR' ? (
                         <Button
                             variant="secondary"
                             size="sm"

@@ -70,7 +70,12 @@ export function InterviewsList({ workspaceSlug, book, sessions, truncated, kindL
                         <StatusBadge variant={row.original.status === 'ACTIVE' ? 'info' : row.original.status === 'PAUSED' ? 'warning' : 'neutral'}>{tStatus(row.original.status)}</StatusBadge>
                     ),
                 },
-                { id: 'rounds', header: t('colRounds'), cell: ({ row }) => t('rounds', { run: row.original.roundsRun, budget: row.original.roundBudget }) },
+                { id: 'rounds', header: t('colRounds'), cell: ({ row }) =>
+                    row.original.length.mode === 'ROUNDS'
+                        ? t('rounds', { run: row.original.roundsRun, budget: row.original.length.rounds })
+                        : row.original.length.mode === 'QUESTIONS'
+                          ? t('roundsQuestions', { run: row.original.roundsRun, questions: row.original.length.questions })
+                          : t('roundsOpenEnded', { run: row.original.roundsRun }) },
                 {
                     id: 'reason',
                     header: t('colReason'),

@@ -25,6 +25,10 @@ export const STOP_REASONS = [
     'NO_ACCEPTABLE_QUESTION',
     'GUARD_REFUSED',
     'PACK_CHANGED',
+    'QUESTION_BUDGET',
+    'VALUE_FELL',
+    'SESSION_LIMIT',
+    'AWAITING_DECISIONS',
 ] as const;
 export type StopReason = (typeof STOP_REASONS)[number];
 
@@ -37,8 +41,40 @@ export type QuestionKind = (typeof QUESTION_KINDS)[number];
 export const QUESTION_MODES = ['FRONTIER', 'CHALLENGE'] as const;
 export type QuestionMode = (typeof QUESTION_MODES)[number];
 
-export const QUESTION_ORIGINS = ['MODEL', 'PACK_FALLBACK', 'REPHRASE'] as const;
+/** Phase 4.4 adds GENERATOR: worded by code from a question generator's template (D30). */
+export const QUESTION_ORIGINS = ['MODEL', 'PACK_FALLBACK', 'REPHRASE', 'GENERATOR'] as const;
 export type QuestionOrigin = (typeof QUESTION_ORIGINS)[number];
+
+/**
+ * Phase 4.4 (D23, D30): the question generators. The frontier is one among several; each proposes candidates
+ * with a value score, and code validates, deduplicates and orders every candidate whichever proposed it.
+ */
+export const QUESTION_GENERATORS = ['FRONTIER', 'LADDER', 'RELATIONS', 'SOURCES', 'CONTINUITY'] as const;
+export type QuestionGeneratorKey = (typeof QUESTION_GENERATORS)[number];
+
+export function isQuestionGenerator(value: unknown): value is QuestionGeneratorKey {
+    return typeof value === 'string' && (QUESTION_GENERATORS as readonly string[]).includes(value);
+}
+
+/** Phase 4.4 (D23): how long a session runs, the author's choice. */
+export const INTERVIEW_LENGTH_MODES = ['ROUNDS', 'QUESTIONS', 'UNTIL_STOPPED'] as const;
+export type InterviewLengthMode = (typeof INTERVIEW_LENGTH_MODES)[number];
+
+/** Phase 4.4: the deepening ladder's layers, in order (D23: what, why, what it costs, who knows, what breaks it, edge cases). */
+export const LADDER_LAYERS = ['WHAT', 'WHY', 'COST', 'WHO_KNOWS', 'BREAKS', 'EDGE_CASES'] as const;
+export type LadderLayer = (typeof LADDER_LAYERS)[number];
+
+/** Phase 4.4: a pair question's angles (D23: what each wants from the other, where they collide, what is hidden). */
+export const PAIR_ANGLES = ['WANTS', 'COLLIDE', 'HIDDEN'] as const;
+export type PairAngle = (typeof PAIR_ANGLES)[number];
+
+/**
+ * Phase 4.4 (owner decision 2026-11-26, B): a source question's angle. SERIES marks a question about a SERIES source's
+ * fact: answering it decides the fact for every book that draws on that source (as the Facts page does), so the
+ * question says so and the session page shows it.
+ */
+export const SOURCE_ANGLES = ['SERIES'] as const;
+export type SourceAngle = (typeof SOURCE_ANGLES)[number];
 
 export const ANSWER_STATUSES = ['ANSWERED', 'SKIPPED', 'DECIDE_LATER'] as const;
 export type AnswerStatus = (typeof ANSWER_STATUSES)[number];
@@ -98,4 +134,15 @@ export const STATUS_AFTER_STOP: Readonly<Record<StopReason, Exclude<InterviewSta
     // would be a reconstruction — so it stays paused, readable, and the author
     // starts a new session.
     PACK_CHANGED: 'PAUSED',
+    // Phase 4.4 (D23): a QUESTIONS session asked the number the author chose.
+    QUESTION_BUDGET: 'COMPLETED',
+    // Phase 4.4 (D30): every question left is minor; the session says so and waits for the author to go on (the
+    // next round with `goOn`), never padding a round with minor questions.
+    VALUE_FELL: 'PAUSED',
+    // Phase 4.4: the most questions one session holds (`SESSION_QUESTIONS_MAX`): a new session goes on.
+    SESSION_LIMIT: 'COMPLETED',
+    // Phase 4.4 (owner decision 2026-11-26, A): every question left follows up a field whose proposed change the
+    // author has not decided yet; the session waits for those decisions (the next round resumes it), never asking
+    // about a field while a change to it is pending.
+    AWAITING_DECISIONS: 'PAUSED',
 };

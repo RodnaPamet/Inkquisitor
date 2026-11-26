@@ -49,7 +49,12 @@ test('three rounds against the stubbed model: stream, answer by kind, ask differ
     await page.goto(`/w/${slug}/books/${bookId}/elements/${elementId}`);
     await main.locator('#element-enrich').click();
     const sheet = page.getByRole('dialog');
-    await expect(sheet.getByTestId('depth-preview')).toContainText('in up to 4 rounds', { timeout: SETUP_OPTIONS_TIMEOUT_MS });
+    await expect(sheet.getByTestId('depth-preview')).toContainText('4 layers down', { timeout: SETUP_OPTIONS_TIMEOUT_MS });
+    await expect(sheet.getByTestId('length-preview')).toHaveText('Up to 4 rounds.');
+    // Phase 4.4 (D30): this walk is the frontier's own, so the other kinds of question are switched off here.
+    const kinds = sheet.getByTestId('generator-toggles');
+    for (const name of ['Follow-ups', 'Relationships', 'Your sources', 'Continuity']) await kinds.getByRole('checkbox', { name: new RegExp(`^${name}`) }).click();
+    await expect(kinds.getByRole('checkbox', { name: /^Empty fields/ })).toBeDisabled();
     await sheet.locator('#interview-start').click();
 
     // The page becomes the session's own as soon as it exists, and round 1 streams in.
@@ -98,6 +103,31 @@ test('three rounds against the stubbed model: stream, answer by kind, ask differ
     await page.goto(sessionUrl);
     await expect(main.getByTestId('session-status')).toHaveText('Completed');
     await expect(main.locator('[data-testid="round-questions"][data-round="3"]')).toBeVisible();
+});
+
+test('a follow-up deepens an answered field, worded by code and never asked differently (Phase 4.4, D23)', async ({ page }) => {
+    test.setTimeout(120_000);
+    const slug = await signUp(page);
+    const api = page.request;
+    const bookId = ((await (await api.post(`/api/w/${slug}/books`, { data: { title: 'The Tide Table' } })).json()) as { book: { id: string } }).book.id;
+    const elementId = ((await (await api.post(`/api/w/${slug}/books/${bookId}/elements`, { data: { kind: 'CHARACTER', name: 'Ilse', fields: [{ key: 'role', value: 'The relief keeper of the light.' }] } })).json()) as {
+        element: { id: string };
+    }).element.id;
+    const main = page.getByRole('main');
+    await page.goto(`/w/${slug}/books/${bookId}/elements/${elementId}`);
+    await main.locator('#element-enrich').click();
+    const sheet = page.getByRole('dialog');
+    await expect(sheet.getByTestId('length-preview')).toBeVisible({ timeout: SETUP_OPTIONS_TIMEOUT_MS });
+    // Follow-ups only: the empty fields switched off, so the round is the stored field's follow-up.
+    await sheet.getByTestId('generator-toggles').getByRole('checkbox', { name: /^Empty fields/ }).click();
+    await sheet.locator('#interview-start').click();
+    const cards = await roundCards(page, 1);
+    // The stored role is followed up: its card names the kind of question and offers no "Ask me this differently".
+    const followUp = cards.filter({ has: page.getByTestId('generator-badge').filter({ hasText: 'Follow-up' }) }).first();
+    await expect(followUp).toBeVisible();
+    await expect(followUp).toContainText('Role in the story');
+    await expect(followUp.getByTestId('rephrase')).toHaveCount(0);
+    await answerCard(followUp, page);
 });
 
 test('Grill me on a kind; the author can stop at any time and keep what was answered', async ({ page }) => {

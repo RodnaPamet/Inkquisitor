@@ -96,6 +96,10 @@ export async function rephraseQuestion(
     // 1. Check, and read what the call needs.
     const prepared = await runInWorkspaceContext(ctx, async (db) => {
         const { session, question } = await requireAnswerable(db, ctx, bookId, sessionId, questionId);
+        // Phase 4.4 (D30): a question code worded from the author's material (a source's quote, a follow-up, a pair, a
+        // continuity item) is not re-worded: the rephrase prompt words the frontier's questions, and a source question's
+        // two options are what decide its fact.
+        if (question.origin === 'GENERATOR') throw new ConflictError('This question cannot be asked differently.', { reason: 'QUESTION_NOT_REPHRASABLE' });
         if ((await AnswerRepository.latestRevision(db, ctx.workspaceId, sessionId, questionId)) > 0) {
             throw new ConflictError('This question has an answer; it is not asked again.', { reason: 'QUESTION_ANSWERED' });
         }
@@ -177,6 +181,12 @@ export async function rephraseQuestion(
         const q = sanitiseQuestionForStorage(output.question);
         const position = (await QuestionRepository.maxPosition(db, ctx.workspaceId, sessionId, question.roundId)) + 1;
         const textCtx = { elementNames: new Map([[element.elementId, element.name]]) };
+        // THE HARD REPETITION GATE (Phase 4.4): under the book's question lock, a rephrase the book already holds in
+        // these words is not asked (the original stands, NO_REPHRASE).
+        await InterviewSessionRepository.lockBookQuestions(db, bookId);
+        const key = questionDedupeKey(dedupeTokens(q, textCtx));
+        const repeats = await QuestionRepository.findExactRepeats(db, ctx.workspaceId, bookId, [{ elementId: element.elementId, dedupeKey: key, relation: element.relation !== undefined }]);
+        if (repeats.length > 0) return { refused: 'NO_REPHRASE' } as const;
         const row = await QuestionRepository.create(db, ctx.workspaceId, {
             bookId,
             sessionId,
@@ -198,6 +208,7 @@ export async function rephraseQuestion(
             dependsOnQuestionIds: question.dependsOnQuestionIds,
             dedupeKey: questionDedupeKey(dedupeTokens(q, textCtx)),
             replacesQuestionId: question.id,
+            generator: question.generator === 'RELATIONS' ? 'RELATIONS' : 'FRONTIER',
             reviewRequired: output.question.reviewRequired,
         });
         await QuestionRepository.markSuperseded(db, ctx.workspaceId, sessionId, question.id, new Date());

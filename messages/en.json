@@ -641,15 +641,15 @@
             "titleBook": "Grill me on the whole book",
             "description": "Choose how the interview asks. Your answers are kept as you give them; nothing reaches the bible until you accept it.",
             "depth": "Depth",
-            "depthHelp": "How far down the questions go.",
+            "depthHelp": "How far down the questions go: the fields in reach, and how many layers deep a follow-up digs.",
             "detail": "Detail",
             "detailHelp": "How specific a question is and how long an answer it invites.",
             "depthPreview": {
-                "1": "Foundations only, in up to {rounds} rounds.",
-                "2": "Foundations and what rests on them, in up to {rounds} rounds.",
-                "3": "Consequences and pressures too, in up to {rounds} rounds.",
-                "4": "Consequences and pressures; it may question what you already wrote. Up to {rounds} rounds.",
-                "5": "Consistency with related entries and edge cases; it may question what you wrote. Up to {rounds} rounds."
+                "1": "Foundations only; a follow-up goes {layers} layers down.",
+                "2": "Foundations and what rests on them; follow-ups go {layers} layers down.",
+                "3": "Consequences and pressures too; follow-ups go {layers} layers down.",
+                "4": "Consequences and pressures; it may question what you already wrote. Follow-ups go {layers} layers down.",
+                "5": "Consistency with related entries and edge cases; it may question what you wrote. Follow-ups go all {layers} layers down."
             },
             "detailPreview": {
                 "1": "Up to {cap} questions a round, answered with a pick or a number.",
@@ -692,6 +692,46 @@
                 "title": "Panel",
                 "label": "Question with the panel",
                 "help": "Target Reader, Ruthless Editor and Genre Specialist question the book together; their questions are grouped by who asked."
+            },
+            "length": {
+                "title": "Length",
+                "help": "How long the interview runs. It stops sooner when nothing is left to ask, and says when the questions left are minor.",
+                "mode": {
+                    "ROUNDS": "A number of rounds",
+                    "QUESTIONS": "A number of questions",
+                    "UNTIL_STOPPED": "Until I stop"
+                },
+                "rounds": "Rounds",
+                "questions": "Questions",
+                "preview": {
+                    "ROUNDS": "Up to {rounds, plural, one {# round} other {# rounds}}.",
+                    "QUESTIONS": "Up to {questions, plural, one {# question} other {# questions}}, over as many rounds as it takes.",
+                    "UNTIL_STOPPED": "Round after round until you stop, within this interview's AI budget; it asks before going on to minor questions."
+                }
+            },
+            "generators": {
+                "title": "Kinds of question",
+                "help": "Every kind is on unless you switch it off; each round asks the questions that would add most, whichever kind they are.",
+                "FRONTIER": {
+                    "name": "Empty fields",
+                    "summary": "What the bible leaves blank, foundations first."
+                },
+                "LADDER": {
+                    "name": "Follow-ups",
+                    "summary": "Deeper questions on what you have answered: why, what it costs, who knows, what breaks it."
+                },
+                "RELATIONS": {
+                    "name": "Relationships",
+                    "summary": "Links between entries: their empty details, and pairs with no link yet."
+                },
+                "SOURCES": {
+                    "name": "Your sources",
+                    "summary": "Facts your uploaded drafts state, quoted, for you to confirm or reject."
+                },
+                "CONTINUITY": {
+                    "name": "Continuity",
+                    "summary": "Contradictions, open threads and gaps in the timeline."
+                }
             }
         },
         "personas": {
@@ -768,7 +808,11 @@
             "GUARD_REFUSED": "The safety check held this round back. Your answers are kept; try again, or edit the entry first.",
             "generic": "This interview has stopped. Your answers are kept.",
             "PACK_CHANGED": "A question pack this interview was started with has changed since. Your answers are kept; start a new interview to go on.",
-            "PACK_NOT_PINNED": "This interview was started before question packs were recorded with it, so it cannot go on. Your answers are kept; start a new interview to continue."
+            "PACK_NOT_PINNED": "This interview was started before question packs were recorded with it, so it cannot go on. Your answers are kept; start a new interview to continue.",
+            "QUESTION_BUDGET": "This interview has asked the questions you chose. Start another to go on.",
+            "VALUE_FELL": "The questions left are minor: they would add little to the bible. Go on, or finish here; your answers are kept.",
+            "SESSION_LIMIT": "This interview holds as many questions as one interview can. Start another to go on; your answers are kept.",
+            "AWAITING_DECISIONS": "The questions left follow up changes this interview proposed that you have not reviewed yet. Accept or reject them on the review page, then continue."
         },
         "session": {
             "breadcrumbInterviews": "Interviews",
@@ -818,7 +862,13 @@
             "reconcileNotRunLink": "Open the review page to run it again.",
             "reconcileBudgetSpent": "{count, plural, one {The answers of round {rounds} were not turned into proposed bible changes: this interview has used its share of the AI budget, so running the step again cannot help. Your answers are kept; copy what you need into the bible yourself.} other {The answers of rounds {rounds} were not turned into proposed bible changes: this interview has used its share of the AI budget, so running the step again cannot help. Your answers are kept; copy what you need into the bible yourself.}}",
             "askedBy": "Asked by {name}",
-            "askedByNone": "From the craft guidance"
+            "askedByNone": "From the craft guidance",
+            "askedByCode": "Follow-ups and checks drawn from your bible and sources",
+            "roundOfQuestions": "Round {number}, up to {questions} questions in all",
+            "roundOpenEnded": "Round {number}, until you stop",
+            "valueFellPrompt": "The questions left are minor. Go on with them?",
+            "goOn": "Go on",
+            "finishHere": "Finish here"
         },
         "card": {
             "question": "Question {number}",
@@ -850,7 +900,15 @@
             "acceptedRecommendation": "Took the suggestion",
             "keys": "Keys: 1–{count} choose, Enter saves",
             "keysText": "Ctrl+Enter saves and moves on",
-            "draft": "Being prepared"
+            "draft": "Being prepared",
+            "generatorBadge": {
+                "LADDER": "Follow-up",
+                "RELATIONS": "Relationship",
+                "SOURCES": "From your sources",
+                "CONTINUITY": "Continuity"
+            },
+            "seriesFact": "Series fact",
+            "seriesFactHint": "This fact comes from a series source: your answer confirms or rejects it for every book in the series that uses that source."
         },
         "panel": {
             "title": "Bible fields this round",
@@ -878,7 +936,9 @@
             "open": "Open",
             "resume": "Resume",
             "colProposals": "To review",
-            "toReview": "{count, plural, one {# change} other {# changes}}"
+            "toReview": "{count, plural, one {# change} other {# changes}}",
+            "roundsQuestions": "{run} rounds, up to {questions} questions",
+            "roundsOpenEnded": "{run} rounds, until stopped"
         },
         "errors": {
             "AI_UNAVAILABLE": "AI questions are not available on this server right now.",
@@ -912,7 +972,8 @@
             "ANSWERED_IN_BIBLE": "Your bible now answers this, so it is not asked again. Skip it, or answer it as it is.",
             "PACK_CHANGED": "A question pack this interview was started with has changed since, so it cannot be asked differently. Your answers are kept.",
             "STREAM_CAPACITY": "Too many interviews are generating at once in this workspace. Wait for one to finish, then try again.",
-            "MODEL_RATE_LIMITED": "Too many AI requests in this workspace just now. Wait a minute, then try again."
+            "MODEL_RATE_LIMITED": "Too many AI requests in this workspace just now. Wait a minute, then try again.",
+            "QUESTION_NOT_REPHRASABLE": "This question was put together from your own material, so it cannot be asked differently. Answer it, skip it, or decide later."
         }
     },
     "enrichment": {

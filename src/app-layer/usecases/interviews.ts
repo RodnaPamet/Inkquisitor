@@ -53,12 +53,13 @@ import { logEvent } from '@/app-layer/events/audit';
 import { assertPermission } from '@/app-layer/policies/permission.policy';
 import { BibleElementRepository } from '@/app-layer/repositories/bible.repository';
 import { AnswerRepository, InterviewRoundRepository, InterviewSessionRepository, QuestionRepository, type SessionRow } from '@/app-layer/repositories/interview.repository';
-import { CloseRoundInput, InterviewStartInput, RoundNumberParam } from '@/app-layer/schemas/interview';
+import { CloseRoundInput, InterviewStartInput, NextRoundInput, RoundNumberParam } from '@/app-layer/schemas/interview';
 import { runInWorkspaceContext, type PrismaTx } from '@/lib/db/rls-middleware';
 import { ConflictError, NotFoundError, ValidationError } from '@/lib/errors/types';
 import { BIBLE_KINDS, type BibleKind } from '@/lib/bible/kinds';
 import { resolveDials } from '@/lib/interview/dial-settings';
-import { roundBudgetFor, tokenBudgetFor } from '@/lib/interview/dials';
+import { DEFAULT_SESSION_LENGTH, lengthColumns, tokenBudgetFor, type SessionLength } from '@/lib/interview/session-length';
+import { generatorsOn } from '@/lib/interview/dial-settings';
 import { getPacks } from '@/lib/interview/packs';
 import { PacksNotMountableError, packNamesFor, pinForRow, pinsFor } from '@/lib/interview/pack-mount';
 import { requireBook, requireElement } from './bible-common';
@@ -78,11 +79,13 @@ import {
     endSession,
     generateClaimedRound,
     generatorOf,
+    planSession,
     stopNow,
     type InterviewDeps,
     type PackContext,
 } from './interview-rounds';
 import { skipUnanswered } from './interview-answers';
+import { decideFactsFromRound } from './source-facts';
 import {
     interviewView,
     latestAnswers,
@@ -174,11 +177,19 @@ export async function startInterview(ctx: WorkspaceRequestContext, bookId: strin
         }
         // A grill on what changed asks at the deepest level, so the stale fields can be challenged (`interview-rounds.ts`).
         const { settings, sources } = resolveDials({ session: parsed.staleFlagId ? { ...parsed, depth: 5 } : parsed, ...(await defaultLayersFor(db, ctx, bookId)) });
-        // A selection with a relation in it is questioned with the relations pack too (Phase 3.3).
-        const names = packNamesFor(kinds, settings.personaKeys, { relations: (selection?.relationIds.length ?? 0) > 0 });
+        // A selection with a relation in it is questioned with the relations pack too (Phase 3.3). Phase 4.4 (D30): so is
+        // a KIND or BOOK session with the relations generator on, whose relations between two of its elements are
+        // subjects too — when the pack mounts here; when it does not, the session starts without those subjects.
+        let relations = (selection?.relationIds.length ?? 0) > 0;
+        if (!relations && (parsed.scope === 'KIND' || parsed.scope === 'BOOK') && generatorsOn(settings.generatorsOff).has('RELATIONS')) {
+            relations = (await packContext.mounts(['relations'])).get('relations')?.ok === true;
+        }
+        const names = packNamesFor(kinds, settings.personaKeys, { relations });
         const pinned = pinsFor(names, await packContext.mounts(names));
         if (!pinned.ok) throw new PacksNotMountableError(pinned.refusals);
         const { depth, detail, personaKeys } = settings;
+        // Phase 4.4 (D23): the session's length is the author's (the request's, else four rounds); the six-round limit is gone.
+        const length: SessionLength = parsed.length ?? DEFAULT_SESSION_LENGTH;
         const session = await InterviewSessionRepository.create(db, ctx.workspaceId, {
             bookId,
             scope: parsed.scope,
@@ -197,8 +208,9 @@ export async function startInterview(ctx: WorkspaceRequestContext, bookId: strin
             personaKeys,
             offerRecommended: settings.offerRecommended,
             preferChoice: settings.preferChoice,
-            roundBudget: roundBudgetFor(depth),
-            tokenBudget: tokenBudgetFor(depth, personaKeys.length),
+            ...lengthColumns(length),
+            generatorsOff: settings.generatorsOff,
+            tokenBudget: tokenBudgetFor(length, detail, personaKeys.length),
             packPins: pinned.pins.map(pinForRow) as unknown as Prisma.InputJsonValue,
             createdById: ctx.userId,
         });
@@ -224,6 +236,8 @@ export async function startInterview(ctx: WorkspaceRequestContext, bookId: strin
                     offerRecommended: settings.offerRecommended,
                     preferChoice: settings.preferChoice,
                     dialSources: sources,
+                    length: length.mode,
+                    generatorsOff: settings.generatorsOff,
                     packs: pinned.pins.map((p) => `${p.name}@${p.version}`),
                 },
             },
@@ -345,17 +359,27 @@ export async function interviewScopeElements(ctx: WorkspaceRequestContext, bookI
     });
 }
 
-/** Generate the session's next round (a paused session resumes). */
-export async function nextRound(ctx: WorkspaceRequestContext, bookId: string, sessionId: string, deps: InterviewDeps = {}): Promise<InterviewView> {
+/**
+ * Generate the session's next round (a paused session resumes). Phase 4.4 (D30): `goOn: true` is the author's choice
+ * to go on past the point where every remaining question was minor (a session paused VALUE_FELL); recorded on the
+ * session, which no longer pauses for it.
+ */
+export async function nextRound(ctx: WorkspaceRequestContext, bookId: string, sessionId: string, deps: InterviewDeps = {}, input: unknown = {}): Promise<InterviewView> {
     await assertPermission(ctx, 'bible.edit');
+    const { goOn } = NextRoundInput.parse(input ?? {});
     const generator = generatorOf(ctx, deps);
     const packContext = packContextOf(deps);
     deps = { ...deps, packs: packContext.registry };
     const claimed = await runInWorkspaceContext(ctx, async (db) => {
         await requireBook(db, ctx, bookId);
         await InterviewSessionRepository.lock(db, sessionId);
-        const session = await requireSession(db, ctx, bookId, sessionId);
+        let session = await requireSession(db, ctx, bookId, sessionId);
         assertNotEnded(session);
+        if (goOn && !session.minorAccepted) {
+            await InterviewSessionRepository.update(db, ctx.workspaceId, sessionId, { minorAccepted: true });
+            await logEvent(ctx, { action: 'INTERVIEW_MINOR_ACCEPTED', entityType: 'InterviewSession', entityId: sessionId, details: { bookId, roundsRun: session.roundsRun } }, { db });
+            session = await requireSession(db, ctx, bookId, sessionId);
+        }
         return { session, claim: await claimRound(db, ctx, session, generator, packContext, !contextEmbedderOf(deps)) };
     });
     announceClaim(deps, claimed.claim);
@@ -391,22 +415,26 @@ export async function closeRound(ctx: WorkspaceRequestContext, bookId: string, s
             throw new ConflictError('Some questions of this round have no answer yet.', { reason: 'ROUND_HAS_UNANSWERED', unanswered: unanswered.length });
         }
         await skipUnanswered(db, ctx, sessionId, unanswered.map((q) => q.id));
+        // Phase 4.4 (D30, item 2): each source question answered yes or no decides its fact, as the Facts page would.
+        const factDecisions = await decideFactsFromRound(db, ctx, bookId, questions, latest);
         await InterviewRoundRepository.update(db, ctx.workspaceId, round.id, { status: 'CLOSED', closedAt: new Date() });
         await InterviewSessionRepository.update(db, ctx.workspaceId, sessionId, { roundsRun: session.roundsRun + 1 });
+        // AUDIT LAST (3.H): the facts' audit rows after every fact row is written.
+        await factDecisions.audit();
         await logEvent(
             ctx,
             {
                 action: 'INTERVIEW_ROUND_CLOSED',
                 entityType: 'InterviewRound',
                 entityId: round.id,
-                details: { sessionId, roundNumber, questionCount: questions.length, skippedAtClose: unanswered.length },
+                details: { sessionId, roundNumber, questionCount: questions.length, skippedAtClose: unanswered.length, ...factDecisions.counts },
             },
             { db },
         );
 
         const after = await requireSession(db, ctx, bookId, sessionId);
         const state = await loadInterviewState(db, ctx, after);
-        const stop = stopNow(after, state);
+        const stop = stopNow(after, state, undefined, await planSession(db, ctx, after, state));
         if (stop) await endSession(db, ctx, after, stop.reason, stop.detail);
         return viewOf(db, ctx, bookId, sessionId);
     });
@@ -423,8 +451,12 @@ export async function stopInterview(ctx: WorkspaceRequestContext, bookId: string
         // The open or generating round, if any, is the newest: the latest rounds hold it.
         const rounds = await InterviewRoundRepository.listForSession(db, ctx.workspaceId, sessionId, SESSION_ROUNDS_READ);
         let roundsRun = session.roundsRun;
+        const factAudits: Array<() => Promise<void>> = [];
         for (const r of rounds) {
             if (r.status === 'OPEN') {
+                // Phase 4.4 (D30, item 2): the open round's source questions answered yes or no decide their facts as it closes.
+                const asked = (await QuestionRepository.listForRound(db, ctx.workspaceId, sessionId, r.id, SESSION_QUESTIONS_MAX)).filter((q) => q.supersededAt === null);
+                factAudits.push((await decideFactsFromRound(db, ctx, bookId, asked, latestAnswers(await AnswerRepository.listForSession(db, ctx.workspaceId, sessionId, SESSION_ANSWERS_MAX)))).audit);
                 await InterviewRoundRepository.update(db, ctx.workspaceId, r.id, { status: 'CLOSED', closedAt: new Date() });
                 roundsRun += 1;
             } else if (r.status === 'GENERATING') {
@@ -432,6 +464,8 @@ export async function stopInterview(ctx: WorkspaceRequestContext, bookId: string
             }
         }
         if (roundsRun !== session.roundsRun) await InterviewSessionRepository.update(db, ctx.workspaceId, sessionId, { roundsRun });
+        // AUDIT LAST (3.H): the facts' audit rows after every row this stop writes but the session's end.
+        for (const audit of factAudits) await audit();
         await endSession(db, ctx, { ...session, roundsRun }, 'AUTHOR_STOPPED', { roundsRun });
         return viewOf(db, ctx, bookId, sessionId);
     });

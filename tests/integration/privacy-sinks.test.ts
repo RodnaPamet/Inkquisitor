@@ -65,6 +65,7 @@ import { importConceptNote } from '@/app-layer/usecases/bible-import';
 import { callStructured } from '@/app-layer/usecases/model-calls';
 import { closeRound, getInterview, nextRound, startInterview } from '@/app-layer/usecases/interviews';
 import { defaultRoundsSummarizer } from '@/lib/interview/compaction-seam';
+import { defaultQuestionOrderer } from '@/lib/interview/question-order/model-seam';
 import { fakeGenerator } from '../helpers/fake-question-generator';
 import { answerQuestion } from '@/app-layer/usecases/interview-answers';
 import { rephraseQuestion } from '@/app-layer/usecases/interview-rephrase';
@@ -345,6 +346,38 @@ it('a marker planted in every author-text path reaches no log line, span, Sentry
         }
     }
 
+    // The interview's tie-break (Phase 4.4, D30): near-equal candidates whose element names carry the marker, ordered
+    // through the real seam by a model; the call's request carries the names (fenced data) and nothing reaches a sink.
+    {
+        const restore = setFakeApiKey();
+        try {
+            const orderApi = fakeAnthropic([
+                {
+                    kind: 'respond',
+                    answer: (body) => {
+                        const n = (JSON.stringify(body.messages).match(/\\n\d+\. \[/g) ?? []).length;
+                        return { kind: 'text', text: JSON.stringify({ order: Array.from({ length: n }, (_, i) => n - i) }) };
+                    },
+                },
+            ]);
+            const tieBook = (await createBook(ctx, { title: 'Ties' })).id;
+            await createElement(ctx, tieBook, { kind: 'CHARACTER', name: marked('Ada') });
+            await createElement(ctx, tieBook, { kind: 'CHARACTER', name: marked('Bram') });
+            const tied = await startInterview(
+                ctx,
+                tieBook,
+                { scope: 'KIND', kind: 'CHARACTER', depth: 2, detail: 3, generatorsOff: ['LADDER', 'RELATIONS', 'SOURCES', 'CONTINUITY'] },
+                { generator: fakeGenerator(), embedder: stubQuestionEmbedder, orderer: (c) => defaultQuestionOrderer(c, { fetch: orderApi.fetch }), charge: () => undefined },
+            );
+            expect(orderApi.requests).toHaveLength(1);
+            expect(JSON.stringify(orderApi.requests[0])).toContain(MARKER);
+            const round = await prisma.interviewRound.findFirstOrThrow({ where: { sessionId: tied.session.id }, select: { metrics: true } });
+            expect((round.metrics as { order?: { status?: string } }).order?.status).toBe('MODEL');
+        } finally {
+            restore();
+        }
+    }
+
     // Sources (Phase 4.0): a DOCX whose name and text carry the marker, read into chunks, its
     // facts drawn by a model that quotes it, a second chunk answered with marker-laden invalid output.
     const draft = makeDocx([{ heading: marked('Chapter') }, { para: `Light wants to keep the lamp burning ${MARKER} all winter.` }]);
@@ -435,7 +468,7 @@ it('a marker planted in every author-text path reaches no log line, span, Sentry
     for (const [sink, text] of Object.entries(read)) {
         expect([sink, text.toLowerCase().includes(MARKER.toLowerCase())]).toEqual([sink, false]);
     }
-});
+}, 60_000);
 
 /** A generation request with the marker in its data, as the engine would hand the generator. */
 async function firstRequestOf() {

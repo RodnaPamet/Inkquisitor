@@ -73,9 +73,9 @@ describe('the setup sheet', () => {
     it('previews what each setting does, in one line, as it changes', async () => {
         open();
         const depth = await screen.findByTestId('depth-preview');
-        expect(depth).toHaveTextContent('Consequences and pressures too, in up to 4 rounds.');
+        expect(depth).toHaveTextContent('Consequences and pressures too; follow-ups go 4 layers down.');
         fireEvent.click(within(screen.getByRole('radiogroup', { name: 'Depth' })).getByRole('radio', { name: '1' }));
-        expect(depth).toHaveTextContent('Foundations only, in up to 2 rounds.');
+        expect(depth).toHaveTextContent('Foundations only; a follow-up goes 2 layers down.');
         const detail = screen.getByTestId('detail-preview');
         expect(detail).toHaveTextContent('Up to 6 questions a round; answers of a few sentences.');
         fireEvent.click(within(screen.getByRole('radiogroup', { name: 'Detail' })).getByRole('radio', { name: '5' }));
@@ -89,7 +89,7 @@ describe('the setup sheet', () => {
     it('opens on the book’s defaults, says where each came from, and previews them as the server reported', async () => {
         mockFetch(setupRoutes(SLUG, BOOK.id, { book: { depth: 5, personaKeys: ['socratic'] } }));
         open();
-        expect(await screen.findByTestId('depth-preview')).toHaveTextContent('Consistency with related entries and edge cases; it may question what you wrote. Up to 6 rounds.');
+        expect(await screen.findByTestId('depth-preview')).toHaveTextContent('Consistency with related entries and edge cases; it may question what you wrote. Follow-ups go all 6 layers down.');
         expect(screen.getAllByText("This book's default.")).toHaveLength(2);
         expect(screen.getByRole('checkbox', { name: /Socratic/ })).toBeChecked();
         expect(screen.getByTestId('persona-preview')).toHaveTextContent('One interviewer words every question');
@@ -109,7 +109,48 @@ describe('the setup sheet', () => {
         fireEvent.click(screen.getByRole('button', { name: 'Start interview' }));
         const url = new URL(push.mock.calls[0][0] as string, 'http://x');
         expect(url.pathname).toBe('/w/ada/books/book_1/interviews/new');
-        expect(Object.fromEntries(url.searchParams)).toEqual({ scope: 'BOOK', depth: '3', detail: '3', personas: 'ruthless-editor,socratic,target-reader', recommend: '1', choice: '1' });
+        expect(Object.fromEntries(url.searchParams)).toEqual({ scope: 'BOOK', depth: '3', detail: '3', personas: 'ruthless-editor,socratic,target-reader', recommend: '1', choice: '1', length: 'rounds:4' });
+    });
+
+    it('chooses the length (rounds, questions or until I stop) and the kinds of question, never all five off (Phase 4.4)', async () => {
+        open();
+        // (The test catalogue does not expand plurals: each preview is checked by its words.)
+        const preview = await screen.findByTestId('length-preview');
+        expect(preview).toHaveTextContent('round');
+        const length = screen.getByRole('group', { name: 'Length' });
+        fireEvent.click(within(length).getByRole('radio', { name: 'A number of questions' }));
+        expect(preview).toHaveTextContent('over as many rounds as it takes.');
+        fireEvent.click(within(screen.getByRole('radiogroup', { name: 'Questions' })).getByRole('radio', { name: '40' }));
+        expect(within(screen.getByRole('radiogroup', { name: 'Questions' })).getByRole('radio', { name: '40' })).toHaveAttribute('aria-checked', 'true');
+        fireEvent.click(within(length).getByRole('radio', { name: 'Until I stop' }));
+        expect(preview).toHaveTextContent('Round after round until you stop');
+        expect(screen.queryByRole('radiogroup', { name: 'Rounds' })).toBeNull();
+
+        const kinds = screen.getByRole('group', { name: 'Kinds of question' });
+        const box = (name: RegExp) => within(kinds).getByRole('checkbox', { name });
+        for (const name of [/Empty fields/, /Follow-ups/, /Relationships/, /Your sources/, /Continuity/]) expect(box(name)).toBeChecked();
+        for (const name of [/Follow-ups/, /Relationships/, /Your sources/, /Continuity/]) fireEvent.click(box(name));
+        // The last kind on cannot be switched off.
+        expect(box(/Empty fields/)).toBeChecked();
+        expect(box(/Empty fields/)).toBeDisabled();
+        fireEvent.click(box(/Continuity/));
+        expect(box(/Empty fields/)).toBeEnabled();
+        fireEvent.click(screen.getByRole('button', { name: 'Start interview' }));
+        const url = new URL(push.mock.calls[0][0] as string, 'http://x');
+        expect(Object.fromEntries(url.searchParams)).toMatchObject({ length: 'open', off: 'LADDER,RELATIONS,SOURCES' });
+    });
+
+    it('a number of rounds past the old six reaches the new interview’s address', async () => {
+        open();
+        await screen.findByTestId('length-preview');
+        fireEvent.click(within(screen.getByRole('radiogroup', { name: 'Rounds' })).getByRole('radio', { name: '20' }));
+        fireEvent.click(within(screen.getByRole('group', { name: 'Length' })).getByRole('radio', { name: 'A number of questions' }));
+        fireEvent.click(within(screen.getByRole('group', { name: 'Length' })).getByRole('radio', { name: 'A number of rounds' }));
+        fireEvent.click(within(screen.getByRole('radiogroup', { name: 'Rounds' })).getByRole('radio', { name: '20' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Start interview' }));
+        const url = new URL(push.mock.calls[0][0] as string, 'http://x');
+        expect(Object.fromEntries(url.searchParams)).toMatchObject({ length: 'rounds:20' });
+        expect(url.searchParams.has('off')).toBe(false);
     });
 
     it('offers an interviewer whose pack does not mount disabled, with its reason', async () => {

@@ -71,7 +71,8 @@ describe('.github/workflows/evals.yml', () => {
         expect(wf.on.workflow_dispatch.inputs!.book_level.default).toBe(false);
         const run = job.steps.find((s) => s.run?.includes('packs:evaluate'))!;
         expect(run.env).toMatchObject({ BOOK_LEVEL: '${{ inputs.book_level }}' });
-        expect(run.run).toMatch(/if \[ "\$BOOK_LEVEL" = "true" \]; then extra="\$extra --book-level"; fi/);
+        // Phase 4.4: the same input runs the interview tie-break's set (the dispatch form holds at most ten inputs).
+        expect(run.run).toMatch(/if \[ "\$BOOK_LEVEL" = "true" \]; then extra="\$extra --book-level --question-order"; fi/);
     });
 
     it('runs the deep continuity check’s set (Phase 4.2) on the same model path, its record uploaded with the others', () => {

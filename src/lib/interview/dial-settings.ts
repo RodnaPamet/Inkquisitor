@@ -8,6 +8,9 @@
  *   personaKeys       0..3  the manner: the interviewer personas (STORM's perspectives)
  *   offerRecommended        "offer a recommended answer"
  *   preferChoice            "multiple choice where possible"
+ *   generatorsOff     0..4  Phase 4.4 (D30): the question generators switched off (the frontier, the
+ *                           deepening ladder, relations, source questions, continuity); every one is on by
+ *                           default, and at least one stays on
  *
  * PRECEDENCE, per dial and independently: the session's own request, then the
  * book's default, then the workspace's default, then the code default
@@ -34,16 +37,16 @@ import {
     answerTextMax,
     isDial,
     kindsAllowed,
-    roundBudgetFor,
     roundCapFor,
-    tokenBudgetFor,
 } from './dials';
-import { PERSONA_KEYS, isPersonaKey, type PersonaKey, type QuestionKind } from './vocabulary';
+import { ladderDepthFor } from './generators/ladder-depth';
+import { DEFAULT_SESSION_LENGTH, tokenBudgetFor, type SessionLength } from './session-length';
+import { PERSONA_KEYS, QUESTION_GENERATORS, isPersonaKey, isQuestionGenerator, type PersonaKey, type QuestionGeneratorKey, type QuestionKind } from './vocabulary';
 
 /** At most this many personas question one session (design 8.3: one generation call each per round). */
 export const PERSONAS_PER_SESSION_MAX = 3;
 
-export const DIAL_KEYS = ['depth', 'detail', 'personaKeys', 'offerRecommended', 'preferChoice'] as const;
+export const DIAL_KEYS = ['depth', 'detail', 'personaKeys', 'offerRecommended', 'preferChoice', 'generatorsOff'] as const;
 export type DialKey = (typeof DIAL_KEYS)[number];
 
 export interface DialSettings {
@@ -53,6 +56,8 @@ export interface DialSettings {
     personaKeys: PersonaKey[];
     offerRecommended: boolean;
     preferChoice: boolean;
+    /** Phase 4.4 (D30): the generators switched off, in `QUESTION_GENERATORS` order. `[]`: all on. */
+    generatorsOff: QuestionGeneratorKey[];
 }
 
 /** One layer of defaults or a request: each dial set, or left to the layer below (undefined or null). */
@@ -67,6 +72,7 @@ export const CODE_DEFAULT_DIALS: Readonly<DialSettings> = Object.freeze({
     personaKeys: [],
     offerRecommended: true,
     preferChoice: false,
+    generatorsOff: [],
 });
 
 export const DIAL_SOURCES = ['session', 'book', 'workspace', 'code'] as const;
@@ -88,6 +94,16 @@ export function isPersonaList(value: unknown): value is PersonaKey[] {
     );
 }
 
+/** Is this a list of generators a layer may switch off: known keys, no repeats, at least one generator left on (D30)? */
+export function isGeneratorList(value: unknown): value is QuestionGeneratorKey[] {
+    return Array.isArray(value) && value.length < QUESTION_GENERATORS.length && value.every(isQuestionGenerator) && new Set(value).size === value.length;
+}
+
+/** The generators a session runs with: every generator its `generatorsOff` does not name. */
+export function generatorsOn(off: readonly string[]): Set<QuestionGeneratorKey> {
+    return new Set(QUESTION_GENERATORS.filter((g) => !off.includes(g)));
+}
+
 /** Is `value` an acceptable setting of `key` (never null: null means "not set")? */
 export function isDialValue<K extends DialKey>(key: K, value: unknown): value is DialSettings[K] {
     switch (key) {
@@ -96,6 +112,8 @@ export function isDialValue<K extends DialKey>(key: K, value: unknown): value is
             return isDial(value);
         case 'personaKeys':
             return isPersonaList(value);
+        case 'generatorsOff':
+            return isGeneratorList(value);
         default:
             return typeof value === 'boolean';
     }
@@ -112,14 +130,15 @@ export function resolveDials(layers: { session?: DialLayer | null; book?: DialLa
         ['book', layers.book],
         ['workspace', layers.workspace],
     ];
-    const settings = { ...CODE_DEFAULT_DIALS, personaKeys: [...CODE_DEFAULT_DIALS.personaKeys] } as DialSettings;
+    const settings = { ...CODE_DEFAULT_DIALS, personaKeys: [...CODE_DEFAULT_DIALS.personaKeys], generatorsOff: [...CODE_DEFAULT_DIALS.generatorsOff] } as DialSettings;
     const sources = {} as Record<DialKey, DialSource>;
     for (const key of DIAL_KEYS) {
         sources[key] = 'code';
         for (const [source, layer] of order) {
             const value = layer?.[key];
             if (value === undefined || value === null || !isDialValue(key, value)) continue;
-            (settings as unknown as Record<DialKey, unknown>)[key] = key === 'personaKeys' ? [...(value as PersonaKey[])] : value;
+            (settings as unknown as Record<DialKey, unknown>)[key] =
+                key === 'personaKeys' ? [...(value as PersonaKey[])] : key === 'generatorsOff' ? QUESTION_GENERATORS.filter((g) => (value as string[]).includes(g)) : value;
             sources[key] = source;
             break;
         }
@@ -136,8 +155,10 @@ export function resolveDials(layers: { session?: DialLayer | null; book?: DialLa
 export interface DialEffects {
     /** Fields of at most this dependency level are in reach. */
     levelsInReach: number;
-    /** Rounds the session runs at most. */
-    roundBudget: number;
+    /** Phase 4.4: how many layers of the deepening ladder a follow-up may go down (the depth dial's other effect). */
+    ladderLayers: number;
+    /** Rounds the session runs at most: its length's, or null for a QUESTIONS or open-ended session (Phase 4.4). */
+    roundBudget: number | null;
     /** Questions a round holds at most. */
     roundCap: number;
     /** The question kinds a question may take. */
@@ -148,8 +169,10 @@ export interface DialEffects {
     answerOutputTokens: number;
     /** Generation calls a round makes: one per persona (one when the session has none). */
     generationCallsPerRound: number;
-    /** The session's token budget, input and output together (design 8.4). */
+    /** The session's token budget, input and output together (design 8.4; sized from its length since 4.4). */
     tokenBudget: number;
+    /** Phase 4.4 (D30): the question generators on, in order. */
+    generatorsOn: readonly string[];
     /** The sentences the prompt carries for depth and detail. */
     depthEmphasis: string;
     detailReply: string;
@@ -157,17 +180,19 @@ export interface DialEffects {
     preferChoice: boolean;
 }
 
-export function dialEffects(settings: DialSettings): DialEffects {
+export function dialEffects(settings: DialSettings, length: SessionLength = DEFAULT_SESSION_LENGTH): DialEffects {
     const personas = settings.personaKeys.length;
     return {
         levelsInReach: settings.depth,
-        roundBudget: roundBudgetFor(settings.depth),
+        ladderLayers: ladderDepthFor(settings.depth),
+        roundBudget: length.mode === 'ROUNDS' ? length.rounds : null,
         roundCap: roundCapFor(settings.detail),
         kindsAllowed: kindsAllowed(settings.detail),
         answerTextMax: answerTextMax(settings.detail),
         answerOutputTokens: DETAIL[settings.detail].maxOutputTokens,
         generationCallsPerRound: nextRoundGenerationCalls(personas),
-        tokenBudget: tokenBudgetFor(settings.depth, personas),
+        tokenBudget: tokenBudgetFor(length, settings.detail, personas),
+        generatorsOn: [...generatorsOn(settings.generatorsOff)],
         depthEmphasis: DEPTH[settings.depth].emphasis,
         detailReply: DETAIL[settings.detail].reply,
         offerRecommended: settings.offerRecommended,
@@ -190,10 +215,11 @@ export function nextRoundGenerationTokens(personaCount: number): number {
  * (Phase 2.H item 2): a round is not opened unless the session's budget can
  * also take the reconcile of its answers, so the last round's answers are not
  * left un-proposed by a budget the questions spent. `tokenBudgetFor` gives
- * every round both shares.
+ * every round both shares. Phase 4.4: `generationCalls` is the calls the round
+ * will actually make (0 for a round of code-worded questions only).
  */
-export function nextRoundTokens(personaCount: number): number {
-    return nextRoundGenerationTokens(personaCount) + TOKENS_PER_RECONCILE_CALL;
+export function nextRoundTokens(personaCount: number, generationCalls: number = nextRoundGenerationCalls(personaCount)): number {
+    return generationCalls * TOKENS_PER_GENERATION_CALL + TOKENS_PER_RECONCILE_CALL;
 }
 
 export { DIAL_MAX, DIAL_MIN, PERSONA_KEYS };

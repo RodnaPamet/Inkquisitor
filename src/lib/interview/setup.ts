@@ -18,8 +18,10 @@
  *                          `dialEffects` (the same pure function the server
  *                          ran) once the author moves a dial
  *   `startRequestBody`     the start route's body: the target, depth, detail,
- *                          up to three `personaKeys` in the author's order, and
- *                          the two toggles
+ *                          up to three `personaKeys` in the author's order, the
+ *                          two toggles, and since Phase 4.4 the generators
+ *                          switched off (D30) and the session's length (D23:
+ *                          rounds, questions, or until the author stops)
  *   `packOfName`           which persona or kind a pack name (a 503
  *                          `PACKS_NOT_MOUNTABLE`, a `PACK_CHANGED` stop) is
  *   `interviewSetupQuery` / `setupFromQuery`  the setup as the new-interview
@@ -42,9 +44,10 @@ import type { DefaultsView } from '@/app-layer/usecases/interview-defaults';
 import type { PacksView } from '@/app-layer/usecases/interview-packs';
 import { BIBLE_KINDS, type BibleKind } from '@/lib/bible/kinds';
 import { bibleFetch } from '@/lib/bible/api-client';
-import { CODE_DEFAULT_DIALS, PERSONAS_PER_SESSION_MAX, dialEffects, type DialEffects } from './dial-settings';
+import { CODE_DEFAULT_DIALS, PERSONAS_PER_SESSION_MAX, dialEffects, isGeneratorList, type DialEffects } from './dial-settings';
 import { DIAL_MAX, DIAL_MIN, isDial } from './dials';
-import { INTERVIEW_SCOPES, PANEL_PERSONA_KEYS, PERSONA_KEYS, isPanelPersona, isPersonaKey, type PersonaKey } from './vocabulary';
+import { DEFAULT_SESSION_LENGTH, SESSION_QUESTIONS_CHOSEN_MAX, SESSION_ROUNDS_MAX, isSessionLength, type SessionLength } from './session-length';
+import { INTERVIEW_SCOPES, PANEL_PERSONA_KEYS, PERSONA_KEYS, QUESTION_GENERATORS, isPanelPersona, isPersonaKey, isQuestionGenerator, type PersonaKey, type QuestionGeneratorKey } from './vocabulary';
 
 /**
  * What a new interview asks about. Phase 3.3 (the canvas): a SELECTION of
@@ -70,6 +73,10 @@ export interface InterviewSetup {
     personaKeys: PersonaKey[];
     offerRecommended: boolean;
     preferChoice: boolean;
+    /** Phase 4.4 (D30): the question generators switched off, in `QUESTION_GENERATORS` order (never all five). */
+    generatorsOff: QuestionGeneratorKey[];
+    /** Phase 4.4 (D23): how long the session runs: rounds, questions, or until the author stops. */
+    length: SessionLength;
 }
 
 /** Where a default came from (2.3's `sources` for a book's defaults). */
@@ -92,7 +99,7 @@ export interface SetupOptions {
     maxPersonas: number;
     /** The effective dials a session would start on, unmountable personas left out. */
     defaults: InterviewSetup;
-    sources: Record<keyof InterviewSetup, SetupSource>;
+    sources: Record<Exclude<keyof InterviewSetup, 'length'>, SetupSource>;
     /** What the server says the defaults do (`DefaultsView.effects`). */
     effects: DialEffects;
 }
@@ -104,9 +111,11 @@ export const CODE_SETUP_DEFAULTS: Readonly<InterviewSetup> = Object.freeze({
     personaKeys: [],
     offerRecommended: CODE_DEFAULT_DIALS.offerRecommended,
     preferChoice: CODE_DEFAULT_DIALS.preferChoice,
+    generatorsOff: [],
+    length: DEFAULT_SESSION_LENGTH,
 });
 
-const SETUP_KEYS = ['depth', 'detail', 'personaKeys', 'offerRecommended', 'preferChoice'] as const satisfies ReadonlyArray<keyof InterviewSetup>;
+const SETUP_KEYS = ['depth', 'detail', 'personaKeys', 'offerRecommended', 'preferChoice', 'generatorsOff'] as const satisfies ReadonlyArray<keyof InterviewSetup>;
 
 const enc = encodeURIComponent;
 export const SETUP_API = {
@@ -148,8 +157,10 @@ export async function loadSetupOptions(slug: string, bookId: string, get: Fetche
             personaKeys: e.personaKeys.filter((k) => mountable.has(k) && !isPanelPersona(k)).slice(0, PERSONAS_PER_SESSION_MAX),
             offerRecommended: e.offerRecommended,
             preferChoice: e.preferChoice,
+            generatorsOff: [...(e.generatorsOff ?? [])],
+            length: DEFAULT_SESSION_LENGTH,
         },
-        sources: Object.fromEntries(SETUP_KEYS.map((k) => [k, sourceOf(defaults.sources[k])])) as Record<keyof InterviewSetup, SetupSource>,
+        sources: Object.fromEntries(SETUP_KEYS.map((k) => [k, sourceOf(defaults.sources[k])])) as Record<Exclude<keyof InterviewSetup, 'length'>, SetupSource>,
         effects: defaults.effects,
     };
 }
@@ -161,13 +172,16 @@ function sameSetup(a: InterviewSetup, b: InterviewSetup): boolean {
         a.offerRecommended === b.offerRecommended &&
         a.preferChoice === b.preferChoice &&
         a.personaKeys.length === b.personaKeys.length &&
-        a.personaKeys.every((k, i) => b.personaKeys[i] === k)
+        a.personaKeys.every((k, i) => b.personaKeys[i] === k) &&
+        a.generatorsOff.length === b.generatorsOff.length &&
+        a.generatorsOff.every((g, i) => b.generatorsOff[i] === g) &&
+        JSON.stringify(a.length) === JSON.stringify(b.length)
     );
 }
 
 /** What the previews show for `setup`: the server's effects while it is the defaults, the same pure rule once the author changes a dial. */
 export function previewEffects(options: SetupOptions, setup: InterviewSetup): DialEffects {
-    return sameSetup(options.defaults, setup) ? options.effects : dialEffects(setup);
+    return sameSetup(options.defaults, setup) ? options.effects : dialEffects(setup, setup.length);
 }
 
 /** THE PANEL PRESET (Phase 4.3, D29): the panel's three personas in order, every other dial as `setup` holds it. */
@@ -189,7 +203,24 @@ export function startRequestBody(target: InterviewTarget, setup: InterviewSetup)
         personaKeys: setup.personaKeys.slice(0, PERSONAS_PER_SESSION_MAX),
         offerRecommended: setup.offerRecommended,
         preferChoice: setup.preferChoice,
+        generatorsOff: QUESTION_GENERATORS.filter((g) => setup.generatorsOff.includes(g)),
+        length: setup.length,
     };
+}
+
+/** A generator switched on or off in a setup, never all five off (D30): switching off the last one on is refused (the setup unchanged). */
+export function withGenerator(setup: InterviewSetup, generator: QuestionGeneratorKey, on: boolean): InterviewSetup {
+    const off = on ? setup.generatorsOff.filter((g) => g !== generator) : [...new Set([...setup.generatorsOff, generator])];
+    const ordered = QUESTION_GENERATORS.filter((g) => off.includes(g));
+    return isGeneratorList(ordered) ? { ...setup, generatorsOff: ordered } : setup;
+}
+
+/** A session length from the sheet's controls: the mode and the number typed, clamped to the mode's bounds. */
+export function sessionLengthFrom(mode: SessionLength['mode'], n: number): SessionLength {
+    const whole = Number.isFinite(n) ? Math.round(n) : 1;
+    if (mode === 'ROUNDS') return { mode, rounds: Math.min(SESSION_ROUNDS_MAX, Math.max(1, whole)) };
+    if (mode === 'QUESTIONS') return { mode, questions: Math.min(SESSION_QUESTIONS_CHOSEN_MAX, Math.max(1, whole)) };
+    return { mode: 'UNTIL_STOPPED' };
 }
 
 /** Which persona or kind a pack name (`persona-<key>`, `craft-<kind>`, `relations`) is; null for a name this client does not know. */
@@ -227,6 +258,8 @@ export function interviewSetupQuery(target: InterviewTarget, setup: InterviewSet
     if (setup.personaKeys.length > 0) q.set('personas', setup.personaKeys.join(','));
     q.set('recommend', setup.offerRecommended ? '1' : '0');
     q.set('choice', setup.preferChoice ? '1' : '0');
+    if (setup.generatorsOff.length > 0) q.set('off', setup.generatorsOff.join(','));
+    q.set('length', setup.length.mode === 'ROUNDS' ? `rounds:${setup.length.rounds}` : setup.length.mode === 'QUESTIONS' ? `questions:${setup.length.questions}` : 'open');
     return q.toString();
 }
 
@@ -288,8 +321,25 @@ export function setupFromQuery(q: Query): { target: InterviewTarget; setup: Inte
             personaKeys,
             offerRecommended: one(q, 'recommend') !== '0',
             preferChoice: one(q, 'choice') === '1',
+            generatorsOff: generatorsFromQuery(one(q, 'off')),
+            length: lengthFromQuery(one(q, 'length')),
         },
     };
+}
+
+/** The generators a query switches off, known only, never all five (then none). */
+function generatorsFromQuery(raw: string | undefined): QuestionGeneratorKey[] {
+    const off = QUESTION_GENERATORS.filter((g) => (raw ?? '').split(',').filter(isQuestionGenerator).includes(g));
+    return isGeneratorList(off) ? off : [];
+}
+
+/** A query's session length (`rounds:4`, `questions:20`, `open`), else the default. */
+function lengthFromQuery(raw: string | undefined): SessionLength {
+    if (raw === 'open') return { mode: 'UNTIL_STOPPED' };
+    const m = /^(rounds|questions):(\d{1,3})$/.exec(raw ?? '');
+    if (!m) return DEFAULT_SESSION_LENGTH;
+    const value = m[1] === 'rounds' ? { mode: 'ROUNDS' as const, rounds: Number(m[2]) } : { mode: 'QUESTIONS' as const, questions: Number(m[2]) };
+    return isSessionLength(value) ? value : DEFAULT_SESSION_LENGTH;
 }
 
 export { DIAL_MAX, DIAL_MIN };

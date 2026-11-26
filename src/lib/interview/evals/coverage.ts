@@ -45,7 +45,10 @@ import { z } from 'zod';
 import { BIBLE_KINDS, type BibleKind } from '@/lib/bible/kinds';
 import { getTemplate } from '@/lib/bible/templates';
 import { DROP_REASONS } from '../candidates';
-import { DETAIL, MAX_ROUNDS } from '../dials';
+import { DETAIL } from '../dials';
+
+/** Rounds each coverage session runs at most (format 5.1's grading; Phase 4.4 removed the depth's round limit, not this). */
+export const COVERAGE_ROUNDS_MAX = 6;
 import type { AskedQuestion } from '../dedupe';
 import { computeFrontier, refsCheck, type AnswerFact } from '../frontier';
 import type { QuestionGenerator } from '../generator';
@@ -122,7 +125,7 @@ export function expectedCoverage(session: CoverageSession): { mustCover: string[
     const satisfied = new Set(session.statedInConcept);
     const deferred = new Set<string>();
     const covered = new Set<string>();
-    for (let round = 0; round < MAX_ROUNDS; round++) {
+    for (let round = 0; round < COVERAGE_ROUNDS_MAX; round++) {
         const eligible = fields.filter(
             (f) => !satisfied.has(f.key) && !deferred.has(f.key) && level.get(f.key)! <= session.dials.depth && f.dependsOn.every((d) => satisfied.has(d)),
         );
@@ -230,7 +233,7 @@ async function runSession(caseId: string, session: CoverageSession, generator: Q
     let challengesPlanned = 0;
     const calls = emptyAccount();
 
-    for (let round = 1; round <= MAX_ROUNDS; round++) {
+    for (let round = 1; round <= COVERAGE_ROUNDS_MAX; round++) {
         const result = computeFrontier({
             elements: [{ elementId, kind: session.kind, fields, storedKeys: new Set() }],
             sessionAnswers: answers,

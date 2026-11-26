@@ -90,8 +90,19 @@ model InterviewSession {
   stopReason          InterviewStopReason?
   /// Why, in ids and field keys: which fields wait on a deferred one, which are too deep.
   stopDetail          Json?
-  /// The rounds the depth allows (src/lib/interview/dials.ts).
-  roundBudget         Int
+  /// Phase 4.4 (D23): how long the session runs: ROUNDS (`roundBudget`), QUESTIONS (`questionBudget`) or
+  /// UNTIL_STOPPED (neither; the token budget, the ceiling, the kill switch and the author bound it). CHECK.
+  lengthMode          InterviewLengthMode  @default(ROUNDS)
+  /// The rounds a ROUNDS session runs at most (the author's number; set exactly for ROUNDS since 4.4, CHECK).
+  roundBudget         Int?
+  /// Phase 4.4: the questions a QUESTIONS session asks at most (set exactly for QUESTIONS, CHECK).
+  questionBudget      Int?
+  /// Phase 4.4 (D30): the question generators the author switched off for this session (resolved like a dial;
+  /// a closed list, CHECK). A generator off proposes nothing; the others still compete on value.
+  generatorsOff       String[]             @default([])
+  /// Phase 4.4 (D30): the author chose to go on past the point where every remaining question was minor
+  /// (VALUE_FELL); the session no longer pauses for it.
+  minorAccepted       Boolean              @default(false)
   /// Rounds closed so far.
   roundsRun           Int                  @default(0)
   /// The packs the session mounted, pinned when it started (Phase 2.3): a JSON
@@ -220,6 +231,22 @@ model Question {
   /// The guard flagged the model call that worded it and let the call go on
   /// ("flag and fence", 2.1): the question is asked, with a visible marker.
   reviewRequired       Boolean        @default(false)
+  /// Phase 4.4 (D30): the generator that proposed it (the frontier, the deepening ladder, relations, source
+  /// questions, continuity). Codes, never text.
+  generator            QuestionGenerator @default(FRONTIER)
+  /// Phase 4.4: a ladder question's layer (WHAT, WHY, COST, WHO_KNOWS, BREAKS, EDGE_CASES) or a pair question's
+  /// angle (WANTS, COLLIDE, HIDDEN), or SERIES on a SOURCES question about a series source's fact (owner decision
+  /// 2026-11-26: its answer applies across the series). CHECK: a closed list, only on LADDER, RELATIONS and SOURCES.
+  angle                String?
+  /// Phase 4.4 (D30): a RELATIONS question about two elements with no relation yet: the other element (the
+  /// first is `elementId`). Its answer may lead to a NEW_RELATION proposal through 2.5/3.3's reconcile.
+  pairElementId        String?
+  /// Phase 4.4 (D30): a SOURCES question's fact: answering yes confirms it, no rejects it, when the round closes.
+  storyFactId          String?
+  /// Phase 4.4: what a CONTINUITY question rests on, by id (`proposal:<id>`, `thread:<id>`, `gap:<elementId>`).
+  continuityRef        String?
+  /// Phase 4.4 (D30): the code's value score when it was asked (0..100): how much new information it adds.
+  valueScore           Int?
   createdAt            DateTime       @default(now())
 
   session    InterviewSession @relation(fields: [workspaceId, bookId, sessionId], references: [workspaceId, bookId, id], onDelete: Cascade)
@@ -229,6 +256,8 @@ model Question {
   replaces   Question?        @relation("QuestionRephrase", fields: [workspaceId, sessionId, replacesQuestionId], references: [workspaceId, sessionId, id], onDelete: Cascade)
   replacedBy Question?        @relation("QuestionRephrase")
   answers    Answer[]
+  pairElement BibleElement?   @relation("QuestionPairElement", fields: [bookId, pairElementId], references: [bookId, id], onDelete: Cascade)
+  storyFact  StoryFact?       @relation("QuestionStoryFact", fields: [storyFactId], references: [id], onDelete: SetNull)
 
   @@unique([roundId, position])
   @@unique([workspaceId, sessionId, id])
@@ -240,6 +269,10 @@ model Question {
   @@index([bookId, relationId, createdAt])
   /// Exact repeats anywhere in the book.
   @@index([workspaceId, bookId, dedupeKey])
+  /// Phase 4.4: a pair's questions (and the foreign key's index).
+  @@index([bookId, pairElementId])
+  /// Phase 4.4: the questions that asked about a fact (the foreign key's SET NULL).
+  @@index([storyFactId])
 }
 
 /// What the author did with a question. Append-only (trigger): a re-answer
@@ -268,6 +301,8 @@ model Answer {
   answeredBy User?                @relation(fields: [answeredById], references: [id], onDelete: SetNull)
   /// Phase 2.5: the proposals drawn from this answer.
   citations  EnrichmentCitation[]
+  /// Phase 4.4: the source facts this answer decided.
+  factDecisions StoryFact[]       @relation("StoryFactDecidedByAnswer")
 
   @@unique([questionId, revision])
   /// An answer by id within its session: what a citation's foreign key names (Phase 2.5).
@@ -289,6 +324,9 @@ model WorkspaceInterviewDefaults {
   personaKeys      Json?
   offerRecommended Boolean?
   preferChoice     Boolean?
+  /// Phase 4.4 (D30): a JSON array of the question generators switched off (a closed list, CHECK), or NULL.
+  /// `[]` is a setting: every generator on.
+  generatorsOff    Json?
   updatedAt        DateTime @updatedAt
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
@@ -304,6 +342,9 @@ model BookInterviewDefaults {
   personaKeys      Json?
   offerRecommended Boolean?
   preferChoice     Boolean?
+  /// Phase 4.4 (D30): a JSON array of the question generators switched off (a closed list, CHECK), or NULL.
+  /// `[]` is a setting: every generator on.
+  generatorsOff    Json?
   updatedAt        DateTime @updatedAt
 
   book Book @relation(fields: [workspaceId, bookId], references: [workspaceId, id], onDelete: Cascade)

@@ -44,7 +44,7 @@ function mount(initial: InterviewSessionProps['initial'], over: Partial<Intervie
     );
 }
 
-const START = { kind: 'start' as const, target: { scope: 'ELEMENT' as const, elementId: 'el_1' }, setup: { depth: 2, detail: 3, personaKeys: [], offerRecommended: true, preferChoice: false } };
+const START = { kind: 'start' as const, target: { scope: 'ELEMENT' as const, elementId: 'el_1' }, setup: { depth: 2, detail: 3, personaKeys: [], offerRecommended: true, preferChoice: false, generatorsOff: [], length: { mode: 'ROUNDS' as const, rounds: 4 } } };
 
 describe('a round streams in', () => {
     it('shows the planned fields, then drafts that cannot be answered, then the committed questions in their place', async () => {
@@ -182,13 +182,17 @@ it('finishing a round closes it (skipping what is left) and goes straight on to 
     const next = question({ text: 'What does Aurel fear?' });
     global.fetch = jest.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
         calls.push({ url: String(url), body: init?.body ? JSON.parse(String(init.body)) : undefined });
-        if (String(url).endsWith('/rounds/1/close')) return { ok: true, status: 200, json: async () => ({ interview: interview({ questions: [q], roundStatus: 'CLOSED' }) }) } as unknown as Response;
+        if (String(url).endsWith('/rounds/1/close'))
+            return { ok: true, status: 200, json: async () => ({ interview: interview({ questions: [q], roundStatus: 'CLOSED' }), reconcile: { roundNumber: 1, status: 'DONE', outcome: 'OK', proposed: { ADD: 2, UPDATE: 0, REMOVE: 0, NEW_ELEMENT: 0 } } }) } as unknown as Response;
         return streamOf([{ type: 'planned', roundNumber: 2, targets: [] }, { type: 'committed', interview: interview({ questions: [next], number: 2 }) }, { type: 'done' }]) as unknown as Response;
     }) as unknown as typeof fetch;
     mount({ kind: 'existing', interview: interview({ questions: [q] }) });
     expect(screen.getByText('Questions without an answer: 1.')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Skip the rest and finish' }));
     expect(await screen.findByText('What does Aurel fear?')).toBeInTheDocument();
+    // What the finished round proposed stays in view beside the next round (Phase 4.4: sessions go on with follow-ups).
+    // (The test catalogue does not expand plurals: the notice is checked by its words.)
+    expect(screen.getByText(/proposed from this round/)).toBeInTheDocument();
     expect(calls.map((c) => c.url)).toEqual([`${IAPI}/sess_1/rounds/1/close`, `${IAPI}/sess_1/rounds/stream`]);
     expect(calls[0].body).toEqual({ skipUnanswered: true });
 });
@@ -318,6 +322,70 @@ it('stopping keeps every answer and says why it stopped; a paused session resume
     fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
     await waitFor(() => expect(screen.getAllByTestId('question-card')).toHaveLength(1));
     expect(calls).toEqual([`${IAPI}/sess_1/rounds/stream`]);
+});
+
+it('a VALUE_FELL pause says the rest is minor, and asks: Go on sends goOn, Finish here offers to stop (Phase 4.4, D30)', async () => {
+    const calls: Array<{ url: string; body: unknown }> = [];
+    global.fetch = jest.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
+        calls.push({ url: String(url), body: init?.body ? JSON.parse(String(init.body)) : undefined });
+        return streamOf([{ type: 'committed', interview: interview({ questions: [question()], number: 2 }) }, { type: 'done' }]) as unknown as Response;
+    }) as unknown as typeof fetch;
+    const { container, unmount } = mount({ kind: 'existing', interview: interview({ status: 'PAUSED', stopReason: 'VALUE_FELL', roundStatus: 'CLOSED' }) });
+    expect(screen.getByTestId('stop-reason')).toHaveTextContent('The questions left are minor');
+    const prompt = screen.getByRole('group', { name: 'The questions left are minor. Go on with them?' });
+    // The pause offers its own two choices, not the ordinary Continue.
+    expect(screen.queryByRole('button', { name: 'Continue' })).toBeNull();
+    expect(await axe(container)).toHaveNoViolations();
+    fireEvent.click(within(prompt).getByRole('button', { name: 'Finish here' }));
+    await waitFor(() => expect(document.getElementById('interview-stop-confirm')).not.toBeNull());
+    expect(calls).toEqual([]);
+    unmount();
+
+    mount({ kind: 'existing', interview: interview({ status: 'PAUSED', stopReason: 'VALUE_FELL', roundStatus: 'CLOSED' }) });
+    fireEvent.click(screen.getByRole('button', { name: 'Go on' }));
+    await waitFor(() => expect(screen.getAllByTestId('question-card')).toHaveLength(1));
+    expect(calls).toEqual([{ url: `${IAPI}/sess_1/rounds/stream`, body: { goOn: true } }]);
+});
+
+it('words the new stops (Phase 4.4)', () => {
+    const { unmount } = mount({ kind: 'existing', interview: interview({ status: 'COMPLETED', stopReason: 'QUESTION_BUDGET', roundStatus: 'CLOSED' }) });
+    expect(screen.getByTestId('stop-reason')).toHaveTextContent('This interview has asked the questions you chose.');
+    expect(screen.queryByRole('button', { name: 'Continue' })).toBeNull();
+    unmount();
+    mount({ kind: 'existing', interview: interview({ status: 'COMPLETED', stopReason: 'SESSION_LIMIT', roundStatus: 'CLOSED' }) });
+    expect(screen.getByTestId('stop-reason')).toHaveTextContent('This interview holds as many questions as one interview can.');
+});
+
+it('a panel round groups by who asked, and code-worded questions are their own group, never "the craft guidance" (Phase 4.4)', () => {
+    mockFetch({});
+    const asked = question({ personaKey: 'socratic', personaName: 'Socratic' });
+    const other = question({ personaKey: 'gentle-mentor', personaName: 'Gentle Mentor', text: 'What does Aurel fear?' });
+    const followUp = question({ origin: 'GENERATOR', generator: 'LADDER', angle: 'WHY', text: 'Where does Aurel’s want come from, and what makes it matter so much?' });
+    mount({ kind: 'existing', interview: interview({ questions: [asked, followUp, other] }) });
+    const groups = screen.getAllByTestId('persona-group');
+    expect(groups.map((g) => g.getAttribute('data-persona'))).toEqual(['socratic', null, 'gentle-mentor']);
+    expect(within(groups[1]).getByRole('heading')).toHaveTextContent('Follow-ups and checks drawn from your bible and sources');
+    expect(within(groups[1]).getByText('Where does Aurel’s want come from, and what makes it matter so much?')).toBeInTheDocument();
+    expect(screen.queryByText('From the craft guidance')).toBeNull();
+});
+
+it('a series source’s question is marked as a series fact, an own source’s is not (owner decision 2026-11-26, B)', async () => {
+    mockFetch({});
+    const series = question({ origin: 'GENERATOR', generator: 'SOURCES', angle: 'SERIES', kind: 'EITHER_OR', options: ['Yes, it is canon', 'No, it is not'], storyFactId: 'f_1', text: 'Your series source “book-one.txt” says “Mara wants the sea.”. Is that canon for every book in the series?' });
+    const own = question({ origin: 'GENERATOR', generator: 'SOURCES', angle: null, kind: 'EITHER_OR', options: ['Yes, it is canon', 'No, it is not'], storyFactId: 'f_2', text: 'Your source “draft.txt” says “Mara keeps the lock.”. Is that canon?' });
+    const { container } = mount({ kind: 'existing', interview: interview({ questions: [series, own] }) });
+    const [first, second] = screen.getAllByTestId('question-card');
+    expect(within(first).getByTestId('series-fact')).toHaveTextContent('Series fact');
+    expect(within(second).queryByTestId('series-fact')).toBeNull();
+    expect(within(second).getByTestId('generator-badge')).toHaveTextContent('From your sources');
+    expect(await axe(container)).toHaveNoViolations();
+});
+
+it('an AWAITING_DECISIONS pause says why and offers Continue (owner decision 2026-11-26, A)', () => {
+    mockFetch({});
+    mount({ kind: 'existing', interview: interview({ status: 'PAUSED', stopReason: 'AWAITING_DECISIONS', roundStatus: 'CLOSED' }) });
+    expect(screen.getByTestId('stop-reason')).toHaveTextContent('Accept or reject them on the review page, then continue.');
+    expect(screen.getByRole('button', { name: 'Continue' })).toBeInTheDocument();
 });
 
 it('a reader sees the interview as text: no answer control, no stop, no next round', async () => {

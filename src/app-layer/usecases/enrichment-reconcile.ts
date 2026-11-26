@@ -67,7 +67,7 @@ import { decodeFieldValue, type FieldValue } from '@/lib/bible/field-values';
 import type { BibleKind } from '@/lib/bible/kinds';
 import { getRelationType, getTemplate, relationFieldDefs } from '@/lib/bible/templates';
 import { slotBeat } from './story-slot';
-import { PENDING_SUBJECT_ID, relationSubjectName, subjectIdOf, type RelationSubject } from '@/lib/interview/subjects';
+import { pairOfSubject, PENDING_SUBJECT_ID, relationSubjectName, subjectIdOf, type RelationSubject } from '@/lib/interview/subjects';
 import { defaultReconciler } from '@/lib/enrichment/model-seam';
 import { BOOK_ELEMENTS_IN_PROMPT_MAX, RECONCILE_PROMPT_VERSION } from '@/lib/enrichment/prompt';
 import { emptyProposedCounts, runReconcileStep, validateOutput, type ProposedCounts, type ReconcileMetrics, type ReconcileRoundInput, type RoundAnswerInput, type RoundElementInput } from '@/lib/enrichment/reconcile';
@@ -199,11 +199,13 @@ async function relationEndsOf(db: PrismaTx, ctx: WorkspaceRequestContext, sessio
  * holds between them.
  */
 export async function loadRoundInput(db: PrismaTx, ctx: WorkspaceRequestContext, session: SessionRow, round: RoundRow): Promise<ReconcileRoundInput> {
-    const questions = await QuestionRepository.listForRound(db, ctx.workspaceId, session.id, round.id, ROUND_QUESTIONS_MAX);
+    // Phase 4.4 (D30, item 2): a SOURCE question decides its fact (when the round closes) and fills no field: reconcile
+    // never reads it, so a "yes" is never turned into a field value.
+    const questions = (await QuestionRepository.listForRound(db, ctx.workspaceId, session.id, round.id, ROUND_QUESTIONS_MAX)).filter((q) => q.generator !== 'SOURCES');
     const latest = latestByQuestion(await AnswerRepository.listForSession(db, ctx.workspaceId, session.id, SESSION_ANSWERS_READ));
     const targetedOf = (subject: string) => new Set(questions.filter((q) => subjectIdOf(q) === subject).flatMap((q) => q.targetsFieldKeys));
 
-    const elementIds = [...new Set(questions.filter((q) => !q.relationId && !q.aboutPending).map((q) => q.elementId))];
+    const elementIds = [...new Set(questions.filter((q) => !q.relationId && !q.aboutPending && !q.pairElementId).map((q) => q.elementId))];
     const rows = await BibleElementRepository.listByIds(db, ctx.workspaceId, session.bookId, elementIds);
     const stored = await storedValuesOf(db, ctx, rows.map((r) => r.id));
     const elements: RoundElementInput[] = rows.map((e) => {
@@ -274,7 +276,25 @@ export async function loadRoundInput(db: PrismaTx, ctx: WorkspaceRequestContext,
         }
     }
 
-    const live = new Set(elements.map((e) => e.elementId));
+    // Phase 4.4 (D30, item 3): a PAIR question's two elements are relation ends (a NEW_RELATION between them may be
+    // proposed from its answer), and the pair is a live subject while both elements stand. Its own fields are no
+    // element's, so no field operation on it passes `validate.ts`'s rule 1.
+    const pairSubjects = [...new Set(questions.filter((q) => q.pairElementId).map((q) => subjectIdOf(q)))];
+    const pairIds = [...new Set(pairSubjects.flatMap((id) => {
+        const p = pairOfSubject(id);
+        return p ? [p.firstElementId, p.secondElementId] : [];
+    }))].filter((id) => !relationEnds.some((e) => e.elementId === id));
+    if (pairIds.length > 0) {
+        for (const e of await BibleElementRepository.listByIds(db, ctx.workspaceId, session.bookId, pairIds)) relationEnds.push({ elementId: e.id, kind: e.kind as BibleKind, name: e.name });
+    }
+    const endIds = new Set(relationEnds.map((e) => e.elementId));
+    const live = new Set([
+        ...elements.map((e) => e.elementId),
+        ...pairSubjects.filter((id) => {
+            const p = pairOfSubject(id);
+            return p !== null && endIds.has(p.firstElementId) && endIds.has(p.secondElementId);
+        }),
+    ]);
     const answers: RoundAnswerInput[] = [];
     for (const q of questions) {
         const a = latest.get(q.id);

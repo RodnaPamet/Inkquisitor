@@ -29,6 +29,7 @@ import { runInWorkspaceContext, type PrismaTx } from '@/lib/db/rls-middleware';
 import {
     DIAL_KEYS,
     dialEffects,
+    isGeneratorList,
     isPersonaList,
     resolveDials,
     type DialEffects,
@@ -38,6 +39,7 @@ import {
     type DialSource,
 } from '@/lib/interview/dial-settings';
 import { isDial } from '@/lib/interview/dials';
+import { QUESTION_GENERATORS } from '@/lib/interview/vocabulary';
 import { requireBook } from './bible-common';
 
 /** A stored layer as the API shows it: each dial set, or null (passed on). */
@@ -54,7 +56,7 @@ export interface DefaultsView {
     effects: DialEffects;
 }
 
-const EMPTY_LAYER: DefaultsLayerView = { depth: null, detail: null, personaKeys: null, offerRecommended: null, preferChoice: null };
+const EMPTY_LAYER: DefaultsLayerView = { depth: null, detail: null, personaKeys: null, offerRecommended: null, preferChoice: null, generatorsOff: null };
 
 /** A stored row as a layer. A value that is no longer acceptable reads as null (passed on), never used. */
 export function layerOf(row: DefaultsRow | null): DefaultsLayerView {
@@ -65,6 +67,7 @@ export function layerOf(row: DefaultsRow | null): DefaultsLayerView {
         personaKeys: isPersonaList(row.personaKeys) ? [...row.personaKeys] : null,
         offerRecommended: row.offerRecommended,
         preferChoice: row.preferChoice,
+        generatorsOff: isGeneratorList(row.generatorsOff) ? QUESTION_GENERATORS.filter((g) => (row.generatorsOff as string[]).includes(g)) : null,
     };
 }
 
@@ -75,6 +78,7 @@ function writeOf(input: InterviewDefaultsInput): DefaultsWrite {
         personaKeys: input.personaKeys ?? null,
         offerRecommended: input.offerRecommended ?? null,
         preferChoice: input.preferChoice ?? null,
+        generatorsOff: input.generatorsOff ?? null,
     };
 }
 

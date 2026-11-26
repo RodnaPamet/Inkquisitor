@@ -14,7 +14,20 @@
  *
  * Every list is bounded by a `take` its caller chooses.
  */
-import type { AnswerStatus, BibleElementKind, InterviewRoundStatus, InterviewScope, InterviewStatus, InterviewStopReason, Prisma, QuestionKind, QuestionMode, QuestionOrigin } from '@prisma/client';
+import type {
+    AnswerStatus,
+    BibleElementKind,
+    InterviewLengthMode,
+    InterviewRoundStatus,
+    InterviewScope,
+    InterviewStatus,
+    InterviewStopReason,
+    Prisma,
+    QuestionGenerator,
+    QuestionKind,
+    QuestionMode,
+    QuestionOrigin,
+} from '@prisma/client';
 
 type Db = Prisma.TransactionClient;
 
@@ -41,7 +54,11 @@ export const SESSION_SELECT = {
     status: true,
     stopReason: true,
     stopDetail: true,
+    lengthMode: true,
     roundBudget: true,
+    questionBudget: true,
+    generatorsOff: true,
+    minorAccepted: true,
     roundsRun: true,
     tokenBudget: true,
     tokensUsed: true,
@@ -91,6 +108,12 @@ export const QUESTION_SELECT = {
     replacesQuestionId: true,
     supersededAt: true,
     reviewRequired: true,
+    generator: true,
+    angle: true,
+    pairElementId: true,
+    storyFactId: true,
+    continuityRef: true,
+    valueScore: true,
     createdAt: true,
 } as const satisfies Prisma.QuestionSelect;
 
@@ -117,6 +140,8 @@ export interface SessionWrite {
     stopDetail?: Prisma.InputJsonValue | typeof Prisma.DbNull;
     roundsRun?: number;
     endedAt?: Date | null;
+    /** Phase 4.4 (D30): the author chose to go on past the minor questions. */
+    minorAccepted?: boolean;
 }
 
 export const InterviewSessionRepository = {
@@ -127,6 +152,15 @@ export const InterviewSessionRepository = {
      */
     async lock(db: Db, sessionId: string) {
         await db.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${'interview-session:' + sessionId}))`;
+    },
+
+    /**
+     * Phase 4.4 (the hard repetition gate): serialise every write of a book's QUESTIONS — a round's persist and a
+     * rephrase — so the check that no question repeats one the book holds and the insert that follows are one step
+     * across the book's sessions. Taken AFTER the session's lock, never before it.
+     */
+    async lockBookQuestions(db: Db, bookId: string) {
+        await db.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${'interview-book-questions:' + bookId}))`;
     },
 
     create(
@@ -154,7 +188,12 @@ export const InterviewSessionRepository = {
             personaKeys: string[];
             offerRecommended: boolean;
             preferChoice: boolean;
-            roundBudget: number;
+            /** Phase 4.4 (D23): the session's length; a ROUNDS session's rounds, a QUESTIONS session's questions. */
+            lengthMode: InterviewLengthMode;
+            roundBudget: number | null;
+            questionBudget: number | null;
+            /** Phase 4.4 (D30): the generators switched off. */
+            generatorsOff: string[];
             tokenBudget: number;
             /** The packs the session mounts, pinned once (Phase 2.3; never updated: a trigger refuses it). */
             packPins: Prisma.InputJsonValue;
@@ -256,6 +295,13 @@ export interface QuestionWrite {
     replacesQuestionId?: string | null;
     /** The guard flagged the call that worded it (Phase 2.4). */
     reviewRequired?: boolean;
+    /** Phase 4.4 (D30): the generator that proposed it, and what it rests on (ids and codes). */
+    generator?: QuestionGenerator;
+    angle?: string | null;
+    pairElementId?: string | null;
+    storyFactId?: string | null;
+    continuityRef?: string | null;
+    valueScore?: number | null;
 }
 
 export const QuestionRepository = {
@@ -300,7 +346,7 @@ export const QuestionRepository = {
     listForElementsElsewhere(db: Db, workspaceId: string, bookId: string, elementIds: readonly string[], exceptSessionId: string, take: number) {
         if (elementIds.length === 0) return Promise.resolve([]);
         return db.question.findMany({
-            where: { workspaceId, bookId, elementId: { in: [...elementIds] }, relationId: null, aboutPending: false, sessionId: { not: exceptSessionId } },
+            where: { workspaceId, bookId, elementId: { in: [...elementIds] }, relationId: null, aboutPending: false, pairElementId: null, sessionId: { not: exceptSessionId } },
             orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
             take,
             select: QUESTION_SELECT,
@@ -323,21 +369,59 @@ export const QuestionRepository = {
      * holds, each pair once however many questions hold it (no text is read):
      * the exact-repeat lookup beyond the bounded read of earlier questions.
      */
-    async findExactRepeats(db: Db, workspaceId: string, bookId: string, probes: ReadonlyArray<{ elementId: string; dedupeKey: string; relation?: boolean }>) {
+    async findExactRepeats(db: Db, workspaceId: string, bookId: string, probes: ReadonlyArray<{ elementId: string; dedupeKey: string; relation?: boolean; pairElementId?: string }>) {
         if (probes.length === 0) return [];
         // Phase 3.3: a relation's probe names the relation (its subject id); an element's matches only questions about the element itself.
+        // Phase 4.4: a pair's probe names its first element and its second (`pairElementId`); it is answered under the pair's subject id.
         const rows = await db.question.groupBy({
-            by: ['elementId', 'relationId', 'dedupeKey'],
+            by: ['elementId', 'relationId', 'pairElementId', 'dedupeKey'],
             where: {
                 workspaceId,
                 bookId,
                 aboutPending: false,
-                OR: probes.map((p) => (p.relation ? { relationId: p.elementId, dedupeKey: p.dedupeKey } : { elementId: p.elementId, relationId: null, dedupeKey: p.dedupeKey })),
+                OR: probes.map((p) =>
+                    p.relation
+                        ? { relationId: p.elementId, dedupeKey: p.dedupeKey }
+                        : p.pairElementId
+                          ? { elementId: p.elementId, pairElementId: p.pairElementId, dedupeKey: p.dedupeKey }
+                          : { elementId: p.elementId, relationId: null, pairElementId: null, dedupeKey: p.dedupeKey },
+                ),
             },
             orderBy: [{ elementId: 'asc' }, { dedupeKey: 'asc' }],
             take: probes.length * 2,
         });
-        return rows.map((r) => ({ elementId: r.relationId ?? r.elementId, dedupeKey: r.dedupeKey }));
+        return rows.map((r) => ({ elementId: r.relationId ?? (r.pairElementId ? `pair:${r.elementId}:${r.pairElementId}` : r.elementId), dedupeKey: r.dedupeKey }));
+    },
+
+    /**
+     * Phase 4.4: the book's LADDER and pair questions about these subjects (elements, relations), each with whether an
+     * answer to it was ever ANSWERED — what the deepening ladder and the pair questions read to know which layers and
+     * angles the book already holds. Codes and ids only; bounded.
+     */
+    listGeneratorHistory(db: Db, workspaceId: string, bookId: string, subjects: { elementIds: readonly string[]; relationIds: readonly string[] }, take: number) {
+        const or: Prisma.QuestionWhereInput[] = [];
+        if (subjects.elementIds.length > 0) {
+            or.push({ generator: 'LADDER', elementId: { in: [...subjects.elementIds] }, relationId: null, aboutPending: false });
+            or.push({ generator: 'RELATIONS', elementId: { in: [...subjects.elementIds] }, pairElementId: { not: null } });
+        }
+        if (subjects.relationIds.length > 0) or.push({ generator: 'LADDER', relationId: { in: [...subjects.relationIds] } });
+        if (or.length === 0) return Promise.resolve([]);
+        return db.question.findMany({
+            where: { workspaceId, bookId, angle: { not: null }, OR: or },
+            orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+            take,
+            select: {
+                id: true,
+                sessionId: true,
+                elementId: true,
+                relationId: true,
+                pairElementId: true,
+                targetsFieldKeys: true,
+                angle: true,
+                generator: true,
+                answers: { where: { status: 'ANSWERED' }, select: { id: true }, take: 1 },
+            },
+        });
     },
 
     /** The targets of some questions (no encrypted column): what a vector neighbour asked about. */

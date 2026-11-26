@@ -84,14 +84,15 @@
  *              not propose it twice (`DUPLICATE_NEW_RELATION`);
  *   cites      rule 3, and every end is named in a cited answer or was the
  *              subject of a cited answer's question — a slot's neighbours by an
- *              answer about the slot (`RELATION_NOT_IN_ANSWERS`);
+ *              answer about the slot, and (Phase 4.4, D30) a pair's two
+ *              elements by an answer about the pair (`RELATION_NOT_IN_ANSWERS`);
  *   values     the note within its bound, each field one of the type's, a
  *              value it accepts, no field twice (`VALUE_INVALID`, `VALUE_MISSING`);
  *   rules 5–6  over the note and every field, as for a field's value
  *              (refused, or flagged `POSSIBLE_INSTRUCTION`).
  */
 import { getFieldDef, getRelationFieldDef, relationAllowed, getRelationType, isSymmetric } from '@/lib/bible/templates';
-import { PENDING_SUBJECT_ID } from '@/lib/interview/subjects';
+import { PENDING_SUBJECT_ID, pairOfSubject } from '@/lib/interview/subjects';
 import type { FieldDef } from '@/lib/bible/template-schema';
 import type { BibleKind } from '@/lib/bible/kinds';
 import { normaliseFieldValue, sameFieldValue, type FieldValue } from '@/lib/bible/field-values';
@@ -620,6 +621,9 @@ export function validateNewRelation(
             if ('elementId' in r.ref && about === r.ref.elementId) return true;
             if ('elementId' in r.ref && relationSubjects.some((s) => s.elementId === about && (s.relation!.fromElementId === (r.ref as { elementId: string }).elementId || s.relation!.toElementId === (r.ref as { elementId: string }).elementId))) return true;
             if (about === PENDING_SUBJECT_ID && (r.end?.neighbour === true || r.draft?.fillsSlot === true)) return true;
+            // Phase 4.4 (D30, item 3): a question about a PAIR with no relation yet is about both of its elements.
+            const pair = pairOfSubject(about);
+            if (pair && 'elementId' in r.ref && (pair.firstElementId === r.ref.elementId || pair.secondElementId === r.ref.elementId)) return true;
             return false;
         });
     if (!addressed(from.value) || !addressed(to.value)) return refuse('RELATION_NOT_IN_ANSWERS');

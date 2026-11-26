@@ -2,7 +2,8 @@
  * Round planning (design 4.2), stop decisions (design 4.1, 10.1) and the
  * session's progress figure (rule 6). Pure.
  */
-import { DETAIL, DEPTH, roundBudgetFor, tokenBudgetFor } from '@/lib/interview/dials';
+import { DETAIL } from '@/lib/interview/dials';
+import { budgetedRounds, tokenBudgetFor } from '@/lib/interview/session-length';
 import type { FrontierEntry } from '@/lib/interview/frontier';
 import { CHALLENGES_PER_SESSION, challengeAllowed, planRound, type PlanInput } from '@/lib/interview/plan';
 import { decideStop, sessionProgress, type StopState } from '@/lib/interview/stop';
@@ -121,10 +122,13 @@ describe('progress (rule 6: zero is never complete)', () => {
 });
 
 describe('dials', () => {
-    it('six rounds is the most any depth allows, and the token budget grows with rounds and personas', () => {
-        expect(Object.values(DEPTH).map((d) => d.roundBudget)).toEqual([2, 3, 4, 5, 6]);
-        expect(roundBudgetFor(3)).toBe(4);
-        expect(tokenBudgetFor(3, 0)).toBe(tokenBudgetFor(3, 1));
-        expect(tokenBudgetFor(3, 3)).toBeGreaterThan(tokenBudgetFor(3, 1));
+    it('the token budget grows with the session’s length and its personas, whatever the depth (Phase 4.4, D23)', () => {
+        const four = { mode: 'ROUNDS' as const, rounds: 4 };
+        expect(tokenBudgetFor(four, 3, 0)).toBe(tokenBudgetFor(four, 3, 1));
+        expect(tokenBudgetFor(four, 3, 3)).toBeGreaterThan(tokenBudgetFor(four, 3, 1));
+        expect(tokenBudgetFor({ mode: 'ROUNDS', rounds: 20 }, 3, 1)).toBe(5 * tokenBudgetFor(four, 3, 1));
+        // A QUESTIONS session is budgeted for its questions over the round cap, and one round more.
+        expect(budgetedRounds({ mode: 'QUESTIONS', questions: 12 }, 3)).toBe(Math.ceil(12 / DETAIL[3].roundCap) + 1);
+        expect(budgetedRounds({ mode: 'UNTIL_STOPPED' }, 3)).toBeGreaterThan(6);
     });
 });

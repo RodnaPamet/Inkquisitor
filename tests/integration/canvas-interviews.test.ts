@@ -171,7 +171,8 @@ describe('an edge alone: "Question this relation"', () => {
         await saveRelationFields(ctx, bookId, rel.id, { baseVersion: 1, fields: [{ key: 'basis', value: 'She was born into it.' }] });
 
         const view = await startInterview(ctx, bookId, { scope: 'SELECTION', elementIds: [], relationIds: [rel.id], depth: 2, detail: 3 }, deps);
-        const asked = view.round!.questions.flatMap((q) => q.targetsFieldKeys);
+        // Phase 4.4: a code-worded follow-up on the field the relation holds is the ladder's; the frontier never asks it.
+        const asked = view.round!.questions.filter((q) => q.origin !== 'GENERATOR').flatMap((q) => q.targetsFieldKeys);
         expect(view.round!.questions.every((q) => q.relationId === rel.id && q.subjectId === rel.id && q.elementId === mara.id)).toBe(true);
         expect(asked).not.toContain('basis'); // the relation already answers it (rule 5)
         expect(asked.length).toBeGreaterThan(0);

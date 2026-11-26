@@ -41,7 +41,7 @@ import { BibleApiError } from '@/lib/bible/api-client';
 import { continuityApi, type ContinuityPage as PageData, type StaleFlagView, type ThreadProposalView, type ThreadView } from '@/lib/continuity/api-client';
 import { THREAD_KINDS, THREAD_STATES, type ThreadKind } from '@/lib/continuity/vocabulary';
 import type { FactProposalDecision } from '@/lib/facts/vocabulary';
-import { interviewSetupQuery } from '@/lib/interview/setup';
+import { CODE_SETUP_DEFAULTS, interviewSetupQuery } from '@/lib/interview/setup';
 import type { FactProposalView, ProposalFactView } from '@/lib/sources/api-client';
 
 export interface ContinuityPageProps {
@@ -282,7 +282,7 @@ function StaleRow({ workspaceSlug, bookId, flag, canEdit, onDismiss }: { workspa
     const grill = APP_ROUTES.newInterview(
         workspaceSlug,
         bookId,
-        interviewSetupQuery({ scope: 'SELECTION', elementIds: [flag.elementId], relationIds: [], staleFlagId: flag.id }, { depth: 5, detail: 3, personaKeys: [], offerRecommended: true, preferChoice: false }),
+        interviewSetupQuery({ scope: 'SELECTION', elementIds: [flag.elementId], relationIds: [], staleFlagId: flag.id }, { ...CODE_SETUP_DEFAULTS, depth: 5, detail: 3, personaKeys: [], offerRecommended: true, preferChoice: false }),
     );
     return (
         <li className="space-y-tight py-default" data-testid="continuity-stale">

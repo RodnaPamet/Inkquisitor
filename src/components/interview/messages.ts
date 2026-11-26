@@ -30,6 +30,10 @@ const STOP_MESSAGE_KEYS: Readonly<Record<StopReason, StopReason>> = {
     NO_ACCEPTABLE_QUESTION: 'NO_ACCEPTABLE_QUESTION',
     GUARD_REFUSED: 'GUARD_REFUSED',
     PACK_CHANGED: 'PACK_CHANGED',
+    QUESTION_BUDGET: 'QUESTION_BUDGET',
+    VALUE_FELL: 'VALUE_FELL',
+    SESSION_LIMIT: 'SESSION_LIMIT',
+    AWAITING_DECISIONS: 'AWAITING_DECISIONS',
 };
 
 /** The refusals the interview words on its own. */
@@ -65,6 +69,8 @@ export const INTERVIEW_WORDED_REASONS = [
     // Phase 3.3: a canvas interview's selection or slot.
     'SCOPE_TOO_LARGE',
     'SLOT_INVALID',
+    // Phase 4.4: "Ask me this differently" is the frontier's; a generator's question is worded by code.
+    'QUESTION_NOT_REPHRASABLE',
 ] as const;
 
 /** The `problem` a PACK_CHANGED stop records (`stopDetail.problem`): PACK_CHANGED, or PACK_NOT_PINNED for a session from before pinning. */

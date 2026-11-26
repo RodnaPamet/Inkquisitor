@@ -20,7 +20,7 @@ import { stubReconcileAnswer } from '@/lib/ai/model-stub';
 import type { ReconcileRequest } from '@/lib/enrichment/prompt';
 import type { ReconcileCallFailure, Reconciler } from '@/lib/enrichment/reconciler';
 import { fakeGenerator } from './fake-question-generator';
-import { stubQuestionEmbedder } from './interview';
+import { FRONTIER_ONLY, stubQuestionEmbedder } from './interview';
 
 export interface RequestFacts {
     elements: Array<{ elementId: string; scope_field_keys: string[]; stored_values: Record<string, unknown>; fields: Array<{ key: string; type: string }> }>;
@@ -79,7 +79,8 @@ export async function seedReconciledRound(
     deps: EnrichmentDeps = { reconciler: stubReconciler() },
     answerFor: (fieldKey: string) => string | null = (k) => `The ${k.split('_').join(' ')} is plain and true.`,
 ) {
-    const view = await startInterview(ctx, bookId, { scope: 'ELEMENT', elementId, depth: 2, detail: 3 }, { generator: fakeGenerator(), embedder: stubQuestionEmbedder });
+    // The frontier alone (Phase 4.4): these fixtures count the proposals a round of frontier questions yields.
+    const view = await startInterview(ctx, bookId, { scope: 'ELEMENT', elementId, depth: 2, detail: 3, generatorsOff: [...FRONTIER_ONLY] }, { generator: fakeGenerator(), embedder: stubQuestionEmbedder });
     const sessionId = view.session.id;
     const answered: Array<{ questionId: string; fieldKeys: string[] }> = [];
     for (const q of view.round!.questions) {
