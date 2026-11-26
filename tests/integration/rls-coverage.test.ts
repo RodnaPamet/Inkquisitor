@@ -109,6 +109,10 @@ async function isolationLeaks(table: string, self: string, other: string): Promi
     let outcome: 'inserted' | 'refused-by-rls' | string = 'inserted';
     try {
         await prisma.$transaction(async (tx) => {
+            // A stale flag is raised only by a version's save (`stale_flag_guard`, a BEFORE trigger refusing any other
+            // insert, before RLS's WITH CHECK): the probe sets the guard aside, as the owner, inside its own rolled-back
+            // transaction, so RLS is what is asked. The guard has its own test (continuity-review).
+            if (table === 'StaleFlag') await tx.$executeRawUnsafe('ALTER TABLE "StaleFlag" DISABLE TRIGGER stale_flag_guard');
             await tx.$executeRaw`SET LOCAL ROLE app_user`;
             await tx.$executeRaw`SELECT set_config('app.workspace_id', ${self}, true)`;
             await tx.$executeRawUnsafe(`INSERT INTO "${table}" SELECT * FROM json_populate_record(NULL::"${table}", $1::json)`, JSON.stringify(row));

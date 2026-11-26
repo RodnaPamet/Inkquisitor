@@ -1485,7 +1485,10 @@ closed beta with an explicit operator flag (D5, amended 2026-11-19).
   `StaleFlag` per (entry, upstream) for every OTHER element whose versions name
   an ANSWERED answer to a question about the changed element (its own, or a
   relation's with it at an end; never `aboutPending`); a reorder raises nothing;
-  nothing transitive. A flag stands while its entry has not been saved since
+  nothing transitive. Only that trigger raises or re-raises a flag
+  (`stale_flag_guard`, by `pg_trigger_depth()`): a statement may only dismiss
+  or clear an OPEN flag, every other column unchanged, and only a cascade
+  deletes one (app_user holds no DELETE). A flag stands while its entry has not been saved since
   (`standingStaleFlags`, read; the sweep writes CLEARED) and until dismissed; a
   later change re-raises it. "Grill me on what changed" is a SELECTION session
   of that one element with `staleFlagId` (409 STALE_FLAG_GONE otherwise), depth

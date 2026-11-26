@@ -33,7 +33,7 @@ import type { FactExtractor } from '@/lib/sources/extractor';
 import { CLEAN_SCAN } from '../helpers/research';
 import { setFakeApiKey } from '../helpers/fake-anthropic';
 import { ageExtractor, extractPending } from '../helpers/facts';
-import { runNight, threadExtractor } from '../helpers/continuity';
+import { answerAbout, citeAnswers, runNight, threadExtractor } from '../helpers/continuity';
 import { CONTINUITY_PROPOSALS_PER_RUN_MAX } from '@/lib/continuity/vocabulary';
 import { createAccount, workspaceCtx } from '../helpers/workspaces';
 
@@ -265,5 +265,35 @@ describe('the nightly share of the month (D28 addendum, item 1)', () => {
         const later = new Date(Date.now() + 13 * 60 * 60 * 1000);
         expect((await runNight(ctx, { ...capped, now: () => later })).sort()).toEqual(['OK', 'OK']);
         expect(calls).toBe(2);
+    });
+});
+
+describe('stale flags: written only by the database and the two decisions', () => {
+    it('a statement can neither forge nor rewrite nor delete a flag; it may dismiss or clear an open one', async () => {
+        const ctx = workspaceCtx(await createAccount());
+        const bookId = (await createBook(ctx, { title: 'Guarded flags' })).id;
+        const up = await createElement(ctx, bookId, { kind: 'CHARACTER', name: 'Upstream' });
+        const down = await createElement(ctx, bookId, { kind: 'CHARACTER', name: 'Downstream' });
+        const other = await createElement(ctx, bookId, { kind: 'CHARACTER', name: 'Other' });
+        await citeAnswers(ctx, bookId, down.id, [await answerAbout(ctx, bookId, up.id)]);
+        await updateElement(ctx, bookId, up.id, { summary: 'Upstream has changed.', baseVersion: 1 });
+        const flag = await runWithoutRls({ reason: 'test' }, (db) => db.staleFlag.findFirstOrThrow({ where: { elementId: down.id } }));
+        const asApp = <T,>(fn: Parameters<typeof runInWorkspaceContext<T>>[1]) => runInWorkspaceContext(ctx, fn);
+        const refused = async (p: Promise<unknown>) => expect(p).rejects.toThrow(/STALE_FLAG_FIXED|permission denied/);
+
+        await refused(asApp((db) => db.staleFlag.create({ data: { workspaceId: ctx.workspaceId, bookId, elementId: other.id, upstreamElementId: up.id, citedVersionId: flag.citedVersionId, upstreamVersionId: flag.upstreamVersionId, downstreamVersionNumber: 1 } })));
+        await refused(asApp((db) => db.staleFlag.update({ where: { id: flag.id }, data: { downstreamVersionNumber: 99 } })));
+        await refused(asApp((db) => db.staleFlag.update({ where: { id: flag.id }, data: { status: 'CLEARED', upstreamElementId: other.id } })));
+        await refused(asApp((db) => db.staleFlag.delete({ where: { id: flag.id } })));
+        await refused(runWithoutRls({ reason: 'test' }, (db) => db.staleFlag.delete({ where: { id: flag.id } })));
+
+        await asApp((db) => db.staleFlag.update({ where: { id: flag.id }, data: { status: 'DISMISSED', dismissedAt: new Date(), dismissedById: ctx.userId } }));
+        // A dismissed flag is not reopened by a statement; a later change of the upstream element raises it again.
+        await refused(asApp((db) => db.staleFlag.update({ where: { id: flag.id }, data: { status: 'OPEN', dismissedAt: null, dismissedById: null } })));
+        await updateElement(ctx, bookId, up.id, { summary: 'Upstream has changed again.', baseVersion: 2 });
+        expect(await runWithoutRls({ reason: 'test' }, (db) => db.staleFlag.findUniqueOrThrow({ where: { id: flag.id }, select: { status: true } }))).toEqual({ status: 'OPEN' });
+        // Deleting the element it names takes it (the cascade).
+        await runWithoutRls({ reason: 'test' }, (db) => db.bibleElement.delete({ where: { id: down.id } }));
+        expect(await runWithoutRls({ reason: 'test' }, (db) => db.staleFlag.count({ where: { id: flag.id } }))).toBe(0);
     });
 });
