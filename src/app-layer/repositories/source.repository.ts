@@ -395,9 +395,14 @@ export const StoryFactRepository = {
         const rows = await db.storyFact.groupBy({ by: ['status'], where: { workspaceId, sourceId: { in: [...sourceIds] }, ...SOURCE_KIND, supersededAt: null }, _count: { _all: true } });
         return rows.map((r) => ({ status: r.status, count: r._count._all }));
     },
-    /** The decided facts of a source (a re-upload's carry-over). */
+    /**
+     * The decided facts of a source (a re-upload's carry-over). A fact the author INVALIDATED (4.1: `supersededAt`, a
+     * proposal decided) is not among them: its CONFIRMED status is the decision the author has since withdrawn, and
+     * carrying it would bring the claim back live in the next version with nobody deciding (rule 1). The same claim
+     * in the new version is PENDING, for the author to decide again.
+     */
     async listDecidedForSource(db: Db, workspaceId: string, sourceId: string, take: number): Promise<StoryFactRow[]> {
-        return sourceFacts(await db.storyFact.findMany({ where: { workspaceId, sourceId, ...SOURCE_KIND, status: { in: ['CONFIRMED', 'REJECTED'] } }, orderBy: [{ chunkId: 'asc' }, { position: 'asc' }], take, select: FACT_SELECT }));
+        return sourceFacts(await db.storyFact.findMany({ where: { workspaceId, sourceId, ...SOURCE_KIND, status: { in: ['CONFIRMED', 'REJECTED'] }, supersededAt: null }, orderBy: [{ chunkId: 'asc' }, { position: 'asc' }], take, select: FACT_SELECT }));
     },
     /** The confirmed facts of these sources (the frontier's check and the retriever). */
     async listConfirmed(db: Db, workspaceId: string, sourceIds: readonly string[], take: number): Promise<StoryFactRow[]> {
@@ -479,9 +484,9 @@ export const BibleFactRepository = {
         return db.storyFact.findMany({ where: { workspaceId, bookId, ...BIBLE_KINDS, supersededAt: null }, orderBy: [{ statedAt: 'desc' }, { id: 'asc' }], take, select: BIBLE_FACT_SELECT });
     },
     /** Facts of any kind by id, scoped to a book's bible facts or the given sources (proposals name both kinds). */
-    async listAnyByIds(db: Db, workspaceId: string, ids: readonly string[]): Promise<Array<BibleFactRow & { sourceId: string | null; chunkId: string | null }>> {
+    async listAnyByIds(db: Db, workspaceId: string, ids: readonly string[]): Promise<Array<BibleFactRow & { sourceId: string | null; chunkId: string | null; status: StoryFactStatus }>> {
         if (ids.length === 0) return [];
-        return db.storyFact.findMany({ where: { workspaceId, id: { in: [...ids] } }, take: ids.length, select: { ...BIBLE_FACT_SELECT, sourceId: true, chunkId: true } });
+        return db.storyFact.findMany({ where: { workspaceId, id: { in: [...ids] } }, take: ids.length, select: { ...BIBLE_FACT_SELECT, sourceId: true, chunkId: true, status: true } });
     },
     /** Invalidate a live fact, once (the author's INVALIDATE decision on a proposal). */
     async supersede(db: Db, workspaceId: string, id: string, data: { at: Date; byFactId: string | null }): Promise<boolean> {

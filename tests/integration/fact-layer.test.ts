@@ -36,6 +36,10 @@ import { defaultBibleFactExtractor } from '@/lib/facts/model-seam';
 import type { ExtractResult, FactExtractor } from '@/lib/sources/extractor';
 import { fakeGenerator } from '../helpers/fake-question-generator';
 import { setFakeApiKey } from '../helpers/fake-anthropic';
+import { ANY_DUE } from '../helpers/facts';
+import { ingestText, seedSourceLibrary } from '../helpers/sources';
+import { decideFact, listBookFacts } from '@/app-layer/usecases/source-facts';
+import type { EmbeddingProvider } from '@/lib/ai/embeddings';
 import { addMember, createAccount, createBareUser, workspaceCtx } from '../helpers/workspaces';
 
 afterAll(() => prisma.$disconnect());
@@ -296,7 +300,7 @@ describe('the stops', () => {
         const bookId = (await createBook(ctx, { title: 'Stops' })).id;
         await createElement(ctx, bookId, { kind: 'CHARACTER', name: 'Wren', summary: 'Wren wants to cross the river before the spring floods.' });
         const [row] = await rows(ctx, bookId);
-        await runInWorkspaceContext(ctx, (db) => FactExtractionRepository.markQueued(db, ctx.workspaceId, row.id, new Date()));
+        await runInWorkspaceContext(ctx, (db) => FactExtractionRepository.markQueued(db, ctx.workspaceId, row.id, new Date(), ANY_DUE));
         return { ctx, bookId, id: row.id };
     }
     const gate = () => ({ mounted: true as const, recordKind: 'structural' as const });
@@ -338,7 +342,7 @@ describe('the stops', () => {
         expect(r.outcome).toBe('MODEL_RATE_LIMITED');
         expect(calls.n).toBe(0);
 
-        await runInWorkspaceContext(ctx, (db) => FactExtractionRepository.markQueued(db, ctx.workspaceId, id, new Date()));
+        await runInWorkspaceContext(ctx, (db) => FactExtractionRepository.markQueued(db, ctx.workspaceId, id, new Date(), ANY_DUE));
         const refused = await executeBibleFactExtraction({ workspaceId: ctx.workspaceId, extractionId: id }, { extractor: scripted(() => ({ facts: [] }), calls), charge: unlimited, gate: () => ({ mounted: false, reason: 'STRUCTURAL_RECORD_REFUSED', detail: '' }) });
         expect(refused.outcome).toBe('NOT_EVALUATED');
         expect(calls.n).toBe(0);
@@ -441,5 +445,130 @@ describe('isolation of the review', () => {
         const stranger = workspaceCtx(await createAccount());
         expect((await refusal(listFactProposals(stranger, bookId))).status).toBe(404);
         expect((await refusal(decideFactProposal(stranger, bookId, randomUUID(), { decision: 'REJECT' }))).status).toBe(404);
+    });
+});
+
+describe('review of 4.1: races and what the context shows', () => {
+    const gate = () => ({ mounted: true as const, recordKind: 'structural' as const });
+
+    it('a version superseded while its call ran is skipped at persist: no stale fact, and the newer fact is never proposed for invalidation by it', async () => {
+        const owner = await createAccount();
+        const ctx = workspaceCtx(owner);
+        const bookId = (await createBook(ctx, { title: 'Three Ages' })).id;
+        const wren = await createElement(ctx, bookId, { kind: 'CHARACTER', name: 'Wren', summary: 'Wren is 12 years old.' });
+        await extractAll(ctx, age(12));
+        await updateElement(ctx, bookId, wren.id, { summary: 'Wren is 13 years old.', baseVersion: 1 });
+        const v2 = (await rows(ctx, bookId)).find((r) => r.status === 'PENDING')!;
+        await runInWorkspaceContext(ctx, (db) => FactExtractionRepository.markQueued(db, ctx.workspaceId, v2.id, new Date(), ANY_DUE));
+        // While v2's call runs, the author saves v3, and v3 is extracted to the end (another worker).
+        const inner = age(13)();
+        const racing = (): FactExtractor => ({
+            async extract(request, signal) {
+                await updateElement(ctx, bookId, wren.id, { summary: 'Wren is 14 years old.', baseVersion: 2 });
+                expect(await extractAll(ctx, age(14))).toEqual(['OK']);
+                return inner.extract(request, signal);
+            },
+        });
+        const r = await executeBibleFactExtraction({ workspaceId: ctx.workspaceId, extractionId: v2.id }, { extractor: racing, charge: unlimited, gate });
+        expect(r.outcome).toBe('SUPERSEDED');
+        expect((await rows(ctx, bookId)).find((x) => x.id === v2.id)).toMatchObject({ status: 'SKIPPED', outcome: 'SUPERSEDED', factsAdded: 0, costMicroUsd: BigInt(7) });
+        expect((await bibleFacts(bookId)).filter((f) => f.predicate === 'AGE')).toHaveLength(2);
+        const page = await listFactProposals(ctx, bookId);
+        expect(page.proposals.map((p) => [p.older.statement, p.newer?.statement ?? null])).toEqual([['Wren is 12 years old.', 'Wren is 14 years old.']]);
+    });
+
+    it('two dispatcher ticks never re-queue a row the other already queued and a worker claimed', async () => {
+        const owner = await createAccount();
+        const ctx = workspaceCtx(owner);
+        const bookId = (await createBook(ctx, { title: 'Two Ticks' })).id;
+        await createElement(ctx, bookId, { kind: 'CHARACTER', name: 'Wren', summary: 'Wren wants to cross the river before the spring floods.' });
+        const later = new Date(Date.now() + 60_000);
+        const window = { now: later, settledBefore: new Date(later.getTime() - 20_000), staleBefore: new Date(later.getTime() - 30 * 60_000) };
+        // Tick B discovered the row PENDING; tick A queued it and a worker claimed it before B marked it.
+        const [row] = await rows(ctx, bookId);
+        expect(await runInWorkspaceContext(ctx, (db) => FactExtractionRepository.markQueued(db, ctx.workspaceId, row.id, later, window))).toBe(true);
+        expect(await runInWorkspaceContext(ctx, (db) => FactExtractionRepository.claim(db, ctx.workspaceId, row.id, later))).toBe(true);
+        // Tick B's mark: the row is no longer due, so the live claim stands.
+        expect(await runInWorkspaceContext(ctx, (db) => FactExtractionRepository.markQueued(db, ctx.workspaceId, row.id, later, window))).toBe(false);
+        expect((await rows(ctx, bookId))[0]).toMatchObject({ status: 'RUNNING', attempts: 1, startedAt: later });
+    });
+
+    it('an element saved while its embedding is being made is embedded again, as it now stands', async () => {
+        const owner = await createAccount();
+        const ctx = workspaceCtx(owner);
+        const bookId = (await createBook(ctx, { title: 'Moving Text' })).id;
+        const el = await createElement(ctx, bookId, { kind: 'CHARACTER', name: 'Wren', summary: 'Wren wants to cross the river before the spring floods.' });
+        const stub = new StubEmbeddingProvider();
+        let saved = false;
+        const racing: EmbeddingProvider = {
+            providerId: stub.providerId,
+            model: stub.model,
+            dimensions: stub.dimensions,
+            revision: stub.revision,
+            async embed(texts, opts) {
+                if (!saved) {
+                    saved = true;
+                    await updateElement(ctx, bookId, el.id, { summary: 'Wren fears the water more than the flood.', baseVersion: 1 });
+                }
+                return stub.embed(texts, opts);
+            },
+        };
+        const elementKey = async () => (await runInWorkspaceContext(ctx, (db) => getVectorRepository().listKeys(db, ctx.workspaceId, stub.revision))).find((k) => k.sourceModel === 'BibleElement' && k.sourceId === el.id);
+        await executeFactLayerDispatch({ extractionOpen: () => false, embedder: () => racing, workspaceIds: [ctx.workspaceId] });
+        const first = await elementKey();
+        expect(first).toBeDefined();
+        // The save during the embedding left its task waiting.
+        const waiting = await runWithoutRls({ reason: 'test' }, (db) => db.embeddingTask.count({ where: { workspaceId: ctx.workspaceId, sourceModel: 'BibleElement', sourceId: el.id } }));
+        expect(waiting).toBe(1);
+        await executeFactLayerDispatch({ extractionOpen: () => false, embedder: () => stub, workspaceIds: [ctx.workspaceId] });
+        const second = await elementKey();
+        expect(second!.contentHash).not.toBe(first!.contentHash);
+        expect(await runWithoutRls({ reason: 'test' }, (db) => db.embeddingTask.count({ where: { workspaceId: ctx.workspaceId, sourceModel: 'BibleElement' } }))).toBe(0);
+    });
+
+    it('a source fact the author invalidated carries no decision into its source’s next version', async () => {
+        const owner = await createAccount();
+        const ctx = workspaceCtx(owner);
+        const bookId = (await createBook(ctx, { title: 'Salt Road' })).id;
+        await createElement(ctx, bookId, { kind: 'CHARACTER', name: 'Mara', summary: 'Mara wants the salt road closed for good.' });
+        const sentence = 'Mara wants the salt road reopened before winter.';
+        await ingestText(ctx, { kind: 'book', bookId }, sentence, 'draft.txt');
+        const sourced = (await listBookFacts(ctx, bookId)).facts.find((f) => f.statement === sentence)!;
+        await decideFact(ctx, sourced.id, 'CONFIRM');
+        // The bible says otherwise: the model names the confirmed source fact it was shown.
+        const contra = scripted((data) => {
+            const shown = data.find((b) => b.label === 'existing-facts')?.text ?? '';
+            const n = shown.split('\n').filter((l) => l.includes('reopened')).map((l) => Number(/^(\d+)\./.exec(l)![1]));
+            return { facts: [{ subject: 'Mara', predicate: 'WANT', object: '', statement: 'Mara wants the salt road closed for good.', quote: 'Mara wants the salt road closed for good', storyTimeFrom: '', storyTimeTo: '', contradicts: n }] };
+        });
+        expect(await extractAll(ctx, contra)).toEqual(['OK']);
+        const p = (await listFactProposals(ctx, bookId)).proposals.find((x) => x.older.id === sourced.id)!;
+        expect(p).toMatchObject({ basis: 'MODEL', older: { origin: { kind: 'SOURCE' } } });
+        await decideFactProposal(ctx, bookId, p.id, { decision: 'INVALIDATE' });
+        // A changed file under the same name: the next version of the source states the same claim.
+        await ingestText(ctx, { kind: 'book', bookId }, `${sentence} Mara keeps a ledger of every toll she has ever paid.`, 'draft.txt');
+        const again = await runInWorkspaceContext(ctx, (db) =>
+            db.storyFact.findMany({ where: { workspaceId: ctx.workspaceId, sourceKind: 'SOURCE_CHUNK', supersededAt: null, NOT: { id: sourced.id } }, select: { statement: true, status: true, carriedFromFactId: true } }),
+        );
+        const restated = again.find((f) => f.statement === sentence)!;
+        expect(restated).toMatchObject({ status: 'PENDING', carriedFromFactId: null });
+    });
+
+    it('a series fact the book overrode reaches the context through the vector search as the book’s own answer, never the series’ words', async () => {
+        const owner = await createAccount();
+        const ctx = workspaceCtx(owner);
+        const bookId = (await createBook(ctx, { title: 'Overridden' })).id;
+        const wren = await createElement(ctx, bookId, { kind: 'CHARACTER', name: 'Wren', summary: 'Wren keeps the lock at Harrow Weir.' });
+        const { seriesSourceId } = await seedSourceLibrary(ctx, bookId, 'Qv');
+        const inherited = await runInWorkspaceContext(ctx, (db) => db.storyFact.findFirstOrThrow({ where: { workspaceId: ctx.workspaceId, sourceId: seriesSourceId, status: 'CONFIRMED' }, select: { id: true, subjectName: true, statement: true } }));
+        expect(await runWithoutRls({ reason: 'test' }, (db) => db.storyFactOverride.count({ where: { bookId, factId: inherited.id } }))).toBe(1);
+        await executeFactLayerDispatch({ extractionOpen: () => false, embedder: () => new StubEmbeddingProvider(), workspaceIds: [ctx.workspaceId] });
+        await executeFactLayerDispatch({ extractionOpen: () => false, embedder: () => new StubEmbeddingProvider(), workspaceIds: [ctx.workspaceId] });
+        const provider = new StubEmbeddingProvider();
+        const q = await provider.embed([inherited.statement], { inputType: 'query' });
+        if (!q.ok) throw new Error('stub');
+        const context = await runInWorkspaceContext(ctx, (db) => assembleSourceContext(db, ctx, bookId, [{ elementId: wren.id, kind: 'CHARACTER', name: 'Wren' }], { vector: q.vectors[0], revision: provider.revision }));
+        expect(context.facts.some((f) => f.statement === inherited.statement)).toBe(false);
+        expect(context.facts).toContainEqual({ subject: inherited.subjectName, statement: 'In this book Mara Qv stays.', from: 'OVERRIDE' });
     });
 });

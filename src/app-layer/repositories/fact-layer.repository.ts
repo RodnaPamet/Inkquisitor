@@ -42,6 +42,24 @@ export type FactExtractionRow = Prisma.BibleFactExtractionGetPayload<{ select: t
 const PROPOSAL_SELECT = { id: true, bookId: true, factId: true, newerFactId: true, reason: true, basis: true, status: true, decidedAt: true, createdAt: true } as const satisfies Prisma.StoryFactProposalSelect;
 export type FactProposalRow = Prisma.StoryFactProposalGetPayload<{ select: typeof PROPOSAL_SELECT }>;
 
+/** When an extraction is due (the dispatcher's window): discovery and the mark ask the same predicate. */
+export interface ExtractionDueWindow {
+    now: Date;
+    settledBefore: Date;
+    staleBefore: Date;
+}
+
+function dueWhere(data: ExtractionDueWindow): Prisma.BibleFactExtractionWhereInput {
+    return {
+        OR: [
+            { status: 'PENDING', createdAt: { lt: data.settledBefore } },
+            { status: 'STOPPED', nextAttemptAt: { lte: data.now } },
+            { status: 'QUEUED', queuedAt: { lt: data.staleBefore } },
+            { status: 'RUNNING', startedAt: { lt: data.staleBefore } },
+        ],
+    };
+}
+
 export const FactExtractionRepository = {
     async find(db: Db, workspaceId: string, id: string): Promise<FactExtractionRow | null> {
         return db.bibleFactExtraction.findFirst({ where: { workspaceId, id }, select: EXTRACTION_SELECT });
@@ -58,26 +76,25 @@ export const FactExtractionRepository = {
      * for `settledBefore`, STOPPED ones whose next attempt is due, and QUEUED or RUNNING ones with no sign of life
      * since `staleBefore` (a lost job or a dead worker).
      */
-    async listDue(db: PrismaClient, data: { now: Date; settledBefore: Date; staleBefore: Date; take: number; workspaceIds?: readonly string[] }): Promise<Array<{ id: string; workspaceId: string; attempts: number }>> {
+    async listDue(db: PrismaClient, data: ExtractionDueWindow & { take: number; workspaceIds?: readonly string[] }): Promise<Array<{ id: string; workspaceId: string; attempts: number }>> {
         return db.bibleFactExtraction.findMany({
             where: {
                 ...(data.workspaceIds ? { workspaceId: { in: [...data.workspaceIds] } } : {}),
-                OR: [
-                    { status: 'PENDING', createdAt: { lt: data.settledBefore } },
-                    { status: 'STOPPED', nextAttemptAt: { lte: data.now } },
-                    { status: 'QUEUED', queuedAt: { lt: data.staleBefore } },
-                    { status: 'RUNNING', startedAt: { lt: data.staleBefore } },
-                ],
+                ...dueWhere(data),
             },
             orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
             take: data.take,
             select: { id: true, workspaceId: true, attempts: true },
         });
     },
-    /** Mark a due row QUEUED (from what the dispatcher saw), counting the attempt. */
-    async markQueued(db: Db, workspaceId: string, id: string, at: Date): Promise<boolean> {
+    /**
+     * Mark a due row QUEUED, counting the attempt — only while it is STILL due by the same window discovery used,
+     * asked in the same statement: a row another dispatcher tick queued meanwhile (and a worker may have claimed) is
+     * fresh, not stale, and is left to its worker. Never steal a live claim: its call is already being paid for.
+     */
+    async markQueued(db: Db, workspaceId: string, id: string, at: Date, due: ExtractionDueWindow): Promise<boolean> {
         const r = await db.bibleFactExtraction.updateMany({
-            where: { workspaceId, id, status: { in: ['PENDING', 'STOPPED', 'QUEUED', 'RUNNING'] } },
+            where: { workspaceId, id, ...dueWhere(due) },
             data: { status: 'QUEUED', queuedAt: at, startedAt: null, attempts: { increment: 1 } },
         });
         return r.count === 1;
@@ -219,12 +236,13 @@ export const EmbeddingTaskRepository = {
         const rows = await db.embeddingTask.findMany({ where: workspaceIds ? { workspaceId: { in: [...workspaceIds] } } : {}, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }], take, select: { workspaceId: true } });
         return [...new Set(rows.map((r) => r.workspaceId))];
     },
-    async listForWorkspace(db: Db, workspaceId: string, take: number): Promise<Array<{ id: string; sourceModel: string; sourceId: string; attempts: number }>> {
-        return db.embeddingTask.findMany({ where: { workspaceId }, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }], take, select: { id: true, sourceModel: true, sourceId: true, attempts: true } });
+    async listForWorkspace(db: Db, workspaceId: string, take: number): Promise<Array<{ id: string; sourceModel: string; sourceId: string; attempts: number; generation: number }>> {
+        return db.embeddingTask.findMany({ where: { workspaceId }, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }], take, select: { id: true, sourceModel: true, sourceId: true, attempts: true, generation: true } });
     },
-    async remove(db: Db, workspaceId: string, ids: readonly string[]): Promise<number> {
-        if (ids.length === 0) return 0;
-        const r = await db.embeddingTask.deleteMany({ where: { workspaceId, id: { in: [...ids] } } });
+    /** Delete tasks, each only at the generation it was read at: one its row's change bumped since waits for the next tick. */
+    async remove(db: Db, workspaceId: string, tasks: ReadonlyArray<{ id: string; generation: number }>): Promise<number> {
+        if (tasks.length === 0) return 0;
+        const r = await db.embeddingTask.deleteMany({ where: { workspaceId, OR: tasks.map((t) => ({ id: t.id, generation: t.generation })) } });
         return r.count;
     },
     async bumpAttempts(db: Db, workspaceId: string, ids: readonly string[]): Promise<void> {

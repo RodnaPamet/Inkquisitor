@@ -248,11 +248,17 @@ export async function assembleSourceContext(
             within: { scope: 'facts-of-book', bookId, sourceIds: allowed },
         });
         const rows = new Map((await BibleFactRepository.listAnyByIds(db, ctx.workspaceId, hits.map((h) => h.sourceId))).map((r) => [r.id, r] as const));
+        // A series fact this book overrode is shown as the book's own answer, never the series' words (4.0's rule,
+        // as `resolvedFacts` applies it to the scope's facts).
+        const seriesHits = hits.map((h) => rows.get(h.sourceId)).filter((r): r is NonNullable<typeof r> => r !== undefined && r.sourceId !== null && set.seriesSourceIds.includes(r.sourceId));
+        const overrides = new Map((await StoryFactOverrideRepository.listForBook(db, ctx.workspaceId, bookId, seriesHits.map((r) => r.id))).map((o) => [o.factId, o.text] as const));
         for (const h of hits) {
             const r = rows.get(h.sourceId);
             // Read back through the same allowed set the query named (the book's own facts, its sources' confirmed ones).
-            if (!r || r.supersededAt !== null || !(r.bookId === bookId || (r.sourceId !== null && allowed.includes(r.sourceId)))) continue;
-            if (!addFact({ id: r.id, subject: r.subjectName, statement: r.statement, from: r.bookId === bookId ? 'BIBLE' : set.seriesSourceIds.includes(r.sourceId ?? '') ? 'SERIES' : 'BOOK' })) break;
+            if (!r || r.supersededAt !== null || r.status !== 'CONFIRMED' || !(r.bookId === bookId || (r.sourceId !== null && allowed.includes(r.sourceId)))) continue;
+            const override = overrides.get(r.id);
+            const from = r.bookId === bookId ? 'BIBLE' : override !== undefined ? 'OVERRIDE' : set.seriesSourceIds.includes(r.sourceId ?? '') ? 'SERIES' : 'BOOK';
+            if (!addFact({ id: r.id, subject: r.subjectName, statement: override ?? r.statement, from })) break;
         }
     }
 

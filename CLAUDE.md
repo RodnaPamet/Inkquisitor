@@ -1354,8 +1354,11 @@ closed beta with an explicit operator flag (D5, amended 2026-11-19).
   `FACT_EXTRACTION_SETTLE_MS`; STOPPED ones when due; stale QUEUED/RUNNING ones)
   as `bible-facts` jobs (payload ids), and only while a call can be made and a
   record mounts (D11); discovery is the closed `fact-layer-discovery` bypass,
-  ids only. `executeBibleFactExtraction` SKIPS a superseded version (a newer
-  one of the same entry covers it: a run of autosaves is read once), a gone
+  ids only, and the mark asks the SAME due window in its own statement (never
+  re-queue a row another tick queued: its claim is live). `executeBibleFactExtraction`
+  SKIPS a superseded version (a newer one of the same entry covers it: a run of
+  autosaves is read once), asked before the claim AND again at persist under the
+  fact lock (an older version never writes after a newer one), a gone
   subject, a deleted book or an author who may no longer edit; STOPS
   (resumable, `nextAttemptAt`) at the kill switch, the ceiling, the rate minute
   (waited at most `MODEL_RATE_WAIT_MAX_MS`, never an uncharged call), D11, a
@@ -1385,10 +1388,14 @@ closed beta with an explicit operator flag (D5, amended 2026-11-19).
   `answered[].by`; 4.1 adds only WORLD_RULE's RULE). EMBEDDINGS: elements, facts
   and ANSWERED answers are vector source models (delete triggers; the
   require-source guard, an append-only answer's without a lock); the
-  dispatcher embeds each `EmbeddingTask` as its row stands, never on a request.
+  dispatcher embeds each `EmbeddingTask` as its row stands, never on a request;
+  a repeat bumps the task's `generation`, and a task is deleted only at the
+  generation that was read (a save mid-embedding is embedded again). A source
+  fact the author invalidated carries no decision into its source's next version.
   THE CONTEXT (`assembleSourceContext`): one token budget — related summaries
   (their share), top `FACTS_TOP_K` facts (the scope's bible facts, its confirmed
-  source facts, then the nearest of the book's others), then vector + lexical
+  source facts, then the nearest of the book's others — a series fact the book
+  overrode as its override text, by either path), then vector + lexical
   passages fused by rank; every vector search names its allowed set INSIDE the
   query (`within`: `chunks-of-sources`, `facts-of-book`), the in-process backend
   refuses it. With an embedder, a round's context is read AFTER the claim: the

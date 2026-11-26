@@ -29,7 +29,7 @@ import { assembleSourceContext, FACTS_TOP_K } from '@/app-layer/usecases/source-
 const ctx = { workspaceId: 'ws', requestId: 'r', userId: 'u', workspaceSlug: 'w', role: 'OWNER', permissions: {} } as never;
 const db = {} as never;
 const scope = [{ elementId: 'el-1', kind: 'CHARACTER' as const, name: 'Wren' }];
-const fact = (id: string, statement: string) => ({ id, subjectElementId: 'el-1', predicate: 'WANT', statement, subjectName: 'Wren', supersededAt: null, bookId: 'book-1', sourceId: null });
+const fact = (id: string, statement: string) => ({ id, subjectElementId: 'el-1', predicate: 'WANT', statement, subjectName: 'Wren', supersededAt: null, bookId: 'book-1', sourceId: null, status: 'CONFIRMED' });
 
 beforeEach(() => {
     searches.length = 0;
@@ -71,4 +71,11 @@ it('cuts the related summaries to their share before any fact is read in', async
     expect(out.truncated).toBe(true);
     // The facts still have their own share.
     expect(out.facts).toHaveLength(1);
+});
+
+it('reads a vector hit back only while it is still CONFIRMED (the query’s own condition, asked again)', async () => {
+    bibleAbout.mockResolvedValue([]);
+    anyByIds.mockResolvedValue([{ ...fact('near-1', 'Cal ferries goods by night.'), bookId: null, sourceId: 'src-book', status: 'REJECTED' }]);
+    const out = await assembleSourceContext(db, ctx, 'book-1', scope, { vector: [1, 0], revision: 'r' }, 3_000, null);
+    expect(out.facts).toEqual([]);
 });

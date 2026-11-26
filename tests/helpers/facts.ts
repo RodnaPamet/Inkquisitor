@@ -32,11 +32,14 @@ export function ageExtractor(name: string): () => FactExtractor {
     });
 }
 
+/** A due window every row falls in (tests mark rows by hand, whenever they were written or stopped). */
+export const ANY_DUE = Object.freeze({ now: new Date('9999-01-01T00:00:00Z'), settledBefore: new Date('9999-01-01T00:00:00Z'), staleBefore: new Date('9999-01-01T00:00:00Z') });
+
 /** Run every extraction row of the book still PENDING (the dispatcher's marking, then the job). */
 export async function extractPending(ctx: WorkspaceRequestContext, bookId: string, extractor: () => FactExtractor): Promise<Array<string | null>> {
     const due = await runInWorkspaceContext(ctx, async (db) => {
         const rows = (await FactExtractionRepository.listForBook(db, ctx.workspaceId, bookId, 200)).filter((r) => r.status === 'PENDING').reverse();
-        for (const r of rows) await FactExtractionRepository.markQueued(db, ctx.workspaceId, r.id, new Date());
+        for (const r of rows) await FactExtractionRepository.markQueued(db, ctx.workspaceId, r.id, new Date(), ANY_DUE);
         return rows.map((r) => r.id);
     });
     const outcomes: Array<string | null> = [];

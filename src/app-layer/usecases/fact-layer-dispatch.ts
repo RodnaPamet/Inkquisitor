@@ -79,8 +79,9 @@ export async function executeFactLayerDispatch(deps: DispatchDeps = {}): Promise
 
     // ── Extractions ──
     if ((deps.extractionOpen ?? defaultExtractionOpen)()) {
+        const window = { now, settledBefore: new Date(now.getTime() - FACT_EXTRACTION_SETTLE_MS), staleBefore: new Date(now.getTime() - STALE_EXTRACTION_MS) };
         const due = await runWithoutRls({ reason: 'fact-layer-discovery' }, (db) =>
-            FactExtractionRepository.listDue(db, { now, settledBefore: new Date(now.getTime() - FACT_EXTRACTION_SETTLE_MS), staleBefore: new Date(now.getTime() - STALE_EXTRACTION_MS), take: DISPATCH_EXTRACTIONS_MAX, workspaceIds: deps.workspaceIds }),
+            FactExtractionRepository.listDue(db, { ...window, take: DISPATCH_EXTRACTIONS_MAX, workspaceIds: deps.workspaceIds }),
         );
         const byWorkspace = new Map<string, typeof due>();
         for (const d of due) byWorkspace.set(d.workspaceId, [...(byWorkspace.get(d.workspaceId) ?? []), d]);
@@ -88,7 +89,7 @@ export async function executeFactLayerDispatch(deps: DispatchDeps = {}): Promise
             const scope = { workspaceId, requestId: randomUUID() };
             const marked = await runInWorkspaceContext(scope, async (db) => {
                 const out: Array<{ id: string; attempt: number }> = [];
-                for (const r of rows) if (await FactExtractionRepository.markQueued(db, workspaceId, r.id, now)) out.push({ id: r.id, attempt: r.attempts + 1 });
+                for (const r of rows) if (await FactExtractionRepository.markQueued(db, workspaceId, r.id, now, window)) out.push({ id: r.id, attempt: r.attempts + 1 });
                 return out;
             });
             for (const m of marked) {
@@ -153,14 +154,14 @@ export async function embedWorkspaceTasks(workspaceId: string, provider: Embeddi
     const failedOut = async (reason: string): Promise<{ seen: number; embedded: number; dropped: number; failed: number }> => {
         const spent = live.filter((t) => t.attempts + 1 >= EMBEDDING_TASK_ATTEMPTS_MAX);
         await runInWorkspaceContext(scope, async (db) => {
-            await EmbeddingTaskRepository.remove(db, workspaceId, [...gone, ...spent].map((t) => t.id));
+            await EmbeddingTaskRepository.remove(db, workspaceId, [...gone, ...spent]);
             await EmbeddingTaskRepository.bumpAttempts(db, workspaceId, live.filter((t) => !spent.includes(t)).map((t) => t.id));
         });
         if (spent.length > 0) logger.warn('facts.embedding_tasks_dropped', { component: 'facts', workspaceId, count: spent.length, reason });
         return { seen: tasks.length, embedded: 0, dropped: gone.length + spent.length, failed: live.length };
     };
     if (live.length === 0) {
-        await runInWorkspaceContext(scope, (db) => EmbeddingTaskRepository.remove(db, workspaceId, gone.map((t) => t.id)));
+        await runInWorkspaceContext(scope, (db) => EmbeddingTaskRepository.remove(db, workspaceId, gone));
         return { seen: tasks.length, embedded: 0, dropped: gone.length, failed: 0 };
     }
     if (!provider) return failedOut('NO_PROVIDER');
@@ -182,7 +183,7 @@ export async function embedWorkspaceTasks(workspaceId: string, provider: Embeddi
     try {
         await runInWorkspaceContext(scope, async (db) => {
             await getVectorRepository().upsert(db, workspaceId, records);
-            await EmbeddingTaskRepository.remove(db, workspaceId, tasks.map((t) => t.id));
+            await EmbeddingTaskRepository.remove(db, workspaceId, tasks);
         });
     } catch (err) {
         // A row deleted between the read and the write (the store refuses its vector): the next tick finds it gone.

@@ -373,6 +373,8 @@ model EmbeddingTask {
   sourceModel String
   sourceId    String
   attempts    Int      @default(0)
+  /// Bumped by each repeat while the task waits (an element saved again): the dispatcher deletes a task only at the generation it read and embedded.
+  generation  Int      @default(0)
   createdAt   DateTime @default(now())
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)

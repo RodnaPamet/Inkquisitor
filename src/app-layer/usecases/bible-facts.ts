@@ -352,6 +352,18 @@ async function persist(ctx: WorkspaceRequestContext, row: FactExtractionRow, cla
         const current = await FactExtractionRepository.find(db, ctx.workspaceId, row.id);
         // Still RUNNING under THIS claim: a stale claim re-dispatched belongs to its new worker.
         if (!current || current.status !== 'RUNNING' || current.startedAt?.getTime() !== claim.getTime()) return { ran: false, outcome: null };
+        // Still the entry's NEWEST version, asked again under the lock: a newer version saved while this one ran is
+        // extracted on its own (from the baseline this one never became), and may already have persisted. Writing this
+        // older version's facts after it would propose the newer facts for invalidation by stale ones, and its text
+        // would mark the newer facts NO_LONGER_STATED. What the call cost is already counted.
+        const newest = row.kind === 'BIBLE_VERSION'
+            ? await BibleVersionReadRepository.newestElementVersionId(db, ctx.workspaceId, row.elementId!)
+            : await BibleVersionReadRepository.newestRelationVersionId(db, ctx.workspaceId, row.relationId!);
+        if (newest !== (row.bibleVersionId ?? row.relationVersionId)) {
+            const skipped: FactExtractionOutcome = newest === null ? 'SUBJECT_GONE' : 'SUPERSEDED';
+            await FactExtractionRepository.finish(db, ctx.workspaceId, row.id, { status: statusOf(skipped), outcome: skipped, from: ['RUNNING'], claim, metrics: metrics as unknown as Prisma.InputJsonValue, at: now() });
+            return { ran: true, outcome: skipped };
+        }
         // Read again under the lock: what another extraction of the book wrote meanwhile is resolved against too.
         const live = await liveFactsFor(db, ctx, row.bookId, prepared.subject);
         const liveIds = new Set(live.map((f) => f.id));
