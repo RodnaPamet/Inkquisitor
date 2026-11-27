@@ -45,8 +45,8 @@ export interface StructurePreviewValue {
 
 export const StructurePreviewContext = createContext<StructurePreviewValue | null>(null);
 
-/** The cards on the canvas now, by element id (page bounds), read reactively from the store. */
-function useNodeBoxes(): Map<string, PreviewBox> {
+/** The cards on the canvas now, by element id (page bounds), read reactively from the store (the ghosts and the scene cards share it). */
+export function useNodeBoxes(): Map<string, PreviewBox> {
     const editor = useEditor();
     const key = useValue(
         'story-node-boxes',

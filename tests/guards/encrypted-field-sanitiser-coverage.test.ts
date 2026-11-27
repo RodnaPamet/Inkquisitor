@@ -116,6 +116,16 @@ const COVERAGE: Readonly<Record<string, Classification>> = {
     'StressWeakPoint.questions': { repository: 'StressWeakPointRepository', writeMethods: ['createMany'], sanitiser: 'sanitiseWeakPointForStorage' },
     'GapHunt.picks': { repository: 'GapHuntRepository', writeMethods: ['create'], sanitiser: 'sanitiseGapPicksForStorage' },
     'InterviewCompaction.summary': { repository: 'InterviewCompactionRepository', writeMethods: ['create'], sanitiser: 'sanitiseSummaryForStorage' },
+    // Phase 5.1 (D33): the manuscript. Titles, story time and note are plain text; a scene's text is the prose
+    // profile (`storableSceneHtml` over `sanitizeSceneHtml`), and a version of it is the text the same module stored.
+    'ManuscriptPart.title': { repository: 'ManuscriptPartRepository', writeMethods: ['create', 'createParts', 'rename'], sanitiser: 'sanitiseManuscriptTitle' },
+    'ManuscriptChapter.title': { repository: 'ManuscriptChapterRepository', writeMethods: ['create', 'createChapters', 'rename'], sanitiser: 'sanitiseManuscriptTitle' },
+    'ManuscriptScene.title': { repository: 'ManuscriptSceneRepository', writeMethods: ['create', 'createScenes', 'updateMeta'], sanitiser: 'sanitiseManuscriptTitle' },
+    'ManuscriptScene.text': { repository: 'ManuscriptSceneRepository', writeMethods: ['setText', 'createScenes'], sanitiser: 'storableSceneHtml' },
+    'ManuscriptScene.storyTime': { repository: 'ManuscriptSceneRepository', writeMethods: ['updateMeta'], sanitiser: 'sanitiseStoryTime' },
+    'ManuscriptScene.note': { repository: 'ManuscriptSceneRepository', writeMethods: ['setNote'], sanitiser: 'sanitiseSceneNote' },
+    'SceneVersion.text': { repository: 'SceneVersionRepository', writeMethods: ['create', 'createMany'], sanitiser: 'storableSceneHtml' },
+    'SceneNoteVersion.note': { repository: 'SceneNoteVersionRepository', writeMethods: ['create'], sanitiser: 'sanitiseSceneNote' },
     // Phase 3.1: a story map's freeform layer (sticky notes and loose text) is author text; a snapshot is the saved state.
     'StoryMap.freeformJson': { repository: 'StoryMapRepository', writeMethods: ['create', 'commit'], sanitiser: 'sanitiseFreeformForStorage' },
     'MapSnapshot.snapshot': {
@@ -157,10 +167,15 @@ const REPOSITORIES: Readonly<Record<string, { file: string; model: string }>> = 
     StressWeakPointRepository: { file: 'src/app-layer/repositories/interrogation.repository.ts', model: 'StressWeakPoint' },
     GapHuntRepository: { file: 'src/app-layer/repositories/interrogation.repository.ts', model: 'GapHunt' },
     InterviewCompactionRepository: { file: 'src/app-layer/repositories/interrogation.repository.ts', model: 'InterviewCompaction' },
+    ManuscriptPartRepository: { file: 'src/app-layer/repositories/manuscript.repository.ts', model: 'ManuscriptPart' },
+    ManuscriptChapterRepository: { file: 'src/app-layer/repositories/manuscript.repository.ts', model: 'ManuscriptChapter' },
+    ManuscriptSceneRepository: { file: 'src/app-layer/repositories/manuscript.repository.ts', model: 'ManuscriptScene' },
+    SceneVersionRepository: { file: 'src/app-layer/repositories/manuscript.repository.ts', model: 'SceneVersion' },
+    SceneNoteVersionRepository: { file: 'src/app-layer/repositories/manuscript.repository.ts', model: 'SceneNoteVersion' },
 };
 
 /** Wrappers, where each is defined and what it must call; the chain must end at a primitive. */
-const PRIMITIVES = ['sanitizePlainText', 'sanitizeRichTextHtml'] as const;
+const PRIMITIVES = ['sanitizePlainText', 'sanitizeRichTextHtml', 'sanitizeSceneHtml'] as const;
 const WRAPPERS: Readonly<Record<string, { file: string; calls: readonly string[] }>> = {
     optionalBlock: { file: 'src/app-layer/usecases/bible-common.ts', calls: ['plainBlock'] },
     requiredLine: { file: 'src/app-layer/usecases/bible-common.ts', calls: ['plainLine'] },
@@ -185,6 +200,10 @@ const WRAPPERS: Readonly<Record<string, { file: string; calls: readonly string[]
     sanitiseWeakPointForStorage: { file: 'src/lib/stress-test/storage.ts', calls: ['plainLine'] },
     sanitiseGapPicksForStorage: { file: 'src/lib/gap-hunt/storage.ts', calls: ['plainLine'] },
     sanitiseSummaryForStorage: { file: 'src/lib/interview/compaction-prompt.ts', calls: ['plainBlock'] },
+    sanitiseManuscriptTitle: { file: 'src/lib/manuscript/storage.ts', calls: ['plainLine'] },
+    sanitiseStoryTime: { file: 'src/lib/manuscript/storage.ts', calls: ['plainLine'] },
+    sanitiseSceneNote: { file: 'src/lib/manuscript/storage.ts', calls: ['plainBlock'] },
+    storableSceneHtml: { file: 'src/lib/manuscript/scene-html.ts', calls: ['sanitizeSceneHtml'] },
     sanitiseFreeformRecords: { file: 'src/lib/canvas/freeform.ts', calls: ['cleanValue'] },
     cleanValue: { file: 'src/lib/canvas/freeform.ts', calls: ['cleanString'] },
     cleanString: { file: 'src/lib/canvas/freeform.ts', calls: ['sanitizePlainText'] },
@@ -231,6 +250,20 @@ function definitionOf(sf: ts.SourceFile, name: string): ts.Node | null {
 
 const delegateOf = (model: string) => model[0].toLowerCase() + model.slice(1);
 
+/** A `data` value the guard can read: an object literal, or `<rows>.map((r) => ({ … }))` whose arrow returns one. */
+export function mappedLiteralOf(init: ts.Expression): ts.ObjectLiteralExpression | null {
+    if (ts.isObjectLiteralExpression(init)) return init;
+    if (ts.isCallExpression(init) && ts.isPropertyAccessExpression(init.expression) && init.expression.name.text === 'map' && init.arguments.length === 1) {
+        const fn = init.arguments[0];
+        if (ts.isArrowFunction(fn)) {
+            let body: ts.Node = fn.body;
+            while (ts.isParenthesizedExpression(body)) body = body.expression;
+            if (ts.isObjectLiteralExpression(body)) return body;
+        }
+    }
+    return null;
+}
+
 /**
  * Every method of `export const <repository> = { … }` that calls a Prisma
  * write on `<delegate>`, with the keys of the `data` object it writes (null
@@ -256,8 +289,10 @@ export function repositoryWrites(sf: ts.SourceFile, repository: string, delegate
                 let dataKeys: string[] | null = null;
                 if (arg && ts.isObjectLiteralExpression(arg)) {
                     const data = arg.properties.find((p) => ts.isPropertyAssignment(p) && ts.isIdentifier(p.name) && p.name.text === 'data');
-                    if (data && ts.isPropertyAssignment(data) && ts.isObjectLiteralExpression(data.initializer)) {
-                        const props = data.initializer.properties;
+                    // A literal, or (a batch, Phase 5.1) `rows.map((r) => ({ … }))`: the keys of the object each row becomes.
+                    const literal = data && ts.isPropertyAssignment(data) ? mappedLiteralOf(data.initializer) : null;
+                    if (literal) {
+                        const props = literal.properties;
                         dataKeys = props.every((p) => (ts.isPropertyAssignment(p) || ts.isShorthandPropertyAssignment(p)) && ts.isIdentifier(p.name))
                             ? props.map((p) => (p.name as ts.Identifier).text)
                             : null;
@@ -408,7 +443,7 @@ describe('negative controls', () => {
             'src/lib/bible/text.ts': `export function plainBlock(s: string) { return s.trim(); }\nexport function plainLine(s: string) { return s; }`,
             'src/app-layer/usecases/x.ts': `const n = optionalBlock(i.note); BibleRelationRepository.create(db, { note: n });`,
         };
-        expect(coverageProblems(bad, manifest, coverage)).toContain('BibleRelation.note: optionalBlock does not reach sanitizePlainText or sanitizeRichTextHtml');
+        expect(coverageProblems(bad, manifest, coverage)).toContain('BibleRelation.note: optionalBlock does not reach sanitizePlainText or sanitizeRichTextHtml or sanitizeSceneHtml');
         expect(coverageProblems(base, { ...manifest, BibleRelation: ['note', 'secret'] }, coverage)).toContain(
             'BibleRelation.secret: encrypted but not classified with a sanitiser',
         );
@@ -422,6 +457,11 @@ describe('negative controls', () => {
         expect(coverageProblems(repo(`touch(db, id) { return db.bibleRelation.updateMany({ where: { id }, data: { updatedAt: new Date() } }); }`), manifest, coverage)).toEqual([]);
         expect(coverageProblems(repo(`setNote(db, id, note) { return db.bibleRelation.updateMany({ where: { id }, data: { note } }); }`), manifest, coverage)).toEqual([
             'BibleRelation.note: BibleRelationRepository.setNote writes note but is not in writeMethods',
+        ]);
+        // A batch `rows.map((r) => ({ … }))` is read like a literal (Phase 5.1): its keys are checked too.
+        expect(coverageProblems(repo(`many(db, rows) { return db.bibleRelation.createMany({ data: rows.map((r) => ({ id: r.id, type: r.type })) }); }`), manifest, coverage)).toEqual([]);
+        expect(coverageProblems(repo(`many(db, rows) { return db.bibleRelation.createMany({ data: rows.map((r) => ({ id: r.id, note: r.note })) }); }`), manifest, coverage)).toEqual([
+            'BibleRelation.note: BibleRelationRepository.many writes note but is not in writeMethods',
         ]);
         expect(coverageProblems(repo(`patch(db, id, d) { return db.bibleRelation.update({ where: { id }, data: d }); }`), manifest, coverage)).toEqual([
             'BibleRelation.note: BibleRelationRepository.patch writes BibleRelation with data the guard cannot read (list it in writeMethods, or write a literal)',

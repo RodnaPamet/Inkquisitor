@@ -95,7 +95,18 @@ export type AuditAction =
     | 'GAP_HUNT_RUN'
     | 'INTERVIEW_COMPACTED'
     /** Phase 4.4 (D30): the author chose to go on past the minor questions. */
-    | 'INTERVIEW_MINOR_ACCEPTED';
+    | 'INTERVIEW_MINOR_ACCEPTED'
+    // Phase 5.1 (D33): the manuscript's structure, a scene's restore, an import (ids and counts only; an autosave is not audited).
+    | 'MANUSCRIPT_PART_CREATED'
+    | 'MANUSCRIPT_PART_DELETED'
+    | 'MANUSCRIPT_CHAPTER_CREATED'
+    | 'MANUSCRIPT_CHAPTER_DELETED'
+    | 'MANUSCRIPT_SCENE_CREATED'
+    | 'MANUSCRIPT_SCENE_DELETED'
+    | 'MANUSCRIPT_SCENE_RESTORED'
+    | 'MANUSCRIPT_IMPORTED'
+    /** A spent rank gap re-spaced one parent's parts, chapters or scenes (no version; a count). */
+    | 'MANUSCRIPT_ORDER_REBALANCED';
 
 export interface AuditEventPayload {
     action: AuditAction;

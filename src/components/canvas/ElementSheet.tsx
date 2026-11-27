@@ -32,6 +32,7 @@ import { FormField } from '@/components/ui/form-field';
 import { Input } from '@/components/ui/input';
 import { Sheet } from '@/components/ui/sheet';
 import { APP_ROUTES } from '@/lib/app-routes';
+import { BeatScenesList } from '@/components/manuscript/BeatScenesList';
 import { BIBLE_API, BibleApiError, bibleFetch, reasonOf, type ElementView } from '@/lib/bible/api-client';
 import { completeness } from '@/lib/bible/completeness';
 import type { FieldValue } from '@/lib/bible/field-values';
@@ -237,6 +238,7 @@ function SheetBody({
                     </div>
                 ) : null}
             </div>
+            {element.kind === 'PLOT_BEAT' ? <BeatScenesList workspaceSlug={workspaceSlug} bookId={bookId} elementId={initial.id} /> : null}
             <div className="space-y-section" data-testid="element-sheet-fields">
                 {fieldDefs.map((def) => (
                     <FieldEditor key={`${def.key}:${revision}`} def={def} value={values.get(def.key) ?? null} onChange={(v) => changeField(def.key, v)} readOnly={!canEdit} refused={refused.has(def.key)} />

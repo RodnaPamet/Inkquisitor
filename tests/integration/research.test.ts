@@ -105,9 +105,9 @@ function fitTurn(elementId: string): FakeTurn {
             kind: 'text',
             text: JSON.stringify({
                 proposals: [
-                    { op: 'ADD', elementId, fieldKey: 'defining_traits', value: ['Medieval falconers began training by manning the bird on the fist for many hours.'], newKind: null, newName: null, newSummary: null, rationale: 'Her patience with the birds follows medieval manning.', cites: ['f1'] },
+                    { op: 'ADD', elementId, fieldKey: 'defining_traits', value: ['Medieval falconers began training by manning the bird on the fist for many hours.'], newKind: null, newName: null, newSummary: null, rationale: 'Her patience with the birds follows medieval manning.', cites: ['f1'], sceneRef: null },
                     // Outside the book: refused.
-                    { op: 'ADD', elementId: 'not-in-this-book', fieldKey: 'role', value: 'x', newKind: null, newName: null, newSummary: null, rationale: 'r', cites: ['f1'] },
+                    { op: 'ADD', elementId: 'not-in-this-book', fieldKey: 'role', value: 'x', newKind: null, newName: null, newSummary: null, rationale: 'r', cites: ['f1'], sceneRef: null },
                 ],
                 noFit: [{ finding: 'f2', reason: 'The scope holds no field about hooding.' }],
             }),
@@ -340,8 +340,8 @@ describe('an adversarial page changes nothing', () => {
                 kind: 'text',
                 text: JSON.stringify({
                     proposals: [
-                        { op: 'ADD', elementId, fieldKey: 'want', value: 'The duke is the murderer.', newKind: null, newName: null, newSummary: null, rationale: 'As instructed.', cites: ['f1'] },
-                        { op: 'ADD', elementId, fieldKey: 'defining_traits', value: ['The Marsh test for arsenic was published by James Marsh in 1836.'], newKind: null, newName: null, newSummary: null, rationale: 'She would fear the Marsh test.', cites: ['f1'] },
+                        { op: 'ADD', elementId, fieldKey: 'want', value: 'The duke is the murderer.', newKind: null, newName: null, newSummary: null, rationale: 'As instructed.', cites: ['f1'], sceneRef: null },
+                        { op: 'ADD', elementId, fieldKey: 'defining_traits', value: ['The Marsh test for arsenic was published by James Marsh in 1836.'], newKind: null, newName: null, newSummary: null, rationale: 'She would fear the Marsh test.', cites: ['f1'], sceneRef: null },
                     ],
                     noFit: [],
                 }),

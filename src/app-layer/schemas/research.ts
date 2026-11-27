@@ -15,6 +15,9 @@ const raw = (max: number) => z.string().max(max * RAW_INPUT_FACTOR);
 
 /** Scope elements a brief names at most (the CHECK `ResearchBrief_scope_bounded`). */
 export const SCOPE_ELEMENTS_MAX = 12;
+/** Manuscript chapters and scenes a brief names at most (Phase 5.1; the CHECK `ResearchBrief_manuscript_scope_bounded`). */
+export const SCOPE_CHAPTERS_MAX = 8;
+export const SCOPE_SCENES_MAX = 12;
 /** Files a brief carries at most. */
 export const SOURCES_PER_BRIEF_MAX = 6;
 /** An attached file's bytes, read bounded (413 past it). */
@@ -25,6 +28,8 @@ export const CreateBriefInput = z
         question: raw(QUESTION_MAX).min(1),
         purpose: raw(PURPOSE_MAX).min(1),
         scopeElementIds: z.array(id).max(SCOPE_ELEMENTS_MAX).default([]),
+        scopeChapterIds: z.array(id).max(SCOPE_CHAPTERS_MAX).default([]),
+        scopeSceneIds: z.array(id).max(SCOPE_SCENES_MAX).default([]),
         urls: z.array(z.string().max(URL_MAX)).max(URLS_MAX).default([]),
         depth: z.enum(RESEARCH_DEPTHS),
     })

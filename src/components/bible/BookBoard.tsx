@@ -35,7 +35,7 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
-import { BookOpenCheck, FileDown, FileText, Flame, Library, MessagesSquare, Plus, Search, Trash2, Upload, Waypoints, GitCompareArrows, Crosshair } from 'lucide-react';
+import { BookOpenCheck, BookText, FileDown, FileText, Flame, Library, MessagesSquare, Plus, Search, Trash2, Upload, Waypoints, GitCompareArrows, Crosshair } from 'lucide-react';
 import { InterviewLauncher } from '@/components/interview/InterviewLauncher';
 import { BookSearch } from '@/components/search/BookSearch';
 import { buttonVariants } from '@/components/ui/button-variants';
@@ -74,6 +74,7 @@ export function BookBoard({ workspaceSlug, book, kinds, board, canEdit, canDelet
     const tInterview = useTranslations('interview.launch');
     const tSetup = useTranslations('interview.setup');
     const tResearch = useTranslations('research');
+    const tManuscript = useTranslations('manuscript.outline');
     const tSources = useTranslations('sources');
     const tContinuity = useTranslations('continuity');
     const tInterrogation = useTranslations('interrogation');
@@ -95,6 +96,10 @@ export function BookBoard({ workspaceSlug, book, kinds, board, canEdit, canDelet
                 meta: <StatusBadge variant="neutral">{tStage(book.stage)}</StatusBadge>,
                 actions: (
                     <div className="flex flex-wrap items-center gap-tight">
+                        <Link href={APP_ROUTES.manuscript(workspaceSlug, book.id)} className={buttonVariants({ variant: 'secondary' })} id="book-manuscript">
+                            <BookText className="size-4" aria-hidden="true" />
+                            {tManuscript('title')}
+                        </Link>
                         <Link href={APP_ROUTES.interviews(workspaceSlug, book.id)} className={buttonVariants({ variant: 'secondary' })} id="book-interviews">
                             <MessagesSquare className="size-4" aria-hidden="true" />
                             {tInterview('interviews')}

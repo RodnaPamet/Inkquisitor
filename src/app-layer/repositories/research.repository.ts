@@ -33,6 +33,8 @@ const BRIEF_SELECT = {
     question: true,
     purpose: true,
     scopeElementIds: true,
+    scopeChapterIds: true,
+    scopeSceneIds: true,
     sourceUrls: true,
     depth: true,
     status: true,
@@ -85,6 +87,7 @@ export const RESEARCH_PROPOSAL_SELECT = {
     operation: true,
     elementId: true,
     fieldKey: true,
+    sceneId: true,
     proposedValue: true,
     baseVersion: true,
     newKind: true,
@@ -106,7 +109,17 @@ export const ResearchBriefRepository = {
     create(
         db: Db,
         workspaceId: string,
-        data: { bookId: string; question: string; purpose: string; scopeElementIds: string[]; sourceUrls: string | null; depth: ResearchDepth; requestedById: string },
+        data: {
+            bookId: string;
+            question: string;
+            purpose: string;
+            scopeElementIds: string[];
+            scopeChapterIds: string[];
+            scopeSceneIds: string[];
+            sourceUrls: string | null;
+            depth: ResearchDepth;
+            requestedById: string;
+        },
     ) {
         return db.researchBrief.create({ data: { workspaceId, ...data }, select: BRIEF_SELECT });
     },
@@ -250,6 +263,8 @@ export interface ResearchProposalWrite {
     operation: ResearchProposalOperation;
     elementId: string | null;
     fieldKey: string | null;
+    /** SCENE_NOTE (Phase 5.1): the scene the note is for. */
+    sceneId?: string | null;
     proposedValue: string | null;
     baseVersion: number | null;
     newKind: BibleElementKind | null;

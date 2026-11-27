@@ -29,6 +29,7 @@ export default async function BookResearchPage({ params }: { params: Promise<{ w
             briefs={data.briefs}
             truncated={data.truncated}
             elements={data.elements}
+            chapters={data.chapters}
             kindLabels={kindLabels()}
             canEdit={ctx.permissions.bible.edit}
             initialReview={data.initialReview}

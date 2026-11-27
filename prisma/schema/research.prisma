@@ -35,6 +35,11 @@ model ResearchBrief {
   /// The bible elements the brief is about (ids in the book; the usecase
   /// checks each when the brief is written and again when it runs).
   scopeElementIds String[]            @default([])
+  /// Phase 5.1: the manuscript chapters (and scenes) the brief is about (ids in
+  /// the book, checked like the elements): the fit step may propose a note on
+  /// one of their scenes, never prose (D3).
+  scopeChapterIds String[]            @default([])
+  scopeSceneIds   String[]            @default([])
   /// The URLs the author attached, a JSON array of strings (encrypted).
   sourceUrls      String?
   depth           ResearchDepth
@@ -175,21 +180,21 @@ model ResearchFinding {
 
 /// Where a finding's claim comes from: a quoted span of a fetched page or an attached file.
 model ResearchCitation {
-  id          String               @id @default(cuid())
-  workspaceId String
-  runId       String
-  findingId   String
-  kind        ResearchCitationKind
+  id           String               @id @default(cuid())
+  workspaceId  String
+  runId        String
+  findingId    String
+  kind         ResearchCitationKind
   /// URL: the page's address (encrypted).
-  url         String?
+  url          String?
   /// UPLOAD: the attached file.
-  sourceId    String?
+  sourceId     String?
   /// The page's or file's title (encrypted).
-  title       String?
+  title        String?
   /// The words quoted, found verbatim in the retrieved text (encrypted).
-  quotedSpan  String
+  quotedSpan   String
   /// When the page was retrieved (URL only).
-  retrievedAt DateTime?
+  retrievedAt  DateTime?
   /// URL: the SHA-256 (hex) of the page text the span was verified in, so the
   /// citation can be proved against what was fetched (Phase 2.H, #41 item 3).
   /// The page text itself is never stored. NULL for a file (its text is stored).
@@ -214,10 +219,12 @@ model ResearchProposal {
   elementId        String?
   /// ADD / UPDATE: the template key.
   fieldKey         String?
-  /// ADD / UPDATE: the value, JSON-encoded by the field's type (encrypted).
+  /// ADD / UPDATE: the value, JSON-encoded by the field's type; SCENE_NOTE: the note, JSON-encoded text (encrypted).
   proposedValue    String?
   /// ADD / UPDATE: the element's latest version when proposed.
   baseVersion      Int?
+  /// SCENE_NOTE (Phase 5.1): the scene the note is for (in the book: a composite key).
+  sceneId          String?
   /// NEW_ELEMENT: the kind, name and summary proposed (name and summary encrypted).
   newKind          BibleElementKind?
   newName          String?
@@ -229,7 +236,7 @@ model ResearchProposal {
   status           EnrichmentProposalStatus  @default(PENDING)
   decidedById      String?
   decidedAt        DateTime?
-  /// The BibleEntryVersion an accepted ADD / UPDATE wrote (no foreign key).
+  /// The BibleEntryVersion an accepted ADD / UPDATE wrote, or the SceneNoteVersion an accepted SCENE_NOTE wrote (no foreign key).
   versionId        String?
   /// The element an accepted NEW_ELEMENT created (no foreign key).
   createdElementId String?
@@ -237,6 +244,7 @@ model ResearchProposal {
 
   run       ResearchRun               @relation(fields: [workspaceId, runId], references: [workspaceId, id], onDelete: Cascade)
   element   BibleElement?             @relation(fields: [elementId], references: [id], onDelete: Cascade)
+  scene     ManuscriptScene?          @relation(fields: [bookId, sceneId], references: [bookId, id], onDelete: Cascade)
   decidedBy User?                     @relation(fields: [decidedById], references: [id], onDelete: SetNull)
   findings  ResearchProposalFinding[]
 
@@ -247,6 +255,8 @@ model ResearchProposal {
   @@index([workspaceId, bookId, status])
   /// The pending proposals for one field.
   @@index([elementId, fieldKey])
+  /// A scene's note proposals (and its deletion's cascade).
+  @@index([bookId, sceneId])
   @@index([decidedById])
 }
 

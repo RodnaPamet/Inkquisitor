@@ -4,7 +4,9 @@
  *
  *   create     `bible.edit`. The question, the purpose and the URLs are
  *              author-private text: bounded, sanitised, encrypted. Each scope
- *              element must be in the book (`SCOPE_ELEMENT_NOT_IN_BOOK`), each
+ *              element must be in the book (`SCOPE_ELEMENT_NOT_IN_BOOK`), and
+ *              (Phase 5.1) each scope chapter and scene in its manuscript
+ *              (`SCOPE_CHAPTER_NOT_IN_BOOK`, `SCOPE_SCENE_NOT_IN_BOOK`), each
  *              URL an http(s) address (`URL_INVALID`), and NONE of the brief's
  *              text may quote the book's stored text (`BRIEF_QUOTES_BIBLE`,
  *              422, naming the part): queries are written from the brief, so a
@@ -51,6 +53,7 @@ import { assertUploadClean } from './bible-import';
 import { deploymentPackRecordMode } from './interview-packs';
 import { modelUnavailableReason } from './model-calls';
 import { assertBriefLeavesNoBookText, readBookText, requireBrief } from './research-common';
+import { ManuscriptChapterRepository, ManuscriptSceneRepository } from '@/app-layer/repositories/manuscript.repository';
 import { requireBook } from './bible-common';
 
 export interface ResearchDispatchDeps {
@@ -86,6 +89,8 @@ export async function createResearchBrief(ctx: WorkspaceRequestContext, bookId: 
         throw err;
     }
     const scopeIds = [...new Set(parsed.scopeElementIds)];
+    const chapterIds = [...new Set(parsed.scopeChapterIds)];
+    const sceneIds = [...new Set(parsed.scopeSceneIds)];
     return runInWorkspaceContext(
         ctx,
         async (db) => {
@@ -94,19 +99,32 @@ export async function createResearchBrief(ctx: WorkspaceRequestContext, bookId: 
             for (const id of scopeIds) {
                 if (!book.elements.has(id)) throw new ValidationError('A scope element is not in this book.', { reason: 'SCOPE_ELEMENT_NOT_IN_BOOK' });
             }
+            if ((await ManuscriptChapterRepository.findByIds(db, ctx.workspaceId, bookId, chapterIds)).length !== chapterIds.length) {
+                throw new ValidationError('A scope chapter is not in this book.', { reason: 'SCOPE_CHAPTER_NOT_IN_BOOK' });
+            }
+            if ((await ManuscriptSceneRepository.findOutline(db, ctx.workspaceId, bookId, sceneIds)).length !== sceneIds.length) {
+                throw new ValidationError('A scope scene is not in this book.', { reason: 'SCOPE_SCENE_NOT_IN_BOOK' });
+            }
             assertBriefLeavesNoBookText({ question: text.question, purpose: text.purpose, urls: decodeSourceUrls(text.sourceUrls) }, book.index);
             const brief = await ResearchBriefRepository.create(db, ctx.workspaceId, {
                 bookId,
                 question: text.question,
                 purpose: text.purpose,
                 scopeElementIds: scopeIds,
+                scopeChapterIds: chapterIds,
+                scopeSceneIds: sceneIds,
                 sourceUrls: text.sourceUrls,
                 depth: parsed.depth,
                 requestedById: ctx.userId,
             });
             await logEvent(
                 ctx,
-                { action: 'RESEARCH_BRIEF_CREATED', entityType: 'ResearchBrief', entityId: brief.id, details: { bookId, depth: parsed.depth, scopeCount: scopeIds.length, urlCount: urls.length } },
+                {
+                    action: 'RESEARCH_BRIEF_CREATED',
+                    entityType: 'ResearchBrief',
+                    entityId: brief.id,
+                    details: { bookId, depth: parsed.depth, scopeCount: scopeIds.length, chapterCount: chapterIds.length, sceneCount: sceneIds.length, urlCount: urls.length },
+                },
                 { db },
             );
             return { id: brief.id };

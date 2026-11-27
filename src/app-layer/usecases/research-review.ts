@@ -22,6 +22,13 @@
  *   edit then accept       the author's value through `normaliseFieldValue`
  *                          (a new element's name and summary through
  *                          `requiredLine` / `optionalBlock`); EDITED_ACCEPTED.
+ *   accept (SCENE_NOTE)    Phase 5.1: the note appended to the scene's NOTE as
+ *                          a paragraph (`appendResearchNoteInTx`, the one note
+ *                          writer: one SceneNoteVersion, RESEARCH, naming the
+ *                          proposal and its findings) — never to the scene's
+ *                          text (D3; this module never imports the text writer).
+ *                          A scene gone is 409 PROPOSAL_STALE, a full note 409
+ *                          NOTE_FULL; an edit is plain text (EDITED_ACCEPTED).
  *   reject                 REJECTED; nothing written to the bible.
  *   keep a finding         a NEW research note (a RESEARCH element) holding
  *                          the claim, the summary and the citations, its first
@@ -62,6 +69,7 @@ import {
 } from './bible-common';
 import { createElementInTx } from './bible-elements';
 import { bookHoldsElementName } from './enrichment-names';
+import { appendResearchNoteInTx } from './manuscript-notes';
 
 export interface ResearchDecisionResult {
     proposalId: string;
@@ -165,6 +173,36 @@ async function acceptNewElement(db: PrismaTx, ctx: WorkspaceRequestContext, book
     return { proposalId: p.id, status, elementId: element.id, versionNumber: version.versionNumber };
 }
 
+async function acceptSceneNote(db: PrismaTx, ctx: WorkspaceRequestContext, bookId: string, proposalId: string, input: AcceptResearchInput): Promise<ResearchDecisionResult> {
+    const p = await requirePending(db, ctx, bookId, proposalId);
+    if (!p.sceneId) throw new NotFoundError('Proposal not found.');
+    const proposed = decodeResearchValue(p.proposedValue);
+    if (typeof proposed !== 'string') throw new ConflictError('This proposal cannot be read.', { reason: 'PROPOSAL_STALE' });
+    let text = proposed;
+    if (input.value !== undefined) {
+        if (typeof input.value !== 'string') throw new ValidationError('A scene note is text.', { reason: 'EDIT_NOT_ALLOWED' });
+        const edited = plainBlock(input.value);
+        if (!edited) throw new ValidationError('An edit cannot empty the note; reject the proposal instead.', { reason: 'EDIT_NOT_ALLOWED' });
+        text = edited;
+    }
+    const findingIds = findingIdsOf(p);
+    const result = await appendResearchNoteInTx(db, ctx, bookId, p.sceneId, text, { proposalId: p.id, findingIds });
+    if (!result.versionId) throw new ValidationError('That would change nothing.', { reason: 'EDIT_CHANGES_NOTHING' });
+    const status: ProposalStatus = text !== proposed ? 'EDITED_ACCEPTED' : 'ACCEPTED';
+    await decideOrConflict(db, ctx, p.id, { status, decidedById: ctx.userId, versionId: result.versionId });
+    await logEvent(
+        ctx,
+        {
+            action: 'RESEARCH_PROPOSAL_ACCEPTED',
+            entityType: 'ResearchProposal',
+            entityId: p.id,
+            details: { bookId, runId: p.runId, sceneId: p.sceneId, operation: 'SCENE_NOTE', edited: status === 'EDITED_ACCEPTED', noteVersion: result.noteVersion, citedFindingCount: findingIds.length },
+        },
+        { db },
+    );
+    return { proposalId: p.id, status, elementId: null, versionNumber: result.noteVersion };
+}
+
 /** Retry a create that lost a derived slug to a concurrent one, in a fresh transaction (as `createElement` does). */
 async function withSlugRetry<T>(ctx: WorkspaceRequestContext, work: (db: PrismaTx) => Promise<T>): Promise<T> {
     for (let attempt = 1; ; attempt++) {
@@ -188,6 +226,7 @@ export async function acceptResearchProposal(ctx: WorkspaceRequestContext, bookI
     });
     if (op === null) throw new NotFoundError('Proposal not found.');
     if (op === 'NEW_ELEMENT') return withSlugRetry(ctx, (db) => acceptNewElement(db, ctx, bookId, proposalId, parsed));
+    if (op === 'SCENE_NOTE') return runInWorkspaceContext(ctx, (db) => acceptSceneNote(db, ctx, bookId, proposalId, parsed));
     return runInWorkspaceContext(ctx, (db) => acceptField(db, ctx, bookId, proposalId, parsed));
 }
 

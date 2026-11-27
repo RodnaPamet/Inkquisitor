@@ -78,6 +78,12 @@ export const ENCRYPTED_FIELDS: EncryptedFieldManifest = Object.freeze({
     StressWeakPoint: Object.freeze(['title', 'questions']),
     GapHunt: Object.freeze(['picks']),
     InterviewCompaction: Object.freeze(['summary']),
+    // Phase 5.1 (D33): the manuscript — titles, a scene's prose, story time and note, and every version of the text and the note.
+    ManuscriptPart: Object.freeze(['title']),
+    ManuscriptChapter: Object.freeze(['title']),
+    ManuscriptScene: Object.freeze(['title', 'text', 'storyTime', 'note']),
+    SceneVersion: Object.freeze(['text']),
+    SceneNoteVersion: Object.freeze(['note']),
 });
 
 /** The lookups the extension runs per operation, compiled once per manifest. */

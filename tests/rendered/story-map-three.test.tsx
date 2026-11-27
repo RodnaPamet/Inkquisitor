@@ -207,6 +207,7 @@ describe('StoryMapPreview', () => {
             acts: [],
             participants: [],
             participantsTruncated: false,
+            beatScenes: [],
             ...over,
         }) as StoryMapView;
 
@@ -243,5 +244,19 @@ describe('StoryMapPreview', () => {
         expect(svg).toHaveTextContent('Not placed yet');
         expect(svg).toHaveTextContent('Mara');
         expect(svg.querySelectorAll('circle')).toHaveLength(1);
+    });
+
+    it('the plot board says how many scenes dramatise each beat, in the beat\'s link (D33 B)', async () => {
+        const board = map({
+            kind: 'PLOT',
+            nodes: [node('b1', 'The flood', 'PLOT_BEAT', 0, { orderRank: 'i' }), node('b2', 'The bargain', 'PLOT_BEAT', 300, { orderRank: 'r' })],
+            edges: [],
+            beatScenes: [{ beatElementId: 'b1', total: 3, scenes: [{ sceneId: 's1', title: 'Ashore', chapterTitle: null }] }],
+        });
+        render(<StoryMapPreview workspaceSlug={SLUG} bookId={BOOK.id} mapKind="PLOT" map={board} currentElementId="b1" kindLabels={KIND_LABELS} />);
+        expect(document.querySelector('[data-preview-scenes="b1"]')).not.toBeNull();
+        expect(document.querySelector('[data-preview-scenes="b2"]')).toBeNull();
+        expect(screen.getByRole('link', { name: /^The flood Plot beat/ })).toHaveTextContent(/scene/);
+        expect(await axe(document.body)).toHaveNoViolations();
     });
 });

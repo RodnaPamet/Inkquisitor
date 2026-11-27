@@ -27,6 +27,8 @@ import { purgeDeletedBooks } from '@/app-layer/usecases/book-purge';
 import { getBookBoard, getElement } from '@/app-layer/usecases/bible-elements';
 import { deleteBook, getBook, listBooks, listDeletedBooks, restoreBook } from '@/app-layer/usecases/books';
 import { ForbiddenError, NotFoundError } from '@/lib/errors/types';
+import { createChapter, createScene, getManuscriptOutline } from '@/app-layer/usecases/manuscript';
+import { saveSceneText } from '@/app-layer/usecases/manuscript-scenes';
 import { runStressTest, scriptedTester } from '../helpers/interrogation';
 import { exportsOf, readRoute, routeHandlerFiles, urlAndParamsFor } from '../helpers/api-routes';
 import { seedInterview } from '../helpers/interview';
@@ -102,6 +104,11 @@ describe('a deleted book', () => {
         // A finished stress test (Phase 4.3), so its route has a test to answer for.
         const stress = await runStressTest(ctx, seeded.bookId, { tester: scriptedTester({ weakPoints: [{ kind: 'OTHER', title: 'A thin place', questions: ['What does this one want most?'], cites: ['E1'] }] }) });
         expect(stress.outcome).toBe('OK');
+        // A manuscript (Phase 5.1): a part, a chapter and a scene with its first version, for its routes to answer for.
+        const chapter = await createChapter(ctx, seeded.bookId, { title: 'Chapter one' });
+        const scene = await createScene(ctx, seeded.bookId, { chapterId: chapter.id, title: 'The ferry' });
+        await saveSceneText(ctx, seeded.bookId, scene.id, { html: '<p>The ferry crossed.</p>', baseRevision: 0, checkpoint: true });
+        const partId = (await getManuscriptOutline(ctx, seeded.bookId)).parts[0].id;
         const routes = routeHandlerFiles().filter((f) => f.startsWith('src/app/api/w/[workspaceSlug]/books/[bookId]/'));
         expect(routes.length).toBeGreaterThanOrEqual(10);
         const value = (p: string) =>
@@ -121,6 +128,9 @@ describe('a deleted book', () => {
                 kind: 'relationship',
                 version: '1',
                 stressTestId: stress.id,
+                partId,
+                chapterId: chapter.id,
+                sceneId: scene.id,
             })[p] ?? `probe-${p}`;
         const call = async (file: string, method: string) => {
             // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -148,6 +158,17 @@ describe('a deleted book', () => {
                 'POST maps/[kind]/snapshots/[version]/restore/route.ts': { expectedVersion: 1 },
                 'POST search/route.ts': { q: 'keeper' },
                 'POST stress-tests/route.ts': { confirmWorstCaseMicroUsd: 10_000_000 },
+                'POST manuscript/parts/route.ts': { title: 'After deletion' },
+                'PATCH manuscript/parts/[partId]/route.ts': { title: 'Renamed' },
+                'PATCH manuscript/chapters/[chapterId]/route.ts': { title: 'Renamed' },
+                'POST manuscript/chapters/[chapterId]/move/route.ts': { partId },
+                'POST manuscript/scenes/route.ts': { chapterId: chapter.id },
+                'PATCH manuscript/scenes/[sceneId]/route.ts': { baseRevision: 1, storyTime: 'After deletion' },
+                'POST manuscript/scenes/[sceneId]/move/route.ts': { chapterId: chapter.id },
+                'PUT manuscript/scenes/[sceneId]/text/route.ts': { html: '<p>After deletion.</p>', baseRevision: 1 },
+                'POST manuscript/scenes/[sceneId]/checkpoint/route.ts': { revision: 1 },
+                'PUT manuscript/scenes/[sceneId]/note/route.ts': { note: 'After deletion.', baseNoteVersion: 0 },
+                'POST manuscript/scenes/[sceneId]/versions/[versionNumber]/restore/route.ts': { baseRevision: 1 },
             };
             const upload = tail === 'research/briefs/[briefId]/sources/route.ts';
             const body = ['GET', 'DELETE'].includes(method)

@@ -21,6 +21,7 @@
  *   select, then "Grill this"           a checkbox per element and relation, then "Grill the selected"
  *   select an edge, "Question this…"    "Question this relation" on its row
  *   the gap between two beats           the toolbar's "What happens between…" picker
+ *   a beat's scene card (5.1, D33 B)    the beat's "Scenes": each a link to its editor, "+N more" opens the beat
  *   accept a ghost                      the pending list beside the map (the record)
  *   restore a snapshot, export          History and Export in the toolbar
  *
@@ -29,10 +30,13 @@
  * rendered as React text.
  */
 import { useMemo, useState } from 'react';
+import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
+import type { BoardBeatScenes } from '@/lib/canvas/api-client';
+import { BOARD_SCENES_PER_BEAT } from '@/lib/canvas/limits';
 import { Combobox, type ComboboxOption } from '@/components/ui/combobox';
 import { SELECTION_QUERY_MAX } from '@/lib/interview/setup';
 import type { CanvasSelection } from './CanvasInterviewControls';
@@ -74,10 +78,13 @@ export interface StoryMapListViewProps {
     /** A derived map's order moves; absent on the relationship map. */
     canMove?: (elementId: string, direction: 'earlier' | 'later') => boolean;
     onMove?: (elementId: string, direction: 'earlier' | 'later') => void;
+    /** The plot board's scene cards (Phase 5.1, D33 B): each beat's scenes, as links; absent on the other maps. */
+    scenes?: { beats: ReadonlyMap<string, BoardBeatScenes>; href: (sceneId: string) => string };
 }
 
-export function StoryMapListView({ nodes, edges, groups, canEdit, onOpen, onRemoveNode, onRemoveEdge, onRelate, onGrill, canMove, onMove }: StoryMapListViewProps) {
+export function StoryMapListView({ nodes, edges, groups, canEdit, onOpen, onRemoveNode, onRemoveEdge, onRelate, onGrill, canMove, onMove, scenes }: StoryMapListViewProps) {
     const t = useTranslations('canvas.list');
+    const tScenes = useTranslations('canvas.scenes');
     const tInterview = useTranslations('canvas.interview');
     const byId = useMemo(() => new Map(nodes.map((n) => [n.elementId, n])), [nodes]);
     const [picked, setPicked] = useState<{ elements: ReadonlySet<string>; relations: ReadonlySet<string> }>({ elements: new Set(), relations: new Set() });
@@ -161,6 +168,7 @@ export function StoryMapListView({ nodes, edges, groups, canEdit, onOpen, onRemo
                                             </Button>
                                         </span>
                                     ) : null}
+                                    {scenes?.beats.get(n.elementId) ? <BeatSceneLinks beat={scenes.beats.get(n.elementId)!} name={n.name} href={scenes.href} onMore={() => onOpen(n.elementId)} t={tScenes} /> : null}
                                 </li>
                             ))}
                         </ol>
@@ -233,6 +241,35 @@ export function StoryMapListView({ nodes, edges, groups, canEdit, onOpen, onRemo
                     </div>
                 </section>
             ) : null}
+        </div>
+    );
+}
+
+/** A beat's scenes, as the board's scene cards show them: the first few as links to their editors, "+N more" opening the beat. */
+function BeatSceneLinks({ beat, name, href, onMore, t }: { beat: BoardBeatScenes; name: string; href: (sceneId: string) => string; onMore: () => void; t: ReturnType<typeof useTranslations> }) {
+    const shown = beat.scenes.slice(0, BOARD_SCENES_PER_BEAT);
+    const more = Math.max(0, beat.total - shown.length);
+    return (
+        <div className="flex w-full flex-wrap items-center gap-tight pl-compact text-xs" data-testid="map-list-beat-scenes" data-beat-id={beat.beatElementId}>
+            <span className="text-content-muted" id={`map-list-scenes-${beat.beatElementId}`}>
+                {t('listLabel', { count: beat.total })}
+            </span>
+            <ul className="flex flex-wrap items-center gap-tight" aria-labelledby={`map-list-scenes-${beat.beatElementId}`}>
+                {shown.map((sc) => (
+                    <li key={sc.sceneId}>
+                        <Link className="text-content-brand hover:underline" href={href(sc.sceneId)} aria-label={t('open', { title: sc.title ?? t('untitled') })} data-testid="map-list-scene">
+                            {sc.title ?? t('untitled')}
+                        </Link>
+                    </li>
+                ))}
+                {more > 0 ? (
+                    <li>
+                        <Button variant="ghost" size="xs" onClick={onMore} aria-label={t('moreOf', { count: more, name })} data-testid="map-list-scenes-more">
+                            {t('more', { count: more })}
+                        </Button>
+                    </li>
+                ) : null}
+            </ul>
         </div>
     );
 }

@@ -50,6 +50,7 @@ import { HistoryPanel } from './HistoryPanel';
 import { RelationsPanel } from './RelationsPanel';
 import { useElementAutosave, type AutosaveState } from './use-element-autosave';
 import { StoryMapPreview } from '@/components/canvas/StoryMapPreview';
+import { BeatScenesList } from '@/components/manuscript/BeatScenesList';
 import type { StoryMapView } from '@/lib/canvas/api-client';
 import type { StoryMapKindValue } from '@/lib/canvas/map-kinds';
 
@@ -336,6 +337,11 @@ export function ElementPage(props: ElementPageProps) {
                             await reloadElement();
                         }}
                     />
+                    {element.kind === 'PLOT_BEAT' ? (
+                        <Card className="p-5">
+                            <BeatScenesList workspaceSlug={workspaceSlug} bookId={book.id} elementId={element.id} />
+                        </Card>
+                    ) : null}
                     {mapPreviews.map((p) => (
                         <Card key={p.kind} className="p-5">
                             <StoryMapPreview workspaceSlug={workspaceSlug} bookId={book.id} mapKind={p.kind} map={p.map} currentElementId={element.id} kindLabels={kindLabels} />

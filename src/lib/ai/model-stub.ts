@@ -436,7 +436,7 @@ export function stubFitAnswer(body: Record<string, unknown>): { proposals: Array
         const field = (e.fields ?? []).find((f) => (f.type === 'text' || f.type === 'richtext' || f.type === 'list') && f.key && !(f.key in (e.stored_values ?? {})));
         if (!field || !first.claim || !first.ref) continue;
         return {
-            proposals: [{ op: 'ADD', elementId: e.elementId, fieldKey: field.key, value: field.type === 'list' ? [first.claim] : first.claim, newKind: null, newName: null, newSummary: null, rationale: 'The finding bears on this entry.', cites: [first.ref] }],
+            proposals: [{ op: 'ADD', elementId: e.elementId, fieldKey: field.key, value: field.type === 'list' ? [first.claim] : first.claim, newKind: null, newName: null, newSummary: null, rationale: 'The finding bears on this entry.', cites: [first.ref], sceneRef: null }],
             noFit: [],
         };
     }

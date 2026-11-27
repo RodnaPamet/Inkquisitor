@@ -38,6 +38,11 @@ export const NO_FIT_REASON_RAW_MAX = 800;
 
 /** A finding's ref in the fit prompt: `f1`, `f2`, … (its position, 1-based). */
 export const FINDING_REF_PATTERN = /^f[1-9]\d{0,2}$/;
+/** A scene's ref in the fit prompt (Phase 5.1): `s1`, `s2`, … (its position among the scenes shown, 1-based). */
+export const SCENE_REF_PATTERN = /^s[1-9]\d{0,2}$/;
+/** A scene note, stored (after sanitising): a few plain sentences for the author, never prose (D3). */
+export const SCENE_NOTE_PROPOSAL_MAX = 1_200;
+
 /** A source's ref in the findings prompt. */
 export const SOURCE_REF_PATTERN = /^(web|file)\.[1-9]\d{0,2}$/;
 
@@ -64,7 +69,8 @@ const fieldKey = z.string().max(IDENTIFIER_MAX).regex(IDENTIFIER_PATTERN);
  * One proposal. ADD / UPDATE: `elementId`, `fieldKey`, `value` (text for text,
  * rich text — plain paragraphs — and choice fields; items for a list; 1..5 for
  * a scale), the new-element members null. NEW_ELEMENT: `newKind`, `newName`,
- * `newSummary`, the field members null.
+ * `newSummary`, the field members null. SCENE_NOTE (Phase 5.1): `sceneRef`
+ * and `value` (the note, text), every other member null.
  */
 export const FitProposalOutputSchema = z
     .object({
@@ -77,6 +83,7 @@ export const FitProposalOutputSchema = z
         newSummary: z.string().max(NEW_SUMMARY_RAW_MAX).nullable(),
         rationale: z.string().max(RATIONALE_RAW_MAX),
         cites: z.array(z.string().max(8)).max(FIT_CITES_MAX),
+        sceneRef: z.string().max(8).nullable(),
     })
     .strict();
 export type FitProposalOutput = z.infer<typeof FitProposalOutputSchema>;
@@ -133,7 +140,12 @@ export function parseFitOutput(raw: unknown): ParsedFit {
         return out;
     }
     const r = raw as { proposals: unknown; noFit?: unknown };
-    out.proposals = readItems(r.proposals, FitProposalOutputSchema, PROPOSALS_PER_CALL_MAX, out);
+    // An answer made before Phase 5.1 added `sceneRef` (a recorded answer, a fixture) carries none: it reads as null,
+    // i.e. not a scene note. The output schema itself still requires the member of every new answer.
+    const proposals = Array.isArray(r.proposals)
+        ? r.proposals.map((p: unknown) => (p !== null && typeof p === 'object' && !Array.isArray(p) && !('sceneRef' in p) ? { ...(p as object), sceneRef: null } : p))
+        : r.proposals;
+    out.proposals = readItems(proposals, FitProposalOutputSchema, PROPOSALS_PER_CALL_MAX, out);
     out.noFit = readItems(r.noFit, NoFitOutputSchema, NO_FIT_PER_CALL_MAX, out);
     return out;
 }

@@ -474,6 +474,21 @@ src/lib/facts/guard-retry.ts, src/lib/ai/guard/version.ts → refused sections r
 tests/integration/{phase4-scale-hardening,continuity-load}; tests/unit/{continuity/rule-precision,facts/guard-retry,ai/guard-rules-version,platform/job-cursor}
 ```
 
+Phase 5.1 (the manuscript workspace, D33) added:
+
+```
+prisma/schema/manuscript.prisma → Manuscript, ManuscriptPart, ManuscriptChapter, ManuscriptScene (text encrypted), SceneElementLink,
+                               SceneBeatLink, SceneVersion and SceneNoteVersion (append-only, book-keyed)
+src/lib/manuscript/          → vocabulary (bounds, reasons; client-safe), word-count, scene-html, storage (sanitisers), import-split,
+                               import-token, api-client
+src/app-layer/usecases/      → manuscript (outline), manuscript-text (THE scene text writer, D3), manuscript-notes, manuscript-scenes,
+                               manuscript-import, manuscript-pages
+src/app/api/w/[workspaceSlug]/books/[bookId]/{manuscript/**,elements/[elementId]/scenes}
+src/app/w/[workspaceSlug]/books/[bookId]/manuscript/** → src/components/manuscript/ (outline, import dialog, scene editor, history)
+tests/guards/scene-text-stays-off-the-model-path.test.ts → D3: no model output reaches a scene's text column
+src/app-layer/usecases/manuscript-board.ts, src/components/canvas/SceneCardLayer.tsx → the plot board's scene cards (D33 addendum B)
+```
+
 ## Rules every change obeys
 
 These are `docs/ROADMAP.md` section 3, restated. The roadmap is authoritative
@@ -1809,6 +1824,75 @@ the guard refused is passed over at once and counted there too. The
   editing either precision set, re-run `npm run packs:evaluate -- --no-packs
   --continuity` (the deep set; the rules' set needs no record). Phase 4 closes
   with 4.H-b.
+- **The manuscript (Phase 5.1; D3, D33).** A book has one `Manuscript` (made
+  on its first write), parts, chapters and scenes ordered by fractional ranks
+  unique per parent (`story-order.ts`; a spent gap REBALANCES that parent's
+  rows, `placeAmong`: short evenly spaced ranks in the same order, written in
+  two passes through clear temporary ranks because the unique `(parent, rank)`
+  is checked row by row, no version, one `MANUSCRIPT_ORDER_REBALANCED` audit
+  row after the row writes; only a rank still past the bound is 409
+  `ORDER_RANK_EXHAUSTED`). A scene's title, text, story time
+  and note are encrypted; its text is TipTap HTML through `sanitizeSceneHtml`
+  (the prose profile: no headings, links or code; a mention span carries only an
+  element id, kept only when the element is in the scene's book). D3: ONLY
+  `usecases/manuscript-text.ts` writes a scene's text or a `SceneVersion`, and
+  nothing in its import graph (or its callers', `manuscript-scenes.ts` and
+  `manuscript-import.ts`) reaches a model module; a research finding reaches a
+  scene only as its NOTE (`manuscript-notes.ts`, which never imports the text
+  writer). The guard holds all of it — outside the writer and the repository
+  the two text repository objects are used only as `Object.readMethod` (never
+  aliased, destructured, indexed, passed or re-exported), only the text methods
+  put `text` in a repository write's `data`, no nested relation write reaches
+  the scene or version table, no raw SQL inserts either or sets a scene's
+  `"text"`, and the callers' text-writing usecases (`saveSceneText`,
+  `checkpointScene`, `restoreSceneVersion`, `confirmManuscriptImport`) are
+  taken only by their own route handlers; never add a model path to the text.
+  CONCURRENCY: every text save names `baseRevision` (409 `VERSION_CONFLICT`,
+  `currentRevision`, nothing written); the editor holds the author's text and
+  offers Reload theirs / Keep mine, never a silent retry. VERSIONS (D33): a save
+  writes one only when its text differs from the newest version and the client
+  says `checkpoint` (idle about two minutes, leaving, the tab hidden or closed,
+  through a keepalive POST that carries only the revision) or the newest version
+  is older than `SCENE_VERSION_MAX_GAP_MS` (thirty minutes, D33 addendum C) by
+  the database's clock; append-only
+  by trigger, a restore is a NEW version. Mention links are re-derived from the
+  stored text on every save; explicit links survive it. POV (a CHARACTER),
+  setting (a SETTING) and beats (PLOT_BEAT) are same-book composite keys whose
+  kinds AFTER triggers hold (AFTER, so row-level security refuses another
+  workspace's row first); the beat's page and the plot board's sheet list its
+  scenes read-only, and the board itself draws them as READ-ONLY SCENE CARDS
+  (D33 addendum B): the map view's `beatScenes` (display data, per beat the
+  first `BOARD_SCENES_PER_BEAT` in manuscript order and the exact total, read
+  by `manuscript-board.ts`), drawn by tldraw's `Overlays` component in page
+  space across the bottom edge of the beat's card (`SceneCardLayer`, inside the
+  beat's width, so the derived layout is untouched), behind their own error
+  boundary, NEVER store records or map rows — a save, a snapshot and
+  `tldrawToRows(rowsToTldraw(rows))` never see them; each card links to its
+  scene, "+N more" opens the beat's sheet, the list view lists each beat's
+  scenes as links, and `StoryMapPreview` says how many scenes a beat has.
+  LOCK ORDER: bible locks → the manuscript's structure lock → a scene's lock →
+  the elements a save names `FOR KEY SHARE` → the scene's own row
+  (`lockSceneRow`, FOR NO KEY UPDATE) → link rows; audit last. The scene row
+  before its links is the order a part or chapter deletion's cascade takes
+  them (scene, then links), so a save and such a deletion never deadlock. THE IMPORT is the manuscript only, never the source library
+  (D33): the preview reads the file through 4.0's `parseSource` (DOCX in the
+  bounded mammoth worker, Markdown) and answers an outline, a proposed split and
+  an HMAC token over the file's SHA-256; the confirm sends the bytes again with
+  the author's plan (`x-import-plan`) and writes it in ONE transaction, appended
+  after what the manuscript holds (IMPORT_FILE_CHANGED, IMPORT_PREVIEW_EXPIRED,
+  IMPORT_PLAN_INVALID, nothing written). Every problem is answered at once
+  (`planProblems`: `problems`, and every bound passed); a heading too long to
+  be a title (the sanitiser's own bound, marked `titleTooLong` by the server) is
+  proposed as text, and a plan making it a title is refused `HEADING_TOO_LONG`
+  naming the headings — never cut to fit. THE SESSION GOAL lives in
+  `sessionStorage` (`use-session-goal.ts`), no table. RESEARCH reaches the
+  manuscript: a brief may be scoped to chapters (or scenes); the fit step is
+  shown their scenes as fenced data (never the gather request) and may propose a
+  SCENE_NOTE citing findings, grounded in the findings alone, never prose;
+  accepting appends to the note (a RESEARCH note version naming the proposal and
+  its findings). The brief's quote check reads manuscript text too. Word search
+  and the bible export do not read the manuscript yet: both land in 5.H (D33
+  addendum A; 5.H item 4's export, and word search over scenes).
 - **Sanitising author text.** Every author-text write sanitises at the
   usecase layer before it is stored: plain text through `plainLine` /
   `plainBlock` (`src/lib/bible/text.ts`, over `sanitizePlainText`), rich text

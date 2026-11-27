@@ -247,7 +247,9 @@ describe('the backfill of bibles saved before 4.1 (roadmap 4.H item 5; D31, D32)
         await executeFactLayerDispatch({ enqueue: minute.enqueue, extractionOpen: () => true, embedder: () => null, workspaceIds: [ctx.workspaceId], callFloorMicroUsd: () => 1, now: () => new Date(Date.now() + 2 * 60 * 60_000) });
         expect(minute.queued).toEqual([]);
         const later = recordingEnqueue();
-        await executeFactBackfill({ ...base, enqueue: later.enqueue, now: () => new Date(Date.now() + 2 * 60 * 60_000) });
+        // Room for every row: two hours on, the four QUEUED rows the recorder never ran are stale and due too, and with
+        // two a tick which two come first is the due list's order, not the stopped row's (it failed when it lost).
+        await executeFactBackfill({ ...base, entriesPerWorkspace: 5, enqueue: later.enqueue, now: () => new Date(Date.now() + 2 * 60 * 60_000) });
         expect(later.queued.map((q) => q.extractionId)).toContain(row.id);
     });
 

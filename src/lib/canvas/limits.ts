@@ -42,3 +42,13 @@ export const LANE_KEY = /^[A-Za-z0-9._:-]{1,128}$/;
  * however many saves a map has, and no read grows with them.
  */
 export const SNAPSHOT_PAGE_SIZE = 50;
+
+/**
+ * The plot board's scene cards (Phase 5.1, D33 addendum item B): the scenes a
+ * beat links are drawn as read-only cards on the board itself, at most this
+ * many a beat, the rest counted ("+N more", which opens the beat). Display
+ * data beside the rows, never a row or a store record.
+ */
+export const BOARD_SCENES_PER_BEAT = 2;
+/** Beat-to-scene links the board reads at most (every beat's count is exact whatever this cuts). */
+export const BOARD_SCENE_LINKS_READ_MAX = 2_000;

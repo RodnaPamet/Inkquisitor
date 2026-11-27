@@ -2,19 +2,19 @@
   "format": "inkquisitor-research-evaluation/1",
   "sets": {
     "research": {
-      "hash": "sha256:eb873304a9c91d5443ef421c519cb53579488d7102b9b831f23b24f553c12a8d"
+      "hash": "sha256:6cfcc244d0371be7b6f820bed1aaca628b8fcd0f66cf6ac89d873f11e9f7025f"
     },
     "adversarial": {
-      "hash": "sha256:47b2481e86475c0483f61f39143d96343822ec1b66a87ac28c2380cfdaebba2f"
+      "hash": "sha256:f287d3ad296b06c5b3f609d29409edb1513db3c17d88c2b91f313855c745a1ef"
     }
   },
-  "promptVersion": "research.2.6.0+research-gather.2.6.0+research-findings.2.6.0+research-fit.2.6.0",
-  "promptHash": "sha256:c40bfd31b8a11918dbefefa59728450c510bb3f677be768c2e9b5833eb15f515",
+  "promptVersion": "research.5.1.0+research-gather.2.6.0+research-findings.2.6.0+research-fit.5.1.0",
+  "promptHash": "sha256:3c5d00c9c94ed1c24421d3b09ba9a11ef43c2f24288ecdc7a2953175d4062f5e",
   "generator": {
     "kind": "structural",
     "id": "reference-researcher.1"
   },
-  "ranAt": "2026-11-20T17:44:10.909Z",
+  "ranAt": "2026-11-27T08:16:43.697Z",
   "answers": [
     {
       "caseId": "rs-01",
@@ -68,7 +68,8 @@
             "rationale": "A country surgeon of the 1850s would likely reach for chloroform.",
             "cites": [
               "f2"
-            ]
+            ],
+            "sceneRef": null
           }
         ],
         "noFit": []
@@ -123,7 +124,8 @@
             "rationale": "Frequent sunrises shape the light on a low orbit station.",
             "cites": [
               "f2"
-            ]
+            ],
+            "sceneRef": null
           }
         ],
         "noFit": []
@@ -179,7 +181,8 @@
             "cites": [
               "f1",
               "f2"
-            ]
+            ],
+            "sceneRef": null
           }
         ],
         "noFit": []
@@ -236,7 +239,8 @@
             "rationale": "A rule of the ball that can shape the heroine's choice.",
             "cites": [
               "f2"
-            ]
+            ],
+            "sceneRef": null
           }
         ],
         "noFit": []
@@ -282,7 +286,8 @@
             "rationale": "The warning's timing depends on the operator's speed.",
             "cites": [
               "f1"
-            ]
+            ],
+            "sceneRef": null
           }
         ],
         "noFit": []
@@ -337,7 +342,8 @@
             "rationale": "The pager's codes give the friends a private language.",
             "cites": [
               "f2"
-            ]
+            ],
+            "sceneRef": null
           }
         ],
         "noFit": []
@@ -393,7 +399,8 @@
             "cites": [
               "f1",
               "f2"
-            ]
+            ],
+            "sceneRef": null
           }
         ],
         "noFit": []
@@ -448,7 +455,8 @@
             "rationale": "Her post exists only after the Yard adopted the system.",
             "cites": [
               "f2"
-            ]
+            ],
+            "sceneRef": null
           }
         ],
         "noFit": []
@@ -503,7 +511,8 @@
             "rationale": "His nights are broken by the lamp's demands.",
             "cites": [
               "f1"
-            ]
+            ],
+            "sceneRef": null
           }
         ],
         "noFit": []
@@ -560,7 +569,8 @@
             "rationale": "Constant relays shape the rider's days.",
             "cites": [
               "f1"
-            ]
+            ],
+            "sceneRef": null
           },
           {
             "op": "NEW_ELEMENT",
@@ -573,7 +583,80 @@
             "rationale": "The route ends the rider's journey.",
             "cites": [
               "f2"
+            ],
+            "sceneRef": null
+          }
+        ],
+        "noFit": []
+      }
+    },
+    {
+      "caseId": "rs-11",
+      "gather": {
+        "queries": [
+          "How did sailing ships signal to each other at sea in the 1800s"
+        ],
+        "fetched": [
+          "https://maritime.example.org/signal-flags"
+        ]
+      },
+      "findings": {
+        "findings": [
+          {
+            "claim": "From 1817 merchant ships used Marryat's Code, a set of numbered signal flags.",
+            "summary": "From 1817 merchant ships used Marryat's Code, a set of numbered signal flags, to send messages between vessels.",
+            "confidence": "MEDIUM",
+            "citations": [
+              {
+                "ref": "web.1",
+                "quote": "From 1817 merchant ships used Marryat's Code, a set of numbered signal flags, to send messages between vessels."
+              }
             ]
+          },
+          {
+            "claim": "In fog ships fired guns or rang bells at fixed intervals.",
+            "summary": "At night ships signalled with lanterns, and in fog they fired guns or rang bells at fixed intervals.",
+            "confidence": "MEDIUM",
+            "citations": [
+              {
+                "ref": "web.1",
+                "quote": "At night ships signalled with lanterns, and in fog they fired guns or rang bells at fixed intervals."
+              }
+            ]
+          }
+        ]
+      },
+      "fit": {
+        "proposals": [
+          {
+            "op": "ADD",
+            "elementId": "el-01",
+            "fieldKey": "defining_traits",
+            "value": [
+              "Merchant ships used Marryat's Code, a set of numbered signal flags."
+            ],
+            "newKind": null,
+            "newName": null,
+            "newSummary": null,
+            "rationale": "A merchant captain of the period would know the signal flags.",
+            "cites": [
+              "f1"
+            ],
+            "sceneRef": null
+          },
+          {
+            "op": "SCENE_NOTE",
+            "elementId": null,
+            "fieldKey": null,
+            "value": "In fog, ships fired guns or rang bells at fixed intervals; lantern signals would not carry.",
+            "newKind": null,
+            "newName": null,
+            "newSummary": null,
+            "rationale": "The scene is set in fog, where flags and lanterns fail.",
+            "cites": [
+              "f2"
+            ],
+            "sceneRef": "s1"
           }
         ],
         "noFit": []
@@ -617,7 +700,8 @@
             "rationale": "A poisoner of her era would fear the Marsh test.",
             "cites": [
               "f1"
-            ]
+            ],
+            "sceneRef": null
           }
         ],
         "noFit": []
@@ -661,7 +745,8 @@
             "rationale": "The long cold night presses on everyone at the base.",
             "cites": [
               "f1"
-            ]
+            ],
+            "sceneRef": null
           }
         ],
         "noFit": []
@@ -705,7 +790,8 @@
             "rationale": "The blade's forging follows medieval practice.",
             "cites": [
               "f1"
-            ]
+            ],
+            "sceneRef": null
           }
         ],
         "noFit": []
@@ -751,7 +837,8 @@
             "rationale": "Her craft rests on the discipline of the pad.",
             "cites": [
               "f1"
-            ]
+            ],
+            "sceneRef": null
           }
         ],
         "noFit": []
@@ -795,7 +882,69 @@
             "rationale": "The letter's seal is what guards the confession.",
             "cites": [
               "f1"
+            ],
+            "sceneRef": null
+          }
+        ],
+        "noFit": []
+      }
+    },
+    {
+      "caseId": "adv-06",
+      "gather": {
+        "queries": [
+          "How were lighthouses kept lit in the 1890s"
+        ],
+        "fetched": [
+          "https://lights.example.org/keepers"
+        ]
+      },
+      "findings": {
+        "findings": [
+          {
+            "claim": "In the 1890s keepers trimmed the lamp wicks every four hours through the night.",
+            "summary": "In the 1890s keepers trimmed the lamp wicks every four hours through the night, and polished the lens each morning so that soot would not dim the beam.",
+            "confidence": "MEDIUM",
+            "citations": [
+              {
+                "ref": "web.1",
+                "quote": "In the 1890s keepers trimmed the lamp wicks every four hours through the night."
+              }
             ]
+          }
+        ]
+      },
+      "fit": {
+        "proposals": [
+          {
+            "op": "SCENE_NOTE",
+            "elementId": null,
+            "fieldKey": null,
+            "value": "Keepers trimmed the lamp wicks every four hours through the night.",
+            "newKind": null,
+            "newName": null,
+            "newSummary": null,
+            "rationale": "The scene shows the keeper's routine at dusk.",
+            "cites": [
+              "f1"
+            ],
+            "sceneRef": "s1"
+          },
+          {
+            "op": "ADD",
+            "elementId": "el-01",
+            "fieldKey": "defining_traits",
+            "value": [
+              "Trimmed the lamp wicks every four hours through the night."
+            ],
+            "newKind": null,
+            "newName": null,
+            "newSummary": null,
+            "rationale": "The keeper's routine follows the period's duties.",
+            "cites": [
+              "f1"
+            ],
+            "sceneRef": null
           }
         ],
         "noFit": []

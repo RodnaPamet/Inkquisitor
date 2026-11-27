@@ -51,6 +51,7 @@ import {
     type ResearchFieldProposalView,
     type ResearchIds,
     type ResearchNewElementView,
+    type ResearchSceneNoteView,
     type RunReviewView,
     type RunView,
 } from '@/lib/research/api-client';
@@ -64,6 +65,8 @@ export interface ResearchPageProps {
     truncated: boolean;
     /** The book's elements a brief may be scoped to (names and kinds). */
     elements: Array<{ id: string; name: string; kind: BibleKind }>;
+    /** Phase 5.1: the manuscript chapters a brief may be scoped to (titles; null is untitled). */
+    chapters?: Array<{ id: string; title: string | null; partTitle: string | null }>;
     kindLabels: Record<BibleKind, string>;
     canEdit: boolean;
     /** A review shown open at first (the latest finished run of the newest brief). */
@@ -92,17 +95,34 @@ function statusVariant(status: string): 'info' | 'success' | 'neutral' | 'warnin
 
 // ─── The brief form ────────────────────────────────────────────────
 
-function NewBriefForm({ ids, elements, kindLabels, onCreated }: { ids: ResearchIds; elements: ResearchPageProps['elements']; kindLabels: ResearchPageProps['kindLabels']; onCreated: () => Promise<void> }) {
+function NewBriefForm({
+    ids,
+    elements,
+    chapters,
+    kindLabels,
+    onCreated,
+}: {
+    ids: ResearchIds;
+    elements: ResearchPageProps['elements'];
+    chapters: NonNullable<ResearchPageProps['chapters']>;
+    kindLabels: ResearchPageProps['kindLabels'];
+    onCreated: () => Promise<void>;
+}) {
     const t = useTranslations('research.newBrief');
     const errorText = useErrorText();
     const [question, setQuestion] = useState('');
     const [purpose, setPurpose] = useState('');
     const [scope, setScope] = useState<ComboboxOption[]>([]);
+    const [chapterScope, setChapterScope] = useState<ComboboxOption[]>([]);
     const [urls, setUrls] = useState('');
     const [depth, setDepth] = useState<ResearchDepth>('QUICK');
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const options: ComboboxOption[] = useMemo(() => elements.map((e) => ({ value: e.id, label: `${e.name} (${kindLabels[e.kind] ?? e.kind})` })), [elements, kindLabels]);
+    const chapterOptions: ComboboxOption[] = useMemo(
+        () => chapters.map((c, i) => ({ value: c.id, label: [c.partTitle, c.title ?? t('untitledChapter', { n: i + 1 })].filter(Boolean).join(' · ') })),
+        [chapters, t],
+    );
     const submit = async (e: FormEvent) => {
         e.preventDefault();
         if (!question.trim() || !purpose.trim()) {
@@ -117,11 +137,13 @@ function NewBriefForm({ ids, elements, kindLabels, onCreated }: { ids: ResearchI
                 purpose,
                 depth,
                 scopeElementIds: scope.map((o) => o.value),
+                scopeChapterIds: chapterScope.map((o) => o.value),
                 urls: urls.split(/\s+/).map((u) => u.trim()).filter((u) => u !== ''),
             });
             setQuestion('');
             setPurpose('');
             setScope([]);
+            setChapterScope([]);
             setUrls('');
             toast.success(t('created'));
             await onCreated();
@@ -156,6 +178,21 @@ function NewBriefForm({ ids, elements, kindLabels, onCreated }: { ids: ResearchI
                         id="brief-scope"
                     />
                 </FormField>
+                {chapterOptions.length > 0 ? (
+                    <FormField label={t('chapters')} description={t('chaptersHelp')}>
+                        <Combobox
+                            multiple
+                            options={chapterOptions}
+                            selected={chapterScope}
+                            setSelected={setChapterScope}
+                            maxSelected={8}
+                            placeholder={t('chaptersPlaceholder')}
+                            searchPlaceholder={t('scopeSearch')}
+                            matchTriggerWidth
+                            id="brief-chapters"
+                        />
+                    </FormField>
+                ) : null}
                 <FormField label={t('urls')} description={t('urlsHelp')}>
                     <Textarea id="brief-urls" value={urls} onChange={(e) => setUrls(e.target.value)} rows={2} />
                 </FormField>
@@ -445,6 +482,94 @@ function NewElementCard({ p, findings, canEdit, busy, kindLabel, onAccept, onRej
     );
 }
 
+/**
+ * A proposed note on a manuscript scene (Phase 5.1): a note for the author,
+ * never prose for the scene (D3). Accepting appends it to the scene's NOTE; the
+ * scene's text is never touched. Shown as text.
+ */
+function SceneNoteCard({
+    p,
+    findings,
+    canEdit,
+    busy,
+    onAccept,
+    onReject,
+    workspaceSlug,
+    bookId,
+}: {
+    p: ResearchSceneNoteView;
+    findings: readonly FindingView[];
+    canEdit: boolean;
+    busy: boolean;
+    onAccept: (p: ResearchSceneNoteView, note?: string) => Promise<boolean>;
+    onReject: (id: string) => Promise<void>;
+    workspaceSlug: string;
+    bookId: string;
+}) {
+    const t = useTranslations('enrichment');
+    const tr = useTranslations('research.proposals');
+    const [editing, setEditing] = useState(false);
+    const [note, setNote] = useState(p.note);
+    const pending = p.status === 'PENDING';
+    const headingId = `research-proposal-${p.id}-title`;
+    return (
+        <Card className="space-y-default p-5" data-testid="research-scene-note" data-status={p.status} aria-labelledby={headingId}>
+            <div className="flex flex-wrap items-start justify-between gap-tight">
+                <div className="min-w-0 space-y-1">
+                    <h4 id={headingId} className="text-base font-semibold text-content-emphasis">
+                        <Link className="text-content-brand hover:underline" href={APP_ROUTES.scene(workspaceSlug, bookId, p.sceneId)}>
+                            {p.sceneTitle ?? tr('untitledScene')}
+                        </Link>
+                    </h4>
+                    <p className="text-sm text-content-muted">{tr('sceneNoteFor', { chapter: p.chapterTitle ?? tr('untitledChapter') })}</p>
+                </div>
+                <StatusBadge variant={statusVariant(p.status)} data-testid="proposal-status">
+                    {t(`status.${p.status}`)}
+                </StatusBadge>
+            </div>
+            <Flags flags={p.flags} />
+            {editing ? (
+                <FormField label={tr('sceneNote')}>
+                    <Textarea value={note} onChange={(e) => setNote(e.target.value)} id={`research-note-${p.id}`} rows={4} />
+                </FormField>
+            ) : (
+                <p className="whitespace-pre-wrap text-sm text-content-default">{p.note}</p>
+            )}
+            <p className="text-sm text-content-default">
+                <span className="font-medium">{tr('rationale')}</span> {p.rationale}
+            </p>
+            <p className="text-xs text-content-muted">{tr('sceneNoteHelp')}</p>
+            <Sources ids={p.findingIds} findings={findings} />
+            {canEdit && pending ? (
+                <div className="flex flex-wrap items-center gap-tight">
+                    {editing ? (
+                        <>
+                            <Button variant="primary" icon={<Check className="size-4" aria-hidden="true" />} loading={busy} disabled={note.trim() === ''} onClick={async () => { if (await onAccept(p, note)) setEditing(false); }} id={`research-accept-edit-${p.id}`}>
+                                {t('saveAccept')}
+                            </Button>
+                            <Button variant="secondary" onClick={() => setEditing(false)} id={`research-cancel-edit-${p.id}`}>
+                                {t('cancelEdit')}
+                            </Button>
+                        </>
+                    ) : (
+                        <>
+                            <Button variant="primary" icon={<Check className="size-4" aria-hidden="true" />} loading={busy} onClick={() => void onAccept(p)} id={`research-accept-${p.id}`}>
+                                {t('accept')}
+                            </Button>
+                            <Button variant="secondary" icon={<Pencil className="size-4" aria-hidden="true" />} onClick={() => setEditing(true)} id={`research-edit-${p.id}`}>
+                                {t('edit')}
+                            </Button>
+                            <Button variant="secondary" icon={<X className="size-4" aria-hidden="true" />} disabled={busy} onClick={() => void onReject(p.id)} id={`research-reject-${p.id}`}>
+                                {t('reject')}
+                            </Button>
+                        </>
+                    )}
+                </div>
+            ) : null}
+        </Card>
+    );
+}
+
 /** Code-named refusals the egress list words; any other reads as the generic one. */
 const EGRESS_REFUSALS = ['QUOTES_BOOK_TEXT', 'CARRIES_SECRET', 'INDEX_INCOMPLETE', 'UNREADABLE_TOOL_INPUT', 'TOOL_NOT_PERMITTED'] as const;
 
@@ -516,6 +641,11 @@ function RunReview({ review, ids, canEdit, kindLabels, onChanged, workspaceSlug,
             await researchApi.accept(ids, p.id, edit ? { name: edit.name, summary: edit.summary } : {});
             return te('acceptedNew', { name: edit?.name ?? p.name });
         });
+    const acceptNote = (p: ResearchSceneNoteView, note?: string) =>
+        act(async () => {
+            await researchApi.accept(ids, p.id, note !== undefined && note !== p.note ? { value: note } : {});
+            return t('proposals.noteAccepted');
+        });
     const reject = async (id: string) => {
         await act(async () => {
             await researchApi.reject(ids, id);
@@ -558,6 +688,16 @@ function RunReview({ review, ids, canEdit, kindLabels, onChanged, workspaceSlug,
                     </h3>
                     {review.newElements.map((p) => (
                         <NewElementCard key={p.id} p={p} findings={review.findings} canEdit={canEdit} busy={busy} kindLabel={kindLabels[p.newKind] ?? p.newKind} onAccept={acceptNew} onReject={reject} />
+                    ))}
+                </section>
+            ) : null}
+            {review.sceneNotes.length > 0 ? (
+                <section aria-labelledby={`notes-${review.run.id}`} className="space-y-default">
+                    <h3 id={`notes-${review.run.id}`} className="text-base font-semibold text-content-emphasis">
+                        {t('proposals.sceneNotesTitle')}
+                    </h3>
+                    {review.sceneNotes.map((p) => (
+                        <SceneNoteCard key={p.id} p={p} findings={review.findings} canEdit={canEdit} busy={busy} onAccept={acceptNote} onReject={reject} workspaceSlug={workspaceSlug} bookId={bookId} />
                     ))}
                 </section>
             ) : null}
@@ -632,6 +772,7 @@ function BriefCard({ brief, ids, canEdit, kindLabels, onChanged, initialReview, 
                 </div>
             </div>
             {brief.scope.length > 0 ? <p className="text-sm text-content-default">{t('scopeLabel', { names: brief.scope.map((s) => s.name).join(', ') })}</p> : null}
+            {brief.chapters.length > 0 ? <p className="text-sm text-content-default">{t('chaptersLabel', { names: brief.chapters.map((c) => c.title ?? t('untitledChapter')).join(', ') })}</p> : null}
             {brief.urls.length > 0 ? (
                 <ul className="text-sm text-content-default" aria-label={t('urlsLabel')}>
                     {brief.urls.map((u) => (
@@ -664,7 +805,7 @@ function BriefCard({ brief, ids, canEdit, kindLabels, onChanged, initialReview, 
     );
 }
 
-export function ResearchPage({ workspaceSlug, book, briefs: initial, truncated, elements, kindLabels, canEdit, initialReview = null }: ResearchPageProps) {
+export function ResearchPage({ workspaceSlug, book, briefs: initial, truncated, elements, chapters = [], kindLabels, canEdit, initialReview = null }: ResearchPageProps) {
     const t = useTranslations('research');
     const [briefs, setBriefs] = useState(initial);
     const ids: ResearchIds = useMemo(() => ({ slug: workspaceSlug, bookId: book.id }), [workspaceSlug, book.id]);
@@ -684,7 +825,7 @@ export function ResearchPage({ workspaceSlug, book, briefs: initial, truncated, 
         >
             <div className="space-y-section">
                 {!canEdit ? <p className="text-sm text-content-muted">{t('readOnly')}</p> : null}
-                {canEdit ? <NewBriefForm ids={ids} elements={elements} kindLabels={kindLabels} onCreated={reload} /> : null}
+                {canEdit ? <NewBriefForm ids={ids} elements={elements} chapters={chapters} kindLabels={kindLabels} onCreated={reload} /> : null}
                 <section aria-labelledby="briefs-title" className="space-y-default">
                     <h2 id="briefs-title" className="text-base font-semibold text-content-emphasis">
                         {t('briefs.title')}

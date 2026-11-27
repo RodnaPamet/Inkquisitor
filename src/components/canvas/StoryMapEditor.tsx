@@ -36,6 +36,7 @@
  * breadcrumb, document bar and rules.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import type { Editor, TLShapeId } from 'tldraw';
 
@@ -45,6 +46,7 @@ import { ToggleGroup } from '@/components/ui/toggle-group';
 import { useToast, useToastWithUndo } from '@/components/ui/hooks';
 import { WorkspaceShell } from '@/components/layout/WorkspaceShell';
 import { BIBLE_API, BibleApiError, bibleFetch, reasonOf, type CreatedRelationView, type ElementListItemView, type OrderMoveResult } from '@/lib/bible/api-client';
+import { APP_ROUTES } from '@/lib/app-routes';
 import type { FieldDef } from '@/lib/bible/template-schema';
 import type { RelationOption } from '@/lib/bible/ui-model';
 import { MAP_API, type MapRestoreResult, type StoryMapSaveResult, type StoryMapView } from '@/lib/canvas/api-client';
@@ -69,6 +71,7 @@ import { ElementSheet, type SheetOrderControls } from './ElementSheet';
 import { MapConflictNotice } from './MapConflictNotice';
 import { RelationTypePicker } from './RelationTypePicker';
 import { StoryMapCanvas } from './StoryMapCanvas';
+import type { SceneCardsValue } from './SceneCardLayer';
 import { StoryMapListView, type ListEdge, type ListGroup, type ListNode } from './StoryMapListView';
 import { addElementNode } from './tldraw/add-element-node';
 import { drawRelationEdge, type RelationRequest } from './tldraw/arrow-to-edge';
@@ -451,6 +454,29 @@ export default function StoryMapEditor({
         [t],
     );
     const slots = useMemo(() => betweenSlots(lanes), [lanes]);
+
+    // ─── The plot board's scene cards (Phase 5.1, D33 B): display data from the map view, never records ──
+    const router = useRouter();
+    const beatScenes = useMemo(() => new Map((map.beatScenes ?? []).map((b) => [b.beatElementId, b] as const)), [map]);
+    const sceneHref = useCallback((sceneId: string) => APP_ROUTES.scene(workspaceSlug, bookId, sceneId), [workspaceSlug, bookId]);
+    const sceneCards: SceneCardsValue | null = useMemo(
+        () =>
+            mapKind === 'PLOT'
+                ? {
+                      beats: beatScenes,
+                      href: sceneHref,
+                      onOpenScene: (sceneId: string) => router.push(sceneHref(sceneId)),
+                      onOpenBeat: (beatElementId: string) => setOpenElementId(beatElementId),
+                      words: {
+                          untitled: t('scenes.untitled'),
+                          open: (title: string) => t('scenes.open', { title }),
+                          more: (count: number) => t('scenes.more', { count }),
+                          moreAria: (count: number) => t('scenes.moreAria', { count }),
+                      },
+                  }
+                : null,
+        [mapKind, beatScenes, sceneHref, router, t],
+    );
     const preview: StructurePreviewValue = useMemo(
         () => ({
             pending: structure,
@@ -725,6 +751,7 @@ export default function StoryMapEditor({
                         onRelate={relate}
                         onGrill={grill}
                         {...(layoutMode === 'derived' ? { canMove: canMoveInList, onMove: moveInList } : {})}
+                        {...(sceneCards ? { scenes: { beats: beatScenes, href: sceneHref } } : {})}
                     />
                 ) : null}
                 {/* In the list view the canvas stays mounted (it IS the map the list acts on), out of sight and out of the tab order. */}
@@ -749,6 +776,7 @@ export default function StoryMapEditor({
                         onNodeOpen={setOpenElementId}
                         onEditorReady={setEditor}
                         preview={preview}
+                        sceneCards={sceneCards}
                     />
                 </div>
             </WorkspaceShell.Body>

@@ -1,0 +1,258 @@
+// ─────────────────────────────────────────────────────────────────
+//  The manuscript (Phase 5.1, decision D33).
+//
+//  A book has at most ONE manuscript (unique bookId), created on its first
+//  structural write, never on a read: a book nobody has written in reads as
+//  an empty manuscript. Manuscript → Part → Chapter → Scene. A part is
+//  structurally required (every chapter sits in one), but a manuscript that
+//  holds a single part with no title shows no part level at all: the
+//  outline treats it as "no parts" (the 5.1 note, "One default part").
+//
+//  ORDER. Parts, chapters and scenes each carry a fractional rank
+//  (`src/lib/bible/story-order.ts`: `rankBetween` / `placeRank`, compared in
+//  code, never by collation), unique per parent. A scene's MANUSCRIPT order
+//  is its chapter's rank then its own; it is NOT the story order of plot
+//  beats (D25), which lives on `BibleElement.orderRank` and is never read or
+//  written here.
+//
+//  EVERY MODEL HERE IS WORKSPACE-SCOPED: `workspaceId`, FORCE ROW LEVEL
+//  SECURITY, the `workspace_isolation` / `superuser_bypass` policies in the
+//  migration, reached through `runInWorkspaceContext`.
+//
+//  THE WORKSPACE AND THE BOOK TRAVEL IN EVERY FOREIGN KEY: a child points at
+//  its parent by (workspaceId, bookId, parentId), and a scene at a bible
+//  element by (bookId, elementId), so the database refuses a scene of one
+//  book naming another book's character, beat or place.
+//
+//  AUTHOR TEXT IS ENCRYPTED AT REST (`src/lib/security/encrypted-fields.ts`)
+//  and sanitised at the usecase layer: part, chapter and scene titles, a
+//  scene's text (the prose profile, `sanitizeSceneHtml`), its story time and
+//  its note, and every version of the text and the note.
+//
+//  D3: NO MODEL OUTPUT IS EVER WRITTEN TO A SCENE'S TEXT. The text column is
+//  written by ONE module (`src/app-layer/usecases/manuscript-text.ts`), which
+//  no module that reaches the model layer may import
+//  (`tests/guards/scene-text-stays-off-the-model-path.test.ts`). A research
+//  finding reaches a scene only as a NOTE (`ManuscriptScene.note`, its own
+//  column and history), never as prose.
+//
+//  SceneVersion and SceneNoteVersion are APPEND-ONLY (trigger), keyed to the
+//  BOOK like a bible version: a scene's history outlives the scene and goes
+//  only with its book. A version of the text is written when the author
+//  pauses or leaves (a checkpoint), or when the newest one is older than the
+//  server's bound — not on every autosave (D33). Phase 5.3 attaches its
+//  draft-fact outbox to SceneVersion's insert, as 4.1 did to the bible's.
+// ─────────────────────────────────────────────────────────────────
+
+/// A book's manuscript: the anchor its parts hang from.
+model Manuscript {
+  id          String   @id @default(cuid())
+  workspaceId String
+  bookId      String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  book  Book             @relation(fields: [workspaceId, bookId], references: [workspaceId, id], onDelete: Cascade)
+  parts ManuscriptPart[]
+
+  /// One manuscript a book (a book is in one workspace, so this is one per book).
+  @@unique([workspaceId, bookId])
+  @@unique([workspaceId, id])
+  @@unique([workspaceId, bookId, id])
+}
+
+/// A part of the manuscript (a single untitled part is shown as no part at all).
+model ManuscriptPart {
+  id           String   @id @default(cuid())
+  workspaceId  String
+  bookId       String
+  manuscriptId String
+  /// The author's title (encrypted); NULL is untitled.
+  title        String?
+  /// Its place among the manuscript's parts (a fractional rank, unique per manuscript).
+  rank         String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  manuscript Manuscript          @relation(fields: [workspaceId, bookId, manuscriptId], references: [workspaceId, bookId, id], onDelete: Cascade)
+  chapters   ManuscriptChapter[]
+
+  @@unique([manuscriptId, rank])
+  @@unique([workspaceId, id])
+  @@unique([workspaceId, bookId, id])
+  /// The outline: a book's parts.
+  @@index([workspaceId, bookId])
+}
+
+/// A chapter of a part.
+model ManuscriptChapter {
+  id          String   @id @default(cuid())
+  workspaceId String
+  bookId      String
+  partId      String
+  /// The author's title (encrypted); NULL is untitled.
+  title       String?
+  /// Its place among the part's chapters (unique per part).
+  rank        String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  part   ManuscriptPart    @relation(fields: [workspaceId, bookId, partId], references: [workspaceId, bookId, id], onDelete: Cascade)
+  scenes ManuscriptScene[]
+
+  @@unique([partId, rank])
+  @@unique([workspaceId, id])
+  @@unique([workspaceId, bookId, id])
+  /// The outline: a book's chapters.
+  @@index([workspaceId, bookId])
+}
+
+/// A scene: the author's prose, and what the bible says about it.
+model ManuscriptScene {
+  id               String   @id @default(cuid())
+  workspaceId      String
+  bookId           String
+  chapterId        String
+  /// The author's title (encrypted); NULL is untitled.
+  title            String?
+  /// Its place among the chapter's scenes (unique per chapter).
+  rank             String
+  /// The prose, as sanitised HTML (the prose profile; encrypted). '' is empty.
+  text             String   @default("")
+  /// Words in `text` (Intl.Segmenter words over its plain text), counted on save.
+  wordCount        Int      @default(0)
+  /// The save counter: every save names the revision it was based on, and a
+  /// newer one refuses it 409 VERSION_CONFLICT (D33). Not the history: a
+  /// version is written only at a checkpoint (`SceneVersion`).
+  revision         Int      @default(0)
+  /// The point-of-view character: a CHARACTER of the same book (trigger), or NULL.
+  /// Deleting that character sets only this column NULL (`SET NULL ("povElementId")`
+  /// in the migration; Prisma cannot spell it, so NoAction here).
+  povElementId     String?
+  /// The setting: a SETTING of the same book (trigger), or NULL; as the POV.
+  settingElementId String?
+  /// When the scene happens in the story, free text like a timeline event's
+  /// `story_time` (encrypted); NULL is unstated.
+  storyTime        String?
+  /// The author's note on the scene, plain text (encrypted). Research findings
+  /// the author accepts are appended here (never to `text`, D3); every change
+  /// writes one `SceneNoteVersion`.
+  note             String?
+  /// The newest SceneNoteVersion's number (0: the note was never written).
+  noteVersion      Int      @default(0)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  chapter           ManuscriptChapter  @relation(fields: [workspaceId, bookId, chapterId], references: [workspaceId, bookId, id], onDelete: Cascade)
+  pov               BibleElement?      @relation("ScenePov", fields: [bookId, povElementId], references: [bookId, id], onDelete: NoAction)
+  setting           BibleElement?      @relation("SceneSetting", fields: [bookId, settingElementId], references: [bookId, id], onDelete: NoAction)
+  elementLinks      SceneElementLink[]
+  beatLinks         SceneBeatLink[]
+  /// Phase 5.1: research proposals of a note on this scene; they go with it.
+  researchProposals ResearchProposal[]
+
+  @@unique([chapterId, rank])
+  @@unique([workspaceId, id])
+  @@unique([workspaceId, bookId, id])
+  @@unique([bookId, id])
+  /// The outline and the manuscript's word counts: a book's scenes.
+  @@index([workspaceId, bookId])
+  @@index([bookId, povElementId])
+  @@index([bookId, settingElementId])
+}
+
+/// A bible element a scene links: mentioned in its text (`@` in the editor)
+/// and/or linked by the author explicitly. One row a (scene, element).
+model SceneElementLink {
+  workspaceId String
+  bookId      String
+  sceneId     String
+  elementId   String
+  /// The scene's text holds a mention of it (derived on every text save).
+  mentioned   Boolean  @default(false)
+  /// The author linked it in the side panel.
+  explicit    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  scene   ManuscriptScene @relation(fields: [workspaceId, bookId, sceneId], references: [workspaceId, bookId, id], onDelete: Cascade)
+  element BibleElement    @relation("SceneElementLinkElement", fields: [bookId, elementId], references: [bookId, id], onDelete: Cascade)
+
+  @@id([sceneId, elementId])
+  @@index([workspaceId, bookId])
+  @@index([bookId, elementId])
+}
+
+/// A plot beat a scene dramatises (D33): a PLOT_BEAT of the same book (trigger).
+/// Read by the beat's own page and the plot board's sheet; never drawn as a map record.
+model SceneBeatLink {
+  workspaceId   String
+  bookId        String
+  sceneId       String
+  beatElementId String
+  createdAt     DateTime @default(now())
+
+  scene ManuscriptScene @relation(fields: [workspaceId, bookId, sceneId], references: [workspaceId, bookId, id], onDelete: Cascade)
+  beat  BibleElement    @relation("SceneBeatLinkBeat", fields: [bookId, beatElementId], references: [bookId, id], onDelete: Cascade)
+
+  @@id([sceneId, beatElementId])
+  @@index([workspaceId, bookId])
+  /// A beat's scenes.
+  @@index([bookId, beatElementId])
+}
+
+/// One saved state of a scene's text (D33). APPEND-ONLY (trigger); keyed to
+/// its BOOK: the history outlives the scene and goes only with its book.
+model SceneVersion {
+  id                  String             @id @default(cuid())
+  workspaceId         String
+  bookId              String
+  /// The scene (no foreign key: the history outlives the scene).
+  sceneId             String
+  /// 1, 2, 3, … per scene, assigned under the scene's advisory lock.
+  versionNumber       Int
+  /// The text at that moment (sanitised HTML; encrypted).
+  text                String
+  wordCount           Int
+  source              SceneVersionSource
+  /// The version this one restored, when it is a restore.
+  restoredFromVersion Int?
+  /// Who saved it; NULL once that person is deleted.
+  authorId            String?
+  createdAt           DateTime           @default(now())
+
+  book   Book  @relation(fields: [workspaceId, bookId], references: [workspaceId, id], onDelete: Cascade)
+  author User? @relation("SceneVersionAuthor", fields: [authorId], references: [id], onDelete: SetNull)
+
+  @@unique([sceneId, versionNumber])
+  @@index([workspaceId, bookId])
+  @@index([authorId])
+}
+
+/// One saved state of a scene's NOTE (D3: a research finding the author
+/// accepts changes the note, never the text). APPEND-ONLY (trigger); keyed
+/// to its BOOK. A RESEARCH version names the findings (and the proposal) it
+/// is drawn from (CHECK), as a bible version does.
+model SceneNoteVersion {
+  id                       String             @id @default(cuid())
+  workspaceId              String
+  bookId                   String
+  /// The scene (no foreign key: the history outlives the scene).
+  sceneId                  String
+  versionNumber            Int
+  /// The note at that moment (plain text; encrypted). '' is cleared.
+  note                     String
+  source                   BibleVersionSource
+  /// RESEARCH: the findings it is drawn from (non-empty exactly then; CHECK).
+  sourceFindingIds         String[]           @default([])
+  /// RESEARCH: the proposal it accepted.
+  sourceResearchProposalId String?
+  authorId                 String?
+  createdAt                DateTime           @default(now())
+
+  book   Book  @relation(fields: [workspaceId, bookId], references: [workspaceId, id], onDelete: Cascade)
+  author User? @relation("SceneNoteVersionAuthor", fields: [authorId], references: [id], onDelete: SetNull)
+
+  @@unique([sceneId, versionNumber])
+  @@index([workspaceId, bookId])
+  @@index([authorId])
+}
