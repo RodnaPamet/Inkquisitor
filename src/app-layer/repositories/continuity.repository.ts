@@ -19,7 +19,7 @@ type Db = PrismaTx;
 
 // ─── The nightly check ─────────────────────────────────────────────
 
-const CHECK_SELECT = { id: true, bookId: true, coveredThrough: true, passTarget: true, passCursor: true, lastRunAt: true, lastOutcome: true, pageFailures: true, parkedSubjects: true } as const satisfies Prisma.ContinuityCheckSelect;
+const CHECK_SELECT = { id: true, bookId: true, coveredThrough: true, passTarget: true, passCursor: true, lastRunAt: true, lastOutcome: true, pageFailures: true, parkedSubjects: true, passedOver: true, passedOverCut: true } as const satisfies Prisma.ContinuityCheckSelect;
 export type ContinuityCheckRow = Prisma.ContinuityCheckGetPayload<{ select: typeof CHECK_SELECT }>;
 
 export const ContinuityCheckRepository = {
@@ -33,7 +33,18 @@ export const ContinuityCheckRepository = {
         db: Db,
         workspaceId: string,
         bookId: string,
-        data: { coveredThrough?: Date | null; passTarget: Date | null; passCursor: string | null; lastRunAt: Date; lastOutcome: ContinuityOutcome; pageFailures?: number; parkedSubjects?: number },
+        data: {
+            coveredThrough?: Date | null;
+            passTarget: Date | null;
+            passCursor: string | null;
+            lastRunAt: Date;
+            lastOutcome: ContinuityOutcome;
+            pageFailures?: number;
+            parkedSubjects?: number;
+            /** 4.H-b (D32): the subjects passed over and outstanding, and whether more were than the list holds. */
+            passedOver?: string[];
+            passedOverCut?: boolean;
+        },
     ): Promise<void> {
         await db.continuityCheck.updateMany({ where: { workspaceId, bookId }, data });
     },
@@ -142,7 +153,10 @@ export const ContinuityDiscovery = {
      * long as that lasts), so an order fixed by id would hand the same books every night's places and never reach
      * the rest. A book with a run already dispatched for THIS night (`nightKey`, 4.H-a) is never due a second time.
      */
-    async listDueBooks(db: PrismaClient, data: { take: number; staleBefore: Date; nightKey: string; workspaceIds?: readonly string[] }): Promise<DueBook[]> {
+    async listDueBooks(db: PrismaClient, data: { take: number; staleBefore: Date; nightKey: string; workspaceIds?: readonly string[]; retryBefore?: Date }): Promise<DueBook[]> {
+        // 4.H-b (D32): a book with subjects passed over and outstanding is due again once its last run is older than
+        // `CONTINUITY_PASSED_OVER_RETRY_MS` (the caller's `retryBefore`), changed or not: its next pass retries them.
+        const retryBefore = data.retryBefore ?? new Date(0);
         const scope = data.workspaceIds ? Prisma.sql`AND b."workspaceId" = ANY(${[...data.workspaceIds]}::text[])` : Prisma.empty;
         return db.$queryRaw<DueBook[]>(Prisma.sql`
             SELECT "workspaceId", "bookId" FROM (
@@ -152,6 +166,7 @@ export const ContinuityDiscovery = {
                 LEFT JOIN "ContinuityCheck" c ON c."workspaceId" = b."workspaceId" AND c."bookId" = b."id"
                 WHERE b."deletedAt" IS NULL ${scope}
                   AND (c."passTarget" IS NOT NULL
+                       OR ((cardinality(c."passedOver") > 0 OR c."passedOverCut") AND c."lastRunAt" < ${retryBefore})
                        OR EXISTS (SELECT 1 FROM "StoryFact" f
                                   WHERE f."workspaceId" = b."workspaceId" AND f."bookId" = b."id" AND f."supersededAt" IS NULL
                                     AND f."createdAt" > COALESCE(c."coveredThrough", '-infinity'::timestamp))

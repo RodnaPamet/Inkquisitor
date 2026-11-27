@@ -9,6 +9,9 @@
  *                nights, counted and shown, and the pass goes on
  *   #62 item 4   a second dispatch in one night queues nothing for a book already
  *                queued that night
+ *   D32 (4.H-b)  a subject passed over is remembered, retried in the next pass (a
+ *                book with nothing new is queued again a week after its last run),
+ *                and no pass is complete while one is outstanding
  */
 import { prisma } from '@/lib/db';
 import { runWithoutRls } from '@/lib/db/rls-middleware';
@@ -23,7 +26,8 @@ import { CONTINUITY_FACTS_READ_MAX, CONTINUITY_PAGE_FAILURES_MAX, CONTINUITY_PAS
 import type { ContinuityChecker } from '@/lib/continuity/model-seam';
 import { setFakeApiKey } from '../helpers/fake-anthropic';
 import { ageExtractor, cloneFact, extractPending } from '../helpers/facts';
-import { runNight } from '../helpers/continuity';
+import { nextTestNight, runNight } from '../helpers/continuity';
+import { CONTINUITY_PASSED_OVER_RETRY_MS } from '@/lib/continuity/vocabulary';
 import { createAccount, workspaceCtx } from '../helpers/workspaces';
 
 afterAll(() => prisma.$disconnect());
@@ -139,6 +143,56 @@ describe('a page that can never succeed (#62 item 3)', () => {
         const timeout = (): ContinuityChecker => ({ extract: async () => ({ ok: false, failure: 'TIMEOUT', errorCode: 'TIMEOUT', tokensUsed: 0, costMicroUsd: 0, callIds: [] }) });
         for (let n = 1; n <= CONTINUITY_PAGE_FAILURES_MAX + 1; n++) expect(await runNight(ctx, { checker: timeout })).toEqual(['CALL_FAILED']);
         expect(await checkState(bookId)).toMatchObject({ pageFailures: 0, parkedSubjects: 0, passCursor: null });
+    });
+});
+
+describe('passed-over subjects are remembered (D32, 4.H-b)', () => {
+    it('a subject the guard refused is stored, outstanding on the page, retried in the next pass, and the check completes only once it is checked', async () => {
+        const ctx = workspaceCtx(await createAccount());
+        const bookId = (await createBook(ctx, { title: 'Remembered' })).id;
+        await ageFacts(ctx, bookId, ['Ada', 'Bo']);
+        const onePage = { callsPerNight: 1, factsPerCall: 1 };
+        let refusing = true;
+        const seen: string[] = [];
+        const checker = (): ContinuityChecker => ({
+            extract: async (r) => {
+                const text = r.data.map((b) => b.text).join('\n');
+                seen.push(text);
+                if (refusing && text.includes('Ada')) return { ok: false, failure: 'GUARD_REFUSED', errorCode: 'GUARD', tokensUsed: 10, costMicroUsd: 10, callIds: [] };
+                return quiet().extract(r);
+            },
+        });
+        expect(await runNight(ctx, { checker, ...onePage })).toEqual(['GUARD_REFUSED']);
+        expect(await runNight(ctx, { checker, ...onePage })).toEqual(['OK']);
+        const stored = await runWithoutRls({ reason: 'test' }, (db) => db.continuityCheck.findFirstOrThrow({ where: { bookId }, select: { passedOver: true, passedOverCut: true } }));
+        expect(stored.passedOver).toHaveLength(1);
+        expect(stored.passedOverCut).toBe(false);
+        let page = await getContinuityPage(ctx, bookId);
+        expect(page.nightly).toMatchObject({ outcome: 'OK', passedOverOutstanding: 1, complete: false });
+
+        // Nothing new the next night, so the book is not queued: it is not retried every night.
+        const queuedTomorrow: string[] = [];
+        await executeContinuityDispatch({ enqueue: async (_n, p) => void queuedTomorrow.push((p as { runId: string }).runId), workspaceIds: [ctx.workspaceId], nightKey: nextTestNight(), now: () => new Date(Date.now() + 86_400_000) });
+        expect(queuedTomorrow).toEqual([]);
+
+        // A week on, the book is queued for a pass that retries the remembered subject (and only it: Bo has not changed).
+        refusing = false;
+        seen.length = 0;
+        const later = new Date(Date.now() + CONTINUITY_PASSED_OVER_RETRY_MS + 86_400_000);
+        const queued: string[] = [];
+        await executeContinuityDispatch({ enqueue: async (_n, p) => void queued.push((p as { runId: string }).runId), workspaceIds: [ctx.workspaceId], nightKey: nextTestNight(), now: () => later });
+        expect(queued).toHaveLength(1);
+        const undo = setFakeApiKey();
+        try {
+            const r = await executeContinuityCheck({ workspaceId: ctx.workspaceId, runId: queued[0] }, { checker, ...onePage, charge: () => undefined, gate: () => ({ mounted: true, recordKind: 'structural' }), now: () => later });
+            expect(r.outcome).toBe('OK');
+        } finally {
+            undo();
+        }
+        expect(seen).toHaveLength(1);
+        expect(seen[0]).toContain('Ada');
+        page = await getContinuityPage(ctx, bookId);
+        expect(page.nightly).toMatchObject({ outcome: 'OK', passedOverOutstanding: 0, parkedSubjects: 0, complete: true });
     });
 });
 

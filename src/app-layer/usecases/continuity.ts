@@ -44,7 +44,7 @@ import {
     StoryThreadRepository,
     type StoryThreadRow,
 } from '@/app-layer/repositories/continuity.repository';
-import { BibleVersionReadRepository, FactProposalRepository } from '@/app-layer/repositories/fact-layer.repository';
+import { BibleVersionReadRepository, FactBackfillRepository, FactProposalRepository } from '@/app-layer/repositories/fact-layer.repository';
 import { ContinuityThreadInput, ContinuityThreadUpdateInput, ThreadProposalDecisionInput } from '@/app-layer/schemas/continuity';
 import { VersionNumberParam } from '@/app-layer/schemas/bible';
 import { runInWorkspaceContext, type PrismaTx } from '@/lib/db/rls-middleware';
@@ -143,9 +143,21 @@ export interface ContinuityPage {
         factsCut: boolean;
         /** 4.H-a (#62 item 3): subjects of the pass (or the last complete one) passed over unchecked: a page that failed night after night, or one the guard refused. */
         parkedSubjects: number;
-        /** Every live fact checked: a complete pass, nothing cut, nothing passed over (rule 6: never claimed otherwise). */
+        /**
+         * 4.H-b (D32): subjects passed over and not checked since — remembered, retried in the next pass — and whether
+         * more were than the check remembers (the next pass then checks every subject).
+         */
+        passedOverOutstanding: number;
+        passedOverCut: boolean;
+        /** Every live fact checked: a complete pass, nothing cut, nothing passed over or outstanding (rule 6: never claimed otherwise). */
         complete: boolean;
     };
+    /**
+     * 4.H-b (D31, D32): the background reading of entries saved before 4.1 — `read` of `total` read so far, `notRead`
+     * that could not be (no member may act for them, or their attempts ran out), the rest waiting. `total` 0: the book
+     * has no such entries, and nothing is claimed about them (rule 6).
+     */
+    backfill: { total: number; read: number; notRead: number; waiting: number };
 }
 
 function threadView(t: StoryThreadRow, names: Map<string, string>): ThreadView {
@@ -195,6 +207,9 @@ export async function getContinuityPage(ctx: WorkspaceRequestContext, bookId: st
             ...proposalsShown.map((p) => p.bibleVersionId),
             ...standing.flatMap((f) => [f.baseVersionId, f.upstreamVersionId]),
         ].filter((x): x is string => !!x));
+        // 4.H-b (#62.2): a standing flag is not rewritten by each later save of its upstream entry, so the change it shows
+        // runs to the upstream's newest version, read here, not to the version that opened it.
+        const upstreamNewest = await StaleFlagRepository.newestContentVersions(db, ctx.workspaceId, [...new Set(standing.map((f) => f.upstreamElementId))]);
         const threadTitles = new Map(threadRows.map((t) => [t.id, t.title] as const));
         for (const p of proposalsShown) {
             if (p.threadId && !threadTitles.has(p.threadId)) {
@@ -233,6 +248,7 @@ export async function getContinuityPage(ctx: WorkspaceRequestContext, bookId: st
 
         const check = await ContinuityCheckRepository.find(db, ctx.workspaceId, bookId);
         const last = await ContinuityRunRepository.lastFinished(db, ctx.workspaceId, bookId);
+        const backfill = await FactBackfillRepository.progressForBook(db, ctx.workspaceId, bookId);
         // 4.H-a (#62 item 1): a run that read a cut set of facts says so (its metrics), and so does the page.
         const factsCut = !!last && typeof last.metrics === 'object' && last.metrics !== null && (last.metrics as { factsCut?: unknown }).factsCut === true;
         return {
@@ -268,7 +284,7 @@ export async function getContinuityPage(ctx: WorkspaceRequestContext, bookId: st
                     upstreamElementId: f.upstreamElementId,
                     upstreamName: names.get(f.upstreamElementId) ?? null,
                     fromVersion: f.baseVersionId ? (versionNumbers.get(f.baseVersionId) ?? null) : null,
-                    toVersion: versionNumbers.get(f.upstreamVersionId) ?? null,
+                    toVersion: upstreamNewest.get(f.upstreamElementId) ?? versionNumbers.get(f.upstreamVersionId) ?? null,
                     raisedAt: f.raisedAt.toISOString(),
                 })),
                 truncated: flagRows.length > CONTINUITY_LIST_MAX,
@@ -283,8 +299,18 @@ export async function getContinuityPage(ctx: WorkspaceRequestContext, bookId: st
                 passUnderWay: !!check?.passTarget,
                 factsCut,
                 parkedSubjects: check?.parkedSubjects ?? 0,
-                complete: !!check?.coveredThrough && !check.passTarget && !factsCut && (check.parkedSubjects ?? 0) === 0 && liveFacts > 0,
+                passedOverOutstanding: check?.passedOver.length ?? 0,
+                passedOverCut: check?.passedOverCut ?? false,
+                complete:
+                    !!check?.coveredThrough &&
+                    !check.passTarget &&
+                    !factsCut &&
+                    (check.parkedSubjects ?? 0) === 0 &&
+                    check.passedOver.length === 0 &&
+                    !check.passedOverCut &&
+                    liveFacts > 0,
             },
+            backfill: { total: backfill.queued + backfill.waiting, read: backfill.read, notRead: backfill.notRead, waiting: backfill.queued + backfill.waiting - backfill.read - backfill.notRead },
         };
     });
 }

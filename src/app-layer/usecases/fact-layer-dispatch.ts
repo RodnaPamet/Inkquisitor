@@ -20,12 +20,17 @@
  *
  * Discovery is the one read outside row-level security
  * (`fact-layer-discovery`: ids only); every write is in its workspace's own
- * context. Bounded per tick on both sides. A workspace that cannot be served
+ * context. It queues SAVE rows only (4.H-b: a BACKFILL row, an entry saved
+ * before 4.1, is the hourly `fact-backfill` job's, under its daily share), and
+ * takes the workspaces with due rows in workspace order FROM A ROUND-ROBIN
+ * CURSOR (`JobCursor`, #60.4), so with more busy workspaces than a tick serves,
+ * each is reached within ⌈busy ÷ `DISPATCH_EXTRACTIONS_MAX`⌉ ticks. Bounded per tick on both sides. A workspace that cannot be served
  * (its data key will not unwrap, a write fails) is skipped, logged with its id
  * and a code and counted (`servedWorkspace`, 4.H-a); the others are served.
  */
 import { randomUUID } from 'node:crypto';
 import { EmbeddingSourceRepository, EmbeddingTaskRepository, FactExtractionRepository } from '@/app-layer/repositories/fact-layer.repository';
+import { JobCursorRepository } from '@/app-layer/repositories/job-cursor.repository';
 import { getVectorRepository, type VectorRecord } from '@/app-layer/repositories/vector.repository';
 import type { JobName, JobPayload } from '@/app-layer/jobs/types';
 import { servedWorkspace } from '@/app-layer/jobs/workspace-isolation';
@@ -63,7 +68,14 @@ export interface DispatchDeps {
     now?: () => Date;
     /** The least a bible fact call costs at worst (tests: a figure of their own). */
     callFloorMicroUsd?: () => number;
+    /** The discovery's round-robin cursor (4.H-b, #60.4; tests: a name of their own). */
+    cursorName?: string;
+    /** Extractions queued at most this tick (default `DISPATCH_EXTRACTIONS_MAX`). */
+    extractionsMax?: number;
 }
+
+/** The minutely discovery's cursor (4.H-b, #60.4): the last workspace whose due extractions it queued. */
+export const EXTRACTIONS_CURSOR = 'fact-layer-dispatch:extractions';
 
 export interface DispatchResult {
     queued: number;
@@ -91,9 +103,13 @@ export async function executeFactLayerDispatch(deps: DispatchDeps = {}): Promise
     // ── Extractions ──
     if ((deps.extractionOpen ?? defaultExtractionOpen)()) {
         const window = { now, settledBefore: new Date(now.getTime() - FACT_EXTRACTION_SETTLE_MS), staleBefore: new Date(now.getTime() - STALE_EXTRACTION_MS) };
-        const due = await runWithoutRls({ reason: 'fact-layer-discovery' }, (db) =>
-            FactExtractionRepository.listDue(db, { ...window, take: DISPATCH_EXTRACTIONS_MAX, workspaceIds: deps.workspaceIds }),
-        );
+        // 4.H-b (#60.4): from the round-robin cursor, so every busy workspace is served within a bounded number of ticks.
+        const cursorName = deps.cursorName ?? EXTRACTIONS_CURSOR;
+        const due = await runWithoutRls({ reason: 'fact-layer-discovery' }, async (db) => {
+            const found = await FactExtractionRepository.listDue(db, { ...window, take: deps.extractionsMax ?? DISPATCH_EXTRACTIONS_MAX, workspaceIds: deps.workspaceIds, cursor: await JobCursorRepository.read(db, cursorName) });
+            if (found.rows.length > 0) await JobCursorRepository.save(db, cursorName, found.next);
+            return found.rows;
+        });
         const byWorkspace = new Map<string, typeof due>();
         for (const d of due) byWorkspace.set(d.workspaceId, [...(byWorkspace.get(d.workspaceId) ?? []), d]);
         const floor = (deps.callFloorMicroUsd ?? bibleFactsCallFloor)();

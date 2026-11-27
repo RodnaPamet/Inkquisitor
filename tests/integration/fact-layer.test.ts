@@ -642,7 +642,7 @@ describe('owner decisions of 2026-11-21: at the ceiling, wait for next month', (
         for (let i = 0; i < 4; i++) await createElement(busy, busyBook, { kind: 'CHARACTER', name: `Wren ${i}`, summary: `Wren ${i} wants to cross the river.` });
         const quietBook = (await createBook(quiet, { title: 'New' })).id;
         await createElement(quiet, quietBook, { kind: 'CHARACTER', name: 'Ilse', summary: 'Ilse keeps bees on the observatory roof.' });
-        const due = await runWithoutRls({ reason: 'test' }, (db) => FactExtractionRepository.listDue(db, { ...ANY_DUE, take: 3, workspaceIds: [busy.workspaceId, quiet.workspaceId] }));
+        const { rows: due } = await runWithoutRls({ reason: 'test' }, (db) => FactExtractionRepository.listDue(db, { ...ANY_DUE, take: 3, workspaceIds: [busy.workspaceId, quiet.workspaceId] }));
         expect(due.filter((d) => d.workspaceId === quiet.workspaceId)).toHaveLength(1);
         expect(due.filter((d) => d.workspaceId === busy.workspaceId)).toHaveLength(2);
         // And within a workspace, oldest first.

@@ -229,6 +229,23 @@ function registerDefaultExecutors(): void {
         });
     });
 
+    // Phase 4.H-b (D31, D32): the hourly backfill of bibles saved before 4.1, under each workspace's daily share.
+    executorRegistry.register('fact-backfill', async () => {
+        const startedAt = new Date().toISOString();
+        const startMs = performance.now();
+        return runJob('fact-backfill', async () => {
+            const { executeFactBackfill } = await import('@/app-layer/usecases/fact-backfill');
+            const r = await executeFactBackfill();
+            return {
+                ...emptyResult('fact-backfill', startedAt, startMs),
+                itemsScanned: r.workspaces,
+                itemsActioned: r.queued,
+                itemsSkipped: r.enqueueFailed + r.workspacesSkipped + r.deferredAtCeiling + r.deferredAtShare + r.deferredAtMonthlyShare,
+                details: { ...r },
+            };
+        });
+    });
+
     // Phase 4.2 (D28): the nightly continuity dispatcher, and one book's night per run.
     executorRegistry.register('continuity-dispatch', async () => {
         const startedAt = new Date().toISOString();

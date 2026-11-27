@@ -1,0 +1,17 @@
+// ─────────────────────────────────────────────────────────────────
+//  Jobs (Phase 4.H-b): state a job that serves every workspace keeps
+//  between its ticks. Ids only — never author text, never a workspace's
+//  data — so the table is GLOBAL (listed in `GLOBAL_MODELS`), reached only
+//  through `runWithoutRls` by the job's own discovery reason, and app_user
+//  holds no grant on it.
+// ─────────────────────────────────────────────────────────────────
+
+/// Where a multi-workspace job's discovery stopped last tick (#60.4): the next tick starts after it, so every busy
+/// workspace is served within a bounded number of ticks however many there are.
+model JobCursor {
+  /// The job and its step, a code (`fact-layer-dispatch:extractions`, `fact-backfill:workspaces`; CHECK).
+  name      String   @id
+  /// The last workspace id served (an id; CHECK).
+  cursor    String
+  updatedAt DateTime @updatedAt
+}

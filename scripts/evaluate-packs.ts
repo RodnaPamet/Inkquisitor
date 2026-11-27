@@ -109,7 +109,7 @@ import { BIBLE_FACTS_RECORD_FORMAT, bibleFactsPromptHash, checkBibleFactsRecord,
 import { bibleFactEvalSet } from '../src/lib/facts/evals/eval-set';
 import { BIBLE_FACTS_PROMPT_VERSION } from '../src/lib/facts/prompt';
 
-import { CONTINUITY_RECORD_FORMAT, continuityPromptHash, checkContinuityRecord, modelContinuityAnswers, structuralContinuityRecord } from '../src/lib/continuity/evals/evaluation';
+import { CONTINUITY_RECORD_FORMAT, continuityPromptHash, checkContinuityRecord, modelContinuityAnswers, structuralContinuityRecord, type ContinuitySetReport } from '../src/lib/continuity/evals/evaluation';
 import { continuityEvalSet } from '../src/lib/continuity/evals/eval-set';
 import { CONTINUITY_PROMPT_VERSION } from '../src/lib/continuity/prompt';
 
@@ -193,7 +193,12 @@ async function runContinuityEvaluation(checker: FactExtractor | null, modelId: s
     mkdirSync(path.dirname(file), { recursive: true });
     writeFileSync(file, JSON.stringify(record, null, 2) + '\n');
     const check = checkContinuityRecord(record);
-    return check.ok ? { passed: true, detail: `${check.grades.length} cases, precision ${check.precision === null ? 'not assessed' : check.precision.toFixed(2)}` } : { passed: false, detail: `${check.reason}: ${check.detail}` };
+    const fmt = (x: number | null) => (x === null ? 'not assessed' : x.toFixed(2));
+    // 4.H-b: the false-alarm rate and the recall are reported with every check (never stored in the record).
+    const rates = (r: ContinuitySetReport | undefined) => (r ? `, false-alarm rate ${fmt(r.falseAlarmRate)}, recall ${fmt(r.recall)}${r.falseAlarmsByCase.length > 0 ? ` (false alarms: ${r.falseAlarmsByCase.map((f) => `${f.caseId} ×${f.count}`).join(', ')})` : ''}` : '');
+    return check.ok
+        ? { passed: true, detail: `${check.grades.length} cases, precision ${fmt(check.precision)}${rates(check.report)}` }
+        : { passed: false, detail: `${check.reason}: ${check.detail}${rates(check.report)}` };
 }
 
 /** Where the structural bible fact record is written (beside the set), relative to the repository. */

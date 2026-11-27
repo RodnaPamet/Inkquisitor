@@ -22,7 +22,7 @@
     "typecheck": "tsc --noEmit && tsc --noEmit -p packages/ui/tsconfig.json",
     "test": "jest --selectProjects unit rendered",
     "test:integration": "jest --selectProjects integration --runInBand",
-    "test:load": "BIBLE_LOAD_ELEMENTS=2000 BIBLE_LOAD_VERSIONS=20000 jest --selectProjects integration --runInBand tests/integration/bible-load.test.ts",
+    "test:load": "BIBLE_LOAD_ELEMENTS=2000 BIBLE_LOAD_VERSIONS=20000 CONTINUITY_LOAD_FACTS=10000 jest --selectProjects integration --runInBand tests/integration/bible-load.test.ts tests/integration/continuity-load.test.ts",
     "test:e2e": "playwright test",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",

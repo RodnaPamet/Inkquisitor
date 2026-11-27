@@ -13,6 +13,7 @@
  * 404 for it.
  */
 import type { BookStage, Prisma } from '@prisma/client';
+import { roundRobin } from './job-cursor.repository';
 
 type Db = Prisma.TransactionClient;
 
@@ -90,16 +91,30 @@ export const BookRepository = {
     },
 
     /**
-     * Books of EVERY workspace deleted at or before `cutoff`, oldest first (the
-     * purge's discovery; the caller holds a row-level-security bypass).
+     * Books of EVERY workspace deleted at or before `cutoff` (the purge's
+     * discovery; the caller holds a row-level-security bypass), SHARED FAIRLY
+     * between workspaces (4.H-b, the 4.H-a review): the DISTINCT workspaces
+     * with due books (oldest due book first, at most `take` of them) each get
+     * up to an even share of `take`, oldest first within, interleaved
+     * round-robin. It read the `take` oldest books, so one workspace holding
+     * that many books it could not purge (each failing, due again every day)
+     * filled every run and no other workspace's book was ever purged.
      */
-    listPurgeDue(db: Db, cutoff: Date, take: number) {
-        return db.book.findMany({
+    async listPurgeDue(db: Db, cutoff: Date, take: number): Promise<Array<{ id: string; workspaceId: string }>> {
+        const groups = await db.book.groupBy({
+            by: ['workspaceId'],
             where: { deletedAt: { lte: cutoff } },
-            orderBy: [{ deletedAt: 'asc' }, { id: 'asc' }],
+            _min: { deletedAt: true },
+            orderBy: [{ _min: { deletedAt: 'asc' } }, { workspaceId: 'asc' }],
             take,
-            select: { id: true, workspaceId: true },
         });
+        if (groups.length === 0) return [];
+        const share = Math.max(1, Math.ceil(take / groups.length));
+        const lists: Array<Array<{ id: string; workspaceId: string }>> = [];
+        for (const g of groups) {
+            lists.push(await db.book.findMany({ where: { workspaceId: g.workspaceId, deletedAt: { lte: cutoff } }, orderBy: [{ deletedAt: 'asc' }, { id: 'asc' }], take: share, select: { id: true, workspaceId: true } }));
+        }
+        return roundRobin(lists, take);
     },
 
     /** Lock a book that is due for purge (deleted at or before `cutoff`) to commit; false when it is not (restored, or gone). */

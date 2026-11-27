@@ -125,8 +125,16 @@ test('a sticky note is author text: typed on the canvas, saved, and there after 
     await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
     // Type only once the note's editor has mounted and holds the focus: keys sent before it does land in the
     // shape first, and the editor then mounts with its caret at the start, splitting the words.
-    await expect(page.locator('[data-story-canvas] .tl-shape [contenteditable="true"]')).toBeFocused({ timeout: 10_000 });
-    await page.keyboard.type('Ferry leaves at dawn');
+    const note = page.locator('[data-story-canvas] .tl-shape [contenteditable="true"]');
+    await expect(note).toBeFocused({ timeout: 10_000 });
+    // 4.H-b (#60.7): the text goes in as ONE input event. tldraw's rich-text area places the caret AFTER its editor
+    // has mounted and focused — `onCreate` (a `setTimeout(0)`) sets the selection at the clicked point, and a 100 ms
+    // timer focuses it again (`RichTextArea`) — so per-key typing, which Playwright sends within those frames, could
+    // have its later keys land at the clicked point, before the earlier ones: the text came back reordered about one
+    // run in three. A person's first key follows the click by far more than 100 ms. One insertion is never split.
+    await page.keyboard.insertText('Ferry leaves at dawn');
+    // Escape only once the note holds exactly that text (a concrete condition, never a sleep).
+    await expect(note).toHaveText('Ferry leaves at dawn');
     await page.keyboard.press('Escape');
     await expect(saveStatus(page)).toHaveAttribute('data-status', 'saved', { timeout: 15_000 });
 

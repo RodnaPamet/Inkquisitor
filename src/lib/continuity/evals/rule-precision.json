@@ -1,0 +1,536 @@
+{
+  "format": "inkquisitor-rule-precision/1",
+  "placed": [
+    {"id": "b1", "kind": "PLOT_BEAT", "name": "The Flood", "orderRank": "b"},
+    {"id": "b2", "kind": "PLOT_BEAT", "name": "The Trial", "orderRank": "h"},
+    {"id": "b3", "kind": "PLOT_BEAT", "name": "The Crossing", "orderRank": "p"},
+    {"id": "t1", "kind": "TIMELINE_EVENT", "name": "The Letter", "orderRank": "c"},
+    {"id": "t2", "kind": "TIMELINE_EVENT", "name": "The Wedding", "orderRank": "k"},
+    {"id": "t3", "kind": "TIMELINE_EVENT", "name": "The Burning", "orderRank": "s"}
+  ],
+  "cases": [
+    {
+      "id": "rp-01",
+      "about": "two undated ages that differ (VALUE keeps 'unknown overlaps everything')",
+      "facts": [
+        {"ref": "f1", "predicate": "AGE", "subject": "wren", "object": "12 years old", "statement": "Wren is 12 years old.", "from": null, "to": null, "owner": null},
+        {"ref": "f2", "predicate": "AGE", "subject": "wren", "object": "14", "statement": "Wren is 14.", "from": null, "to": null, "owner": null}
+      ],
+      "expect": [{"a": "f1", "b": "f2", "kind": "VALUE"}],
+      "mustNotPair": []
+    },
+    {
+      "id": "rp-02",
+      "about": "two ages at the same stated time",
+      "facts": [
+        {"ref": "f1", "predicate": "AGE", "subject": "wren", "object": "12", "statement": "Wren is 12 in the spring of 1203.", "from": "spring of 1203", "to": null, "owner": null},
+        {"ref": "f2", "predicate": "AGE", "subject": "wren", "object": "15", "statement": "Wren is 15 in the spring of 1203.", "from": "spring of 1203", "to": null, "owner": null}
+      ],
+      "expect": [{"a": "f1", "b": "f2", "kind": "VALUE"}],
+      "mustNotPair": []
+    },
+    {
+      "id": "rp-03",
+      "about": "two ages drawn from the same beat's entry",
+      "facts": [
+        {"ref": "f1", "predicate": "AGE", "subject": "ash", "object": "7", "statement": "Ash is 7.", "from": null, "to": null, "owner": "b2"},
+        {"ref": "f2", "predicate": "AGE", "subject": "ash", "object": "9", "statement": "Ash is 9.", "from": null, "to": null, "owner": "b2"}
+      ],
+      "expect": [{"a": "f1", "b": "f2", "kind": "VALUE"}],
+      "mustNotPair": []
+    },
+    {
+      "id": "rp-04",
+      "about": "two occupations, both descriptions, undated",
+      "facts": [
+        {"ref": "f1", "predicate": "OCCUPATION", "subject": "marrow", "object": "a miller", "statement": "Marrow is a miller.", "from": null, "to": null, "owner": null},
+        {"ref": "f2", "predicate": "OCCUPATION", "subject": "marrow", "object": "a smith", "statement": "Marrow is a smith.", "from": null, "to": null, "owner": null},
+        {"ref": "f3", "predicate": "WANT", "subject": "marrow", "object": null, "statement": "Marrow wants the mill back.", "from": null, "to": null, "owner": null}
+      ],
+      "expect": [{"a": "f1", "b": "f2", "kind": "VALUE"}],
+      "mustNotPair": [["f1", "f3"], ["f2", "f3"]]
+    },
+    {
+      "id": "rp-05",
+      "about": "two occupations at one stated time",
+      "facts": [
+        {"ref": "f1", "predicate": "OCCUPATION", "subject": "tomas", "object": "a soldier", "statement": "Tomas is a soldier during the siege.", "from": "the siege", "to": null, "owner": null},
+        {"ref": "f2", "predicate": "OCCUPATION", "subject": "tomas", "object": "a priest", "statement": "Tomas is a priest during the siege.", "from": "the siege", "to": null, "owner": null}
+      ],
+      "expect": [{"a": "f1", "b": "f2", "kind": "VALUE"}],
+      "mustNotPair": []
+    },
+    {
+      "id": "rp-06",
+      "about": "a place's type, two descriptions",
+      "facts": [
+        {"ref": "f1", "predicate": "PLACE_TYPE", "subject": "harrow", "object": "a port town", "statement": "Harrow is a port town.", "from": null, "to": null, "owner": null},
+        {"ref": "f2", "predicate": "PLACE_TYPE", "subject": "harrow", "object": "a mountain village", "statement": "Harrow is a mountain village.", "from": null, "to": null, "owner": null}
+      ],
+      "expect": [{"a": "f1", "b": "f2", "kind": "VALUE"}],
+      "mustNotPair": []
+    },
+    {
+      "id": "rp-07",
+      "about": "a place's type, two descriptions (2)",
+      "facts": [
+        {"ref": "f1", "predicate": "PLACE_TYPE", "subject": "kell", "object": "a fortress", "statement": "Kell is a fortress.", "from": null, "to": null, "owner": null},
+        {"ref": "f2", "predicate": "PLACE_TYPE", "subject": "kell", "object": "a monastery", "statement": "Kell is a monastery.", "from": null, "to": null, "owner": null}
+      ],
+      "expect": [{"a": "f1", "b": "f2", "kind": "VALUE"}],
+      "mustNotPair": []
+    },
+    {
+      "id": "rp-08",
+      "about": "someone in two places drawn from the same beat (WHEREABOUTS)",
+      "facts": [
+        {"ref": "f1", "predicate": "LOCATION", "subject": "marrow", "object": "the mill", "statement": "Marrow is at the mill.", "from": null, "to": null, "owner": "b2"},
+        {"ref": "f2", "predicate": "LOCATION", "subject": "marrow", "object": "the city", "statement": "Marrow is in the city.", "from": null, "to": null, "owner": "b2"}
+      ],
+      "expect": [{"a": "f1", "b": "f2", "kind": "WHEREABOUTS"}],
+      "mustNotPair": []
+    },
+    {
+      "id": "rp-09",
+      "about": "two named places at one stated time",
+      "facts": [
+        {"ref": "f1", "predicate": "LOCATION", "subject": "ilse", "object": "Paris", "statement": "Ilse is in Paris on midsummer night.", "from": "midsummer night", "to": null, "owner": null},
+        {"ref": "f2", "predicate": "LOCATION", "subject": "ilse", "object": "Lyon", "statement": "Ilse is in Lyon on midsummer night.", "from": "midsummer night", "to": null, "owner": null}
+      ],
+      "expect": [{"a": "f1", "b": "f2", "kind": "WHEREABOUTS"}],
+      "mustNotPair": []
+    },
+    {
+      "id": "rp-10",
+      "about": "two named places at a story time naming one beat",
+      "facts": [
+        {"ref": "f1", "predicate": "LOCATION", "subject": "wren", "object": "Harrow", "statement": "Wren is in Harrow at the trial.", "from": "The Trial", "to": null, "owner": null},
+        {"ref": "f2", "predicate": "LOCATION", "subject": "wren", "object": "Kell", "statement": "Wren is in Kell at the trial.", "from": "the trial", "to": null, "owner": null}
+      ],
+      "expect": [{"a": "f1", "b": "f2", "kind": "WHEREABOUTS"}],
+      "mustNotPair": []
+    },
+    {
+      "id": "rp-11",
+      "about": "knows and does not know one thing at one timeline event",
+      "facts": [
+        {"ref": "f1", "predicate": "KNOWLEDGE", "subject": "ilse", "object": null, "statement": "Ilse knows her brother forged the deed.", "from": null, "to": null, "owner": "t2"},
+        {"ref": "f2", "predicate": "KNOWLEDGE", "subject": "ilse", "object": null, "statement": "Ilse does not know her brother forged the deed.", "from": null, "to": null, "owner": "t2"}
+      ],
+      "expect": [{"a": "f1", "b": "f2", "kind": "KNOWLEDGE"}],
+      "mustNotPair": []
+    },
+    {
+      "id": "rp-12",
+      "about": "knows first, does not know later (knowledge is not unlearned)",
+      "facts": [
+        {"ref": "f1", "predicate": "KNOWLEDGE", "subject": "ilse", "object": null, "statement": "Ilse knows the well is poisoned.", "from": null, "to": null, "owner": "t1"},
+        {"ref": "f2", "predicate": "KNOWLEDGE", "subject": "ilse", "object": null, "statement": "Ilse does not know the well is poisoned.", "from": null, "to": null, "owner": "t3"}
+      ],
+      "expect": [{"a": "f1", "b": "f2", "kind": "KNOWLEDGE"}],
+      "mustNotPair": []
+    },
+    {
+      "id": "rp-13",
+      "about": "knows and doesn't know where, at one stated time",
+      "facts": [
+        {"ref": "f1", "predicate": "KNOWLEDGE", "subject": "tomas", "object": null, "statement": "Tomas knows where the ledger is hidden.", "from": "the wedding night", "to": null, "owner": null},
+        {"ref": "f2", "predicate": "KNOWLEDGE", "subject": "tomas", "object": null, "statement": "Tomas doesn't know where the ledger is hidden.", "from": "the wedding night", "to": null, "owner": null}
+      ],
+      "expect": [{"a": "f1", "b": "f2", "kind": "KNOWLEDGE"}],
+      "mustNotPair": []
+    },
+    {
+      "id": "rp-14",
+      "about": "two ages at one stated chapter",
+      "facts": [
+        {"ref": "f1", "predicate": "AGE", "subject": "ash", "object": "7", "statement": "Ash is 7 in chapter one.", "from": "chapter one", "to": null, "owner": null},
+        {"ref": "f2", "predicate": "AGE", "subject": "ash", "object": "9", "statement": "Ash is 9 in chapter one.", "from": "Chapter One", "to": null, "owner": null}
+      ],
+      "expect": [{"a": "f1", "b": "f2", "kind": "VALUE"}],
+      "mustNotPair": []
+    },
+    {
+      "id": "rp-15",
+      "about": "two trades at one beat",
+      "facts": [
+        {"ref": "f1", "predicate": "OCCUPATION", "subject": "ilse", "object": "a cooper", "statement": "Ilse is a cooper.", "from": null, "to": null, "owner": "b1"},
+        {"ref": "f2", "predicate": "OCCUPATION", "subject": "ilse", "object": "a weaver", "statement": "Ilse is a weaver.", "from": null, "to": null, "owner": "b1"}
+      ],
+      "expect": [{"a": "f1", "b": "f2", "kind": "VALUE"}],
+      "mustNotPair": []
+    },
+    {
+      "id": "rp-16",
+      "about": "a settlement's size, two descriptions",
+      "facts": [
+        {"ref": "f1", "predicate": "PLACE_TYPE", "subject": "saltmarsh", "object": "a city", "statement": "Saltmarsh is a city.", "from": null, "to": null, "owner": null},
+        {"ref": "f2", "predicate": "PLACE_TYPE", "subject": "saltmarsh", "object": "a hamlet", "statement": "Saltmarsh is a hamlet.", "from": null, "to": null, "owner": null}
+      ],
+      "expect": [{"a": "f1", "b": "f2", "kind": "VALUE"}],
+      "mustNotPair": []
+    },
+    {
+      "id": "rp-17",
+      "about": "two named places at one timeline event",
+      "facts": [
+        {"ref": "f1", "predicate": "LOCATION", "subject": "wren", "object": "the Keep", "statement": "Wren is at the Keep.", "from": null, "to": null, "owner": "t2"},
+        {"ref": "f2", "predicate": "LOCATION", "subject": "wren", "object": "Saltmarsh", "statement": "Wren is at Saltmarsh.", "from": null, "to": null, "owner": "t2"}
+      ],
+      "expect": [{"a": "f1", "b": "f2", "kind": "WHEREABOUTS"}],
+      "mustNotPair": []
+    },
+    {
+      "id": "rp-18",
+      "about": "two ages at one timeline event",
+      "facts": [
+        {"ref": "f1", "predicate": "AGE", "subject": "ilse", "object": "40", "statement": "Ilse is 40.", "from": null, "to": null, "owner": "t3"},
+        {"ref": "f2", "predicate": "AGE", "subject": "ilse", "object": "25", "statement": "Ilse is 25.", "from": null, "to": null, "owner": "t3"}
+      ],
+      "expect": [{"a": "f1", "b": "f2", "kind": "VALUE"}],
+      "mustNotPair": []
+    },
+    {
+      "id": "rp-19",
+      "about": "knows at the first beat, does not know at the last",
+      "facts": [
+        {"ref": "f1", "predicate": "KNOWLEDGE", "subject": "marrow", "object": null, "statement": "Marrow knows the bridge will fail.", "from": null, "to": null, "owner": "b1"},
+        {"ref": "f2", "predicate": "KNOWLEDGE", "subject": "marrow", "object": null, "statement": "Marrow does not know the bridge will fail.", "from": null, "to": null, "owner": "b3"}
+      ],
+      "expect": [{"a": "f1", "b": "f2", "kind": "KNOWLEDGE"}],
+      "mustNotPair": []
+    },
+    {
+      "id": "rp-20",
+      "about": "two occupations, longer descriptions",
+      "facts": [
+        {"ref": "f1", "predicate": "OCCUPATION", "subject": "ash", "object": "the town's healer", "statement": "Ash is the town's healer.", "from": null, "to": null, "owner": null},
+        {"ref": "f2", "predicate": "OCCUPATION", "subject": "ash", "object": "a mercenary", "statement": "Ash is a mercenary.", "from": null, "to": null, "owner": null}
+      ],
+      "expect": [{"a": "f1", "b": "f2", "kind": "VALUE"}],
+      "mustNotPair": []
+    },
+    {
+      "id": "rp-21",
+      "about": "one contradiction among unrelated facts of the same subject",
+      "facts": [
+        {"ref": "f1", "predicate": "AGE", "subject": "tomas", "object": "30", "statement": "Tomas is 30.", "from": null, "to": null, "owner": "b2"},
+        {"ref": "f2", "predicate": "LOCATION", "subject": "tomas", "object": "the quay", "statement": "Tomas waits on the quay.", "from": null, "to": null, "owner": "b2"},
+        {"ref": "f3", "predicate": "AGE", "subject": "tomas", "object": "35", "statement": "Tomas is 35.", "from": null, "to": null, "owner": "b2"},
+        {"ref": "f4", "predicate": "OCCUPATION", "subject": "tomas", "object": "a ferryman", "statement": "Tomas is a ferryman.", "from": null, "to": null, "owner": "b2"}
+      ],
+      "expect": [{"a": "f1", "b": "f3", "kind": "VALUE"}],
+      "mustNotPair": [["f1", "f2"], ["f2", "f3"], ["f1", "f4"], ["f3", "f4"], ["f2", "f4"]]
+    },
+    {
+      "id": "rp-22",
+      "about": "two named places at one stated date range",
+      "facts": [
+        {"ref": "f1", "predicate": "LOCATION", "subject": "ilse", "object": "Kell", "statement": "Ilse is in Kell from May to June.", "from": "May", "to": "June", "owner": null},
+        {"ref": "f2", "predicate": "LOCATION", "subject": "ilse", "object": "Harrow", "statement": "Ilse is in Harrow from May to June.", "from": "may", "to": "june", "owner": null}
+      ],
+      "expect": [{"a": "f1", "b": "f2", "kind": "WHEREABOUTS"}],
+      "mustNotPair": []
+    },
+    {
+      "id": "nm-01",
+      "about": "an age at two different stated times",
+      "facts": [
+        {"ref": "f1", "predicate": "AGE", "subject": "wren", "object": "12", "statement": "Wren is 12 in chapter one.", "from": "chapter one", "to": null, "owner": null},
+        {"ref": "f2", "predicate": "AGE", "subject": "wren", "object": "15", "statement": "Wren is 15 in chapter nine.", "from": "chapter nine", "to": null, "owner": null}
+      ],
+      "expect": [],
+      "mustNotPair": [["f1", "f2"]]
+    },
+    {
+      "id": "nm-02",
+      "about": "an age at two beats that do not overlap",
+      "facts": [
+        {"ref": "f1", "predicate": "AGE", "subject": "wren", "object": "12", "statement": "Wren is 12.", "from": null, "to": null, "owner": "b1"},
+        {"ref": "f2", "predicate": "AGE", "subject": "wren", "object": "15", "statement": "Wren is 15.", "from": null, "to": null, "owner": "b3"}
+      ],
+      "expect": [],
+      "mustNotPair": [["f1", "f2"]]
+    },
+    {
+      "id": "nm-03",
+      "about": "an age, and an age relative to someone",
+      "facts": [
+        {"ref": "f1", "predicate": "AGE", "subject": "wren", "object": "12", "statement": "Wren is 12.", "from": null, "to": null, "owner": null},
+        {"ref": "f2", "predicate": "AGE", "subject": "wren", "object": "3 years younger than Tomas", "statement": "Wren is 3 years younger than Tomas.", "from": null, "to": null, "owner": null}
+      ],
+      "expect": [],
+      "mustNotPair": [["f1", "f2"]]
+    },
+    {
+      "id": "nm-04",
+      "about": "different subjects sharing a name fragment",
+      "facts": [
+        {"ref": "f1", "predicate": "AGE", "subject": "wren", "object": "12", "statement": "Wren is 12.", "from": null, "to": null, "owner": null},
+        {"ref": "f2", "predicate": "AGE", "subject": "wrens-mother", "object": "40", "statement": "Wren's mother is 40.", "from": null, "to": null, "owner": null}
+      ],
+      "expect": [],
+      "mustNotPair": [["f1", "f2"]]
+    },
+    {
+      "id": "nm-05",
+      "about": "two undated whereabouts (a traveller): the deep check's",
+      "facts": [
+        {"ref": "f1", "predicate": "LOCATION", "subject": "marrow", "object": "the mill", "statement": "Marrow is at the mill.", "from": null, "to": null, "owner": null},
+        {"ref": "f2", "predicate": "LOCATION", "subject": "marrow", "object": "the city", "statement": "Marrow is in the city.", "from": null, "to": null, "owner": null}
+      ],
+      "expect": [],
+      "mustNotPair": [["f1", "f2"]]
+    },
+    {
+      "id": "nm-06",
+      "about": "a name and a description of one place",
+      "facts": [
+        {"ref": "f1", "predicate": "LOCATION", "subject": "wren", "object": "Paris", "statement": "Wren is in Paris.", "from": null, "to": null, "owner": "b2"},
+        {"ref": "f2", "predicate": "LOCATION", "subject": "wren", "object": "the capital of France", "statement": "Wren is in the capital of France.", "from": null, "to": null, "owner": "b2"}
+      ],
+      "expect": [],
+      "mustNotPair": [["f1", "f2"]]
+    },
+    {
+      "id": "nm-07",
+      "about": "a place and a part of it",
+      "facts": [
+        {"ref": "f1", "predicate": "LOCATION", "subject": "marrow", "object": "the mill", "statement": "Marrow is at the mill.", "from": null, "to": null, "owner": "b2"},
+        {"ref": "f2", "predicate": "LOCATION", "subject": "marrow", "object": "the old mill by the river", "statement": "Marrow is at the old mill by the river.", "from": null, "to": null, "owner": "b2"}
+      ],
+      "expect": [],
+      "mustNotPair": [["f1", "f2"]]
+    },
+    {
+      "id": "nm-08",
+      "about": "where someone is NOT, and where they are",
+      "facts": [
+        {"ref": "f1", "predicate": "LOCATION", "subject": "marrow", "object": "the mill", "statement": "Marrow is not at the mill.", "from": null, "to": null, "owner": "b2"},
+        {"ref": "f2", "predicate": "LOCATION", "subject": "marrow", "object": "the city", "statement": "Marrow is in the city.", "from": null, "to": null, "owner": "b2"}
+      ],
+      "expect": [],
+      "mustNotPair": [["f1", "f2"]]
+    },
+    {
+      "id": "nm-09",
+      "about": "two places at two beats",
+      "facts": [
+        {"ref": "f1", "predicate": "LOCATION", "subject": "wren", "object": "Harrow", "statement": "Wren is in Harrow.", "from": null, "to": null, "owner": "b1"},
+        {"ref": "f2", "predicate": "LOCATION", "subject": "wren", "object": "Kell", "statement": "Wren is in Kell.", "from": null, "to": null, "owner": "b3"}
+      ],
+      "expect": [],
+      "mustNotPair": [["f1", "f2"]]
+    },
+    {
+      "id": "nm-10",
+      "about": "one name with and without its accent",
+      "facts": [
+        {"ref": "f1", "predicate": "LOCATION", "subject": "ilse", "object": "Zürich", "statement": "Ilse is in Zürich at the wedding.", "from": "the wedding", "to": null, "owner": null},
+        {"ref": "f2", "predicate": "LOCATION", "subject": "ilse", "object": "Zurich", "statement": "Ilse is in Zurich at the wedding.", "from": "the wedding", "to": null, "owner": null}
+      ],
+      "expect": [],
+      "mustNotPair": [["f1", "f2"]]
+    },
+    {
+      "id": "nm-11",
+      "about": "a trade and its longer name",
+      "facts": [
+        {"ref": "f1", "predicate": "OCCUPATION", "subject": "marrow", "object": "a smith", "statement": "Marrow is a smith.", "from": null, "to": null, "owner": null},
+        {"ref": "f2", "predicate": "OCCUPATION", "subject": "marrow", "object": "a blacksmith", "statement": "Marrow is a blacksmith.", "from": null, "to": null, "owner": null}
+      ],
+      "expect": [],
+      "mustNotPair": [["f1", "f2"]]
+    },
+    {
+      "id": "nm-12",
+      "about": "what someone is NOT, and what they are",
+      "facts": [
+        {"ref": "f1", "predicate": "OCCUPATION", "subject": "marrow", "object": "a miller", "statement": "Marrow is not a miller.", "from": null, "to": null, "owner": null},
+        {"ref": "f2", "predicate": "OCCUPATION", "subject": "marrow", "object": "a smith", "statement": "Marrow is a smith.", "from": null, "to": null, "owner": null}
+      ],
+      "expect": [],
+      "mustNotPair": [["f1", "f2"]]
+    },
+    {
+      "id": "nm-13",
+      "about": "two roles (a thing can hold several)",
+      "facts": [
+        {"ref": "f1", "predicate": "ROLE", "subject": "wren", "object": "the heir", "statement": "Wren is the heir.", "from": null, "to": null, "owner": null},
+        {"ref": "f2", "predicate": "ROLE", "subject": "wren", "object": "the captain", "statement": "Wren is the captain.", "from": null, "to": null, "owner": null}
+      ],
+      "expect": [],
+      "mustNotPair": [["f1", "f2"]]
+    },
+    {
+      "id": "nm-14",
+      "about": "two wants",
+      "facts": [
+        {"ref": "f1", "predicate": "WANT", "subject": "wren", "object": null, "statement": "Wren wants to cross the river.", "from": null, "to": null, "owner": null},
+        {"ref": "f2", "predicate": "WANT", "subject": "wren", "object": null, "statement": "Wren wants her brother freed.", "from": null, "to": null, "owner": null}
+      ],
+      "expect": [],
+      "mustNotPair": [["f1", "f2"]]
+    },
+    {
+      "id": "nm-15",
+      "about": "not knowing, then learning",
+      "facts": [
+        {"ref": "f1", "predicate": "KNOWLEDGE", "subject": "tomas", "object": null, "statement": "Tomas does not know where the ledger is hidden.", "from": null, "to": null, "owner": "t1"},
+        {"ref": "f2", "predicate": "KNOWLEDGE", "subject": "tomas", "object": null, "statement": "Tomas knows where the ledger is hidden.", "from": null, "to": null, "owner": "t3"}
+      ],
+      "expect": [],
+      "mustNotPair": [["f1", "f2"]]
+    },
+    {
+      "id": "nm-16",
+      "about": "knows and does not know, undated: the deep check's",
+      "facts": [
+        {"ref": "f1", "predicate": "KNOWLEDGE", "subject": "ilse", "object": null, "statement": "Ilse knows the well is poisoned.", "from": null, "to": null, "owner": null},
+        {"ref": "f2", "predicate": "KNOWLEDGE", "subject": "ilse", "object": null, "statement": "Ilse does not know the well is poisoned.", "from": null, "to": null, "owner": null}
+      ],
+      "expect": [],
+      "mustNotPair": [["f1", "f2"]]
+    },
+    {
+      "id": "nm-17",
+      "about": "knowing that, and not knowing who",
+      "facts": [
+        {"ref": "f1", "predicate": "KNOWLEDGE", "subject": "ilse", "object": null, "statement": "Ilse knows the deed was forged.", "from": "the wedding", "to": null, "owner": null},
+        {"ref": "f2", "predicate": "KNOWLEDGE", "subject": "ilse", "object": null, "statement": "Ilse does not know who forged the deed.", "from": "the wedding", "to": null, "owner": null}
+      ],
+      "expect": [],
+      "mustNotPair": [["f1", "f2"]]
+    },
+    {
+      "id": "nm-18",
+      "about": "two subjects, opposite knowledge",
+      "facts": [
+        {"ref": "f1", "predicate": "KNOWLEDGE", "subject": "ilse", "object": null, "statement": "Ilse knows the well is poisoned.", "from": "the wedding", "to": null, "owner": null},
+        {"ref": "f2", "predicate": "KNOWLEDGE", "subject": "tomas", "object": null, "statement": "Tomas does not know the well is poisoned.", "from": "the wedding", "to": null, "owner": null}
+      ],
+      "expect": [],
+      "mustNotPair": [["f1", "f2"]]
+    },
+    {
+      "id": "nm-19",
+      "about": "an age at a beat and at a timeline event (two orders the clock cannot compare)",
+      "facts": [
+        {"ref": "f1", "predicate": "AGE", "subject": "wren", "object": "12", "statement": "Wren is 12.", "from": null, "to": null, "owner": "b1"},
+        {"ref": "f2", "predicate": "AGE", "subject": "wren", "object": "15", "statement": "Wren is 15.", "from": null, "to": null, "owner": "t3"}
+      ],
+      "expect": [],
+      "mustNotPair": [["f1", "f2"]]
+    },
+    {
+      "id": "nm-20",
+      "about": "a description and a name of one settlement's type",
+      "facts": [
+        {"ref": "f1", "predicate": "PLACE_TYPE", "subject": "harrow", "object": "a port town", "statement": "Harrow is a port town.", "from": null, "to": null, "owner": null},
+        {"ref": "f2", "predicate": "PLACE_TYPE", "subject": "harrow", "object": "the Free City of Harrow", "statement": "Harrow is the Free City of Harrow.", "from": null, "to": null, "owner": null}
+      ],
+      "expect": [],
+      "mustNotPair": [["f1", "f2"]]
+    },
+    {
+      "id": "nm-21",
+      "about": "a trade and a named office",
+      "facts": [
+        {"ref": "f1", "predicate": "OCCUPATION", "subject": "tomas", "object": "a soldier", "statement": "Tomas is a soldier.", "from": null, "to": null, "owner": null},
+        {"ref": "f2", "predicate": "OCCUPATION", "subject": "tomas", "object": "Captain of the Watch", "statement": "Tomas serves as Captain of the Watch.", "from": null, "to": null, "owner": null}
+      ],
+      "expect": [],
+      "mustNotPair": [["f1", "f2"]]
+    },
+    {
+      "id": "nm-22",
+      "about": "one age, a digit and a word",
+      "facts": [
+        {"ref": "f1", "predicate": "AGE", "subject": "wren", "object": "12", "statement": "Wren is 12.", "from": null, "to": null, "owner": null},
+        {"ref": "f2", "predicate": "AGE", "subject": "wren", "object": "twelve", "statement": "Wren is twelve years old.", "from": null, "to": null, "owner": null}
+      ],
+      "expect": [],
+      "mustNotPair": [["f1", "f2"]]
+    },
+    {
+      "id": "nm-23",
+      "about": "one age, written two ways",
+      "facts": [
+        {"ref": "f1", "predicate": "AGE", "subject": "wren", "object": "12 years old", "statement": "Wren is 12 years old.", "from": null, "to": null, "owner": null},
+        {"ref": "f2", "predicate": "AGE", "subject": "wren", "object": "12", "statement": "Wren, aged 12, keeps the lock.", "from": null, "to": null, "owner": null}
+      ],
+      "expect": [],
+      "mustNotPair": [["f1", "f2"]]
+    },
+    {
+      "id": "nm-24",
+      "about": "two places in two seasons",
+      "facts": [
+        {"ref": "f1", "predicate": "LOCATION", "subject": "ilse", "object": "Kell", "statement": "Ilse is in Kell at midsummer.", "from": "midsummer", "to": null, "owner": null},
+        {"ref": "f2", "predicate": "LOCATION", "subject": "ilse", "object": "Harrow", "statement": "Ilse is in Harrow at midwinter.", "from": "midwinter", "to": null, "owner": null}
+      ],
+      "expect": [],
+      "mustNotPair": [["f1", "f2"]]
+    },
+    {
+      "id": "nm-25",
+      "about": "synonyms of one shape (a residual false alarm the rules cannot avoid)",
+      "facts": [
+        {"ref": "f1", "predicate": "OCCUPATION", "subject": "ash", "object": "a physician", "statement": "Ash is a physician.", "from": null, "to": null, "owner": null},
+        {"ref": "f2", "predicate": "OCCUPATION", "subject": "ash", "object": "a doctor", "statement": "Ash is a doctor.", "from": null, "to": null, "owner": null}
+      ],
+      "expect": [],
+      "mustNotPair": [["f1", "f2"]]
+    },
+    {
+      "id": "nm-26",
+      "about": "a town and its quarter",
+      "facts": [
+        {"ref": "f1", "predicate": "LOCATION", "subject": "wren", "object": "Harrow", "statement": "Wren is in Harrow.", "from": null, "to": null, "owner": "t2"},
+        {"ref": "f2", "predicate": "LOCATION", "subject": "wren", "object": "Harrow's lower town", "statement": "Wren is in Harrow's lower town.", "from": null, "to": null, "owner": "t2"}
+      ],
+      "expect": [],
+      "mustNotPair": [["f1", "f2"]]
+    },
+    {
+      "id": "nm-27",
+      "about": "two namesakes (two elements of one name)",
+      "facts": [
+        {"ref": "f1", "predicate": "AGE", "subject": "wren", "object": "12", "statement": "Wren is 12.", "from": null, "to": null, "owner": null},
+        {"ref": "f2", "predicate": "AGE", "subject": "wren-the-elder", "object": "70", "statement": "Wren is 70.", "from": null, "to": null, "owner": null}
+      ],
+      "expect": [],
+      "mustNotPair": [["f1", "f2"]]
+    },
+    {
+      "id": "nm-28",
+      "about": "a place's type in the old war and today",
+      "facts": [
+        {"ref": "f1", "predicate": "PLACE_TYPE", "subject": "kell", "object": "a fortress", "statement": "Kell was a fortress in the old war.", "from": "the old war", "to": null, "owner": null},
+        {"ref": "f2", "predicate": "PLACE_TYPE", "subject": "kell", "object": "a ruin", "statement": "Kell is a ruin in the present day.", "from": "the present day", "to": null, "owner": null}
+      ],
+      "expect": [],
+      "mustNotPair": [["f1", "f2"]]
+    },
+    {
+      "id": "nm-29",
+      "about": "an age that is not yet another",
+      "facts": [
+        {"ref": "f1", "predicate": "AGE", "subject": "wren", "object": "13", "statement": "Wren is not yet 13.", "from": null, "to": null, "owner": null},
+        {"ref": "f2", "predicate": "AGE", "subject": "wren", "object": "12", "statement": "Wren is 12.", "from": null, "to": null, "owner": null}
+      ],
+      "expect": [],
+      "mustNotPair": [["f1", "f2"]]
+    },
+    {
+      "id": "nm-30",
+      "about": "one age restated",
+      "facts": [
+        {"ref": "f1", "predicate": "AGE", "subject": "ilse", "object": "40", "statement": "Ilse is 40.", "from": null, "to": null, "owner": "t3"},
+        {"ref": "f2", "predicate": "AGE", "subject": "ilse", "object": "40", "statement": "Ilse is forty, 40 by the parish book.", "from": null, "to": null, "owner": "t3"}
+      ],
+      "expect": [],
+      "mustNotPair": [["f1", "f2"]]
+    }
+  ]
+}

@@ -93,12 +93,21 @@ export function textTimesOverlap(a: ClockFact, b: ClockFact): boolean {
     return af === bf && at === bt;
 }
 
-/** Do the two facts hold at an overlapping story time? (The header.) */
+/**
+ * Do the two facts hold at an overlapping story time? (The header.) 4.H-b: two facts placed in DIFFERENT orders (a
+ * beat's and a timeline event's) are each at a known point the clock cannot compare, so they are not "unknown" and
+ * do not overlap by default: only stated times on both decide (the precision set's cross-order near miss).
+ */
 export function overlaps(a: ClockFact, b: ClockFact, clock: StoryClock = NO_ORDER): boolean {
     const pa = clock.positionOf(a);
     const pb = clock.positionOf(b);
     if (pa && pb && pa.kind === pb.kind) return pa.elementId === pb.elementId;
+    if (pa && pb) return hasStatedTime(a) && hasStatedTime(b) && textTimesOverlap(a, b);
     return textTimesOverlap(a, b);
+}
+
+function hasStatedTime(f: ClockFact): boolean {
+    return timeKey(f.storyTimeFrom) !== null || timeKey(f.storyTimeTo) !== null;
 }
 
 /**

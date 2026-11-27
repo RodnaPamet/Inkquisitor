@@ -84,6 +84,69 @@
       "expect": [{ "a": "f3", "b": "f4", "kind": "VALUE" }],
       "mustNotPair": [["f1", "f2"]],
       "reference": { "contradictions": [{ "first": 3, "second": 4, "kind": "VALUE" }] }
+    },
+    {
+      "id": "cc-06",
+      "about": "near misses (4.H-b): a name and a description of one place, a place someone is NOT, and two words for one trade",
+      "orders": [{"order": "plot beats", "names": ["The flood", "The trial", "The crossing"]}],
+      "facts": [
+        { "ref": "f1", "predicate": "LOCATION", "subject": "Wren", "statement": "Wren is in Paris.", "storyTimeFrom": null, "storyTimeTo": null, "at": { "element": "The trial", "position": 2, "order": "plot beats" } },
+        { "ref": "f2", "predicate": "LOCATION", "subject": "Wren", "statement": "Wren is in the capital of France.", "storyTimeFrom": null, "storyTimeTo": null, "at": { "element": "The trial", "position": 2, "order": "plot beats" } },
+        { "ref": "f3", "predicate": "LOCATION", "subject": "Marrow", "statement": "Marrow is not at the mill.", "storyTimeFrom": null, "storyTimeTo": null, "at": { "element": "The flood", "position": 1, "order": "plot beats" } },
+        { "ref": "f4", "predicate": "LOCATION", "subject": "Marrow", "statement": "Marrow is in the city.", "storyTimeFrom": null, "storyTimeTo": null, "at": { "element": "The flood", "position": 1, "order": "plot beats" } },
+        { "ref": "f5", "predicate": "OCCUPATION", "subject": "Ash", "statement": "Ash is a physician.", "storyTimeFrom": null, "storyTimeTo": null, "at": null },
+        { "ref": "f6", "predicate": "OCCUPATION", "subject": "Ash", "statement": "Ash is a doctor.", "storyTimeFrom": null, "storyTimeTo": null, "at": null }
+      ],
+      "expect": [],
+      "mustNotPair": [["f1", "f2"], ["f3", "f4"], ["f5", "f6"]],
+      "reference": { "contradictions": [] }
+    },
+    {
+      "id": "cc-07",
+      "about": "near misses (4.H-b): two subjects sharing a name, an age relative to someone, knowing THAT and not knowing WHO",
+      "orders": [],
+      "facts": [
+        { "ref": "f1", "predicate": "AGE", "subject": "Wren", "statement": "Wren is 12 years old.", "storyTimeFrom": null, "storyTimeTo": null, "at": null },
+        { "ref": "f2", "predicate": "AGE", "subject": "Wren's mother", "statement": "Wren's mother is 40 years old.", "storyTimeFrom": null, "storyTimeTo": null, "at": null },
+        { "ref": "f3", "predicate": "AGE", "subject": "Tomas", "statement": "Tomas is 15.", "storyTimeFrom": null, "storyTimeTo": null, "at": null },
+        { "ref": "f4", "predicate": "AGE", "subject": "Tomas", "statement": "Tomas is three years younger than his sister Ilse.", "storyTimeFrom": null, "storyTimeTo": null, "at": null },
+        { "ref": "f5", "predicate": "KNOWLEDGE", "subject": "Ilse", "statement": "Ilse knows the deed was forged.", "storyTimeFrom": "the wedding", "storyTimeTo": null, "at": null },
+        { "ref": "f6", "predicate": "KNOWLEDGE", "subject": "Ilse", "statement": "Ilse does not know who forged the deed.", "storyTimeFrom": "the wedding", "storyTimeTo": null, "at": null }
+      ],
+      "expect": [],
+      "mustNotPair": [["f1", "f2"], ["f3", "f4"], ["f5", "f6"]],
+      "reference": { "contradictions": [] }
+    },
+    {
+      "id": "cc-08",
+      "about": "near misses (4.H-b): story positions that do not overlap — a place at two beats, learning later, an age in two orders",
+      "orders": [{"order": "plot beats", "names": ["The flood", "The trial", "The crossing"]}, {"order": "timeline events", "names": ["The letter arrives", "The wedding", "The burning"]}],
+      "facts": [
+        { "ref": "f1", "predicate": "LOCATION", "subject": "Wren", "statement": "Wren is in Harrow.", "storyTimeFrom": null, "storyTimeTo": null, "at": { "element": "The flood", "position": 1, "order": "plot beats" } },
+        { "ref": "f2", "predicate": "LOCATION", "subject": "Wren", "statement": "Wren is in Kell.", "storyTimeFrom": null, "storyTimeTo": null, "at": { "element": "The crossing", "position": 3, "order": "plot beats" } },
+        { "ref": "f3", "predicate": "KNOWLEDGE", "subject": "Tomas", "statement": "Tomas does not know where the ledger is hidden.", "storyTimeFrom": null, "storyTimeTo": null, "at": { "element": "The letter arrives", "position": 1, "order": "timeline events" } },
+        { "ref": "f4", "predicate": "KNOWLEDGE", "subject": "Tomas", "statement": "Tomas knows where the ledger is hidden.", "storyTimeFrom": null, "storyTimeTo": null, "at": { "element": "The burning", "position": 3, "order": "timeline events" } },
+        { "ref": "f5", "predicate": "AGE", "subject": "Ilse", "statement": "Ilse is 30.", "storyTimeFrom": null, "storyTimeTo": null, "at": { "element": "The flood", "position": 1, "order": "plot beats" } },
+        { "ref": "f6", "predicate": "AGE", "subject": "Ilse", "statement": "Ilse is 34.", "storyTimeFrom": null, "storyTimeTo": null, "at": { "element": "The burning", "position": 3, "order": "timeline events" } }
+      ],
+      "expect": [],
+      "mustNotPair": [["f1", "f2"], ["f3", "f4"], ["f5", "f6"]],
+      "reference": { "contradictions": [] }
+    },
+    {
+      "id": "cc-09",
+      "about": "a seeded contradiction among near misses (4.H-b): two ages at one beat, beside an age relative to someone and a place and its quarter",
+      "orders": [{"order": "plot beats", "names": ["The flood", "The trial", "The crossing"]}],
+      "facts": [
+        { "ref": "f1", "predicate": "AGE", "subject": "Ash", "statement": "Ash is 7.", "storyTimeFrom": null, "storyTimeTo": null, "at": { "element": "The trial", "position": 2, "order": "plot beats" } },
+        { "ref": "f2", "predicate": "AGE", "subject": "Ash", "statement": "Ash is two years younger than Wren.", "storyTimeFrom": null, "storyTimeTo": null, "at": { "element": "The trial", "position": 2, "order": "plot beats" } },
+        { "ref": "f3", "predicate": "AGE", "subject": "Ash", "statement": "Ash is 9.", "storyTimeFrom": null, "storyTimeTo": null, "at": { "element": "The trial", "position": 2, "order": "plot beats" } },
+        { "ref": "f4", "predicate": "LOCATION", "subject": "Ash", "statement": "Ash is in Harrow.", "storyTimeFrom": null, "storyTimeTo": null, "at": { "element": "The trial", "position": 2, "order": "plot beats" } },
+        { "ref": "f5", "predicate": "LOCATION", "subject": "Ash", "statement": "Ash is in Harrow's lower town.", "storyTimeFrom": null, "storyTimeTo": null, "at": { "element": "The trial", "position": 2, "order": "plot beats" } }
+      ],
+      "expect": [{"a": "f1", "b": "f3", "kind": "VALUE"}],
+      "mustNotPair": [["f1", "f2"], ["f2", "f3"], ["f4", "f5"]],
+      "reference": { "contradictions": [{"first": 1, "second": 3, "kind": "VALUE"}] }
     }
   ]
 }

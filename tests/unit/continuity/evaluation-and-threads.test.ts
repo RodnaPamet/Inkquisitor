@@ -51,6 +51,29 @@ describe('the evaluation (rule 9, D11)', () => {
         expect(checkContinuityRecord({ ...structural, promptHash: `sha256:${'0'.repeat(64)}` })).toMatchObject({ ok: false, reason: 'PROMPT_CHANGED' });
     });
 
+    it('every check reports the false-alarm rate and the recall over the near misses the set holds (4.H-b, roadmap 4.H item 2)', () => {
+        const structural = structuralContinuityRecord(new Date('2026-11-26T00:00:00Z'));
+        const ok = checkContinuityRecord(structural);
+        expect(ok).toMatchObject({ ok: true, report: { falseAlarmRate: 0, recall: 1 } });
+        // The near-miss classes the roadmap names are in the set: a name and a description, negation, a shared name, a
+        // relative age, knowing that against not knowing who, positions that do not overlap, two orders, synonyms.
+        expect(continuityCases.filter((c) => c.expect.length === 0).length).toBeGreaterThanOrEqual(4);
+        expect(continuityCases.reduce((n, c) => n + c.mustNotPair.length, 0)).toBeGreaterThanOrEqual(15);
+        // A model that raises the synonyms and the name/description pair of cc-06: refused, and the rate says how often.
+        // (Every true pair named the other way round, so the record is not the reference checker's own answers.)
+        const answers = structural.answers.map((a) => {
+            const out = a.output as { contradictions: Array<{ first: number; second: number; kind: string }> };
+            const flipped = out.contradictions.map((x) => ({ first: x.second, second: x.first, kind: x.kind }));
+            return { caseId: a.caseId, output: { contradictions: a.caseId === 'cc-06' ? [{ first: 1, second: 2, kind: 'WHEREABOUTS' }, { first: 5, second: 6, kind: 'VALUE' }] : flipped } };
+        });
+        const check = checkContinuityRecord({ ...structural, generator: { kind: 'model', id: 'a-model' }, answers });
+        expect(check).toMatchObject({ ok: false, reason: 'BELOW_BAR' });
+        const report = check.ok ? null : check.report!;
+        expect(report!.falseAlarmsByCase).toEqual([{ caseId: 'cc-06', count: 2 }]);
+        expect(report!.falseAlarmRate).toBeCloseTo(2 / (report!.correct + 2));
+        expect(report!.recall).toBe(1);
+    });
+
     it('a faithful model record passes although its empty case equals the reference (#63)', () => {
         const structural = structuralContinuityRecord(new Date('2026-11-26T00:00:00Z'));
         // A correct model: every pair named the other way round (the same pair), and nothing where nothing is wrong (cc-05).

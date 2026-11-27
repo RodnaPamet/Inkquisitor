@@ -14,6 +14,8 @@
  * (`continuityNightKey`, held by a partial unique index) is not queued again by
  * a second dispatch (4.H-a, #62 item 4). The kill switch, the ceiling and D11 are
  * the run's to meet: its rules still run, and its deep step stops resumably.
+ * A book whose last pass passed subjects over (D32) is due again a week after
+ * its last run even when nothing changed, so they are retried.
  * A book whose workspace cannot be served (its data key will not unwrap) is
  * skipped, logged with its ids and a code and counted (`servedWorkspace`,
  * 4.H-a): every other book is still queued.
@@ -22,7 +24,7 @@ import { randomUUID } from 'node:crypto';
 import { ContinuityDiscovery, ContinuityRunRepository } from '@/app-layer/repositories/continuity.repository';
 import type { JobName, JobPayload } from '@/app-layer/jobs/types';
 import { servedWorkspace } from '@/app-layer/jobs/workspace-isolation';
-import { CONTINUITY_DISPATCH_MAX, continuityNightKey, STALE_CONTINUITY_RUN_MS } from '@/lib/continuity/vocabulary';
+import { CONTINUITY_DISPATCH_MAX, CONTINUITY_PASSED_OVER_RETRY_MS, continuityNightKey, STALE_CONTINUITY_RUN_MS } from '@/lib/continuity/vocabulary';
 import { runInWorkspaceContext, runWithoutRls } from '@/lib/db/rls-middleware';
 import { logger } from '@/lib/observability/logger';
 
@@ -54,7 +56,7 @@ export async function executeContinuityDispatch(deps: ContinuityDispatchDeps = {
     const enqueue = deps.enqueue ?? (async (name, payload, options) => (await import('@/app-layer/jobs/queue')).enqueue(name, payload, options));
     const result: ContinuityDispatchResult = { due: 0, queued: 0, expired: 0, enqueueFailed: 0, alreadyTonight: 0, workspacesSkipped: 0 };
     const nightKey = deps.nightKey ?? continuityNightKey(now);
-    const due = await runWithoutRls({ reason: 'continuity-discovery' }, (db) => ContinuityDiscovery.listDueBooks(db, { take: deps.take ?? CONTINUITY_DISPATCH_MAX, staleBefore, nightKey, workspaceIds: deps.workspaceIds }));
+    const due = await runWithoutRls({ reason: 'continuity-discovery' }, (db) => ContinuityDiscovery.listDueBooks(db, { take: deps.take ?? CONTINUITY_DISPATCH_MAX, staleBefore, nightKey, workspaceIds: deps.workspaceIds, retryBefore: new Date(now.getTime() - CONTINUITY_PASSED_OVER_RETRY_MS) }));
     result.due = due.length;
     for (const book of due) {
         const scope = { workspaceId: book.workspaceId, requestId: randomUUID() };

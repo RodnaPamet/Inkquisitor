@@ -42,6 +42,7 @@ export const GLOBAL_MODELS: Readonly<Record<string, string>> = Object.freeze({
     Account: 'An OAuth identity of a person; read on the plain client by sign-in only (app_user holds no grant).',
     VerificationToken: 'An email-verification token keyed by address, before any workspace is known (app_user holds no grant).',
     UserSession: 'A signed-in browser of a person, who may reach several workspaces (app_user holds no grant).',
+    JobCursor: 'Where a multi-workspace job\'s discovery stopped last tick (Phase 4.H-b): a job name and a workspace id, never a workspace\'s data; read and written only through runWithoutRls by the job\'s discovery (app_user holds no grant).',
 });
 
 const WRITE_OPERATIONS = new Set(['create', 'createMany', 'createManyAndReturn', 'update', 'updateMany', 'delete', 'deleteMany', 'upsert']);

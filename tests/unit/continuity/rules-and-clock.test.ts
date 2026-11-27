@@ -36,9 +36,11 @@ describe('the story clock', () => {
         const atEvent = { ownerElementId: 'event-1', storyTimeFrom: 'spring', storyTimeTo: null };
         expect(overlaps(atEarly, atEarly, clock)).toBe(true);
         expect(overlaps(atEarly, atLate, clock)).toBe(false);
-        // A beat and a timeline event are in different orders: neither placed relative to the other, so text decides
-        // (one unstated is "either unstated": overlap).
-        expect(overlaps(atEarly, atEvent, clock)).toBe(true);
+        // A beat and a timeline event are in different orders: each is at a known point the clock cannot compare, so
+        // only stated times on BOTH decide (4.H-b, the precision set's cross-order near miss); one unstated is no overlap.
+        expect(overlaps(atEarly, atEvent, clock)).toBe(false);
+        expect(overlaps({ ...atEarly, storyTimeFrom: 'spring' }, atEvent, clock)).toBe(true);
+        expect(overlaps({ ...atEarly, storyTimeFrom: 'autumn' }, atEvent, clock)).toBe(false);
         expect(overlaps({ storyTimeFrom: 'spring', storyTimeTo: null }, { storyTimeFrom: 'autumn', storyTimeTo: null }, NO_ORDER)).toBe(false);
     });
 

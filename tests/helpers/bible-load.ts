@@ -9,7 +9,7 @@
  *
  * Shared by `tests/integration/bible-load.test.ts` and `npm run test:load`.
  */
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { createBook } from '@/app-layer/usecases/books';
 import type { WorkspaceRequestContext } from '@/app-layer/types';
 import { runInWorkspaceContext } from '@/lib/db/rls-middleware';
@@ -121,4 +121,82 @@ export async function measure(fn: () => Promise<unknown>, runs: number, warmup =
         samples.push(performance.now() - t);
     }
     return percentiles(samples);
+}
+
+/** What the continuity load test seeds on top of a load book (Phase 4.H-b, roadmap 4.H item 6). */
+export interface LoadFacts {
+    facts: number;
+    contradictions: number;
+    noLongerStated: number;
+}
+
+const PREDICATES = ['AGE', 'LOCATION', 'OCCUPATION', 'WANT', 'ROLE', 'KNOWLEDGE', 'TRAIT', 'OTHER'] as const;
+
+/**
+ * `facts` live bible facts spread over the load book's elements (each an element's own fact, drawn from its newest
+ * version), with a twentieth of them (at least 150 pairs) in pending contradictions, a fiftieth no longer stated and a fiftieth decided,
+ * 150 threads, 100 pending thread proposals and a finished nightly run: the Continuity page's every list full and
+ * past its bound. Through the FAST path (`createMany` in the workspace's context: every author-text column sealed as
+ * the product seals it).
+ */
+export async function seedLoadFacts(ctx: WorkspaceRequestContext, book: LoadBook, facts: number): Promise<LoadFacts> {
+    const tag = randomBytes(4).toString('hex');
+    return runInWorkspaceContext(
+        ctx,
+        async (db) => {
+            const versions = await db.bibleEntryVersion.findMany({ where: { workspaceId: ctx.workspaceId, bookId: book.bookId }, select: { id: true, elementId: true, versionNumber: true }, take: book.versions });
+            const newest = new Map<string, { id: string; n: number }>();
+            for (const v of versions) if ((newest.get(v.elementId)?.n ?? 0) < v.versionNumber) newest.set(v.elementId, { id: v.id, n: v.versionNumber });
+            const owners = book.elementIds.filter((id) => newest.has(id));
+            const ids: string[] = [];
+            const statedAt = Date.now() - 86_400_000;
+            for (let i = 0; i < facts; i += 1_000) {
+                const data = Array.from({ length: Math.min(1_000, facts - i) }, (_, k) => {
+                    const n = i + k;
+                    const owner = owners[n % owners.length];
+                    const id = `lf${tag}${String(n).padStart(6, '0')}`;
+                    ids.push(id);
+                    const statement = `Entry ${n} holds that the river runs high in the season of the ${n % 12}th moon.`;
+                    return {
+                        id,
+                        workspaceId: ctx.workspaceId,
+                        sourceKind: 'BIBLE_VERSION' as const,
+                        bookId: book.bookId,
+                        elementId: owner,
+                        bibleVersionId: newest.get(owner)!.id,
+                        automatic: true,
+                        dedupeKey: createHash('sha256').update(`load-${tag}-${n}`).digest('hex'),
+                        position: n,
+                        subjectName: `Subject ${n % owners.length}`,
+                        subjectElementId: owner,
+                        predicate: PREDICATES[n % PREDICATES.length],
+                        objectLiteral: n % 3 === 0 ? `value ${n}` : null,
+                        statement,
+                        quote: statement,
+                        quoteStart: 0,
+                        quoteEnd: statement.length,
+                        status: 'CONFIRMED' as const,
+                        statedAt: new Date(statedAt + n),
+                        decidedAt: new Date(statedAt + n),
+                    };
+                });
+                await db.storyFact.createMany({ data });
+            }
+            // A twentieth, and never fewer than the page's list holds (so the list is past its bound at any size).
+            const contradictions = Math.max(150, Math.floor(facts / 20));
+            const pairs = Array.from({ length: contradictions }, (_, i) => ({ workspaceId: ctx.workspaceId, bookId: book.bookId, factId: ids[2 * i], newerFactId: ids[2 * i + 1], reason: 'CONTRADICTED', basis: 'RULE', kind: 'VALUE' }));
+            const noLongerStated = Math.floor(facts / 50);
+            const gone = Array.from({ length: noLongerStated }, (_, i) => ({ workspaceId: ctx.workspaceId, bookId: book.bookId, factId: ids[facts - 1 - i], newerFactId: null, reason: 'NO_LONGER_STATED', basis: 'TEXT', kind: null }));
+            const decided = Array.from({ length: Math.floor(facts / 50) }, (_, i) => ({ workspaceId: ctx.workspaceId, bookId: book.bookId, factId: ids[2 * contradictions + 2 * i], newerFactId: ids[2 * contradictions + 2 * i + 1], reason: 'CONTRADICTED', basis: 'RULE', kind: 'VALUE', status: 'REJECTED', decidedAt: new Date() }));
+            for (const rows of [pairs, gone, decided]) for (let i = 0; i < rows.length; i += 1_000) await db.storyFactProposal.createMany({ data: rows.slice(i, i + 1_000) });
+            await db.storyThread.createMany({ data: Array.from({ length: 150 }, (_, i) => ({ workspaceId: ctx.workspaceId, bookId: book.bookId, kind: (['PROMISE', 'CLUE', 'OPEN_QUESTION'] as const)[i % 3], title: `Thread ${i} of the load book`, state: 'OPEN', subjectElementId: owners[i % owners.length] })) });
+            await db.storyThreadProposal.createMany({
+                data: Array.from({ length: 100 }, (_, i) => ({ workspaceId: ctx.workspaceId, bookId: book.bookId, op: 'NEW_THREAD', kind: 'PROMISE', title: `Proposed thread ${i}`, proposedState: 'OPEN', quote: `A quote ${i}`, quoteStart: 0, quoteEnd: 9, subjectElementId: owners[i % owners.length], bibleVersionId: newest.get(owners[i % owners.length])!.id, dedupeKey: createHash('sha256').update(`load-thread-${tag}-${i}`).digest('hex') })),
+            });
+            await db.continuityCheck.create({ data: { workspaceId: ctx.workspaceId, bookId: book.bookId, coveredThrough: new Date(), lastRunAt: new Date(), lastOutcome: 'OK' } });
+            await db.continuityRun.create({ data: { workspaceId: ctx.workspaceId, bookId: book.bookId, status: 'DONE', outcome: 'OK', factsRead: Math.min(facts, 4_000), metrics: { factsCut: facts > 4_000 }, finishedAt: new Date() } });
+            return { facts, contradictions, noLongerStated };
+        },
+        SEED_TX,
+    );
 }

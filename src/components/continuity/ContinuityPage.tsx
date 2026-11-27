@@ -407,6 +407,17 @@ export function ContinuityPage({ workspaceSlug, book, initial, canEdit }: Contin
                             {t('nightly.parked', { count: nightly.parkedSubjects })}
                         </p>
                     ) : null}
+                    {nightly.passedOverOutstanding > 0 || nightly.passedOverCut ? (
+                        <p className="text-sm text-content-muted" data-testid="continuity-nightly-outstanding">
+                            {nightly.passedOverCut ? t('nightly.outstandingCut') : t('nightly.outstanding', { count: nightly.passedOverOutstanding })}
+                        </p>
+                    ) : null}
+                    {page.backfill.total > 0 ? (
+                        <p className="text-sm text-content-muted" data-testid="continuity-backfill">
+                            {t('backfill.progress', { read: page.backfill.read, total: page.backfill.total })}
+                            {page.backfill.notRead > 0 ? ` ${t('backfill.notRead', { count: page.backfill.notRead })}` : ''}
+                        </p>
+                    ) : null}
                 </Card>
 
                 <section className="space-y-default" aria-labelledby="continuity-contradictions-title" id="continuity-contradictions">

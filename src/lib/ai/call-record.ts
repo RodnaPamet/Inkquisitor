@@ -67,8 +67,11 @@ export type ReserveResult =
           readonly spentMicroUsd: number;
           readonly reservedMicroUsd: number;
           readonly ceilingMicroUsd: number;
-          /** Which limit refused it: the month's ceiling (the default), or a purpose's nightly share (Phase 4.2). */
-          readonly limit?: 'MONTH' | 'NIGHTLY_SHARE';
+          /**
+           * Which limit refused it: the month's ceiling (the default), a purpose's nightly (or daily) share (Phase 4.2,
+           * 4.H-b), or a purpose's share of the calendar month (4.H-b, D32: the backfill's monthly cap).
+           */
+          readonly limit?: 'MONTH' | 'NIGHTLY_SHARE' | 'MONTHLY_SHARE';
       };
 
 export interface ReserveRequest {

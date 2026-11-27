@@ -40,6 +40,7 @@ export { scanEgress } from './egress-scanner';
 export { DEFAULT_GUARD_MODE, resolveEnforcement, resolveGuardMode } from './policy';
 export type { GuardAction, GuardDirection, GuardMode } from './policy';
 export { EGRESS_RULES, INJECTION_RULES } from './patterns';
+export { GUARD_RULES_VERSION } from './version';
 
 /** The outcome of one scan. No text: a source name and rule ids. */
 export interface GuardCheck {

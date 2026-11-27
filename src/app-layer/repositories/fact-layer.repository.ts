@@ -11,7 +11,8 @@
  */
 import { Prisma, type PrismaClient } from '@prisma/client';
 import type { PrismaTx } from '@/lib/db/rls-middleware';
-import type { FactExtractionOutcome, FactExtractionStatus, FactProposalStatus } from '@/lib/facts/vocabulary';
+import type { FactExtractionOrigin, FactExtractionOutcome, FactExtractionStatus, FactProposalStatus } from '@/lib/facts/vocabulary';
+import { fromCursor, roundRobin } from './job-cursor.repository';
 
 type Db = PrismaTx;
 
@@ -36,6 +37,7 @@ const EXTRACTION_SELECT = {
     queuedAt: true,
     startedAt: true,
     finishedAt: true,
+    origin: true,
 } as const satisfies Prisma.BibleFactExtractionSelect;
 export type FactExtractionRow = Prisma.BibleFactExtractionGetPayload<{ select: typeof EXTRACTION_SELECT }>;
 
@@ -71,27 +73,16 @@ export interface ExtractionDueWindow {
 const DUE_SELECT = { id: true, workspaceId: true, attempts: true, status: true, outcome: true } as const satisfies Prisma.BibleFactExtractionSelect;
 export type DueExtraction = Prisma.BibleFactExtractionGetPayload<{ select: typeof DUE_SELECT }>;
 
-/** The lists interleaved, first of each, then second of each…, cut at `take`. */
-export function roundRobin<T>(lists: readonly (readonly T[])[], take: number): T[] {
-    const out: T[] = [];
-    for (let i = 0; out.length < take; i++) {
-        let any = false;
-        for (const l of lists) {
-            if (i < l.length) {
-                any = true;
-                out.push(l[i]);
-                if (out.length >= take) break;
-            }
-        }
-        if (!any) break;
-    }
-    return out;
-}
 
-function dueWhere(data: ExtractionDueWindow): Prisma.BibleFactExtractionWhereInput {
+/**
+ * Due by the window, of one origin (4.H-b): a SAVE row once settled (a run of autosaves is read once), a BACKFILL row at
+ * once (its version is old); STOPPED ones whose next attempt is due and stale claims either way.
+ */
+function dueWhere(data: ExtractionDueWindow, origin: FactExtractionOrigin = 'SAVE'): Prisma.BibleFactExtractionWhereInput {
     return {
+        origin,
         OR: [
-            { status: 'PENDING', createdAt: { lt: data.settledBefore } },
+            origin === 'SAVE' ? { status: 'PENDING', createdAt: { lt: data.settledBefore } } : { status: 'PENDING' },
             { status: 'STOPPED', nextAttemptAt: { lte: data.now } },
             { status: 'QUEUED', queuedAt: { lt: data.staleBefore } },
             { status: 'RUNNING', startedAt: { lt: data.staleBefore } },
@@ -118,39 +109,52 @@ export const FactExtractionRepository = {
      * within the workspace, and the rows are interleaved round-robin before the cut. One workspace's backlog (a month
      * of ceiling stops coming due at once) never starves another's new extractions.
      */
-    async listDue(db: PrismaClient, data: ExtractionDueWindow & { take: number; workspaceIds?: readonly string[] }): Promise<DueExtraction[]> {
-        const scope = data.workspaceIds ? { workspaceId: { in: [...data.workspaceIds] } } : {};
-        const groups = await db.bibleFactExtraction.groupBy({
-            by: ['workspaceId'],
-            where: { ...scope, ...dueWhere(data) },
-            _min: { createdAt: true },
-            orderBy: [{ _min: { createdAt: 'asc' } }, { workspaceId: 'asc' }],
-            take: data.take,
-        });
-        if (groups.length === 0) return [];
-        const share = Math.max(1, Math.ceil(data.take / groups.length));
+    async listDue(
+        db: PrismaClient,
+        data: ExtractionDueWindow & { take: number; workspaceIds?: readonly string[]; cursor?: string; origin?: FactExtractionOrigin },
+    ): Promise<{ rows: DueExtraction[]; next: string }> {
+        const origin = data.origin ?? 'SAVE';
+        // 4.H-b (#60.4): the workspaces with due rows are taken in WORKSPACE order from the cursor (the last one served),
+        // wrapping round: with more busy workspaces than a tick serves, each is reached within ⌈busy ÷ take⌉ ticks. They
+        // were taken oldest due row first, so a few hundred workspaces with old backlogs held every tick's places and a
+        // workspace with one new save waited until they drained.
+        const groups = (filter: Prisma.StringFilter, take: number) =>
+            db.bibleFactExtraction.groupBy({
+                by: ['workspaceId'],
+                where: { ...dueWhere(data, origin), workspaceId: { ...filter, ...(data.workspaceIds ? { in: [...data.workspaceIds] } : {}) } },
+                orderBy: { workspaceId: 'asc' },
+                take,
+            });
+        const taken = await fromCursor(
+            data.cursor ?? '',
+            data.take,
+            (cursor, take) => groups({ gt: cursor }, take),
+            (cursor, take) => groups({ lte: cursor }, take),
+        );
+        if (taken.items.length === 0) return { rows: [], next: taken.next };
+        const share = Math.max(1, Math.ceil(data.take / taken.items.length));
         const lists: DueExtraction[][] = [];
-        for (const g of groups) {
+        for (const g of taken.items) {
             // One bounded read per workspace with due rows (at most `take` of them): the fair share's own shape.
             lists.push(
                 await db.bibleFactExtraction.findMany({
-                    where: { workspaceId: g.workspaceId, ...dueWhere(data) },
+                    where: { workspaceId: g.workspaceId, ...dueWhere(data, origin) },
                     orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
                     take: share,
                     select: DUE_SELECT,
                 }),
             );
         }
-        return roundRobin(lists, data.take);
+        return { rows: roundRobin(lists, data.take), next: taken.next };
     },
     /**
      * Mark a due row QUEUED, counting the attempt — only while it is STILL due by the same window discovery used,
      * asked in the same statement: a row another dispatcher tick queued meanwhile (and a worker may have claimed) is
      * fresh, not stale, and is left to its worker. Never steal a live claim: its call is already being paid for.
      */
-    async markQueued(db: Db, workspaceId: string, id: string, at: Date, due: ExtractionDueWindow): Promise<boolean> {
+    async markQueued(db: Db, workspaceId: string, id: string, at: Date, due: ExtractionDueWindow, origin: FactExtractionOrigin = 'SAVE'): Promise<boolean> {
         const r = await db.bibleFactExtraction.updateMany({
-            where: { workspaceId, id, ...dueWhere(due) },
+            where: { workspaceId, id, ...dueWhere(due, origin) },
             data: { status: 'QUEUED', queuedAt: at, startedAt: null, attempts: { increment: 1 } },
         });
         return r.count === 1;
@@ -160,10 +164,10 @@ export const FactExtractionRepository = {
      * STOPPED CEILING, looked at again at `until`, no attempt counted. A stale claim among them is ended with it.
      * Only while still due (the same window, the same statement).
      */
-    async deferAtCeiling(db: Db, workspaceId: string, ids: readonly string[], due: ExtractionDueWindow, until: Date): Promise<number> {
+    async deferAtCeiling(db: Db, workspaceId: string, ids: readonly string[], due: ExtractionDueWindow, until: Date, origin: FactExtractionOrigin = 'SAVE'): Promise<number> {
         if (ids.length === 0) return 0;
         const r = await db.bibleFactExtraction.updateMany({
-            where: { workspaceId, id: { in: [...ids] }, ...dueWhere(due) },
+            where: { workspaceId, id: { in: [...ids] }, ...dueWhere(due, origin) },
             data: { status: 'STOPPED', outcome: 'CEILING', nextAttemptAt: until, queuedAt: null, startedAt: null },
         });
         return r.count;
@@ -191,6 +195,8 @@ export const FactExtractionRepository = {
             at: Date;
             /** Give back the attempt the dispatch counted (a stop at the ceiling or the kill switch spends none). */
             refundAttempt?: boolean;
+            /** 4.H-b (D32): the sections the guard has refused so far and the rule version of each (a DONE row: the next baseline). */
+            guardRefused?: Prisma.InputJsonValue | null;
         },
     ): Promise<boolean> {
         const r = await db.bibleFactExtraction.updateMany({
@@ -205,6 +211,7 @@ export const FactExtractionRepository = {
                 ...(data.promptVersion !== undefined ? { promptVersion: data.promptVersion } : {}),
                 metrics: data.metrics,
                 finishedAt: data.at,
+                ...(data.guardRefused !== undefined ? { guardRefused: data.guardRefused === null ? Prisma.DbNull : data.guardRefused } : {}),
             },
         });
         return r.count === 1;
@@ -214,22 +221,25 @@ export const FactExtractionRepository = {
         if (costMicroUsd <= 0) return;
         await db.bibleFactExtraction.updateMany({ where: { workspaceId, id }, data: { costMicroUsd: { increment: BigInt(Math.round(costMicroUsd)) } } });
     },
-    /** The element's newest extracted version (its BASELINE), other than `exceptVersionId`. */
-    async baselineForElement(db: Db, workspaceId: string, elementId: string, exceptVersionId: string): Promise<string | null> {
+    /**
+     * The element's newest extracted version (its BASELINE), other than `exceptVersionId`, and what its extraction
+     * recorded the guard refused (4.H-b, D32: sent again once the guard's rules are newer).
+     */
+    async baselineForElement(db: Db, workspaceId: string, elementId: string, exceptVersionId: string): Promise<{ versionId: string; guardRefused: unknown } | null> {
         const row = await db.bibleFactExtraction.findFirst({
             where: { workspaceId, elementId, status: 'DONE', NOT: { bibleVersionId: exceptVersionId } },
             orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-            select: { bibleVersionId: true },
+            select: { bibleVersionId: true, guardRefused: true },
         });
-        return row?.bibleVersionId ?? null;
+        return row?.bibleVersionId ? { versionId: row.bibleVersionId, guardRefused: row.guardRefused } : null;
     },
-    async baselineForRelation(db: Db, workspaceId: string, relationId: string, exceptVersionId: string): Promise<string | null> {
+    async baselineForRelation(db: Db, workspaceId: string, relationId: string, exceptVersionId: string): Promise<{ versionId: string; guardRefused: unknown } | null> {
         const row = await db.bibleFactExtraction.findFirst({
             where: { workspaceId, relationId, status: 'DONE', NOT: { relationVersionId: exceptVersionId } },
             orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-            select: { relationVersionId: true },
+            select: { relationVersionId: true, guardRefused: true },
         });
-        return row?.relationVersionId ?? null;
+        return row?.relationVersionId ? { versionId: row.relationVersionId, guardRefused: row.guardRefused } : null;
     },
 };
 
@@ -434,5 +444,115 @@ export const EmbeddingSourceRepository = {
             take: ids.length,
             select: { id: true, text: true, choice: true, question: { select: { session: { select: { bookId: true } } } } },
         });
+    },
+};
+
+/** An entry the backfill will read (4.H-b): its newest version, ids only. */
+export interface BackfillEntry {
+    kind: 'BIBLE_VERSION' | 'RELATION_VERSION';
+    bookId: string;
+    subjectId: string;
+    versionId: string;
+}
+
+/**
+ * THE BACKFILL OF BIBLES SAVED BEFORE 4.1 (Phase 4.H-b; D31, D32). An entry is NEVER EXTRACTED when it has at least
+ * one version and no extraction row at all: since 4.1 every version's own transaction writes one (the outbox
+ * trigger), so such an entry was last saved before 4.1. The backfill gives the NEWEST version of each one row, of
+ * origin BACKFILL — never every historical version — and the extraction reads it whole (no baseline). Idempotent: an
+ * entry with a row is never found again.
+ */
+export const FactBackfillRepository = {
+    /**
+     * DISCOVERY (outside RLS, ids only): workspaces with backfill work — an entry of a live book never extracted, or a
+     * BACKFILL row due — in workspace order, `after` the cursor (or `upTo` it, for the wrap), at most `take`.
+     */
+    async listWorkspaces(db: PrismaClient, data: { now: Date; staleBefore: Date; take: number; after?: string; upTo?: string; workspaceIds?: readonly string[] }): Promise<Array<{ workspaceId: string }>> {
+        const bound = data.upTo !== undefined ? Prisma.sql`"workspaceId" <= ${data.upTo}` : Prisma.sql`"workspaceId" > ${data.after ?? ''}`;
+        const scope = data.workspaceIds ? Prisma.sql`AND "workspaceId" = ANY(${[...data.workspaceIds]}::text[])` : Prisma.empty;
+        return db.$queryRaw<Array<{ workspaceId: string }>>(Prisma.sql`
+            SELECT "workspaceId" FROM (
+                SELECT e."workspaceId" FROM "BibleElement" e
+                JOIN "Book" b ON b."workspaceId" = e."workspaceId" AND b."id" = e."bookId" AND b."deletedAt" IS NULL
+                WHERE EXISTS (SELECT 1 FROM "BibleEntryVersion" v WHERE v."elementId" = e."id")
+                  AND NOT EXISTS (SELECT 1 FROM "BibleFactExtraction" x WHERE x."workspaceId" = e."workspaceId" AND x."elementId" = e."id")
+                UNION
+                SELECT r."workspaceId" FROM "BibleRelation" r
+                JOIN "Book" b ON b."workspaceId" = r."workspaceId" AND b."id" = r."bookId" AND b."deletedAt" IS NULL
+                WHERE EXISTS (SELECT 1 FROM "BibleRelationVersion" v WHERE v."relationId" = r."id")
+                  AND NOT EXISTS (SELECT 1 FROM "BibleFactExtraction" x WHERE x."workspaceId" = r."workspaceId" AND x."relationId" = r."id")
+                UNION
+                SELECT x."workspaceId" FROM "BibleFactExtraction" x
+                WHERE x."origin" = 'BACKFILL'
+                  AND (x."status" = 'PENDING' OR (x."status" = 'STOPPED' AND x."nextAttemptAt" <= ${data.now})
+                       OR (x."status" = 'QUEUED' AND x."queuedAt" < ${data.staleBefore}) OR (x."status" = 'RUNNING' AND x."startedAt" < ${data.staleBefore}))
+            ) w
+            WHERE ${bound} ${scope}
+            ORDER BY "workspaceId"
+            LIMIT ${data.take}`);
+    },
+    /** A workspace's entries never extracted, the newest version of each (in its context), at most `take`. */
+    async neverExtracted(db: Db, workspaceId: string, take: number): Promise<BackfillEntry[]> {
+        if (take <= 0) return [];
+        return db.$queryRaw<BackfillEntry[]>(Prisma.sql`
+            SELECT * FROM (
+                SELECT 'BIBLE_VERSION' AS "kind", e."bookId", e."id" AS "subjectId",
+                       (SELECT v."id" FROM "BibleEntryVersion" v WHERE v."elementId" = e."id" ORDER BY v."versionNumber" DESC LIMIT 1) AS "versionId"
+                FROM "BibleElement" e
+                JOIN "Book" b ON b."workspaceId" = e."workspaceId" AND b."id" = e."bookId" AND b."deletedAt" IS NULL
+                WHERE e."workspaceId" = ${workspaceId}
+                  AND NOT EXISTS (SELECT 1 FROM "BibleFactExtraction" x WHERE x."workspaceId" = e."workspaceId" AND x."elementId" = e."id")
+                UNION ALL
+                SELECT 'RELATION_VERSION', r."bookId", r."id",
+                       (SELECT v."id" FROM "BibleRelationVersion" v WHERE v."relationId" = r."id" ORDER BY v."versionNumber" DESC LIMIT 1)
+                FROM "BibleRelation" r
+                JOIN "Book" b ON b."workspaceId" = r."workspaceId" AND b."id" = r."bookId" AND b."deletedAt" IS NULL
+                WHERE r."workspaceId" = ${workspaceId}
+                  AND NOT EXISTS (SELECT 1 FROM "BibleFactExtraction" x WHERE x."workspaceId" = r."workspaceId" AND x."relationId" = r."id")
+            ) n
+            WHERE "versionId" IS NOT NULL
+            ORDER BY "bookId", "kind", "subjectId"
+            LIMIT ${take}`);
+    },
+    /** Give each entry its BACKFILL row (PENDING). A version that already has one (a race) is skipped. Returns how many were new. */
+    async createRows(db: Db, workspaceId: string, entries: readonly BackfillEntry[]): Promise<number> {
+        if (entries.length === 0) return 0;
+        const r = await db.bibleFactExtraction.createMany({
+            data: entries.map((e) => ({
+                workspaceId,
+                bookId: e.bookId,
+                kind: e.kind,
+                origin: 'BACKFILL',
+                ...(e.kind === 'BIBLE_VERSION' ? { elementId: e.subjectId, bibleVersionId: e.versionId } : { relationId: e.subjectId, relationVersionId: e.versionId }),
+            })),
+            skipDuplicates: true,
+        });
+        return r.count;
+    },
+    /** A workspace's due BACKFILL rows, oldest first, at most `take` (in its context). */
+    async listDue(db: Db, workspaceId: string, window: ExtractionDueWindow, take: number): Promise<DueExtraction[]> {
+        if (take <= 0) return [];
+        return db.bibleFactExtraction.findMany({ where: { workspaceId, ...dueWhere(window, 'BACKFILL') }, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }], take, select: DUE_SELECT });
+    },
+    /**
+     * A book's backfill, for the Continuity page: entries never extracted (no row yet), and the BACKFILL rows by how
+     * they stand — READ (DONE, or SKIPPED because a later save's extraction covers it or the entry is gone), NOT READ
+     * (FAILED, or SKIPPED because no member may act for it), and waiting (the rest). Counts only.
+     */
+    async progressForBook(db: Db, workspaceId: string, bookId: string): Promise<{ waiting: number; read: number; notRead: number; queued: number }> {
+        const rows = await db.$queryRaw<Array<{ waiting: bigint; read: bigint; notRead: bigint; queued: bigint }>>(Prisma.sql`
+            SELECT
+              (SELECT count(*) FROM "BibleElement" e WHERE e."workspaceId" = ${workspaceId} AND e."bookId" = ${bookId}
+                 AND EXISTS (SELECT 1 FROM "BibleEntryVersion" v WHERE v."elementId" = e."id")
+                 AND NOT EXISTS (SELECT 1 FROM "BibleFactExtraction" x WHERE x."workspaceId" = e."workspaceId" AND x."elementId" = e."id"))
+              + (SELECT count(*) FROM "BibleRelation" r WHERE r."workspaceId" = ${workspaceId} AND r."bookId" = ${bookId}
+                 AND EXISTS (SELECT 1 FROM "BibleRelationVersion" v WHERE v."relationId" = r."id")
+                 AND NOT EXISTS (SELECT 1 FROM "BibleFactExtraction" x WHERE x."workspaceId" = r."workspaceId" AND x."relationId" = r."id")) AS "waiting",
+              count(*) FILTER (WHERE x."status" = 'DONE' OR (x."status" = 'SKIPPED' AND x."outcome" IN ('SUPERSEDED', 'SUBJECT_GONE', 'BOOK_DELETED'))) AS "read",
+              count(*) FILTER (WHERE x."status" = 'FAILED' OR (x."status" = 'SKIPPED' AND x."outcome" NOT IN ('SUPERSEDED', 'SUBJECT_GONE', 'BOOK_DELETED'))) AS "notRead",
+              count(*) AS "queued"
+            FROM "BibleFactExtraction" x WHERE x."workspaceId" = ${workspaceId} AND x."bookId" = ${bookId} AND x."origin" = 'BACKFILL'`);
+        const r = rows[0];
+        return { waiting: Number(r?.waiting ?? 0), read: Number(r?.read ?? 0), notRead: Number(r?.notRead ?? 0), queued: Number(r?.queued ?? 0) };
     },
 };
