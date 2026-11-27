@@ -43,6 +43,8 @@ import gapRankRecord from '@/lib/gap-hunt/evals/evaluation-record.json';
 import { checkCompactionRecord, compactionPromptHash } from '@/lib/interview/evals/compaction-evaluation';
 import compactionRecord from '@/lib/interview/evals/compaction-evaluation-record.json';
 import { checkQuestionOrderRecord, questionOrderPromptHash } from '@/lib/interview/question-order/evals/evaluation';
+import { checkDraftReadRecord, draftReadPromptHash } from '@/lib/draft-facts/evals/evaluation';
+import draftReadRecord from '@/lib/draft-facts/evals/evaluation-record.json';
 import questionOrderRecord from '@/lib/interview/question-order/evals/evaluation-record.json';
 
 /** Every exported product prompt, and how its evaluation is re-run. */
@@ -60,6 +62,7 @@ const EVALUATED_PROMPTS: Readonly<Record<string, string>> = {
     GAP_RANK_PROMPT: 'npm run packs:evaluate -- --no-packs --book-level',
     COMPACTION_PROMPT: 'npm run packs:evaluate -- --no-packs --book-level',
     QUESTION_ORDER_PROMPT: 'npm run packs:evaluate -- --no-packs --question-order',
+    DRAFT_READ_PROMPT: 'npm run packs:evaluate -- --no-packs --draft-read',
 };
 
 /** Prompts that are not product features, each with the reason it has no product evaluation record. */
@@ -129,6 +132,7 @@ describe('every record pins the prompt and packs as they are now', () => {
         ['GAP_RANK_PROMPT', gapRankRecord, gapRankPromptHash],
         ['COMPACTION_PROMPT', compactionRecord, compactionPromptHash],
         ['QUESTION_ORDER_PROMPT', questionOrderRecord, questionOrderPromptHash],
+        ['DRAFT_READ_PROMPT', draftReadRecord, draftReadPromptHash],
     ] as const)('the %s record names the prompt’s content hash now', (_name, record, current) => {
         expect((record as { promptHash?: string }).promptHash).toBe(current());
     });
@@ -159,6 +163,8 @@ describe('every record pins the prompt and packs as they are now', () => {
         if (!compaction.ok) refusals.push(`rounds summary: ${compaction.reason}`);
         const questionOrder = checkQuestionOrderRecord(questionOrderRecord);
         if (!questionOrder.ok) refusals.push(`question order: ${questionOrder.reason}`);
+        const draftRead = checkDraftReadRecord(draftReadRecord);
+        if (!draftRead.ok) refusals.push(`draft read: ${draftRead.reason}`);
         expect(refusals).toEqual([]);
     });
 });

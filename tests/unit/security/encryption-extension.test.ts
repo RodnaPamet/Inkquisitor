@@ -205,6 +205,9 @@ describe('wiring', () => {
             SceneNoteVersion: ['note'],
             ProseFinding: ['detail'],
             ProseBookBaseline: ['baseline'],
+            StoryThreadSceneLink: ['quote'],
+            SceneCard: ['goal', 'conflict', 'outcome', 'change'],
+            SceneCardVersion: ['snapshot'],
         });
         expect(compileManifest(ENCRYPTED_FIELDS).isEmpty).toBe(false);
     });

@@ -35,7 +35,7 @@ import { seedSourceLibrary } from '../helpers/sources';
 import { seedFactLayer } from '../helpers/facts';
 import { seedContinuity } from '../helpers/continuity';
 import { seedInterrogation } from '../helpers/interrogation';
-import { seedManuscript, seedProseChecks } from '../helpers/manuscript';
+import { seedDraftAgainstBible, seedManuscript, seedProseChecks } from '../helpers/manuscript';
 import { createAccount, workspaceCtx } from '../helpers/workspaces';
 import { setBookInterviewDefaults, setWorkspaceInterviewDefaults } from '@/app-layer/usecases/interview-defaults';
 
@@ -179,6 +179,9 @@ beforeAll(async () => {
     // The prose checks (5.2): settings, a scene's check and findings, the word baseline, a dismissal.
     await seedProseChecks(workspaceCtx(a), aBook.bookId, aManuscript.chapterId, 'rls-a');
     await seedProseChecks(workspaceCtx(b), bBook.bookId, bManuscript.chapterId, 'rls-b');
+    // The draft held against the bible (5.3): a reading cursor and run, a draft fact, a plant link, a scene card and its version.
+    await seedDraftAgainstBible(workspaceCtx(a), aBook.bookId, aManuscript.sceneId, 'rls-a');
+    await seedDraftAgainstBible(workspaceCtx(b), bBook.bookId, bManuscript.sceneId, 'rls-b');
 
     await seedAiCall(workspaceCtx(a), aBook.bookId, 'rls-a');
     await seedAiCall(workspaceCtx(b), bBook.bookId, 'rls-b');

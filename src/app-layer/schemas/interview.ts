@@ -88,6 +88,8 @@ export const InterviewStartInput = z
         staleFlagId: id.optional(),
         /** Phase 4.3 (D29), SELECTION: the stress test whose weak points the session asks about (its elements, as the test's view names them). */
         stressTestId: id.optional(),
+        /** Phase 5.3, SCENE: "Grill me on this scene" — the manuscript scene whose card the session asks about. */
+        sceneId: id.optional(),
         /** The session's own dials (Phase 2.3: up to three personas); unset ones come from the book's and workspace's defaults. */
         ...dialFields,
         /** Phase 4.4 (D23): the session's length; omitted, `DEFAULT_SESSION_LENGTH`. */
@@ -105,6 +107,7 @@ export const InterviewStartInput = z
         if (v.stressTestId !== undefined && (v.scope !== 'SELECTION' || v.staleFlagId !== undefined || (v.relationIds?.length ?? 0) > 0 || (v.elementIds?.length ?? 0) === 0)) {
             ctx.addIssue({ code: 'custom', message: 'A session from a stress test is a selection of its elements, and nothing else.', path: ['stressTestId'] });
         }
+        if ((v.scope === 'SCENE') !== (v.sceneId !== undefined)) ctx.addIssue({ code: 'custom', message: 'A scene interview names its scene, and only it does.', path: ['sceneId'] });
         const slot = v.afterElementId !== undefined || v.beforeElementId !== undefined;
         if (v.scope === 'BETWEEN' ? v.afterElementId === undefined || v.beforeElementId === undefined : slot) {
             ctx.addIssue({ code: 'custom', message: 'A between interview names both neighbours, and only it does.', path: ['afterElementId'] });

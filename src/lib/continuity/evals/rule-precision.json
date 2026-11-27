@@ -531,6 +531,66 @@
       ],
       "expect": [],
       "mustNotPair": [["f1", "f2"]]
+    },
+    {
+      "id": "rp-23",
+      "about": "two eye colours that differ (5.3: an appearance compared by the colour of one feature)",
+      "facts": [
+        {"ref": "f1", "predicate": "APPEARANCE", "subject": "wren", "object": "grey eyes", "statement": "Wren has grey eyes.", "from": null, "to": null, "owner": null},
+        {"ref": "f2", "predicate": "APPEARANCE", "subject": "wren", "object": "green eyes", "statement": "Wren's eyes are green.", "from": null, "to": null, "owner": null}
+      ],
+      "expect": [{"a": "f1", "b": "f2", "kind": "VALUE"}],
+      "mustNotPair": []
+    },
+    {
+      "id": "rp-24",
+      "about": "two hair colours that differ, one after a linking verb",
+      "facts": [
+        {"ref": "f1", "predicate": "APPEARANCE", "subject": "ostrik", "object": null, "statement": "Ostrik's hair was black.", "from": null, "to": null, "owner": null},
+        {"ref": "f2", "predicate": "APPEARANCE", "subject": "ostrik", "object": "red hair", "statement": "Ostrik has red hair and a burn scar.", "from": null, "to": null, "owner": null}
+      ],
+      "expect": [{"a": "f1", "b": "f2", "kind": "VALUE"}],
+      "mustNotPair": []
+    },
+    {
+      "id": "nm-31",
+      "about": "two appearances of different features (eyes and hair)",
+      "facts": [
+        {"ref": "f1", "predicate": "APPEARANCE", "subject": "wren", "object": "grey eyes", "statement": "Wren has grey eyes.", "from": null, "to": null, "owner": null},
+        {"ref": "f2", "predicate": "APPEARANCE", "subject": "wren", "object": "black hair", "statement": "Wren has black hair.", "from": null, "to": null, "owner": null}
+      ],
+      "expect": [],
+      "mustNotPair": [["f1", "f2"]]
+    },
+    {
+      "id": "nm-32",
+      "about": "one feature given two colours is not one value",
+      "facts": [
+        {"ref": "f1", "predicate": "APPEARANCE", "subject": "wren", "object": "grey-green eyes", "statement": "Wren has grey-green eyes.", "from": null, "to": null, "owner": null},
+        {"ref": "f2", "predicate": "APPEARANCE", "subject": "wren", "object": "green eyes", "statement": "Wren has green eyes.", "from": null, "to": null, "owner": null}
+      ],
+      "expect": [],
+      "mustNotPair": [["f1", "f2"]]
+    },
+    {
+      "id": "nm-33",
+      "about": "a negated colour states no colour",
+      "facts": [
+        {"ref": "f1", "predicate": "APPEARANCE", "subject": "wren", "object": null, "statement": "Wren's eyes are not green.", "from": null, "to": null, "owner": null},
+        {"ref": "f2", "predicate": "APPEARANCE", "subject": "wren", "object": "grey eyes", "statement": "Wren has grey eyes.", "from": null, "to": null, "owner": null}
+      ],
+      "expect": [],
+      "mustNotPair": [["f1", "f2"]]
+    },
+    {
+      "id": "nm-34",
+      "about": "two appearances that are not colours (tall, scarred)",
+      "facts": [
+        {"ref": "f1", "predicate": "APPEARANCE", "subject": "marrow", "object": "tall", "statement": "Marrow is tall.", "from": null, "to": null, "owner": null},
+        {"ref": "f2", "predicate": "APPEARANCE", "subject": "marrow", "object": "a scar", "statement": "Marrow has a scar across his brow.", "from": null, "to": null, "owner": null}
+      ],
+      "expect": [],
+      "mustNotPair": [["f1", "f2"]]
     }
   ]
 }

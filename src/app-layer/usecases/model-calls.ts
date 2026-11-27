@@ -43,10 +43,12 @@ import {
 /**
  * A purpose's NIGHTLY SHARE of the month (Phase 4.2, D28 addendum, item 1): the calls of `purpose` since `since` may
  * have charged and still hold at most `capMicroUsd` in the workspace. Checked by the ledger under its spend lock with
- * each reservation, so it holds across books and concurrent jobs.
+ * each reservation, so it holds across books and concurrent jobs. Since 5.3 (D35 item 2) a share may name SEVERAL
+ * purposes, measured together and held for a call of any of them: the night's one share is the nightly draft
+ * reading's and the deep continuity check's.
  */
 export interface NightlyShare {
-    readonly purpose: string;
+    readonly purpose: string | readonly string[];
     readonly since: Date;
     readonly capMicroUsd: number;
     /**
@@ -54,6 +56,11 @@ export interface NightlyShare {
      * the nightly one, a rolling window) and a share of the calendar month (`MONTHLY_SHARE`, D32), both by its purpose.
      */
     readonly limit?: 'NIGHTLY_SHARE' | 'MONTHLY_SHARE';
+}
+
+/** The purposes a share measures (one, or several together). */
+export function sharePurposes(share: Pick<NightlyShare, 'purpose'>): readonly string[] {
+    return typeof share.purpose === 'string' ? [share.purpose] : share.purpose;
 }
 
 /** One share, several, or none, as a list. */
@@ -97,7 +104,7 @@ export function workspaceAiLedger(ctx: Pick<WorkspaceRequestContext, 'workspaceI
                 }
                 const period = spendPeriod(request.startedAt);
                 for (const s of shares) {
-                    if (request.purpose !== s.purpose) continue;
+                    if (request.purpose === undefined || !sharePurposes(s).includes(request.purpose)) continue;
                     const used = await AiCallRepository.purposeSpendSince(db, ctx.workspaceId, s.purpose, s.since, now, request.callId);
                     if (used.chargedMicroUsd + used.reservedMicroUsd + request.amountMicroUsd > s.capMicroUsd) {
                         return {

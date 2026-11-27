@@ -38,6 +38,7 @@ import { seedResearchRun } from '../helpers/research';
 import { REPO_ROOT } from '../helpers/repo-files';
 import { seedVectors } from '../helpers/vectors';
 import { addMember, createAccount, createBareUser, workspaceCtx } from '../helpers/workspaces';
+import { seedDraftMismatch } from '../helpers/manuscript';
 
 afterAll(() => prisma.$disconnect());
 
@@ -109,6 +110,8 @@ describe('a deleted book', () => {
         const scene = await createScene(ctx, seeded.bookId, { chapterId: chapter.id, title: 'The ferry' });
         await saveSceneText(ctx, seeded.bookId, scene.id, { html: '<p>The ferry crossed.</p>', baseRevision: 0, checkpoint: true });
         const partId = (await getManuscriptOutline(ctx, seeded.bookId)).parts[0].id;
+        // A draft mismatch (Phase 5.3), so "update the bible" has one to open.
+        const { mismatchId } = await seedDraftMismatch(ctx, seeded.bookId, chapter.id);
         const routes = routeHandlerFiles().filter((f) => f.startsWith('src/app/api/w/[workspaceSlug]/books/[bookId]/'));
         expect(routes.length).toBeGreaterThanOrEqual(10);
         const value = (p: string) =>
@@ -135,7 +138,8 @@ describe('a deleted book', () => {
         const call = async (file: string, method: string) => {
             // eslint-disable-next-line @typescript-eslint/no-require-imports
             const handler = (require(path.join(REPO_ROOT, file)) as Record<string, (req: NextRequest, c: { params: Promise<Record<string, string>> }) => Promise<Response>>)[method];
-            const { url, params } = urlAndParamsFor(file, value);
+            // A draft mismatch's routes name a mismatch, not a research proposal (both are `proposalId`).
+            const { url, params } = urlAndParamsFor(file, (p) => (p === 'proposalId' && file.includes('/draft-mismatches/') ? mismatchId : value(p)));
             // A VALID request for each: a 404 must be about the deletion, not a malformed body.
             const tail = file.replace('src/app/api/w/[workspaceSlug]/books/[bookId]/', '');
             const valid: Record<string, unknown> = {
@@ -169,6 +173,10 @@ describe('a deleted book', () => {
                 'POST manuscript/scenes/[sceneId]/checkpoint/route.ts': { revision: 1 },
                 'PUT manuscript/scenes/[sceneId]/note/route.ts': { note: 'After deletion.', baseNoteVersion: 0 },
                 'POST manuscript/scenes/[sceneId]/versions/[versionNumber]/restore/route.ts': { baseRevision: 1 },
+                'POST draft-mismatches/[proposalId]/decision/route.ts': { decision: 'FIX_DRAFT' },
+                'POST draft-mismatches/[proposalId]/update-bible/route.ts': { baseVersion: 2, value: 'After deletion.' },
+                'POST thread-scene-links/[linkId]/decision/route.ts': { decision: 'CONFIRM' },
+                'PUT manuscript/scenes/[sceneId]/card/route.ts': { baseVersion: 0, goal: 'After deletion.', conflict: null, outcome: null, change: null },
             };
             const upload = tail === 'research/briefs/[briefId]/sources/route.ts';
             const body = ['GET', 'DELETE'].includes(method)

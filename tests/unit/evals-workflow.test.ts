@@ -96,7 +96,8 @@ describe('.github/workflows/evals.yml', () => {
         expect(wf.on.workflow_dispatch.inputs!.sources.default).toBe(false);
         const run = job.steps.find((s) => s.run?.includes('packs:evaluate'))!;
         expect(run.env).toMatchObject({ SOURCES: '${{ inputs.sources }}' });
-        expect(run.run).toMatch(/if \[ "\$SOURCES" = "true" \]; then extra="\$extra --sources"; fi/);
+        // Phase 5.3: the nightly draft reading's set runs with the sources input (both read the author's own drafts).
+        expect(run.run).toMatch(/if \[ "\$SOURCES" = "true" \]; then extra="\$extra --sources --draft-read"; fi/);
         const upload = job.steps.find((s) => s.uses?.startsWith('actions/upload-artifact@'))!;
         expect(String(upload.with!.path)).toContain('evals-out/**/evaluation-record.json');
     });

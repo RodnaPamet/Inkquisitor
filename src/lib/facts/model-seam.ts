@@ -59,5 +59,6 @@ export function bibleFactExtractorOver(call: BibleFactsCaller, options: { purpos
  * its spend lock.
  */
 export function defaultBibleFactExtractor(ctx: WorkspaceRequestContext, deps: Pick<StructuredCallDeps, 'fetch' | 'timeoutMs'> = {}, shares: readonly NightlyShare[] = []): FactExtractor {
-    return bibleFactExtractorOver((input) => callStructured(ctx, input, deps, { share: shares }), { purpose: shares[0]?.purpose });
+    const purpose = shares[0]?.purpose;
+    return bibleFactExtractorOver((input) => callStructured(ctx, input, deps, { share: shares }), { purpose: typeof purpose === 'string' ? purpose : purpose?.[0] });
 }

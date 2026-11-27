@@ -76,6 +76,7 @@ function review(over: Partial<SessionReviewView> = {}): SessionReviewView {
         newElements: [newElement],
         relationFields: [],
         newRelations: [],
+        sceneCardFields: [],
         answers: { a1: { answerId: 'a1', question: 'What does Wren want?', questionKind: 'OPEN', answer: 'She wants the council seat back, and Ilse helps.', status: 'ANSWERED', personaKey: null } },
         runs: [{ roundNumber: 1, status: 'DONE', outcome: 'OK', reviewRequired: false, refusalReason: null }],
         truncated: false,

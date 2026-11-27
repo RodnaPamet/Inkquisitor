@@ -60,6 +60,9 @@ enum BibleVersionSource {
   INTERVIEW
   IMPORT
   RESEARCH
+  /// Phase 5.3 (D35): the author's own save of a field opened prefilled from a scene ("Update the bible"),
+  /// naming the scene (`sourceSceneId`, CHECK). Never written without the author's save (rule 1).
+  MANUSCRIPT
 }
 
 /// What an interview covers (Phase 2.2): one element, every element of one
@@ -72,6 +75,8 @@ enum InterviewScope {
   SELECTION
   /// Phase 3.3 ("What happens between these?"): a beat not yet created, between two neighbouring beats.
   BETWEEN
+  /// Phase 5.3 ("Grill me on this scene"): one manuscript scene's CARD (goal, conflict, outcome, what changed), never its prose.
+  SCENE
 }
 
 /// Where an interview stands. ACTIVE asks rounds; PAUSED stopped for a reason
@@ -194,6 +199,8 @@ enum EnrichmentProposalKind {
   RELATION_FIELD
   /// Phase 3.3 (D24): a new relation between two elements (or a new element of the same run).
   NEW_RELATION
+  /// Phase 5.3: a change to one field of a scene's CARD (never its prose, D3).
+  SCENE_CARD_FIELD
 }
 
 /// Where a proposal stands. PENDING awaits the author; ACCEPTED and
@@ -355,4 +362,7 @@ enum StoryFactSourceKind {
   RELATION_VERSION
   /// Phase 4.2 (D28): the author's explanation of a contradiction they resolved as "both true".
   AUTHOR_RESOLUTION
+  /// Phase 5.3 (D35): a DRAFT fact read from a manuscript scene's text — never canon, never decided, never an
+  /// answer to a field; compared with the bible's facts and replaced when the scene is read again.
+  SCENE_TEXT
 }

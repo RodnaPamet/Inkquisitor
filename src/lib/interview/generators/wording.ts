@@ -131,6 +131,17 @@ export function threadQuestion(kind: 'PROMISE' | 'CLUE' | 'OPEN_QUESTION', title
     return { kind: 'OPEN', text, options: null };
 }
 
+/** Phase 5.3 (D35): a CONTINUITY QUESTION about an UNPAID SETUP — planted in a scene, paid off in none after it. */
+export function unpaidSetupQuestion(kind: 'PROMISE' | 'CLUE', title: string, sceneTitle: string | null): WordedQuestion {
+    const t = quoted(title, 120);
+    const where = sceneTitle && sceneTitle.trim() !== '' ? `the scene “${quoted(sceneTitle, 80)}”` : 'a scene';
+    const text = {
+        PROMISE: `The promise “${t}” is planted in ${where} and no later scene pays it off yet: how and where is it paid off?`,
+        CLUE: `The clue “${t}” is planted in ${where} and no later scene pays it off yet: where is it found, and what does it point to?`,
+    }[kind];
+    return { kind: 'OPEN', text, options: null };
+}
+
 /** A CONTINUITY QUESTION about a timeline gap: an event with no story time between two that have one. */
 export function timelineGapQuestion(eventName: string, before: { name: string; time: string }, after: { name: string; time: string }): WordedQuestion {
     return {

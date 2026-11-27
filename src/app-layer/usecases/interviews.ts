@@ -58,15 +58,18 @@ import { runInWorkspaceContext, type PrismaTx } from '@/lib/db/rls-middleware';
 import { ConflictError, NotFoundError, ValidationError } from '@/lib/errors/types';
 import { BIBLE_KINDS, type BibleKind } from '@/lib/bible/kinds';
 import { resolveDials } from '@/lib/interview/dial-settings';
+import { QUESTION_GENERATORS } from '@/lib/interview/vocabulary';
 import { DEFAULT_SESSION_LENGTH, lengthColumns, tokenBudgetFor, type SessionLength } from '@/lib/interview/session-length';
 import { generatorsOn } from '@/lib/interview/dial-settings';
 import { getPacks } from '@/lib/interview/packs';
 import { PacksNotMountableError, packNamesFor, pinForRow, pinsFor } from '@/lib/interview/pack-mount';
 import { requireBook, requireElement } from './bible-common';
-import { resolveBetweenSlot, resolveSelection, SLOT_KIND, type BetweenSlot, type SelectionScope } from './interview-scope';
+import { resolveBetweenSlot, resolveSceneScope, resolveSelection, SLOT_KIND, type BetweenSlot, type SelectionScope } from './interview-scope';
 import { BibleRelationRepository } from '@/app-layer/repositories/bible.repository';
 import { getRelationType, relationFieldDefs } from '@/lib/bible/templates';
-import { PENDING_SUBJECT_ID, relationSubjectName } from '@/lib/interview/subjects';
+import { PENDING_SUBJECT_ID, relationSubjectName, sceneSubjectId } from '@/lib/interview/subjects';
+import { SCENE_CARD_FIELDS, sceneCarrierOf } from '@/lib/manuscript/scene-card';
+import { SceneCardRepository } from '@/app-layer/repositories/scene-card.repository';
 import { defaultLayersFor } from './interview-defaults';
 import { StaleFlagRepository } from '@/app-layer/repositories/continuity.repository';
 import { standingStaleFlags } from './stale-flags';
@@ -170,13 +173,22 @@ export async function startInterview(ctx: WorkspaceRequestContext, bookId: strin
         } else if (parsed.scope === 'BETWEEN') {
             slot = await resolveBetweenSlot(db, ctx, bookId, parsed.afterElementId!, parsed.beforeElementId!);
             kinds = [slot.kind];
+        } else if (parsed.scope === 'SCENE') {
+            // Phase 5.3 ("Grill me on this scene"): the scene must be the book's (404) and name an element its questions are
+            // filed under (its point of view, setting, a beat or a linked element; 409 SCENE_HAS_NO_ELEMENT otherwise).
+            await resolveSceneScope(db, ctx, bookId, parsed.sceneId!);
+            kinds = [];
         } else {
             const any = await BibleElementRepository.listForInterview(db, ctx.workspaceId, bookId, { kind: parsed.kind, take: 1 });
             if (any.length === 0) throw new ValidationError('There is nothing in this book to ask about yet.', { reason: 'SCOPE_EMPTY' });
             kinds = parsed.scope === 'KIND' ? [parsed.kind!] : [...BIBLE_KINDS];
         }
         // A grill on what changed asks at the deepest level, so the stale fields can be challenged (`interview-rounds.ts`).
-        const { settings, sources } = resolveDials({ session: parsed.staleFlagId ? { ...parsed, depth: 5 } : parsed, ...(await defaultLayersFor(db, ctx, bookId)) });
+        const resolved = resolveDials({ session: parsed.staleFlagId ? { ...parsed, depth: 5 } : parsed, ...(await defaultLayersFor(db, ctx, bookId)) });
+        // Phase 5.3: a scene session asks about the card's fields only: the frontier is its one generator (the ladder, the
+        // relations, the sources and continuity are about the bible).
+        const settings = parsed.scope === 'SCENE' ? { ...resolved.settings, generatorsOff: QUESTION_GENERATORS.filter((g) => g !== 'FRONTIER') } : resolved.settings;
+        const sources = resolved.sources;
         // A selection with a relation in it is questioned with the relations pack too (Phase 3.3). Phase 4.4 (D30): so is
         // a KIND or BOOK session with the relations generator on, whose relations between two of its elements are
         // subjects too — when the pack mounts here; when it does not, the session starts without those subjects.
@@ -184,7 +196,7 @@ export async function startInterview(ctx: WorkspaceRequestContext, bookId: strin
         if (!relations && (parsed.scope === 'KIND' || parsed.scope === 'BOOK') && generatorsOn(settings.generatorsOff).has('RELATIONS')) {
             relations = (await packContext.mounts(['relations'])).get('relations')?.ok === true;
         }
-        const names = packNamesFor(kinds, settings.personaKeys, { relations });
+        const names = packNamesFor(kinds, settings.personaKeys, { relations, scene: parsed.scope === 'SCENE' });
         const pinned = pinsFor(names, await packContext.mounts(names));
         if (!pinned.ok) throw new PacksNotMountableError(pinned.refusals);
         const { depth, detail, personaKeys } = settings;
@@ -203,6 +215,7 @@ export async function startInterview(ctx: WorkspaceRequestContext, bookId: strin
             slotAct: slot?.act ?? null,
             staleFlagId: parsed.staleFlagId ?? null,
             stressTestId: parsed.stressTestId ?? null,
+            sceneId: parsed.scope === 'SCENE' ? parsed.sceneId! : null,
             depth,
             detail,
             personaKeys,
@@ -230,6 +243,7 @@ export async function startInterview(ctx: WorkspaceRequestContext, bookId: strin
                     ...(slot ? { slotAfterElementId: slot.afterElementId, slotBeforeElementId: slot.beforeElementId } : {}),
                     ...(parsed.staleFlagId ? { staleFlagId: parsed.staleFlagId } : {}),
                     ...(parsed.stressTestId ? { stressTestId: parsed.stressTestId } : {}),
+                    ...(parsed.scope === 'SCENE' ? { sceneId: parsed.sceneId } : {}),
                     depth,
                     detail,
                     personaKeys,
@@ -298,7 +312,9 @@ export type ScopeQuery =
     | { scope: 'BOOK' }
     /** `frozen`: a started session's scope, exactly as the start resolved it (no relation made since is added). */
     | { scope: 'SELECTION'; elementIds: readonly string[]; relationIds: readonly string[]; frozen?: boolean }
-    | { scope: 'BETWEEN'; afterElementId: string; beforeElementId: string };
+    | { scope: 'BETWEEN'; afterElementId: string; beforeElementId: string }
+    /** Phase 5.3: the scene whose card is asked about (its subject `scene:<id>`, its card's fields). */
+    | { scope: 'SCENE'; sceneId: string };
 
 /**
  * The elements a scope covers, for the interview page to name them (Phase
@@ -347,6 +363,18 @@ export async function interviewScopeElements(ctx: WorkspaceRequestContext, bookI
                     { id: before.id, name: before.name, kind: before.kind },
                     { id: PENDING_SUBJECT_ID, name: `${after.name} → … → ${before.name}`, kind: SLOT_KIND, pending: { afterName: after.name, beforeName: before.name } },
                 ],
+                truncated: false,
+            };
+        }
+        if (scope.scope === 'SCENE') {
+            // The scene, named by its title, its card's fields labelled; filed under its carrier element's kind.
+            const scene = await SceneCardRepository.sceneForInterview(db, ctx.workspaceId, bookId, scope.sceneId);
+            if (!scene) throw new NotFoundError('Scene not found.');
+            const carrierId = sceneCarrierOf(scene);
+            const carrier = carrierId ? (await BibleElementRepository.listByIds(db, ctx.workspaceId, bookId, [carrierId]))[0] : undefined;
+            if (!carrier) return { elements: [], truncated: false };
+            return {
+                elements: [{ id: sceneSubjectId(scene.id), name: scene.title ?? 'Untitled scene', kind: carrier.kind, fieldLabels: Object.fromEntries(SCENE_CARD_FIELDS.map((f) => [f.key, f.label])) }],
                 truncated: false,
             };
         }

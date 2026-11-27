@@ -99,12 +99,12 @@ const COVERAGE: Readonly<Record<string, Classification>> = {
     'Source.filename': { repository: 'SourceRepository', writeMethods: ['create'], sanitiser: 'sanitiseSourceNameForStorage' },
     'SourceChunk.text': { repository: 'SourceChunkRepository', writeMethods: ['createMany'], sanitiser: 'sanitiseChunkForStorage' },
     'SourceChunk.headingPath': { repository: 'SourceChunkRepository', writeMethods: ['createMany'], sanitiser: 'sanitiseChunkForStorage' },
-    'StoryFact.subjectName': { repository: 'StoryFactRepository', writeMethods: ['createMany', 'createBibleFacts', 'createResolutionFact'], sanitiser: 'sanitiseFactForStorage' },
-    'StoryFact.objectLiteral': { repository: 'StoryFactRepository', writeMethods: ['createMany', 'createBibleFacts', 'createResolutionFact'], sanitiser: 'sanitiseFactForStorage' },
-    'StoryFact.statement': { repository: 'StoryFactRepository', writeMethods: ['createMany', 'createBibleFacts', 'createResolutionFact'], sanitiser: 'sanitiseFactForStorage' },
-    'StoryFact.quote': { repository: 'StoryFactRepository', writeMethods: ['createMany', 'createBibleFacts', 'createResolutionFact'], sanitiser: 'sanitiseFactForStorage' },
-    'StoryFact.storyTimeFrom': { repository: 'StoryFactRepository', writeMethods: ['createMany', 'createBibleFacts', 'createResolutionFact'], sanitiser: 'sanitiseFactForStorage' },
-    'StoryFact.storyTimeTo': { repository: 'StoryFactRepository', writeMethods: ['createMany', 'createBibleFacts', 'createResolutionFact'], sanitiser: 'sanitiseFactForStorage' },
+    'StoryFact.subjectName': { repository: 'StoryFactRepository', writeMethods: ['createMany', 'createBibleFacts', 'createResolutionFact', 'createDraftFacts'], sanitiser: 'sanitiseFactForStorage' },
+    'StoryFact.objectLiteral': { repository: 'StoryFactRepository', writeMethods: ['createMany', 'createBibleFacts', 'createResolutionFact', 'createDraftFacts'], sanitiser: 'sanitiseFactForStorage' },
+    'StoryFact.statement': { repository: 'StoryFactRepository', writeMethods: ['createMany', 'createBibleFacts', 'createResolutionFact', 'createDraftFacts'], sanitiser: 'sanitiseFactForStorage' },
+    'StoryFact.quote': { repository: 'StoryFactRepository', writeMethods: ['createMany', 'createBibleFacts', 'createResolutionFact', 'createDraftFacts'], sanitiser: 'sanitiseFactForStorage' },
+    'StoryFact.storyTimeFrom': { repository: 'StoryFactRepository', writeMethods: ['createMany', 'createBibleFacts', 'createResolutionFact', 'createDraftFacts'], sanitiser: 'sanitiseFactForStorage' },
+    'StoryFact.storyTimeTo': { repository: 'StoryFactRepository', writeMethods: ['createMany', 'createBibleFacts', 'createResolutionFact', 'createDraftFacts'], sanitiser: 'sanitiseFactForStorage' },
     // Phase 4.2 (D28): a thread's title and note (by hand, or an accepted proposal's), a proposed thread's title and quote.
     'StoryThread.title': { repository: 'StoryThreadRepository', writeMethods: ['create', 'update'], sanitiser: 'sanitiseThreadForStorage' },
     'StoryThread.note': { repository: 'StoryThreadRepository', writeMethods: ['create', 'update'], sanitiser: 'sanitiseThreadForStorage' },
@@ -146,6 +146,19 @@ const COVERAGE: Readonly<Record<string, Classification>> = {
             "The baseline is computed by code from the scenes' stored text (every one of which came through storableSceneHtml): a word " +
             "count and the folded Porter2 stems of the book's most frequent words, with their counts, serialised as JSON.",
     },
+    // Phase 5.3 (D35): the scene sentence a plant / pay-off proposal cites (the scene's own plain-text slice, like a
+    // fact's quote), a scene's card (plain text) and every version of it.
+    'StoryThreadSceneLink.quote': { repository: 'ThreadSceneLinkRepository', writeMethods: ['propose'], sanitiser: 'sanitiseLinkQuoteForStorage' },
+    'SceneCard.goal': { repository: 'SceneCardRepository', writeMethods: ['upsert'], sanitiser: 'sanitiseSceneCardField' },
+    'SceneCard.conflict': { repository: 'SceneCardRepository', writeMethods: ['upsert'], sanitiser: 'sanitiseSceneCardField' },
+    'SceneCard.outcome': { repository: 'SceneCardRepository', writeMethods: ['upsert'], sanitiser: 'sanitiseSceneCardField' },
+    'SceneCard.change': { repository: 'SceneCardRepository', writeMethods: ['upsert'], sanitiser: 'sanitiseSceneCardField' },
+    'SceneCardVersion.snapshot': {
+        repository: 'SceneCardVersionRepository',
+        writeMethods: ['createVersion'],
+        sanitiser: 'serialiseSceneCardSnapshot',
+        derived: "A version's snapshot is the card's four fields exactly as the same transaction stores them, each of which came through sanitiseSceneCardField.",
+    },
 };
 
 /** Each repository object and the one file allowed to write its model through Prisma. */
@@ -184,6 +197,9 @@ const REPOSITORIES: Readonly<Record<string, { file: string; model: string }>> = 
     SceneNoteVersionRepository: { file: 'src/app-layer/repositories/manuscript.repository.ts', model: 'SceneNoteVersion' },
     ProseFindingRepository: { file: 'src/app-layer/repositories/prose-check.repository.ts', model: 'ProseFinding' },
     ProseBaselineRepository: { file: 'src/app-layer/repositories/prose-check.repository.ts', model: 'ProseBookBaseline' },
+    ThreadSceneLinkRepository: { file: 'src/app-layer/repositories/draft-facts.repository.ts', model: 'StoryThreadSceneLink' },
+    SceneCardRepository: { file: 'src/app-layer/repositories/scene-card.repository.ts', model: 'SceneCard' },
+    SceneCardVersionRepository: { file: 'src/app-layer/repositories/scene-card.repository.ts', model: 'SceneCardVersion' },
 };
 
 /** Wrappers, where each is defined and what it must call; the chain must end at a primitive. */
@@ -206,6 +222,8 @@ const WRAPPERS: Readonly<Record<string, { file: string; calls: readonly string[]
     sanitiseSourceNameForStorage: { file: 'src/lib/sources/storage.ts', calls: ['plainLine'] },
     sanitiseChunkForStorage: { file: 'src/lib/sources/storage.ts', calls: ['plainBlock', 'plainLine'] },
     sanitiseFactForStorage: { file: 'src/lib/sources/storage.ts', calls: ['plainLine'] },
+    sanitiseLinkQuoteForStorage: { file: 'src/lib/draft-facts/storage.ts', calls: ['plainLine'] },
+    sanitiseSceneCardField: { file: 'src/lib/manuscript/storage.ts', calls: ['plainBlock'] },
     sanitiseOverrideForStorage: { file: 'src/lib/sources/storage.ts', calls: ['plainBlock'] },
     sanitiseThreadForStorage: { file: 'src/lib/continuity/storage.ts', calls: ['plainLine', 'plainBlock'] },
     sanitiseThreadProposalForStorage: { file: 'src/lib/continuity/storage.ts', calls: ['plainLine'] },

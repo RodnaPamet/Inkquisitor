@@ -23,8 +23,25 @@ import type { WorkspaceRequestContext } from '@/app-layer/types';
 import { BibleElementRepository, BibleRelationRepository } from '@/app-layer/repositories/bible.repository';
 import { SELECTION_RELATIONS_MAX } from '@/app-layer/schemas/interview';
 import type { PrismaTx } from '@/lib/db/rls-middleware';
-import { NotFoundError, ValidationError } from '@/lib/errors/types';
+import { ConflictError, NotFoundError, ValidationError } from '@/lib/errors/types';
+import { SceneCardRepository } from '@/app-layer/repositories/scene-card.repository';
+import { sceneCarrierOf } from '@/lib/manuscript/scene-card';
 import type { BibleKind } from '@/lib/bible/kinds';
+
+/**
+ * SCENE (Phase 5.3, "Grill me on this scene"): one manuscript scene of the book (404 otherwise: another book's or
+ * workspace's scene reads as missing) whose CARD the session asks about. Its questions are filed under its carrier
+ * element (`sceneCarrierOf`), so a scene that names no element at all — no point of view, setting, beat or link — is
+ * 409 SCENE_HAS_NO_ELEMENT: link one first. Its prose is never a target (D3).
+ */
+export async function resolveSceneScope(db: PrismaTx, ctx: WorkspaceRequestContext, bookId: string, sceneId: string): Promise<{ sceneId: string; carrierElementId: string }> {
+    const scene = await SceneCardRepository.sceneForInterview(db, ctx.workspaceId, bookId, sceneId);
+    if (!scene) throw new NotFoundError('Scene not found.');
+    const carrierId = sceneCarrierOf(scene);
+    const carrier = carrierId ? await BibleElementRepository.find(db, ctx.workspaceId, bookId, carrierId) : null;
+    if (!carrier) throw new ConflictError('Link this scene to a character, a setting or a beat first.', { reason: 'SCENE_HAS_NO_ELEMENT' });
+    return { sceneId: scene.id, carrierElementId: carrier.id };
+}
 
 // BETWEEN slots live in `story-slot.ts`, which the bible's write path may import (this module reaches the dials).
 export { resolveBetweenSlot, SLOT_KIND, type BetweenSlot } from './story-slot';

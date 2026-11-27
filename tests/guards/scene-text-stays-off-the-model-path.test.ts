@@ -33,7 +33,14 @@
  *      job, the reads, the scheduler, the editor's notes and suggestion mark —
  *      reach no model module and neither the text writer nor a text method:
  *      a note is computed by code and a suggestion is applied only by the
- *      author, in the editor, through its autosave.
+ *      author, in the editor, through its autosave;
+ *   6. and the DRAFT HELD AGAINST THE BIBLE (Phase 5.3, D35) — the nightly
+ *      reading of each scene (it calls a model: it READS the text and writes
+ *      only facts and proposals), the mismatch and plant / pay decisions, the
+ *      scene interview's reconcile and its acceptance, and the scene CARD
+ *      writer — reach neither the text writer nor a text-writing method; and
+ *      the card writer, which an accepted proposal reaches, reaches no model
+ *      module either: "Grill me on this scene" fills the card, never the prose.
  *
  * So a model can shape what is asked, proposed or noted, and cannot reach the
  * code that stores a scene's prose. A new caller of the writer fails here by
@@ -380,6 +387,53 @@ describe('the prose checks never reach the model layer or the text writer (D3, D
         expect([...reach.reached.keys()].map(repoRelative)).not.toContain(SEAM);
         const callers = [...reach.reached.keys()].filter((f) => repoRelative(f) !== REPOSITORY && callsOf(fs.readFileSync(f, 'utf8'), f).some(([obj, m]) => TEXT_METHODS.some(([o, mm]) => o === obj && mm === m)));
         expect(callers.map(repoRelative)).toEqual([]);
+    });
+});
+
+/** The draft held against the bible (5.3, D35): every module of the feature, by directory and by name. */
+function draftModules(): string[] {
+    const named = [
+        'src/app-layer/usecases/draft-read.ts',
+        'src/app-layer/usecases/draft-read-dispatch.ts',
+        'src/app-layer/usecases/draft-mismatches.ts',
+        'src/app-layer/usecases/thread-scene-links.ts',
+        'src/app-layer/repositories/draft-facts.repository.ts',
+        'src/app-layer/usecases/enrichment-reconcile.ts',
+        'src/app-layer/usecases/enrichment-review.ts',
+        'src/components/continuity/DraftAgainstBible.tsx',
+        ...CARD_WRITER,
+    ];
+    const lib = repoFiles({ under: 'src/lib/draft-facts', extensions: ['.ts', '.tsx'] }).map(repoRelative);
+    return [...lib, ...named];
+}
+/** The ONE scene card writer and its repository: no model module behind them. */
+const CARD_WRITER = ['src/app-layer/usecases/scene-card.ts', 'src/app-layer/repositories/scene-card.repository.ts'];
+
+describe('the draft reading, its decisions and the scene card reach neither the text writer nor a text method (D3, D35)', () => {
+    const models = new Set(modelModules());
+    const modules = draftModules();
+
+    it('finds the feature (a guard that found none would pass vacuously)', () => {
+        expect(modules.filter((m) => m.startsWith('src/lib/draft-facts/')).length).toBeGreaterThanOrEqual(8);
+        for (const m of modules) expect(fs.existsSync(abs(m))).toBe(true);
+    });
+
+    it('none of it reaches the text writer or a text-writing method', () => {
+        const reach = reachFrom(modules.map(abs));
+        expect([...reach.reached.keys()].map(repoRelative)).not.toContain(SEAM);
+        const callers = [...reach.reached.keys()].filter((f) => repoRelative(f) !== REPOSITORY && callsOf(fs.readFileSync(f, 'utf8'), f).some(([obj, m]) => TEXT_METHODS.some(([o, mm]) => o === obj && mm === m)));
+        expect(callers.map(repoRelative)).toEqual([]);
+    });
+
+    it('the scene card writer reaches no model module', () => {
+        const reach = reachFrom(CARD_WRITER.map(abs));
+        const hits = [...reach.reached.keys()].filter((f) => models.has(repoRelative(f)));
+        expect(hits.map((h) => reach.via(h))).toEqual([]);
+    });
+
+    it('the draft reading does reach the model layer (so the checks above are about a model path, not a quiet one)', () => {
+        const reach = reachFrom([abs('src/app-layer/usecases/draft-read.ts')]);
+        expect([...reach.reached.keys()].some((f) => models.has(repoRelative(f)))).toBe(true);
     });
 });
 

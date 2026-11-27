@@ -19,6 +19,13 @@
  *                 dismissed or acted on by the author; a suggestion is applied
  *                 only when the author accepts it, as an edit of their own that
  *                 the autosave sends like any keystroke
+ *   card          5.3 (D35): the scene's card (goal, conflict, outcome, what
+ *                 changed), edited by the author or filled by "Grill me on this
+ *                 scene" through accepted proposals — never the prose
+ *   draft notes   5.3 (D35): what the nightly reading found at odds with the
+ *                 bible, marked in the text as their own kind of note where the
+ *                 text still reads the quoted sentence, and the threads the
+ *                 scene plants or pays off
  *
  * A reader reads the text and the panel as text: no control is offered.
  * Nothing here calls a model, and nothing writes the text but the autosave and
@@ -46,6 +53,10 @@ import type { SceneEditorApi } from './SceneTextEditor';
 import { useProseNotes } from './use-prose-notes';
 import type { ProseFindingView } from '@/lib/prose-checks/vocabulary';
 import { SceneHistoryPanel } from './SceneHistoryPanel';
+import { SceneCardPanel } from './SceneCardPanel';
+import { SceneDraftPanel } from './SceneDraftPanel';
+import { useSceneDraftNotes } from './use-scene-draft-notes';
+import { DRAFT_NOTE_PREFIX } from '@/lib/draft-facts/vocabulary';
 import { useManuscriptReason } from './messages';
 import { useSceneAutosave } from './use-scene-autosave';
 import { SESSION_GOAL_MAX, useSessionGoal } from './use-session-goal';
@@ -63,7 +74,8 @@ export interface SceneEditorPageProps {
     kindLabels: Record<string, string>;
 }
 
-type PanelTab = 'details' | 'links' | 'note' | 'history';
+type PanelTab = 'details' | 'links' | 'note' | 'card' | 'draft' | 'history';
+const PANEL_TABS: readonly PanelTab[] = ['details', 'links', 'note', 'card', 'draft', 'history'];
 
 export function SceneEditorPage({ workspaceSlug, book, initial, canEdit, kindLabels }: SceneEditorPageProps) {
     const t = useTranslations('manuscript.editor');
@@ -105,6 +117,7 @@ export function SceneEditorPage({ workspaceSlug, book, initial, canEdit, kindLab
     const [unplaced, setUnplaced] = useState(0);
     const [layout, setLayout] = useState<Record<string, number>>({});
     const [activeNote, setActiveNote] = useState<string | null>(null);
+    const [draftPlaced, setDraftPlaced] = useState<string[]>([]);
     const onApi = useCallback((api: SceneEditorApi | null) => {
         editorApi.current = api;
     }, []);
@@ -116,11 +129,14 @@ export function SceneEditorPage({ workspaceSlug, book, initial, canEdit, kindLab
     const onNotesLayout = useCallback((l: Array<{ id: string; top: number }>) => {
         setLayout(Object.fromEntries(l.map((x) => [x.id, x.top])));
         // A note the text no longer holds (edited away) leaves the margin with it.
-        setPlacedIds((ids) => {
-            const live = new Set(l.map((x) => x.id));
+        const live = new Set(l.map((x) => x.id));
+        const keep = (ids: string[]) => {
             const next = ids.filter((id) => live.has(id));
             return next.length === ids.length ? ids : next;
-        });
+        };
+        setPlacedIds(keep);
+        // 5.3: a draft note whose sentence was edited away leaves the panel's "show" with it.
+        setDraftPlaced(keep);
     }, []);
     const takeOff = useCallback((ids: readonly string[]) => {
         editorApi.current?.removeNotes(ids);
@@ -151,6 +167,18 @@ export function SceneEditorPage({ workspaceSlug, book, initial, canEdit, kindLab
         },
         [notes],
     );
+
+    // The draft notes (5.3, D35): read when the page opens and after a decision; placed by the editor.
+    const draft = useSceneDraftNotes({ workspaceSlug, bookId: book.id, sceneId: initial.id });
+    const onDraftNotesPlaced = useCallback((ids: string[]) => setDraftPlaced(ids), []);
+    const revealDraft = useCallback((id: string) => {
+        setActiveNote(id);
+        editorApi.current?.revealNote(id);
+    }, []);
+    const onNoteActivate = useCallback((id: string) => {
+        setActiveNote(id);
+        if (id.startsWith(DRAFT_NOTE_PREFIX)) setTab('draft');
+    }, []);
 
     const onChange = useCallback(
         (html: string, count: number) => {
@@ -281,10 +309,16 @@ export function SceneEditorPage({ workspaceSlug, book, initial, canEdit, kindLab
                                     // Placed only while nothing typed is waiting to be saved: the stored text, which was checked, is the editor's.
                                     notes.view && (autosave.state === 'saved' || autosave.state === 'idle') ? { token: notes.token + editorKey * 100_000, findings: notes.view.findings } : null
                                 }
+                                draftNotes={
+                                    draft.notes && (autosave.state === 'saved' || autosave.state === 'idle')
+                                        ? { token: draft.token + editorKey * 100_000, notes: draft.notes.mismatches.map((m) => ({ id: m.id, start: m.draft.start, end: m.draft.end, quote: m.draft.quote })) }
+                                        : null
+                                }
+                                onDraftNotesPlaced={onDraftNotesPlaced}
                                 activeNoteId={activeNote}
                                 onNotesPlaced={onNotesPlaced}
                                 onNotesLayout={onNotesLayout}
-                                onNoteActivate={setActiveNote}
+                                onNoteActivate={onNoteActivate}
                                 onApi={onApi}
                             />
                             <div className="mt-section lg:mt-0">
@@ -381,10 +415,25 @@ export function SceneEditorPage({ workspaceSlug, book, initial, canEdit, kindLab
                     <aside className="space-y-default" aria-label={t('panel')} data-testid="scene-panel">
                         <ToggleGroup
                             ariaLabel={t('panel')}
-                            options={(['details', 'links', 'note', 'history'] as const).map((v) => ({ value: v, label: t(`tab.${v}`) }))}
+                            options={PANEL_TABS.map((v) => ({ value: v, label: t(`tab.${v}`) }))}
                             selected={tab}
                             selectAction={(v) => setTab(v as PanelTab)}
                         />
+                        {tab === 'card' ? <SceneCardPanel workspaceSlug={workspaceSlug} bookId={book.id} sceneId={initial.id} canEdit={canEdit} /> : null}
+                        {tab === 'draft' ? (
+                            <SceneDraftPanel
+                                workspaceSlug={workspaceSlug}
+                                bookId={book.id}
+                                canEdit={canEdit}
+                                notes={draft.notes}
+                                loadError={draft.loadError}
+                                placedIds={draftPlaced}
+                                activeId={activeNote}
+                                onReveal={revealDraft}
+                                onFixDraft={(m) => void draft.fixDraft(m.id)}
+                                onLink={(l, d) => void draft.decideLink(l.id, d)}
+                            />
+                        ) : null}
                         {tab === 'details' ? (
                             <Card className="space-y-default p-4" data-testid="scene-details">
                                 {canEdit ? (

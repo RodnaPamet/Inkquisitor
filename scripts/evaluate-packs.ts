@@ -22,6 +22,12 @@
  *       evaluation-record.json). Re-run after editing the set, the extraction
  *       prompt or its output schema.
  *
+ *   npm run packs:evaluate -- --draft-read [--no-packs]
+ *       also the nightly draft reading's set (Phase 5.3, D35): the reference
+ *       reader's record beside the set (src/lib/draft-facts/evals/
+ *       evaluation-record.json). Re-run after editing the set, the draft-reading
+ *       prompt or its output schema.
+ *
  *   npm run packs:evaluate -- --bible-facts [--no-packs]
  *       also bible fact extraction's set (Phase 4.1, D27): the reference
  *       extractor's record beside the set (src/lib/facts/evals/
@@ -108,6 +114,9 @@ import { EXTRACT_PROMPT_VERSION } from '../src/lib/sources/prompt';
 import { BIBLE_FACTS_RECORD_FORMAT, bibleFactsPromptHash, checkBibleFactsRecord, modelBibleFactsAnswers, structuralBibleFactsRecord } from '../src/lib/facts/evals/evaluation';
 import { bibleFactEvalSet } from '../src/lib/facts/evals/eval-set';
 import { BIBLE_FACTS_PROMPT_VERSION } from '../src/lib/facts/prompt';
+import { checkDraftReadRecord, DRAFT_READ_RECORD_FORMAT, draftReadPromptHash, modelDraftReadAnswers, structuralDraftReadRecord } from '../src/lib/draft-facts/evals/evaluation';
+import { draftReadEvalSet } from '../src/lib/draft-facts/evals/eval-set';
+import { DRAFT_READ_PROMPT_VERSION } from '../src/lib/draft-facts/prompt';
 
 import { CONTINUITY_RECORD_FORMAT, continuityPromptHash, checkContinuityRecord, modelContinuityAnswers, structuralContinuityRecord, type ContinuitySetReport } from '../src/lib/continuity/evals/evaluation';
 import { continuityEvalSet } from '../src/lib/continuity/evals/eval-set';
@@ -201,6 +210,28 @@ async function runContinuityEvaluation(checker: FactExtractor | null, modelId: s
         : { passed: false, detail: `${check.reason}: ${check.detail}${rates(check.report)}` };
 }
 
+/** Where the structural draft-reading record is written (beside the set), relative to the repository. */
+const DRAFT_READ_RECORD_RELATIVE = 'src/lib/draft-facts/evals/evaluation-record.json';
+
+/** The nightly draft reading's set (5.3): the record written to `file` and checked as the gate checks it. */
+async function runDraftReadEvaluation(reader: FactExtractor | null, modelId: string | null, file: string): Promise<{ passed: boolean; detail: string }> {
+    const record = reader
+        ? {
+              format: DRAFT_READ_RECORD_FORMAT,
+              set: { ...draftReadEvalSet },
+              promptVersion: DRAFT_READ_PROMPT_VERSION,
+              promptHash: draftReadPromptHash(),
+              generator: { kind: 'model' as const, id: modelId ?? 'model' },
+              ranAt: new Date().toISOString(),
+              answers: await modelDraftReadAnswers(reader),
+          }
+        : structuralDraftReadRecord();
+    mkdirSync(path.dirname(file), { recursive: true });
+    writeFileSync(file, JSON.stringify(record, null, 2) + '\n');
+    const check = checkDraftReadRecord(record);
+    return check.ok ? { passed: true, detail: `${check.grades.length} cases` } : { passed: false, detail: `${check.reason}: ${check.detail}` };
+}
+
 /** Where the structural bible fact record is written (beside the set), relative to the repository. */
 const BIBLE_FACTS_RECORD_RELATIVE = 'src/lib/facts/evals/evaluation-record.json';
 
@@ -284,7 +315,7 @@ function fail(message: string, code: number): never {
 }
 
 /** The wired model generator in a throwaway workspace, and what it closes. */
-async function modelGenerator(): Promise<{ generator: QuestionGenerator; reconciler: Reconciler; researcher: Researcher; extractor: FactExtractor; extractorId: string; bibleExtractor: FactExtractor; bibleExtractorId: string; continuityChecker: FactExtractor; continuityCheckerId: string; stressTester: FactExtractor; stressTesterId: string; gapRanker: FactExtractor; gapRankerId: string; summarizer: FactExtractor; summarizerId: string; orderer: FactExtractor; ordererId: string; judge: Judge; id: string; reconcilerId: string; rephraserId: string; close: () => Promise<void> }> {
+async function modelGenerator(): Promise<{ generator: QuestionGenerator; reconciler: Reconciler; researcher: Researcher; extractor: FactExtractor; extractorId: string; bibleExtractor: FactExtractor; bibleExtractorId: string; continuityChecker: FactExtractor; continuityCheckerId: string; draftReader: FactExtractor; draftReaderId: string; stressTester: FactExtractor; stressTesterId: string; gapRanker: FactExtractor; gapRankerId: string; summarizer: FactExtractor; summarizerId: string; orderer: FactExtractor; ordererId: string; judge: Judge; id: string; reconcilerId: string; rephraserId: string; close: () => Promise<void> }> {
     if (!process.env.ANTHROPIC_API_KEY?.trim()) fail('ANTHROPIC_API_KEY is not set: a model run never falls back to the structural generator', 2);
     if (!process.env.DATABASE_URL) fail('a model run needs DATABASE_URL (a migrated database: the call ledger and the spend ceiling live there)', 2);
     const budget = (() => {
@@ -343,6 +374,9 @@ async function modelGenerator(): Promise<{ generator: QuestionGenerator; reconci
     const { defaultContinuityChecker } = await import('../src/lib/continuity/model-seam');
     const { CONTINUITY_PROMPT } = await import('../src/lib/continuity/prompt');
     const continuityChecker = defaultContinuityChecker(ctx);
+    const { defaultDraftReader } = await import('../src/lib/draft-facts/model-seam');
+    const { DRAFT_READ_PROMPT } = await import('../src/lib/draft-facts/prompt');
+    const draftReader = defaultDraftReader(ctx);
     const { defaultStressTester } = await import('../src/lib/stress-test/model-seam');
     const { STRESS_TEST_PROMPT } = await import('../src/lib/stress-test/prompt');
     const { defaultGapRanker } = await import('../src/lib/gap-hunt/model-seam');
@@ -361,7 +395,7 @@ async function modelGenerator(): Promise<{ generator: QuestionGenerator; reconci
         orderer: defaultQuestionOrderer(ctx),
         ordererId: modelForTier(QUESTION_ORDER_PROMPT.tier),
     };
-    return { ...book, generator, reconciler, researcher, extractor, extractorId: modelForTier(EXTRACT_PROMPT.tier), bibleExtractor, bibleExtractorId: modelForTier(BIBLE_FACTS_PROMPT.tier), continuityChecker, continuityCheckerId: modelForTier(CONTINUITY_PROMPT.tier), judge, id, reconcilerId: modelForTier(RECONCILE_PROMPT.tier), rephraserId: modelForTier(REPHRASE_PROMPT.tier), close: () => prisma.$disconnect() };
+    return { ...book, generator, reconciler, researcher, extractor, extractorId: modelForTier(EXTRACT_PROMPT.tier), bibleExtractor, bibleExtractorId: modelForTier(BIBLE_FACTS_PROMPT.tier), continuityChecker, continuityCheckerId: modelForTier(CONTINUITY_PROMPT.tier), draftReader, draftReaderId: modelForTier(DRAFT_READ_PROMPT.tier), judge, id, reconcilerId: modelForTier(RECONCILE_PROMPT.tier), rephraserId: modelForTier(REPHRASE_PROMPT.tier), close: () => prisma.$disconnect() };
 }
 
 async function main(): Promise<void> {
@@ -420,6 +454,11 @@ async function main(): Promise<void> {
             const file = args.out ? path.join(path.resolve(args.out), 'bible-facts', 'evaluation-record.json') : path.resolve(BIBLE_FACTS_RECORD_RELATIVE);
             bibleFacts = await runBibleFactsEvaluation(model?.bibleExtractor ?? null, model?.bibleExtractorId ?? null, file);
         }
+        let draftRead = null;
+        if (args.draftRead) {
+            const file = args.out ? path.join(path.resolve(args.out), 'draft-read', 'evaluation-record.json') : path.resolve(DRAFT_READ_RECORD_RELATIVE);
+            draftRead = await runDraftReadEvaluation(model?.draftReader ?? null, model?.draftReaderId ?? null, file);
+        }
         let continuity = null;
         if (args.continuity) {
             const file = args.out ? path.join(path.resolve(args.out), 'continuity', 'evaluation-record.json') : path.resolve(CONTINUITY_RECORD_RELATIVE);
@@ -435,6 +474,7 @@ async function main(): Promise<void> {
         for (const b of bookLevel ?? []) out(`${b.name}: ${b.passed ? 'passed' : 'NOT passed'} (${b.detail}).`);
         if (questionOrder) out(`Question order: ${questionOrder.passed ? 'passed' : 'NOT passed'} (${questionOrder.detail}).`);
         if (continuity) out(`Continuity: ${continuity.passed ? 'passed' : 'NOT passed'} (${continuity.detail}).`);
+        if (draftRead) out(`Draft read: ${draftRead.passed ? 'passed' : 'NOT passed'} (${draftRead.detail}).`);
         if (bibleFacts) out(`Bible facts: ${bibleFacts.passed ? 'passed' : 'NOT passed'} (${bibleFacts.detail}).`);
         if (sources) out(`Sources: ${sources.passed ? 'passed' : 'NOT passed'} (${sources.detail}).`);
         if (research) out(`Research: ${research.passed ? 'passed' : 'NOT passed'} (${research.detail}).`);
@@ -448,6 +488,7 @@ async function main(): Promise<void> {
             (!research || research.passed) &&
             (!sources || sources.passed) &&
             (!bibleFacts || bibleFacts.passed) &&
+            (!draftRead || draftRead.passed) &&
             (!continuity || continuity.passed) &&
             (!bookLevel || bookLevel.every((b) => b.passed)) &&
             (!questionOrder || questionOrder.passed) &&

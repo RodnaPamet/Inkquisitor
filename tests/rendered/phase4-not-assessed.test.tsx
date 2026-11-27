@@ -48,6 +48,11 @@ function continuity(over: Partial<PageData> = {}, nightly: Partial<PageData['nig
             ...nightly,
         },
         backfill: { total: 0, read: 0, notRead: 0, waiting: 0 },
+        draft: {
+            reading: { scenesWithText: 0, scenesRead: 0, scenesWaiting: 0, scenesPassedOver: 0, lastRunAt: null, lastOutcome: null },
+            mismatches: { items: [], open: 0, truncated: false },
+            linkProposals: { items: [], pending: 0, truncated: false },
+        },
         ...over,
     };
 }

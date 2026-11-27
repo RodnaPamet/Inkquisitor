@@ -238,6 +238,25 @@ describe('source questions and continuity', () => {
         expect(c.map((x) => x.continuityRef)).toEqual(['proposal:p1', 'thread:t1', 'gap:el-ev']);
         expect(c.every((x) => x.fieldKey !== null)).toBe(true);
     });
+
+    it('an UNPAID SETUP (5.3, D35) is the thread’s question valued higher and naming the planting scene; a plain thread keeps its own', () => {
+        const plot = subject('el-plot', 'The flood', 'PLOT', {});
+        const c = generateCandidates(
+            input({
+                subjects: [plot],
+                continuity: [
+                    { type: 'THREAD', threadId: 't1', threadKind: 'PROMISE', subjectElementId: 'el-plot', fieldKey: 'setups_and_payoffs', title: 'The gun on the wall', unpaidSetup: { sceneTitle: 'The parlour' } },
+                    { type: 'THREAD', threadId: 't2', threadKind: 'CLUE', subjectElementId: 'el-plot', fieldKey: 'setups_and_payoffs', title: 'The wet boot' },
+                ],
+            }),
+        ).filter((x) => x.generator === 'CONTINUITY');
+        const unpaid = c.find((x) => x.continuityRef === 'thread:t1')!;
+        const plain = c.find((x) => x.continuityRef === 'thread:t2')!;
+        expect(unpaid.value).toBeGreaterThan(plain.value);
+        expect(unpaid.worded!.text).toContain('planted in the scene “The parlour”');
+        expect(questionTextProblem(unpaid.worded!.text)).toBeNull();
+        expect(plain.worded!.text).not.toContain('planted');
+    });
 });
 
 describe('selection: code validates, deduplicates and orders every candidate, best value first (D30 item 1)', () => {

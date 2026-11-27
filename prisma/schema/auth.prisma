@@ -45,6 +45,9 @@ model User {
   /// Phase 5.1: the scene text and note versions they saved.
   sceneVersions           SceneVersion[]         @relation("SceneVersionAuthor")
   sceneNoteVersions       SceneNoteVersion[]     @relation("SceneNoteVersionAuthor")
+  /// Phase 5.3: thread-to-scene links decided, scene card versions written.
+  threadSceneLinksDecided StoryThreadSceneLink[] @relation("StoryThreadSceneLinkDecidedBy")
+  sceneCardVersions       SceneCardVersion[]     @relation("SceneCardVersionAuthor")
   /// Interviews this person started, and answers they gave (Phase 2.2); both
   /// links are cleared (and the rows kept) when the person is deleted.
   interviewSessions       InterviewSession[]

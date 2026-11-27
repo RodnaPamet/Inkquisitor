@@ -60,7 +60,9 @@ export type InterviewTarget =
     | { scope: 'BOOK' }
     /** Phase 4.2 (D28): "Grill me on what changed" names the stale flag; its selection is that flag's one element. */
     | { scope: 'SELECTION'; elementIds: string[]; relationIds: string[]; staleFlagId?: string; /** Phase 4.3 (D29): a session from a stress test's weak points. */ stressTestId?: string }
-    | { scope: 'BETWEEN'; afterElementId: string; beforeElementId: string };
+    | { scope: 'BETWEEN'; afterElementId: string; beforeElementId: string }
+    /** Phase 5.3 (D35): "Grill me on this scene" — the scene's card (goal, conflict, outcome, what changed), never its prose. */
+    | { scope: 'SCENE'; sceneId: string };
 
 /** Ids a selection's query carries at most (the server's own bound, `SELECTION_ELEMENTS_MAX`). */
 export const SELECTION_QUERY_MAX = 60;
@@ -253,6 +255,7 @@ export function interviewSetupQuery(target: InterviewTarget, setup: InterviewSet
         q.set('after', target.afterElementId);
         q.set('before', target.beforeElementId);
     }
+    if (target.scope === 'SCENE') q.set('scene', target.sceneId);
     q.set('depth', String(setup.depth));
     q.set('detail', String(setup.detail));
     if (setup.personaKeys.length > 0) q.set('personas', setup.personaKeys.join(','));
@@ -304,6 +307,10 @@ export function setupFromQuery(q: Query): { target: InterviewTarget; setup: Inte
         const before = one(q, 'before');
         if (!after || !before || after.length > 64 || before.length > 64 || after === before) return null;
         target = { scope: 'BETWEEN', afterElementId: after, beforeElementId: before };
+    } else if (scope === 'SCENE') {
+        const sceneId = one(q, 'scene');
+        if (!sceneId || sceneId.length > 64) return null;
+        target = { scope: 'SCENE', sceneId };
     } else target = { scope: 'BOOK' };
     const dial = (key: string, fallback: number) => {
         const n = Number(one(q, key));

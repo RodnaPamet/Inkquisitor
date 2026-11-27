@@ -169,6 +169,8 @@ export const ContinuityDiscovery = {
                        OR ((cardinality(c."passedOver") > 0 OR c."passedOverCut") AND c."lastRunAt" < ${retryBefore})
                        OR EXISTS (SELECT 1 FROM "StoryFact" f
                                   WHERE f."workspaceId" = b."workspaceId" AND f."bookId" = b."id" AND f."supersededAt" IS NULL
+                                    -- 5.3: a draft fact (SCENE_TEXT) is never canon: the nightly draft reading compares it, never this check
+                                    AND f."sourceKind"::text <> 'SCENE_TEXT'
                                     AND f."createdAt" > COALESCE(c."coveredThrough", '-infinity'::timestamp))
                        OR EXISTS (SELECT 1 FROM "StoryFact" f
                                   JOIN "Source" s ON s."workspaceId" = f."workspaceId" AND s."id" = f."sourceId"
@@ -299,6 +301,11 @@ export const StoryThreadRepository = {
             take,
             select: { id: true, kind: true, title: true, subjectElementId: true },
         });
+    },
+    /** Phase 5.3: some of a book's threads by id (a list of thread links names them), in one read. */
+    async byIds(db: Db, workspaceId: string, bookId: string, ids: readonly string[]): Promise<StoryThreadRow[]> {
+        if (ids.length === 0) return [];
+        return db.storyThread.findMany({ where: { workspaceId, bookId, id: { in: [...ids] } }, take: ids.length, select: THREAD_SELECT });
     },
     async find(db: Db, workspaceId: string, bookId: string, id: string): Promise<StoryThreadRow | null> {
         return db.storyThread.findFirst({ where: { workspaceId, bookId, id }, select: THREAD_SELECT });

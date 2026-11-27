@@ -92,6 +92,7 @@
  *              (refused, or flagged `POSSIBLE_INSTRUCTION`).
  */
 import { getFieldDef, getRelationFieldDef, relationAllowed, getRelationType, isSymmetric } from '@/lib/bible/templates';
+import { SCENE_CARD_FIELDS } from '@/lib/manuscript/scene-card';
 import { PENDING_SUBJECT_ID, pairOfSubject } from '@/lib/interview/subjects';
 import type { FieldDef } from '@/lib/bible/template-schema';
 import type { BibleKind } from '@/lib/bible/kinds';
@@ -124,10 +125,13 @@ export interface ReconcileScopeElement {
     relation?: { type: string; fromKind: BibleKind; fromElementId: string; toElementId: string };
     /** Phase 3.3: the BETWEEN slot's element not yet created. */
     pending?: boolean;
+    /** Phase 5.3: a scene's card (its fields are the card's; never the scene's prose, D3). */
+    scene?: boolean;
 }
 
-/** A subject's field definition: a relation type's field for a relation, the kind's template field otherwise. */
-export function fieldDefOf(e: Pick<ReconcileScopeElement, 'kind' | 'relation'>, key: string): FieldDef | undefined {
+/** A subject's field definition: a scene card's field, a relation type's field for a relation, the kind's template field otherwise. */
+export function fieldDefOf(e: Pick<ReconcileScopeElement, 'kind' | 'relation' | 'scene'>, key: string): FieldDef | undefined {
+    if (e.scene) return SCENE_CARD_FIELDS.find((f) => f.key === key);
     return e.relation ? getRelationFieldDef(e.relation.fromKind, e.relation.type, key) : getFieldDef(e.kind, key);
 }
 

@@ -57,6 +57,7 @@ export const PROPOSAL_SELECT = {
     newFromProposalId: true,
     newToProposalId: true,
     targetProposalId: true,
+    sceneId: true,
     createdRelationId: true,
     flags: true,
     status: true,
@@ -95,6 +96,8 @@ export interface ProposalWrite {
     newToProposalId?: string | null;
     /** Phase 3.H (D25 as amended): a FIELD proposal for the slot's beat not yet created, by its NEW_ELEMENT proposal. */
     targetProposalId?: string | null;
+    /** Phase 5.3: a SCENE_CARD_FIELD's scene. */
+    sceneId?: string | null;
 }
 
 export const ReconcileRunRepository = {
@@ -209,6 +212,16 @@ export const EnrichmentProposalRepository = {
     },
 
     /** The other PENDING proposals for one relation field (Phase 3.3; superseded by an acceptance). */
+    /** Phase 5.3: the other PENDING proposals for one scene card field (an acceptance supersedes them). */
+    pendingForSceneCardField(db: Db, workspaceId: string, sceneId: string, fieldKey: string, exceptId: string, take: number) {
+        return db.enrichmentProposal.findMany({
+            where: { workspaceId, sceneId, kind: 'SCENE_CARD_FIELD', fieldKey, status: 'PENDING', id: { not: exceptId } },
+            orderBy: { createdAt: 'asc' },
+            take,
+            select: { id: true, sessionId: true },
+        });
+    },
+
     pendingForRelationField(db: Db, workspaceId: string, relationId: string, fieldKey: string, exceptId: string, take: number) {
         return db.enrichmentProposal.findMany({
             where: { workspaceId, relationId, fieldKey, status: 'PENDING', id: { not: exceptId } },
@@ -223,8 +236,10 @@ export const EnrichmentProposalRepository = {
      * these elements or relations, and its PENDING new relations between two of these elements — what the question
      * generators must not ask about until the author decides. Ids and keys only (no encrypted column); bounded.
      */
-    pendingFieldHolds(db: Db, workspaceId: string, bookId: string, subjects: { elementIds: readonly string[]; relationIds: readonly string[] }, take: number) {
+    pendingFieldHolds(db: Db, workspaceId: string, bookId: string, subjects: { elementIds: readonly string[]; relationIds: readonly string[]; sceneIds?: readonly string[] }, take: number) {
         const or: Prisma.EnrichmentProposalWhereInput[] = [];
+        // Phase 5.3: a scene card's field with a pending proposal is held as an element's is.
+        if (subjects.sceneIds && subjects.sceneIds.length > 0) or.push({ kind: 'SCENE_CARD_FIELD', sceneId: { in: [...subjects.sceneIds] } });
         if (subjects.elementIds.length > 0) {
             or.push({ kind: 'FIELD', elementId: { in: [...subjects.elementIds] } });
             or.push({ kind: 'NEW_RELATION', newFromElementId: { in: [...subjects.elementIds] }, newToElementId: { in: [...subjects.elementIds] } });
@@ -235,7 +250,7 @@ export const EnrichmentProposalRepository = {
             where: { workspaceId, bookId, status: 'PENDING', OR: or },
             orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
             take,
-            select: { kind: true, elementId: true, relationId: true, fieldKey: true, newFromElementId: true, newToElementId: true },
+            select: { kind: true, elementId: true, relationId: true, sceneId: true, fieldKey: true, newFromElementId: true, newToElementId: true },
         });
     },
 

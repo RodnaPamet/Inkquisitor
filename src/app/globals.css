@@ -230,6 +230,12 @@ body {
   .prose-note--active {
     background-color: var(--bg-muted);
   }
+  /* Phase 5.3 (D35): a draft-vs-bible note — a sentence the nightly reading found at odds with the bible. Its own
+     kind: a dashed underline in the error colour, never mistaken for a prose note. */
+  .prose-note--draft {
+    text-decoration-style: dashed;
+    text-decoration-color: var(--content-error);
+  }
   .prose-suggest-delete {
     text-decoration-line: line-through;
     color: var(--content-muted);

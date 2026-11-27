@@ -10,7 +10,8 @@
  *                   `encodeFieldValue` (JSON; null for REMOVE); a relation's
  *                   field (Phase 3.3) against its type's field; a new
  *                   element's first fields, each so, as one JSON object (or
- *                   null); a new relation's `{ note, fields }`, the note
+ *                   null); a scene card's field (Phase 5.3) against the card's
+ *                   field; a new relation's `{ note, fields }`, the note
  *                   `plainBlock`, each field so
  *   newName         `plainLine`
  *   newSummary      `plainBlock` (null when it sanitises to nothing)
@@ -20,6 +21,7 @@ import { decodeFieldValue, encodeFieldValue, normaliseFieldValue, type FieldValu
 import type { FieldDef } from '@/lib/bible/template-schema';
 import { getFieldDef, getRelationFieldDef } from '@/lib/bible/templates';
 import { plainBlock, plainLine } from '@/lib/bible/text';
+import { SCENE_CARD_FIELDS } from '@/lib/manuscript/scene-card';
 import type { ProposalDraft } from './validate';
 
 export interface StoredProposalText {
@@ -49,10 +51,10 @@ function storedValue(def: FieldDef | undefined, value: FieldValue): FieldValue {
  * element's first fields), or a relation's type from its declaring kind (a
  * relation's field, and a new relation's fields; Phase 3.3).
  */
-export type ProposalFieldOwner = { kind: BibleKind } | { relationType: string; fromKind: BibleKind } | null;
+export type ProposalFieldOwner = { kind: BibleKind } | { relationType: string; fromKind: BibleKind } | { sceneCard: true } | null;
 
 const defOf = (owner: ProposalFieldOwner, key: string): FieldDef | undefined =>
-    owner === null ? undefined : 'relationType' in owner ? getRelationFieldDef(owner.fromKind, owner.relationType, key) : getFieldDef(owner.kind, key);
+    owner === null ? undefined : 'sceneCard' in owner ? SCENE_CARD_FIELDS.find((f) => f.key === key) : 'relationType' in owner ? getRelationFieldDef(owner.fromKind, owner.relationType, key) : getFieldDef(owner.kind, key);
 
 /** The columns a draft is stored as, sanitised (see the header). `owner` defines its fields; a kind alone is an element's. */
 export function sanitiseProposalForStorage(draft: ProposalDraft, owner: BibleKind | ProposalFieldOwner): StoredProposalText {

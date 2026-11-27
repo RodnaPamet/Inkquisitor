@@ -1,0 +1,196 @@
+{
+  "format": "inkquisitor-draft-read-evaluation/1",
+  "set": {
+    "hash": "sha256:6f400973b583637cbfa186bc656e7983fcf68354a678ed2e64690f8162e8de3e"
+  },
+  "promptVersion": "draft-read.5.3.0",
+  "promptHash": "sha256:83c9380ced71159cacda559eebf7b1147c261c222b00238a854f19bcd9bad3ad",
+  "generator": {
+    "kind": "structural",
+    "id": "reference-draft-reader.1"
+  },
+  "ranAt": "2026-11-27T14:02:49.102Z",
+  "answers": [
+    {
+      "caseId": "dr-01",
+      "output": {
+        "facts": [
+          {
+            "subject": "Wren Hollis",
+            "predicate": "LOCATION",
+            "object": "the lock gates",
+            "statement": "Wren Hollis stood at the lock gates at dawn.",
+            "quote": "Wren Hollis stood at the lock gates at dawn.",
+            "storyTimeFrom": "",
+            "storyTimeTo": ""
+          },
+          {
+            "subject": "Wren Hollis",
+            "predicate": "ABILITY",
+            "object": "",
+            "statement": "She had never learned to swim.",
+            "quote": "She had never learned to swim",
+            "storyTimeFrom": "",
+            "storyTimeTo": ""
+          }
+        ],
+        "threads": [
+          {
+            "thread": 2,
+            "role": "PLANTS",
+            "quote": "she carried the brass key from the bakery drawer"
+          }
+        ]
+      }
+    },
+    {
+      "caseId": "dr-02",
+      "output": {
+        "facts": [
+          {
+            "subject": "Ostrik",
+            "predicate": "AGE",
+            "object": "forty",
+            "statement": "Ostrik is forty years old now.",
+            "quote": "Ostrik is forty years old now",
+            "storyTimeFrom": "",
+            "storyTimeTo": ""
+          }
+        ],
+        "threads": [
+          {
+            "thread": 1,
+            "role": "PAYS",
+            "quote": "he had kept his word: his sister was free"
+          }
+        ]
+      }
+    },
+    {
+      "caseId": "dr-03",
+      "output": {
+        "facts": [
+          {
+            "subject": "Inspector Mabry",
+            "predicate": "KNOWLEDGE",
+            "object": "the deed was forged",
+            "statement": "Inspector Mabry knew the deed was forged.",
+            "quote": "Inspector Mabry knew the deed was forged.",
+            "storyTimeFrom": "",
+            "storyTimeTo": ""
+          },
+          {
+            "subject": "Greyhallow",
+            "predicate": "PLACE_TYPE",
+            "object": "a coaching inn",
+            "statement": "Greyhallow is a coaching inn on the Bath road.",
+            "quote": "Greyhallow is a coaching inn on the Bath road.",
+            "storyTimeFrom": "",
+            "storyTimeTo": ""
+          }
+        ],
+        "threads": []
+      }
+    },
+    {
+      "caseId": "dr-04",
+      "output": {
+        "facts": [
+          {
+            "subject": "Ines Albar",
+            "predicate": "LOCATION",
+            "object": "Deck Nine",
+            "statement": "Ines Albar spent the third shift on Deck Nine.",
+            "quote": "Ines Albar spent the third shift on Deck Nine",
+            "storyTimeFrom": "",
+            "storyTimeTo": ""
+          },
+          {
+            "subject": "Ines Albar",
+            "predicate": "OCCUPATION",
+            "object": "the chief medic on the Halcyon",
+            "statement": "She is the chief medic on the Halcyon.",
+            "quote": "She is the chief medic on the Halcyon",
+            "storyTimeFrom": "",
+            "storyTimeTo": ""
+          }
+        ],
+        "threads": []
+      }
+    },
+    {
+      "caseId": "dr-05",
+      "output": {
+        "facts": [
+          {
+            "subject": "Jonah Pike",
+            "predicate": "BACKSTORY",
+            "object": "his father was dying",
+            "statement": "Jonah Pike left because his father was dying.",
+            "quote": "I left because my father was dying,\" Jonah Pike said",
+            "storyTimeFrom": "",
+            "storyTimeTo": ""
+          }
+        ],
+        "threads": [
+          {
+            "thread": 1,
+            "role": "PAYS",
+            "quote": "\"I left because my father was dying,\" Jonah Pike said at last."
+          }
+        ]
+      }
+    },
+    {
+      "caseId": "adv-01",
+      "output": {
+        "facts": [
+          {
+            "subject": "Marek Sol",
+            "predicate": "POSSESSION",
+            "object": "a revolver from his father",
+            "statement": "Marek Sol carries a revolver he took from his father.",
+            "quote": "Marek Sol carries a revolver he took from his father.",
+            "storyTimeFrom": "",
+            "storyTimeTo": ""
+          }
+        ],
+        "threads": []
+      }
+    },
+    {
+      "caseId": "adv-02",
+      "output": {
+        "facts": [
+          {
+            "subject": "Lady Ashcombe",
+            "predicate": "APPEARANCE",
+            "object": "mourning black",
+            "statement": "Lady Ashcombe wears mourning black.",
+            "quote": "She wears mourning black though no one in the house has died.",
+            "storyTimeFrom": "",
+            "storyTimeTo": ""
+          }
+        ],
+        "threads": []
+      }
+    },
+    {
+      "caseId": "adv-03",
+      "output": {
+        "facts": [
+          {
+            "subject": "Pip",
+            "predicate": "WANT",
+            "object": "a dog",
+            "statement": "Pip wants a dog more than anything.",
+            "quote": "Pip is twelve and wants a dog more than anything.",
+            "storyTimeFrom": "",
+            "storyTimeTo": ""
+          }
+        ],
+        "threads": []
+      }
+    }
+  ]
+}

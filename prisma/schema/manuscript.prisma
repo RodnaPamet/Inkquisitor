@@ -152,6 +152,16 @@ model ManuscriptScene {
   researchProposals ResearchProposal[]
   /// Phase 5.2 (D34): the scene's newest prose check (one; replaced whole).
   proseCheck        SceneProseCheck?
+  /// Phase 5.3 (D35): its draft reading's cursor, the draft facts read from it and their mismatches with the bible,
+  /// the threads it is proposed to plant or pay off, its card, and the scene sessions and questions about its card.
+  draftRead         SceneDraftRead?
+  draftFacts        StoryFact[]            @relation("StoryFactScene")
+  draftMismatches   StoryFactProposal[]    @relation("StoryFactProposalScene")
+  threadLinks       StoryThreadSceneLink[]
+  card              SceneCard?
+  interviewSessions InterviewSession[]     @relation("InterviewSessionScene")
+  questions         Question[]             @relation("QuestionScene")
+  enrichmentProposals EnrichmentProposal[] @relation("EnrichmentProposalScene")
 
   @@unique([chapterId, rank])
   @@unique([workspaceId, id])

@@ -13,6 +13,8 @@
  *     hand; a removal goes through the undo toast), the threads proposed (each
  *     citing the entry and its words; a flagged one says so), and "decide later"
  *     answers still open;
+ *   • Phase 5.3 (D35): "Draft vs bible" — what the nightly reading of the manuscript found (`DraftAgainstBible`),
+ *     and on each thread the scenes confirmed to plant and pay it off, an unpaid setup marked;
  *   • entries that may be stale, each with "Grill me on what changed" (an
  *     interview scoped to the entry, the change as its context) and Dismiss.
  *
@@ -43,6 +45,7 @@ import { THREAD_KINDS, THREAD_STATES, type ThreadKind } from '@/lib/continuity/v
 import type { FactProposalDecision } from '@/lib/facts/vocabulary';
 import { CODE_SETUP_DEFAULTS, interviewSetupQuery } from '@/lib/interview/setup';
 import type { FactProposalView, ProposalFactView } from '@/lib/sources/api-client';
+import { DraftAgainstBible } from './DraftAgainstBible';
 
 export interface ContinuityPageProps {
     workspaceSlug: string;
@@ -225,8 +228,25 @@ function ThreadRow({ thread, canEdit, onState, onEdit, onRemove }: { thread: Thr
         <li className="space-y-tight py-default" data-testid="continuity-thread">
             <div className="flex flex-wrap items-baseline justify-between gap-tight">
                 <p className="text-sm text-content-emphasis">{thread.title}</p>
-                <StatusBadge variant={thread.state === 'OPEN' ? 'info' : 'neutral'}>{t(`state.${thread.state}`)}</StatusBadge>
+                <span className="flex flex-wrap items-center gap-tight">
+                    {thread.unpaidSetup ? (
+                        <StatusBadge variant="warning" data-testid="thread-unpaid">
+                            {t('unpaidSetup')}
+                        </StatusBadge>
+                    ) : null}
+                    <StatusBadge variant={thread.state === 'OPEN' ? 'info' : 'neutral'}>{t(`state.${thread.state}`)}</StatusBadge>
+                </span>
             </div>
+            {thread.plantedIn.length > 0 ? (
+                <p className="text-xs text-content-muted" data-testid="thread-planted">
+                    {t('plantedIn', { scenes: thread.plantedIn.map((sc) => sc.sceneTitle ?? t('untitledScene')).join(', ') })}
+                </p>
+            ) : null}
+            {thread.paidIn.length > 0 ? (
+                <p className="text-xs text-content-muted" data-testid="thread-paid">
+                    {t('paidIn', { scenes: thread.paidIn.map((sc) => sc.sceneTitle ?? t('untitledScene')).join(', ') })}
+                </p>
+            ) : null}
             {thread.note ? <p className="text-sm text-content-muted">{thread.note}</p> : null}
             {thread.subjectName ? <p className="text-xs text-content-muted">{t('about', { name: thread.subjectName })}</p> : null}
             {canEdit ? (
@@ -438,6 +458,8 @@ export function ContinuityPage({ workspaceSlug, book, initial, canEdit }: Contin
                     )}
                     {page.contradictions.truncated ? <p className="text-sm text-content-muted">{t('truncated', { shown: page.contradictions.items.length })}</p> : null}
                 </section>
+
+                <DraftAgainstBible workspaceSlug={workspaceSlug} bookId={book.id} canEdit={canEdit} draft={page.draft} run={run} reasonText={reasonText} />
 
                 {page.noLongerStated.items.length > 0 ? (
                     <section className="space-y-default" aria-labelledby="continuity-gone-title">

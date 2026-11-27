@@ -87,6 +87,10 @@ export const ENCRYPTED_FIELDS: EncryptedFieldManifest = Object.freeze({
     // Phase 5.2 (D34): a prose finding's detail (the words it is about, its suggestion) and the book's word baseline.
     ProseFinding: Object.freeze(['detail']),
     ProseBookBaseline: Object.freeze(['baseline']),
+    // Phase 5.3 (D35): the scene sentence a plant / pay-off proposal cites, a scene's card and every version of it.
+    StoryThreadSceneLink: Object.freeze(['quote']),
+    SceneCard: Object.freeze(['goal', 'conflict', 'outcome', 'change']),
+    SceneCardVersion: Object.freeze(['snapshot']),
 });
 
 /** The lookups the extension runs per operation, compiled once per manifest. */

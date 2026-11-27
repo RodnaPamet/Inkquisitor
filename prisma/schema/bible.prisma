@@ -91,6 +91,10 @@ model Book {
   proseCheckSettings   ProseCheckSettings?
   proseDismissals      ProseDismissal[]
   proseBaseline        ProseBookBaseline?
+  /// Phase 5.3 (D35): the nightly draft reading's runs, the thread-to-scene links it proposes, and the history of scene cards.
+  draftReadRuns        DraftReadRun[]
+  threadSceneLinks     StoryThreadSceneLink[]
+  sceneCardVersions    SceneCardVersion[]
 
   @@unique([workspaceId, id])
   /// The books list: a workspace's live books, most recently updated first.
@@ -270,6 +274,10 @@ model BibleEntryVersion {
   /// words the version from it, as it does a restore from `restoredFromVersion`,
   /// so the change summary keeps holding only the author's words.
   movedInOrder             Boolean            @default(false)
+  /// The scene a MANUSCRIPT version came from (Phase 5.3, D35: the author's own save of a field opened prefilled from
+  /// a draft mismatch): non-NULL exactly when `source` is MANUSCRIPT (CHECK). An id only, set at insert, never changed
+  /// (no foreign key: the history outlives the scene).
+  sourceSceneId            String?
   /// Who saved it; NULL once that person is deleted.
   authorId                 String?
   createdAt                DateTime           @default(now())

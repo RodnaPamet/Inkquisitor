@@ -68,7 +68,8 @@ import type { AuthorDataBlock } from '@/lib/ai/prompt';
 import { continuityCallWorstCase } from '@/lib/continuity/cost';
 import { defaultContinuityChecker, NIGHTLY_SHARE_REFUSED, type ContinuityChecker } from '@/lib/continuity/model-seam';
 import { planNight, subjectOrderKey, type PlannedFact } from '@/lib/continuity/night-plan';
-import { CONTINUITY_CALL_COST_BUDGET_MICRO_USD, CONTINUITY_PROMPT_VERSION, CONTINUITY_PURPOSE, continuityBlocks, type CheckedFactLine } from '@/lib/continuity/prompt';
+import { CONTINUITY_CALL_COST_BUDGET_MICRO_USD, CONTINUITY_PROMPT_VERSION, continuityBlocks, type CheckedFactLine } from '@/lib/continuity/prompt';
+import { NIGHT_SHARE_PURPOSES } from '@/lib/continuity/night-share';
 import { continuityGate, type ContinuityGateVerdict } from '@/lib/continuity/record-gate';
 import { detectRuleContradictions, type RuleFact } from '@/lib/continuity/rules';
 import { NO_ORDER, storyClock, type StoryClock } from '@/lib/continuity/story-clock';
@@ -199,7 +200,8 @@ function ordered(a: CheckFactRow, b: CheckFactRow): [CheckFactRow, CheckFactRow]
     return d < 0 || (d === 0 && a.id < b.id) ? [a, b] : [b, a];
 }
 
-async function actorFor(db: PrismaTx, workspaceId: string, requestId: string): Promise<WorkspaceRequestContext | null> {
+/** The member a nightly job acts as: the workspace's longest-standing OWNER, else EDITOR, who may edit the bible (5.3's draft reading uses it too). */
+export async function actorFor(db: PrismaTx, workspaceId: string, requestId: string): Promise<WorkspaceRequestContext | null> {
     const slug = await WorkspaceRepository.findSlug(db, workspaceId);
     if (!slug) return null;
     for (const role of ['OWNER', 'EDITOR'] as const) {
@@ -475,8 +477,9 @@ export async function executeContinuityCheck(payload: { workspaceId: string; run
 
         // The night's share of the month (D28 addendum): every deep call of the workspace in the night's window counts,
         // whatever its book; checked here with this call's worst case, and again by the ledger as the call reserves.
+        // Since 5.3 (D35 item 2) the night's share is ONE budget for the deep check and the nightly draft reading together.
         const share: NightlyShare = {
-            purpose: CONTINUITY_PURPOSE,
+            purpose: NIGHT_SHARE_PURPOSES,
             since: new Date(claim.getTime() - CONTINUITY_NIGHT_WINDOW_MS),
             capMicroUsd: deps.nightlyCapMicroUsd ?? Math.floor(CONTINUITY_NIGHTLY_SHARE * monthlyCeilingMicroUsd(env)),
         };

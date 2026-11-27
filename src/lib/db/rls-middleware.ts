@@ -149,6 +149,11 @@ export type RlsBypassReason =
      * each workspace's rows are then written and queued inside its own context.
      */
     | 'fact-backfill-discovery'
+    /**
+     * The nightly draft-reading dispatcher (Phase 5.3, D35) finding the books with a scene whose text changed since it
+     * was last read, in every workspace: ids only; each book's run is then created and queued inside its own context.
+     */
+    | 'draft-discovery'
     /** Tests exercising the bypass path or seeding rows. */
     | 'test';
 
@@ -162,6 +167,7 @@ const KNOWN_REASONS: ReadonlySet<RlsBypassReason> = new Set<RlsBypassReason>([
     'fact-layer-discovery',
     'continuity-discovery',
     'fact-backfill-discovery',
+    'draft-discovery',
     'test',
 ]);
 

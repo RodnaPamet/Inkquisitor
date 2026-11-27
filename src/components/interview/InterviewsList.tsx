@@ -55,7 +55,9 @@ export function InterviewsList({ workspaceSlug, book, sessions, truncated, kindL
                                     ? tScope('SELECTION', { elements: s.scopeElementIds.length, relations: s.scopeRelationIds.length })
                                     : s.scope === 'BETWEEN'
                                       ? tScope('BETWEEN')
-                                      : tScope('BOOK');
+                                      : s.scope === 'SCENE'
+                                        ? tScope('SCENE')
+                                        : tScope('BOOK');
                         return (
                             <Link href={APP_ROUTES.interview(workspaceSlug, book.id, s.id)} className="font-medium text-content-emphasis hover:underline">
                                 {label}

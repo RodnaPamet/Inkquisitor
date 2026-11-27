@@ -75,6 +75,8 @@ model InterviewSession {
   staleFlagId         String?
   /// Phase 4.3 (D29): the stress test a SELECTION session was started from (its weak points ride along as a data block; NULL otherwise, and once the test goes).
   stressTestId        String?
+  /// Phase 5.3 (SCENE): the scene whose card the session asks about ("Grill me on this scene"); NULL otherwise (CHECK).
+  sceneId             String?
   /// How far down the field dependencies the session goes, 1..5 (CHECK).
   depth               Int
   /// How specific a question is and how long a reply it invites, 1..5 (CHECK).
@@ -124,6 +126,8 @@ model InterviewSession {
   targetElement       BibleElement?        @relation(fields: [bookId, targetElementId], references: [bookId, id], onDelete: Cascade)
   staleFlag           StaleFlag?           @relation(fields: [staleFlagId], references: [id], onDelete: SetNull)
   stressTest          StressTest?          @relation(fields: [stressTestId], references: [id], onDelete: SetNull)
+  /// Phase 5.3: a scene session goes with its scene.
+  scene               ManuscriptScene?     @relation("InterviewSessionScene", fields: [workspaceId, bookId, sceneId], references: [workspaceId, bookId, id], onDelete: Cascade)
   createdBy           User?                @relation(fields: [createdById], references: [id], onDelete: SetNull)
   rounds              InterviewRound[]
   questions           Question[]
@@ -143,6 +147,7 @@ model InterviewSession {
   @@index([staleFlagId])
   /// Phase 4.3: a stress test's sessions (the foreign key's SET NULL).
   @@index([stressTestId])
+  @@index([workspaceId, bookId, sceneId])
 }
 
 /// One round of a session: the frontier it was planned from and the
@@ -241,6 +246,9 @@ model Question {
   /// Phase 4.4 (D30): a RELATIONS question about two elements with no relation yet: the other element (the
   /// first is `elementId`). Its answer may lead to a NEW_RELATION proposal through 2.5/3.3's reconcile.
   pairElementId        String?
+  /// Phase 5.3: a question about a scene's CARD, filed under the scene's carrier element (as a relation's under its
+  /// declaring end); its subject is the scene (`subjectIdOf`).
+  sceneId              String?
   /// Phase 4.4 (D30): a SOURCES question's fact: answering yes confirms it, no rejects it, when the round closes.
   storyFactId          String?
   /// Phase 4.4: what a CONTINUITY question rests on, by id (`proposal:<id>`, `thread:<id>`, `gap:<elementId>`).
@@ -260,6 +268,7 @@ model Question {
   /// 4.H-a (#66 item 4): a composite key, like every cross-row key; the migration's action is
   /// `ON DELETE SET NULL ("storyFactId")` (only the id column), which Prisma cannot spell, so NoAction here.
   storyFact  StoryFact?       @relation("QuestionStoryFact", fields: [workspaceId, storyFactId], references: [workspaceId, id], onDelete: NoAction)
+  scene      ManuscriptScene? @relation("QuestionScene", fields: [workspaceId, bookId, sceneId], references: [workspaceId, bookId, id], onDelete: Cascade)
 
   @@unique([roundId, position])
   @@unique([workspaceId, sessionId, id])
@@ -275,6 +284,7 @@ model Question {
   @@index([bookId, pairElementId])
   /// Phase 4.4: the questions that asked about a fact (the foreign key's SET NULL; composite since 4.H-a).
   @@index([workspaceId, storyFactId])
+  @@index([workspaceId, bookId, sceneId])
 }
 
 /// What the author did with a question. Append-only (trigger): a re-answer

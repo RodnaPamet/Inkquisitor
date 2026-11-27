@@ -11,7 +11,12 @@
  *                OCCUPATION, a PLACE_TYPE — whose value plainly differs (objects
  *                that differ and neither holds the other) at an OVERLAPPING story
  *                time (`story-clock.ts`). A ROLE or a WANT can hold several values,
- *                so code never calls two of them contradictory.
+ *                so code never calls two of them contradictory. Since 5.3 (the
+ *                roadmap's "eye colour") also two APPEARANCE facts that give ONE
+ *                colour each to the same feature (eyes, hair, beard, skin), from a
+ *                closed list of colours, and the colours differ: an appearance
+ *                holds many things, so only a colour of one feature is compared
+ *                (`appearanceColours`), never "tall" against "scarred".
  *   WHEREABOUTS  two LOCATIONs of one subject that plainly differ at a story
  *                time BOTH facts place (D28 addendum): someone in two places at
  *                once. With the story order, "at the mill" in beat 3 and "in the
@@ -77,8 +82,53 @@ export interface RuleFact extends ClockFact {
     readonly statement: string;
 }
 
-/** The predicates a VALUE rule may call contradictory (4.1's list, LOCATION moved to WHEREABOUTS). */
-export const VALUE_PREDICATES: ReadonlySet<string> = new Set(['AGE', 'OCCUPATION', 'PLACE_TYPE']);
+/** The predicates a VALUE rule may call contradictory (4.1's list, LOCATION moved to WHEREABOUTS; APPEARANCE since 5.3, by colour only). */
+export const VALUE_PREDICATES: ReadonlySet<string> = new Set(['AGE', 'OCCUPATION', 'PLACE_TYPE', 'APPEARANCE']);
+
+/** The features an appearance's colour is compared for (5.3), each by its own words. */
+const COLOUR_FEATURES: Readonly<Record<string, string>> = { eye: 'eyes', eyes: 'eyes', hair: 'hair', beard: 'beard', skin: 'skin' };
+/** The colours compared (closed; "dark", "pale" and "light" are shades, never compared), each by its key. */
+const COLOURS: Readonly<Record<string, string>> = {
+    black: 'black', blue: 'blue', brown: 'brown', green: 'green', grey: 'grey', gray: 'grey', hazel: 'hazel', amber: 'amber',
+    red: 'red', white: 'white', blond: 'blond', blonde: 'blond', auburn: 'auburn', golden: 'golden', silver: 'silver', violet: 'violet',
+};
+const LINKING = new Set(['is', 'are', 'was', 'were']);
+
+/**
+ * The colour an appearance gives each feature (5.3): a colour word at most two words before the feature ("grey
+ * eyes", "bright green eyes") or right after the feature and a linking verb ("her eyes were green"). A feature given
+ * two colours ("grey-green eyes", "black and grey hair") gives none: it is not one value. Bounded word lists only.
+ */
+export function appearanceColours(text: string): Map<string, string> {
+    const ws = text.toLowerCase().match(/\p{L}+/gu) ?? [];
+    const found = new Map<string, Set<string>>();
+    ws.forEach((w, i) => {
+        const feature = COLOUR_FEATURES[w];
+        if (!feature) return;
+        const near = new Set<string>();
+        for (const j of [i - 1, i - 2]) if (j >= 0 && COLOURS[ws[j]]) near.add(COLOURS[ws[j]]);
+        if (LINKING.has(ws[i + 1] ?? '') && COLOURS[ws[i + 2] ?? '']) near.add(COLOURS[ws[i + 2]]);
+        if (near.size === 0) return;
+        const set = found.get(feature) ?? new Set<string>();
+        for (const c of near) set.add(c);
+        found.set(feature, set);
+    });
+    const out = new Map<string, string>();
+    for (const [feature, colours] of found) if (colours.size === 1) out.set(feature, [...colours][0]);
+    return out;
+}
+
+/** Two appearances that give one feature two different colours (neither negated). */
+function appearanceClash(a: RuleFact, b: RuleFact): boolean {
+    if (negated(a.statement) || negated(b.statement)) return false;
+    const ca = appearanceColours(`${a.statement} ${a.objectLiteral ?? ''}`);
+    const cb = appearanceColours(`${b.statement} ${b.objectLiteral ?? ''}`);
+    for (const [feature, colour] of ca) {
+        const other = cb.get(feature);
+        if (other !== undefined && other !== colour) return true;
+    }
+    return false;
+}
 
 function firstNumber(text: string): string | null {
     return /\d+(?:\.\d+)?/.exec(text)?.[0] ?? null;
@@ -205,6 +255,7 @@ export function propositionKey(statement: string): string {
 export function ruleContradiction(a: RuleFact, b: RuleFact, clock: StoryClock = NO_ORDER): ContradictionKind | null {
     if (a.id === b.id || a.predicate !== b.predicate) return null;
     if (a.subjectElementId === null || a.subjectElementId !== b.subjectElementId) return null;
+    if (a.predicate === 'APPEARANCE') return overlaps(a, b, clock) && appearanceClash(a, b) ? 'VALUE' : null;
     if (VALUE_PREDICATES.has(a.predicate)) return overlaps(a, b, clock) && valuesDiffer(a, b) ? 'VALUE' : null;
     // D28 addendum: two whereabouts clash only when BOTH times decide that they overlap (never "unknown overlaps").
     if (a.predicate === 'LOCATION') return decidedOverlap(a, b, clock) === true && valuesDiffer(a, b) ? 'WHEREABOUTS' : null;

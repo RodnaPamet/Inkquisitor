@@ -17,6 +17,9 @@
  *                 the marks at the place kept), so it reaches the server through
  *                 the editor's own autosave like any keystroke; rejecting is the
  *                 page's dismissal. The product never applies an edit unasked.
+ *   a draft note  Phase 5.3 (D35): a sentence the nightly reading found at odds with the bible, its own kind
+ *                 (`prose-note--draft`, its id `draft:<mismatchId>`), held in the same plugin so it maps through edits
+ *                 the same way; it has no suggestion (the author fixes the draft, or decides elsewhere)
  *   typing        every note maps through the edit; a note whose own text the
  *                 edit changed is dropped (its next check re-raises it if it
  *                 still applies), and so is a suggestion whose range changed.
@@ -26,6 +29,7 @@ import { Plugin, PluginKey, type EditorState, type Transaction } from '@tiptap/p
 import { Decoration, DecorationSet, type EditorView } from '@tiptap/pm/view';
 import type { Node as PmNode } from '@tiptap/pm/model';
 import { leafText } from '@/lib/prose-checks/editor-map';
+export { DRAFT_NOTE_PREFIX } from '@/lib/draft-facts/vocabulary';
 
 export interface ProseNoteRange {
     id: string;
@@ -35,7 +39,10 @@ export interface ProseNoteRange {
     /** The document's text over [from, to) when it was placed (a note whose text changes is dropped). */
     text: string;
     suggestion: { from: number; to: number; replacement: string; text: string } | null;
+    /** Phase 5.3: a draft-vs-bible note (its id `draft:<mismatchId>`); absent for a prose note. */
+    kind?: 'DRAFT';
 }
+
 
 interface NotesState {
     notes: ProseNoteRange[];
@@ -65,7 +72,7 @@ function decorationsFor(doc: PmNode, notes: readonly ProseNoteRange[], active: s
         const isActive = n.id === active;
         decos.push(
             Decoration.inline(n.from, n.to, {
-                class: `prose-note prose-note--${n.severity === 'WARNING' ? 'warning' : 'note'}${isActive ? ' prose-note--active' : ''}`,
+                class: `prose-note prose-note--${n.kind === 'DRAFT' ? 'draft' : n.severity === 'WARNING' ? 'warning' : 'note'}${isActive ? ' prose-note--active' : ''}`,
                 'data-note-id': n.id,
             }),
         );
@@ -189,9 +196,18 @@ export const ProseNotes = Extension.create({
     },
 });
 
-/** Replace the editor's notes (a fresh check placed). */
+/** Replace the editor's PROSE notes (a fresh check placed); its draft notes stay as they are. */
 export function setProseNotes(editor: Editor, notes: ProseNoteRange[], active: string | null): void {
-    editor.view.dispatch(editor.state.tr.setMeta(proseNotesKey, { notes, active }).setMeta('addToHistory', false));
+    const kept = (proseNotesKey.getState(editor.state)?.notes ?? []).filter((n) => n.kind === 'DRAFT');
+    editor.view.dispatch(editor.state.tr.setMeta(proseNotesKey, { notes: [...notes, ...kept].sort((a, b) => a.from - b.from), active }).setMeta('addToHistory', false));
+}
+
+/** Phase 5.3: replace the editor's DRAFT notes (a fresh read placed); its prose notes stay as they are. */
+export function setDraftNotes(editor: Editor, notes: ProseNoteRange[]): void {
+    const st = proseNotesKey.getState(editor.state);
+    const kept = (st?.notes ?? []).filter((n) => n.kind !== 'DRAFT');
+    const all = [...kept, ...notes.map((n) => ({ ...n, kind: 'DRAFT' as const, suggestion: null }))].sort((a, b) => a.from - b.from);
+    editor.view.dispatch(editor.state.tr.setMeta(proseNotesKey, { notes: all, active: st?.active ?? null }).setMeta('addToHistory', false));
 }
 
 /** Open one note (its suggestion drawn), or none. */

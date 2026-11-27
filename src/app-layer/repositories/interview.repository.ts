@@ -46,6 +46,8 @@ export const SESSION_SELECT = {
     slotAct: true,
     staleFlagId: true,
     stressTestId: true,
+    /** Phase 5.3 (SCENE): the scene whose card the session asks about. */
+    sceneId: true,
     depth: true,
     detail: true,
     personaKeys: true,
@@ -115,6 +117,8 @@ export const QUESTION_SELECT = {
     storyFactId: true,
     continuityRef: true,
     valueScore: true,
+    /** Phase 5.3: a question about a scene's card names the scene (it is filed under the scene's carrier element). */
+    sceneId: true,
     createdAt: true,
 } as const satisfies Prisma.QuestionSelect;
 
@@ -184,6 +188,8 @@ export const InterviewSessionRepository = {
             staleFlagId?: string | null;
             /** Phase 4.3: the stress test it was started from. */
             stressTestId?: string | null;
+            /** Phase 5.3 (SCENE): the scene whose card it asks about. */
+            sceneId?: string | null;
             depth: number;
             detail: number;
             personaKeys: string[];
@@ -300,6 +306,8 @@ export interface QuestionWrite {
     generator?: QuestionGenerator;
     angle?: string | null;
     pairElementId?: string | null;
+    /** Phase 5.3: a question about a scene's card names the scene. */
+    sceneId?: string | null;
     storyFactId?: string | null;
     continuityRef?: string | null;
     valueScore?: number | null;
@@ -347,7 +355,18 @@ export const QuestionRepository = {
     listForElementsElsewhere(db: Db, workspaceId: string, bookId: string, elementIds: readonly string[], exceptSessionId: string, take: number) {
         if (elementIds.length === 0) return Promise.resolve([]);
         return db.question.findMany({
-            where: { workspaceId, bookId, elementId: { in: [...elementIds] }, relationId: null, aboutPending: false, pairElementId: null, sessionId: { not: exceptSessionId } },
+            where: { workspaceId, bookId, elementId: { in: [...elementIds] }, relationId: null, aboutPending: false, pairElementId: null, sceneId: null, sessionId: { not: exceptSessionId } },
+            orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+            take,
+            select: QUESTION_SELECT,
+        });
+    },
+
+    /** Phase 5.3: questions of OTHER sessions of the book about these scenes' cards, newest first (`take` of them): book-wide deduplication. */
+    listForScenesElsewhere(db: Db, workspaceId: string, bookId: string, sceneIds: readonly string[], exceptSessionId: string, take: number) {
+        if (sceneIds.length === 0) return Promise.resolve([]);
+        return db.question.findMany({
+            where: { workspaceId, bookId, sceneId: { in: [...sceneIds] }, sessionId: { not: exceptSessionId } },
             orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
             take,
             select: QUESTION_SELECT,
@@ -374,7 +393,7 @@ export const QuestionRepository = {
         db: Db,
         workspaceId: string,
         bookId: string,
-        probes: ReadonlyArray<{ elementId: string; dedupeKey: string; relation?: boolean; pairElementId?: string; pendingIn?: { sessionId: string } }>,
+        probes: ReadonlyArray<{ elementId: string; dedupeKey: string; relation?: boolean; pairElementId?: string; pendingIn?: { sessionId: string }; sceneId?: string }>,
     ) {
         if (probes.length === 0) return [];
         // Phase 3.3: a relation's probe names the relation (its subject id); an element's matches only questions about the element itself.
@@ -383,25 +402,28 @@ export const QuestionRepository = {
         // (`elementId`) and the session: it matches that session's earlier questions about the beat, answered under
         // `PENDING_SUBJECT_ID`. Another session's beat after the same anchor is another beat.
         const rows = await db.question.groupBy({
-            by: ['elementId', 'relationId', 'pairElementId', 'aboutPending', 'dedupeKey'],
+            by: ['elementId', 'relationId', 'pairElementId', 'aboutPending', 'sceneId', 'dedupeKey'],
             where: {
                 workspaceId,
                 bookId,
                 OR: probes.map((p) =>
-                    p.pendingIn
+                    // Phase 5.3: a scene's probe names the scene; its questions are answered under the scene's subject id.
+                    p.sceneId
+                      ? { sceneId: p.sceneId, dedupeKey: p.dedupeKey }
+                      : p.pendingIn
                         ? { aboutPending: true, sessionId: p.pendingIn.sessionId, elementId: p.elementId, dedupeKey: p.dedupeKey }
                         : p.relation
                           ? { aboutPending: false, relationId: p.elementId, dedupeKey: p.dedupeKey }
                           : p.pairElementId
                             ? { aboutPending: false, elementId: p.elementId, pairElementId: p.pairElementId, dedupeKey: p.dedupeKey }
-                            : { aboutPending: false, elementId: p.elementId, relationId: null, pairElementId: null, dedupeKey: p.dedupeKey },
+                            : { aboutPending: false, elementId: p.elementId, relationId: null, pairElementId: null, sceneId: null, dedupeKey: p.dedupeKey },
                 ),
             },
             orderBy: [{ elementId: 'asc' }, { dedupeKey: 'asc' }],
             take: probes.length * 2,
         });
         return rows.map((r) => ({
-            elementId: r.aboutPending ? PENDING_SUBJECT_ID : (r.relationId ?? (r.pairElementId ? `pair:${r.elementId}:${r.pairElementId}` : r.elementId)),
+            elementId: r.sceneId ? `scene:${r.sceneId}` : r.aboutPending ? PENDING_SUBJECT_ID : (r.relationId ?? (r.pairElementId ? `pair:${r.elementId}:${r.pairElementId}` : r.elementId)),
             dedupeKey: r.dedupeKey,
         }));
     },

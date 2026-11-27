@@ -55,6 +55,7 @@ import { computeFrontier, type AnswerFact } from './frontier';
 import type { GenerationResult, QuestionGenerator } from './generator';
 import type { PackFile, PackPriorAnswer, PackRegistry, RelationsPack, Situation } from './packs';
 import { relationSubjectName, type RelationSubject } from './subjects';
+import { SCENE_CARD_FIELDS } from '@/lib/manuscript/scene-card';
 import { planRound } from './plan';
 import { QUESTION_PROMPT, QUESTION_PROMPT_VERSION, roundGuidanceFingerprint, type PromptAnswer } from './prompt';
 import { DROP_REASONS, GeneratedQuestionsSchema } from './candidates';
@@ -146,10 +147,13 @@ export interface PackEvalCase {
     tone: readonly string[] | null;
     /** Phase 3.3: a relations pack case questions a relation of this type between two named elements. */
     relation?: { fromKind: BibleKind; type: string; fromName: string; toName: string };
+    /** Phase 5.3: a scene pack case questions a scene's card (its title, and its text as the session sends it). */
+    scene?: { title: string; text: string };
 }
 
 /** The core fields a case is graded on: its relation type's (a relations case), else its kind's. */
-function coreFields(c: Pick<PackEvalCase, 'kind' | 'relation'>): readonly FieldDef[] {
+function coreFields(c: Pick<PackEvalCase, 'kind' | 'relation' | 'scene'>): readonly FieldDef[] {
+    if (c.scene) return SCENE_CARD_FIELDS.filter((f) => f.required);
     if (c.relation) return relationFieldDefs(c.relation.fromKind, c.relation.type).filter((f) => f.required);
     return getTemplate(c.kind).fields.filter((f) => f.required);
 }
@@ -175,9 +179,26 @@ export function situationFrontier(id: string, s: Pick<Situation, 'kind' | 'bible
 }
 
 /** Every case of the named pack's set, normalised. */
-export function evalCasesOf(registry: Pick<PackRegistry, 'files' | 'craftEvals' | 'personaEvals' | 'situations' | 'relationEvals'> & Partial<Pick<PackRegistry, 'personaSituations'>>, name: string): PackEvalCase[] {
+export function evalCasesOf(registry: Pick<PackRegistry, 'files' | 'craftEvals' | 'personaEvals' | 'situations' | 'relationEvals'> & Partial<Pick<PackRegistry, 'personaSituations' | 'sceneEvals'>>, name: string): PackEvalCase[] {
     const file = registry.files[name];
     if (!file) throw new Error(`no pack named ${name}`);
+    if (file.group === 'scene') {
+        // Phase 5.3: a scene's card, filed under a carrier element (any kind: the card's fields are the scene's own).
+        return (registry.sceneEvals ?? []).map((c) => ({
+            id: c.id,
+            kind: 'PLOT_BEAT' as BibleKind,
+            elementName: c.sceneTitle,
+            customLabel: null,
+            bibleState: c.bibleState,
+            priorAnswers: c.priorAnswers,
+            dials: c.dials,
+            persona: null,
+            expectTargets: c.expect.targetsAnyOf,
+            mustNot: c.expect.mustNot,
+            tone: null,
+            scene: { title: c.sceneTitle, text: c.sceneText },
+        }));
+    }
     if (file.group === 'relations') {
         return registry.relationEvals.map((c) => ({
             id: c.id,
@@ -243,7 +264,7 @@ function valueText(v: string | string[] | number): string {
  */
 export async function runEvalCase(
     c: PackEvalCase,
-    packs: Pick<PackRegistry, 'craft' | 'personas'> & { relations?: RelationsPack },
+    packs: Pick<PackRegistry, 'craft' | 'personas'> & { relations?: RelationsPack; scene?: RelationsPack },
     generator: QuestionGenerator,
 ): Promise<{ round: RoundOutput; outputs: unknown[] }> {
     const elementId = elementIdOf(c.id);
@@ -271,6 +292,7 @@ export async function runEvalCase(
         fields,
         storedText,
         ...(relation ? { relation } : {}),
+        ...(c.scene ? { scene: { sceneId: elementId, title: c.scene.title, chapterTitle: null, carrierElementId: `${elementId}-carrier` } } : {}),
     };
     const facts = answerFacts(c.id, c.priorAnswers);
     const sessionAnswers: PromptAnswer[] = c.priorAnswers.map((a) => ({
@@ -334,6 +356,7 @@ export async function runEvalCase(
             sessionAnswers,
             asked,
             packs,
+            ...(c.scene ? { sourceContext: { facts: [], passages: [], sceneText: c.scene.text } } : {}),
         },
         { generator: capturing },
     );

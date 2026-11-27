@@ -16,6 +16,7 @@
  *               not asking them to write it again) — and 35 when the bible already fills the field (deciding it
  *               still settles canon)
  *   CONTINUITY  a contradiction 85 (two things the book says cannot both hold), a timeline gap 65, an open
+ *               unpaid setup (5.3: a promise or clue a scene was confirmed to plant, no pay-off after it) 70
  *               thread (an unpaid promise, an unfound clue, an open question) 55
  *   LADDER      layer by layer, each adding less: 60, 51, 42, 33, 24, 15 for WHAT … EDGE_CASES; +8 on a core field;
  *               −10 for each live fact already held about that very field (at most −30): the facts already say more
@@ -35,7 +36,7 @@ export const ORDER_TIE_BAND = 5;
 
 export const FRONTIER_VALUE = Object.freeze({ core: 70, optional: 45, perDependant: 4, dependantsMax: 16, perLevel: 5 });
 export const SOURCE_VALUE = Object.freeze({ emptyField: 90, filledField: 35 });
-export const CONTINUITY_VALUE = Object.freeze({ CONTRADICTION: 85, TIMELINE_GAP: 65, THREAD: 55 });
+export const CONTINUITY_VALUE = Object.freeze({ CONTRADICTION: 85, UNPAID_SETUP: 70, TIMELINE_GAP: 65, THREAD: 55 });
 export const LADDER_VALUE = Object.freeze({ first: 60, step: 9, core: 8, perFact: 10, factsMax: 30 });
 export const PAIR_VALUE: Readonly<Record<PairAngle, number>> = Object.freeze({ WANTS: 50, COLLIDE: 50, HIDDEN: 40 });
 

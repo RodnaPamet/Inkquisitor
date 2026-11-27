@@ -213,6 +213,10 @@ model StoryFact {
   carriedFromFactId String?
   /// Phase 4.2 (D28), AUTHOR_RESOLUTION: the contradiction the author resolved as "both true", this fact being their explanation.
   resolvesProposalId String?
+  /// Phase 5.3 (D35), SCENE_TEXT: the scene the draft fact was read from (its quote offsets are into the scene's plain
+  /// text), and the keyed hash of the text read (a newer text replaces the fact; a stale offset is never placed).
+  sceneId          String?
+  sceneTextKey     String?
   createdAt        DateTime            @default(now())
 
   source          Source?               @relation(fields: [workspaceId, sourceId], references: [workspaceId, id], onDelete: Cascade)
@@ -232,6 +236,8 @@ model StoryFact {
   invalidatedBy   StoryFact?            @relation("StoryFactInvalidatedBy", fields: [invalidatedByFactId], references: [id], onDelete: SetNull)
   invalidated     StoryFact[]           @relation("StoryFactInvalidatedBy")
   resolvesProposal StoryFactProposal?   @relation("StoryFactResolution", fields: [workspaceId, resolvesProposalId], references: [workspaceId, id], onDelete: Cascade)
+  /// Phase 5.3: a draft fact goes with its scene.
+  scene           ManuscriptScene?      @relation("StoryFactScene", fields: [workspaceId, bookId, sceneId], references: [workspaceId, bookId, id], onDelete: Cascade)
   overrides       StoryFactOverride[]
   provenance      StoryFactProvenance[]
   proposals       StoryFactProposal[]   @relation("StoryFactProposalOlder")
@@ -259,6 +265,8 @@ model StoryFact {
   @@index([invalidatedByFactId])
   /// Phase 4.2: a contradiction's explanation.
   @@index([workspaceId, resolvesProposalId])
+  /// Phase 5.3: a scene's draft facts, live first (the nightly read, the margin), and the foreign key's index.
+  @@index([workspaceId, bookId, sceneId, supersededAt])
 }
 
 /// A later accepted version restating a live bible fact (Phase 4.1, D27):
@@ -313,6 +321,13 @@ model StoryFactProposal {
   extractionId String?
   /// Phase 4.2: the nightly continuity run that raised it (basis RULE or DEEP).
   checkRunId   String?
+  /// Phase 5.3 (D35), basis DRAFT: the scene whose draft contradicts the bible (the newer fact is its draft fact),
+  /// the draft claim's keyed hash (one open proposal a bible fact, scene and claim), the run that raised it, and
+  /// when a re-read found the draft no longer states it (FIXED).
+  sceneId      String?
+  draftClaimKey String?
+  draftRunId   String?
+  settledAt    DateTime?
   decidedById  String?
   decidedAt    DateTime?
   createdAt    DateTime  @default(now())
@@ -323,6 +338,8 @@ model StoryFactProposal {
   decidedBy User?      @relation("StoryFactProposalDecidedBy", fields: [decidedById], references: [id], onDelete: SetNull)
   /// Phase 4.2: the explanation the author gave when both are true (it becomes a fact).
   explanations StoryFact[] @relation("StoryFactResolution")
+  /// Phase 5.3: a draft mismatch goes with its scene.
+  scene        ManuscriptScene? @relation("StoryFactProposalScene", fields: [workspaceId, bookId, sceneId], references: [workspaceId, bookId, id], onDelete: Cascade)
 
   @@unique([workspaceId, id])
   /// A book's proposals by status, newest first (the Facts page).
@@ -332,6 +349,9 @@ model StoryFactProposal {
   @@index([workspaceId, factId])
   @@index([workspaceId, newerFactId])
   @@index([decidedById])
+  /// Phase 5.3: a book's draft mismatches by status, newest first (the Continuity page), and a scene's (the margin).
+  @@index([workspaceId, bookId, basis, status, createdAt])
+  @@index([workspaceId, bookId, sceneId, status])
 }
 
 /// THE FACT EXTRACTION OUTBOX (Phase 4.1, D27): one row per accepted bible

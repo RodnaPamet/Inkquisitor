@@ -40,7 +40,7 @@ import { pairSubjectId, type PendingSubject, type RelationSubject } from '../sub
 import { LADDER_LAYERS, PAIR_ANGLES, type LadderLayer, type PairAngle, type QuestionGeneratorKey, type SourceAngle } from '../vocabulary';
 import { ladderDepthFor } from './ladder-depth';
 import { CONTINUITY_VALUE, PAIR_VALUE, clampValue, frontierValue, ladderValue, sourceValue } from './value';
-import { PAIR_ANGLE_FIELD, contradictionQuestion, ladderQuestion, pairQuestion, sourceQuestion, threadQuestion, timelineGapQuestion, type WordedQuestion } from './wording';
+import { PAIR_ANGLE_FIELD, contradictionQuestion, ladderQuestion, pairQuestion, sourceQuestion, threadQuestion, timelineGapQuestion, unpaidSetupQuestion, type WordedQuestion } from './wording';
 
 /** A subject of the session's scope, as the generators read it (the round's `RoundElement`, structurally). */
 export interface GeneratorSubject {
@@ -120,7 +120,16 @@ export interface PendingFactInput {
 
 export type ContinuityInput =
     | { type: 'CONTRADICTION'; proposalId: string; subjectElementId: string; fieldKey: string; olderQuote: string; newerQuote: string }
-    | { type: 'THREAD'; threadId: string; threadKind: 'PROMISE' | 'CLUE' | 'OPEN_QUESTION'; subjectElementId: string; fieldKey: string; title: string }
+    | {
+          type: 'THREAD';
+          threadId: string;
+          threadKind: 'PROMISE' | 'CLUE' | 'OPEN_QUESTION';
+          subjectElementId: string;
+          fieldKey: string;
+          title: string;
+          /** Phase 5.3 (D35): a scene was confirmed to plant it and no confirmed pay-off follows (the first planting scene's title). */
+          unpaidSetup?: { sceneTitle: string | null };
+      }
     | { type: 'TIMELINE_GAP'; elementId: string; fieldKey: string; before: { name: string; time: string }; after: { name: string; time: string } };
 
 export interface GeneratorInput {
@@ -275,7 +284,11 @@ function continuityCandidates(input: GeneratorInput): TargetCandidate[] {
         if (c.type === 'CONTRADICTION') {
             out.push({ ...base, value: CONTINUITY_VALUE.CONTRADICTION, worded: contradictionQuestion(subject.name, c.olderQuote, c.newerQuote), continuityRef: `proposal:${c.proposalId}` });
         } else if (c.type === 'THREAD') {
-            out.push({ ...base, value: CONTINUITY_VALUE.THREAD, worded: threadQuestion(c.threadKind, c.title), continuityRef: `thread:${c.threadId}` });
+            out.push(
+                c.unpaidSetup && c.threadKind !== 'OPEN_QUESTION'
+                    ? { ...base, value: CONTINUITY_VALUE.UNPAID_SETUP, worded: unpaidSetupQuestion(c.threadKind, c.title, c.unpaidSetup.sceneTitle), continuityRef: `thread:${c.threadId}` }
+                    : { ...base, value: CONTINUITY_VALUE.THREAD, worded: threadQuestion(c.threadKind, c.title), continuityRef: `thread:${c.threadId}` },
+            );
         } else {
             out.push({ ...base, value: CONTINUITY_VALUE.TIMELINE_GAP, worded: timelineGapQuestion(subject.name, c.before, c.after), continuityRef: `gap:${c.elementId}` });
         }

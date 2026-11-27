@@ -297,7 +297,8 @@
             "MANUAL": "Manual edit",
             "INTERVIEW": "Interview",
             "IMPORT": "Import",
-            "RESEARCH": "Research"
+            "RESEARCH": "Research",
+            "MANUSCRIPT": "From the manuscript"
         },
         "books": {
             "title": "Books",
@@ -786,7 +787,9 @@
             "SELECTION": "From a map: {elements, plural, one {# element} other {# elements}} and {relations, plural, one {# relation} other {# relations}}",
             "BETWEEN": "A new beat between two beats",
             "pending": "The new beat between {a} and {b}",
-            "unknownElement": "A deleted entry"
+            "unknownElement": "A deleted entry",
+            "SCENE": "A scene's card",
+            "unknownScene": "A deleted scene"
         },
         "status": {
             "ACTIVE": "Active",
@@ -869,7 +872,8 @@
             "roundOpenEnded": "Round {number}, until you stop",
             "valueFellPrompt": "The questions left are minor. Go on with them?",
             "goOn": "Go on",
-            "finishHere": "Finish here"
+            "finishHere": "Finish here",
+            "titleScene": "Grill me on this scene: {name}"
         },
         "card": {
             "question": "Question {number}",
@@ -974,7 +978,8 @@
             "PACK_CHANGED": "A question pack this interview was started with has changed since, so it cannot be asked differently. Your answers are kept.",
             "STREAM_CAPACITY": "Too many interviews are generating at once in this workspace. Wait for one to finish, then try again.",
             "MODEL_RATE_LIMITED": "Too many AI requests in this workspace just now. Wait a minute, then try again.",
-            "QUESTION_NOT_REPHRASABLE": "This question was put together from your own material, so it cannot be asked differently. Answer it, skip it, or decide later."
+            "QUESTION_NOT_REPHRASABLE": "This question was put together from your own material, so it cannot be asked differently. Answer it, skip it, or decide later.",
+            "SCENE_HAS_NO_ELEMENT": "Give this scene a point of view, a setting, a beat or a linked entry first: its questions are filed under one."
         }
     },
     "enrichment": {
@@ -1107,7 +1112,11 @@
             "generic": "That did not work. Try again."
         },
         "askedBy": "Asked by {name}",
-        "askedByNone": "From the craft guidance"
+        "askedByNone": "From the craft guidance",
+        "sceneCardTitle": "Scene cards",
+        "sceneCardHelp": "Changes to a scene's card — its goal, conflict, outcome and what changed. The scene's own words are never changed.",
+        "sceneCardAria": "Card of {scene}",
+        "untitledScene": "Untitled scene"
     },
     "research": {
         "meta": {
@@ -1886,7 +1895,11 @@
                 "DROPPED": "Mark dropped",
                 "REVEALED": "Mark revealed",
                 "RESOLVED": "Mark resolved"
-            }
+            },
+            "unpaidSetup": "Planted, not paid off",
+            "plantedIn": "Planted in: {scenes}",
+            "paidIn": "Paid off in: {scenes}",
+            "untitledScene": "Untitled scene"
         },
         "threadProposals": {
             "title": "Proposed threads",
@@ -1929,7 +1942,91 @@
             "THREADS_FULL": "This book holds as many threads as it can.",
             "THREAD_NOT_OPEN": "That thread is no longer open.",
             "FLAG_NOT_OPEN": "That flag is no longer open.",
-            "STALE_FLAG_GONE": "This entry is no longer flagged."
+            "STALE_FLAG_GONE": "This entry is no longer flagged.",
+            "BIBLE_FACT_GONE": "The bible entry this was about has changed since. Read the page again.",
+            "NO_FIELD_TO_UPDATE": "This bible fact rests on no single field to update. Edit the entry itself.",
+            "NOTHING_CHANGED": "That would change nothing. Edit the value, or close the sheet.",
+            "LINK_DECIDED": "This link has already been decided.",
+            "FIELD_VALUES_REFUSED": "That value cannot be saved in this field."
+        },
+        "draft": {
+            "title": "Draft vs bible",
+            "count": "{count, plural, =0 {No open mismatches} one {# open mismatch} other {# open mismatches}}",
+            "untitledScene": "Untitled scene",
+            "reading": {
+                "noText": "The manuscript has no text yet: there is nothing to read.",
+                "notRead": "Not read yet: {total, plural, one {# scene} other {# scenes}} with text will be read overnight.",
+                "read": "{read} of {total} scenes read at their current text.",
+                "waiting": "{count, plural, one {# scene waits} other {# scenes wait}} for tonight's reading.",
+                "passedOver": "{count, plural, one {# scene is} other {# scenes are}} passed over until their text changes.",
+                "lastRun": "Last read {when}: {outcome}"
+            },
+            "outcome": {
+                "OK": "every scene due was read.",
+                "PAGED": "more scenes are read tomorrow night.",
+                "NOTHING_TO_READ": "nothing had changed.",
+                "BOOK_DELETED": "the book was deleted.",
+                "NO_ACTOR": "nobody may edit this bible, so nothing was read.",
+                "CEILING": "paused at this month's spending limit.",
+                "NIGHTLY_CAP": "paused at tonight's share of the spending limit.",
+                "KILL_SWITCH": "the model is switched off.",
+                "AI_UNAVAILABLE": "the model is not available.",
+                "NOT_EVALUATED": "waiting for an evaluation record before it reads.",
+                "MODEL_RATE_LIMITED": "paused by the per-minute limit.",
+                "CALL_FAILED": "a call failed; it tries again tomorrow night.",
+                "ABORTED": "stopped before it finished.",
+                "CLAIM_EXPIRED": "stopped before it finished; it tries again tomorrow night.",
+                "INTERNAL": "something went wrong; it tries again tomorrow night."
+            },
+            "notReadTitle": "Not read yet",
+            "notReadHelp": "The manuscript is read overnight. Mismatches with the bible appear here once a scene has been read; until then nothing is assessed.",
+            "none": "No mismatches in the scenes read.",
+            "noneSoFar": "No mismatches so far; some scenes are still to be read.",
+            "truncated": "Showing the first {shown}.",
+            "status": {
+                "PENDING": "To decide",
+                "FIX_PENDING": "You'll fix the draft",
+                "FIXED": "Fixed",
+                "BIBLE_UPDATED": "Bible updated",
+                "KEPT": "Both true",
+                "INVALIDATED": "Set aside"
+            },
+            "draftSays": "The draft says",
+            "bibleSays": "The bible says",
+            "bibleOrigin": "{element}, version {version}",
+            "bibleOriginUnknown": "A bible entry",
+            "rewordedSince": "since reworded",
+            "fixDraft": "Fix the draft",
+            "fixPendingHelp": "It settles by itself once the scene no longer says this.",
+            "updateBible": "Update the bible",
+            "bothTrue": "Both are true",
+            "decided": "Decision saved.",
+            "explainTitle": "How are both true?",
+            "explainHelp": "Say how the draft and the bible can both hold. Your explanation is kept as a fact of the book.",
+            "explanation": "Explanation",
+            "explanationRequired": "Say how both can be true.",
+            "saveExplanation": "Save",
+            "cancel": "Cancel",
+            "updateTitle": "Update {element}",
+            "updateHelp": "Nothing is saved until you save. The new version names this scene.",
+            "prefill": {
+                "REPLACED": "The draft's value is written in where the bible had its own. Edit it as you like.",
+                "APPENDED": "The draft's sentence is added to the field. Edit it as you like.",
+                "UNCHANGED": "Choose the value yourself; the draft's sentence is shown above."
+            },
+            "saveUpdate": "Save to the bible",
+            "updated": "Bible updated.",
+            "linksTitle": "Threads the scenes set up or pay off",
+            "linksHelp": "Proposed by the nightly reading, each citing its sentence. Confirm what is right.",
+            "linkRole": {
+                "PLANTS": "Plants “{title}”",
+                "PAYS": "Pays off “{title}”"
+            },
+            "flagged": "This sentence reads like an instruction to the product. Check it before you confirm.",
+            "confirm": "Confirm",
+            "reject": "Reject",
+            "linkConfirmed": "Link confirmed.",
+            "linkRejected": "Link rejected."
         }
     },
     "interrogation": {
@@ -2132,7 +2229,9 @@
                 "details": "Details",
                 "links": "Linked",
                 "note": "Note",
-                "history": "History"
+                "history": "History",
+                "card": "Card",
+                "draft": "Draft vs bible"
             },
             "titleField": "Scene title",
             "pov": "Point of view",
@@ -2414,6 +2513,69 @@
                 "FINDING_GONE": "That note was replaced by a newer check.",
                 "UNKNOWN_RULE": "That rule is not one of the checks."
             }
+        },
+        "card": {
+            "help": "What this scene is for. The scene's own words are never changed here.",
+            "loading": "Loading the card…",
+            "field": {
+                "goal": "Goal",
+                "conflict": "Conflict",
+                "outcome": "Outcome",
+                "change": "What changed"
+            },
+            "help_goal": "What the point-of-view character wants in this scene.",
+            "help_conflict": "What stands in the way of that want here.",
+            "help_outcome": "How the scene ends for them: yes, no, yes but, no and.",
+            "help_change": "What is different by the end of the scene.",
+            "empty": "Not set",
+            "save": "Save card",
+            "saved": "Saved.",
+            "conflict": "This card was saved elsewhere since you opened it. Reload it to see the newer card; your edits here are not saved.",
+            "reload": "Reload card",
+            "error": "The card could not be saved. Try again.",
+            "grill": "Grill me on this scene",
+            "history": "Card history",
+            "version": "Version {number} · {source} · {when}",
+            "source": {
+                "MANUAL": "your edit",
+                "INTERVIEW": "from an interview"
+            }
+        },
+        "draft": {
+            "loading": "Loading…",
+            "loadError": "What the nightly reading found could not be loaded.",
+            "notRead": "Not read yet: this scene is read overnight.",
+            "readEarlier": "Read at an earlier text; tonight's reading reads it again. Notes from then are marked only where the text still says the same.",
+            "none": "No mismatches with the bible in this scene.",
+            "count": "{count, plural, one {# mismatch with the bible} other {# mismatches with the bible}}",
+            "mismatchesLabel": "Mismatches with the bible",
+            "status": {
+                "PENDING": "To decide",
+                "FIX_PENDING": "You'll fix the draft",
+                "FIXED": "Fixed",
+                "BIBLE_UPDATED": "Bible updated",
+                "KEPT": "Both true",
+                "INVALIDATED": "Set aside"
+            },
+            "show": "Show in text",
+            "notPlaced": "Not in the text as it now reads",
+            "draftSays": "The draft says",
+            "bibleSays": "The bible says",
+            "fixDraft": "Fix the draft",
+            "otherChoices": "Update the bible or say both are true",
+            "linksTitle": "Threads",
+            "linkRole": {
+                "PLANTS": "Plants “{title}”",
+                "PAYS": "Pays off “{title}”"
+            },
+            "confirm": "Confirm",
+            "reject": "Reject",
+            "proposed": "Proposed",
+            "truncated": "Showing the first ones only.",
+            "failed": "That could not be saved. Try again.",
+            "fixRecorded": "Noted: you'll fix the draft.",
+            "linkConfirmed": "Link confirmed.",
+            "linkRejected": "Link rejected."
         }
     }
 }

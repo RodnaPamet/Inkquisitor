@@ -289,6 +289,8 @@ const BIBLE_FACT_SELECT = {
     objectLiteral: true,
     statement: true,
     quote: true,
+    /** Phase 5.3: where its quote stands in its entry (the field "Update the bible" opens). */
+    quoteStart: true,
     storyTimeFrom: true,
     storyTimeTo: true,
     statedAt: true,
@@ -322,7 +324,76 @@ export interface BibleFactInsert {
     flags: string[];
 }
 
+/** Phase 5.3 (D35): one DRAFT fact of a scene, as the nightly reading writes it (`createDraftFacts`). */
+export interface DraftFactInsert {
+    bookId: string;
+    sceneId: string;
+    sceneTextKey: string;
+    dedupeKey: string;
+    position: number;
+    subjectName: string;
+    subjectElementId: string | null;
+    predicate: string;
+    objectElementId: string | null;
+    objectLiteral: string | null;
+    statement: string;
+    quote: string;
+    quoteStart: number;
+    quoteEnd: number;
+    storyTimeFrom: string | null;
+    storyTimeTo: string | null;
+    flags: string[];
+}
+
 export const StoryFactRepository = {
+    /** Phase 5.3: write a scene's new DRAFT facts (SCENE_TEXT, PENDING, never decided; text `sanitiseFactForStorage`'s; (the caller holds the book's fact lock, and superseded the claims they replace first). */
+    async createDraftFacts(db: Db, workspaceId: string, rows: readonly DraftFactInsert[]): Promise<Array<{ id: string; dedupeKey: string | null }>> {
+        const out: Array<{ id: string; dedupeKey: string | null }> = [];
+        for (const r of rows) {
+            out.push(
+                await db.storyFact.create({
+                    data: {
+                        workspaceId,
+                        sourceKind: 'SCENE_TEXT',
+                        bookId: r.bookId,
+                        sceneId: r.sceneId,
+                        sceneTextKey: r.sceneTextKey,
+                        automatic: true,
+                        dedupeKey: r.dedupeKey,
+                        position: r.position,
+                        subjectName: r.subjectName,
+                        subjectElementId: r.subjectElementId,
+                        predicate: r.predicate,
+                        objectElementId: r.objectElementId,
+                        objectLiteral: r.objectLiteral,
+                        statement: r.statement,
+                        quote: r.quote,
+                        quoteStart: r.quoteStart,
+                        quoteEnd: r.quoteEnd,
+                        storyTimeFrom: r.storyTimeFrom,
+                        storyTimeTo: r.storyTimeTo,
+                        flags: r.flags,
+                        status: 'PENDING',
+                    },
+                    select: { id: true, dedupeKey: true },
+                }),
+            );
+        }
+        return out;
+    },
+    /** Phase 5.3: a re-read replaces these draft facts (superseded once, by the read: a draft fact is never invalidated by another fact). */
+    async supersedeDraftFacts(db: Db, workspaceId: string, ids: readonly string[], at: Date): Promise<number> {
+        if (ids.length === 0) return 0;
+        const r = await db.storyFact.updateMany({ where: { workspaceId, id: { in: [...ids] }, sourceKind: 'SCENE_TEXT', supersededAt: null }, data: { supersededAt: at } });
+        return r.count;
+    },
+    /** Phase 5.3: delete a scene's superseded draft facts that no mismatch stands on (a superseded fact is kept only as its mismatch's anchor). */
+    async deleteUnanchoredDraftFacts(db: Db, workspaceId: string, bookId: string, sceneId: string): Promise<number> {
+        const r = await db.storyFact.deleteMany({
+            where: { workspaceId, bookId, sceneId, sourceKind: 'SCENE_TEXT', supersededAt: { not: null }, proposalsAsNewer: { none: {} } },
+        });
+        return r.count;
+    },
     async createMany(
         db: Db,
         workspaceId: string,

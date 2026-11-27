@@ -126,6 +126,8 @@ model StoryThread {
   createdBy      User?                 @relation("StoryThreadCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   updatedBy      User?                 @relation("StoryThreadUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
   proposals      StoryThreadProposal[]
+  /// Phase 5.3: the scenes proposed (and confirmed) to plant or pay it off.
+  sceneLinks     StoryThreadSceneLink[]
 
   @@unique([workspaceId, id])
   /// A book's threads, most recently changed first (the Continuity page).

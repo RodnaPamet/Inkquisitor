@@ -257,6 +257,11 @@ export interface VersionMeta {
     sourceResearchProposalId?: string | null;
     /** The save moved the element in its story order (Phase 3.2): the history words it from this. */
     movedInOrder?: boolean;
+    /**
+     * The scene a MANUSCRIPT version came from (Phase 5.3, D35: the author's own save of a field opened prefilled from
+     * a draft mismatch): required exactly when `source` is MANUSCRIPT (CHECK `BibleEntryVersion_manuscript_names_scene`).
+     */
+    sourceSceneId?: string | null;
 }
 
 /**
@@ -287,6 +292,9 @@ export async function recordVersion(db: PrismaTx, ctx: WorkspaceRequestContext, 
     if ((meta.source === 'RESEARCH') !== (sourceFindingIds.length > 0) || (meta.sourceResearchProposalId && meta.source !== 'RESEARCH')) {
         throw new ValidationError('A research version names the findings it is drawn from, and only a research version does.', { reason: 'VERSION_SOURCE_FINDINGS' });
     }
+    if ((meta.source === 'MANUSCRIPT') !== !!meta.sourceSceneId) {
+        throw new ValidationError('A manuscript version names the scene it came from, and only a manuscript version does.', { reason: 'VERSION_SOURCE_SCENE' });
+    }
     const versionNumber = (await BibleVersionRepository.latestNumber(db, ctx.workspaceId, elementId)) + 1;
     return BibleVersionRepository.create(db, ctx.workspaceId, {
         bookId,
@@ -301,5 +309,6 @@ export async function recordVersion(db: PrismaTx, ctx: WorkspaceRequestContext, 
         sourceFindingIds,
         sourceResearchProposalId: meta.sourceResearchProposalId ?? null,
         movedInOrder: meta.movedInOrder ?? false,
+        sourceSceneId: meta.sourceSceneId ?? null,
     });
 }
