@@ -103,6 +103,14 @@ export interface BibleFactsPayload {
 }
 
 /**
+ * Phase 4.H-b (D31, D32): the hourly backfill of bibles saved before 4.1. No
+ * payload: it finds the workspaces with entries never extracted (and their due
+ * backfill rows) itself, and queues `bible-facts` jobs under each workspace's
+ * daily share (`usecases/fact-backfill.ts`).
+ */
+export type FactBackfillPayload = Record<string, never>;
+
+/**
  * Phase 4.2 (D28): the nightly continuity dispatcher. No payload: it finds the
  * books changed since their last deep check itself (`usecases/continuity-dispatch.ts`).
  */
@@ -134,6 +142,7 @@ export interface JobPayloadMap {
     'continuity-dispatch': ContinuityDispatchPayload;
     'continuity-check': ContinuityCheckPayload;
     'stress-test': StressTestPayload;
+    'fact-backfill': FactBackfillPayload;
 }
 
 export type JobName = keyof JobPayloadMap;
@@ -204,6 +213,14 @@ export const JOB_DEFAULTS: Record<JobName, JobDefaults> = {
         backoff: { type: 'fixed', delay: 0 },
         removeOnComplete: 200,
         removeOnFail: 200,
+    },
+    'fact-backfill': {
+        // One attempt: the next hour is the retry, and every entry it would have
+        // given a row (and every due row) is still due then.
+        attempts: 1,
+        backoff: { type: 'fixed', delay: 0 },
+        removeOnComplete: 30,
+        removeOnFail: 100,
     },
     'continuity-dispatch': {
         // One attempt: the next night is the retry, and every book it would have

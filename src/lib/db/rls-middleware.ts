@@ -143,6 +143,12 @@ export type RlsBypassReason =
      * then created and queued inside its own workspace's context.
      */
     | 'continuity-discovery'
+    /**
+     * The hourly fact backfill (Phase 4.H-b, D31, D32) finding the workspaces with bible entries never extracted (saved
+     * before 4.1) or backfill rows due, in every workspace, and keeping its round-robin cursor (`JobCursor`): ids only;
+     * each workspace's rows are then written and queued inside its own context.
+     */
+    | 'fact-backfill-discovery'
     /** Tests exercising the bypass path or seeding rows. */
     | 'test';
 
@@ -155,6 +161,7 @@ const KNOWN_REASONS: ReadonlySet<RlsBypassReason> = new Set<RlsBypassReason>([
     'ai-call-log-retention',
     'fact-layer-discovery',
     'continuity-discovery',
+    'fact-backfill-discovery',
     'test',
 ]);
 

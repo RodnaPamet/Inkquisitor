@@ -36,6 +36,12 @@
  *               target). Subjects left: DONE PAGED, the next night goes on from
  *               the cursor. Audit last.
  *
+ * PASSED-OVER SUBJECTS ARE REMEMBERED (4.H-b, D32): a subject parked or
+ * refused by the guard is stored on the check (`passedOver`, bounded by
+ * `CONTINUITY_PASSED_OVER_MAX`; past it `passedOverCut`), retried in the next
+ * pass whether or not it changed, and removed once a page covering it succeeds;
+ * the Continuity page counts the outstanding and is never complete over one.
+ *
  * NOTHING IS RESOLVED (rule 1): every finding is a proposal the author decides
  * on the Continuity page, shown with both facts and their sources.
  */
@@ -78,7 +84,9 @@ import {
     CONTINUITY_PASS_SETTLE_MS,
     CONTINUITY_NIGHTLY_SHARE,
     CONTINUITY_PAGE_FAILURES_MAX,
+    CONTINUITY_PASSED_OVER_MAX,
     CONTINUITY_PROPOSALS_PER_RUN_MAX,
+    withPassedOver,
     type ContinuityOutcome,
     type ContinuityRunStatus,
     type ContradictionKind,
@@ -270,8 +278,9 @@ export async function executeContinuityCheck(payload: { workspaceId: string; run
     });
     if (!looked) return { ran: false, outcome: null };
     const { run } = looked;
-    // 4.H-a (#62 item 3): the pass's failed-page count and its passed-over subjects, as every save of the check writes them.
-    const page: { pageFailures?: number; parkedSubjects?: number } = {};
+    // 4.H-a (#62 item 3): the pass's failed-page count and its passed-over subjects, as every save of the check writes them;
+    // 4.H-b (D32): and the passed-over subjects themselves, outstanding until a page covering them succeeds.
+    const page: { pageFailures?: number; parkedSubjects?: number; passedOver?: string[]; passedOverCut?: boolean } = {};
     const finish = async (outcome: ContinuityOutcome, claim: Date | undefined, state?: { coveredThrough?: Date | null; passTarget: Date | null; passCursor: string | null; pageFailures?: number; parkedSubjects?: number }) => {
         const at = now();
         await runInWorkspaceContext(looked.ctx ?? scope, async (db) => {
@@ -327,6 +336,14 @@ export async function executeContinuityCheck(payload: { workspaceId: string; run
     const keep = { passTarget: state.passTarget, passCursor: state.passCursor };
     page.pageFailures = state.pageFailures;
     page.parkedSubjects = state.parkedSubjects;
+    page.passedOver = [...state.passedOver];
+    page.passedOverCut = state.passedOverCut;
+    /** 4.H-b (D32): remember passed-over subjects (bounded; past the bound the next pass checks every subject). */
+    const rememberPassedOver = (keys: readonly string[]) => {
+        const next = withPassedOver(page.passedOver ?? [], keys);
+        page.passedOver = next.list;
+        page.passedOverCut = (page.passedOverCut ?? false) || next.cut;
+    };
     /**
      * A page that failed this night in a way it will fail every night (over the per-call budget; an answer that is never
      * valid; text that repeats the prompt): counted, and once it has failed `CONTINUITY_PAGE_FAILURES_MAX` nights in a
@@ -338,6 +355,7 @@ export async function executeContinuityCheck(payload: { workspaceId: string; run
         page.pageFailures = 0;
         page.parkedSubjects = (page.parkedSubjects ?? 0) + subjectKeys.length;
         metrics.parkedSubjects = (metrics.parkedSubjects ?? 0) + subjectKeys.length;
+        rememberPassedOver(subjectKeys);
         counts.subjectsRemaining = Math.max(0, counts.subjectsRemaining - subjectKeys.length);
         return subjectKeys[subjectKeys.length - 1];
     };
@@ -346,7 +364,12 @@ export async function executeContinuityCheck(payload: { workspaceId: string; run
         // Rule 6: a book with no live fact has nothing checked; it is never reported clean.
         // Its coverage still moves: the book was due for facts this run cannot check (an unlinked subject), and a
         // coverage left behind them would queue the book again every night, for ever, to read nothing.
-        if (facts.length === 0) return await finish('NO_FACTS', claim, { coveredThrough: passTarget, passTarget: null, passCursor: null });
+        if (facts.length === 0) {
+            // Nothing is left to check, so nothing passed over is outstanding either (4.H-b, D32).
+            page.passedOver = [];
+            page.passedOverCut = false;
+            return await finish('NO_FACTS', claim, { coveredThrough: passTarget, passTarget: null, passCursor: null });
+        }
 
         const placed = claimed.placed.slice(0, CLOCK_ELEMENTS_MAX);
         metrics.clockKnown = claimed.placed.length <= CLOCK_ELEMENTS_MAX;
@@ -378,14 +401,31 @@ export async function executeContinuityCheck(payload: { workspaceId: string; run
             else bySubject.set(f.subjectElementId, [f]);
         }
         const subjects: Array<{ key: string; facts: Array<PlannedFact & { row: CheckFactRow }> }> = [];
+        // 4.H-b (D32): the subjects passed over before (outstanding) are retried in this pass whether or not they changed;
+        // with more passed over than the list held (`passedOverCut`), every subject is.
+        const outstanding = new Set(state.passedOver);
         for (const [subjectId, list] of bySubject) {
-            const changed = list.some((f) => arrivedAt(f).getTime() > covered && arrivedAt(f).getTime() <= passTarget.getTime());
-            if (!changed) continue;
             const e = elementOf.get(subjectId)!;
-            subjects.push({ key: subjectOrderKey(e.kind, e.id), facts: list.map((f) => ({ id: f.id, createdAt: arrivedAt(f).getTime(), row: f })) });
+            const key = subjectOrderKey(e.kind, e.id);
+            const changed = list.some((f) => arrivedAt(f).getTime() > covered && arrivedAt(f).getTime() <= passTarget.getTime());
+            if (!changed && !outstanding.has(key) && !state.passedOverCut) continue;
+            subjects.push({ key, facts: list.map((f) => ({ id: f.id, createdAt: arrivedAt(f).getTime(), row: f })) });
         }
+        // A remembered subject with no live linked fact left has nothing to check: it is no longer outstanding (unless the
+        // read was cut, when a subject past the cut cannot be told from one gone).
+        if (!metrics.factsCut) {
+            const present = new Set([...bySubject.keys()].map((id) => subjectOrderKey(elementOf.get(id)!.kind, id)));
+            page.passedOver = (page.passedOver ?? []).filter((k) => present.has(k));
+        }
+        /** The pass is complete: what is still outstanding stays, and a cut stays only while the list is full. */
+        const completed = () => {
+            page.passedOverCut = (page.passedOver ?? []).length >= CONTINUITY_PASSED_OVER_MAX;
+        };
         // Nothing left to page through: a pass under way is complete; with none, nothing changed since the last one.
-        if (subjects.length === 0) return await finish(state.passTarget ? 'OK' : 'NOTHING_NEW', claim, { coveredThrough: passTarget, passTarget: null, passCursor: null });
+        if (subjects.length === 0) {
+            completed();
+            return await finish(state.passTarget ? 'OK' : 'NOTHING_NEW', claim, { coveredThrough: passTarget, passTarget: null, passCursor: null });
+        }
         // A NEW pass starts with no failed page and nothing passed over (the last pass's count stays shown until then).
         if (!state.passTarget) {
             page.pageFailures = 0;
@@ -473,6 +513,7 @@ export async function executeContinuityCheck(payload: { workspaceId: string; run
                     // Passed over unchecked, so counted with the pass's passed-over subjects (4.H-a): the pass that
                     // finishes past them is never "every fact checked" (rule 6).
                     page.parkedSubjects = (page.parkedSubjects ?? 0) + call.subjectKeys.length;
+                    rememberPassedOver(call.subjectKeys);
                     counts.subjectsRemaining -= call.subjectKeys.length;
                     return await finish(outcome, claim, { passTarget, passCursor: call.subjectKeys[call.subjectKeys.length - 1] });
                 }
@@ -488,8 +529,11 @@ export async function executeContinuityCheck(payload: { workspaceId: string; run
             const callCursor = call.subjectKeys[call.subjectKeys.length - 1];
             const raised = await runInWorkspaceContext(ctx, async (db) => {
                 const n = await raisePairs(db, ctx, run.bookId, run, v.pairs.map((p) => ({ a: byId.get(p.a)!, b: byId.get(p.b)!, kind: p.kind })), 'DEEP', metrics.refusals);
-                // The page is done: the cursor moves past it, so a stop later in the night keeps it.
+                // The page is done: the cursor moves past it, so a stop later in the night keeps it. Its subjects are
+                // checked now, so none of them is outstanding any more (4.H-b, D32).
                 page.pageFailures = 0;
+                const done = new Set(call.subjectKeys);
+                page.passedOver = (page.passedOver ?? []).filter((k) => !done.has(k));
                 await ContinuityCheckRepository.save(db, ctx.workspaceId, run.bookId, { ...page, passTarget, passCursor: callCursor, lastRunAt: now(), lastOutcome: 'PAGED' });
                 return n;
             });
@@ -502,7 +546,9 @@ export async function executeContinuityCheck(payload: { workspaceId: string; run
         if (plan.remaining > 0 || plan.overBudget) {
             return await finish(plan.overBudget && plan.calls.length === 0 ? 'CALL_OVER_BUDGET' : 'PAGED', claim, { passTarget, passCursor: cursor });
         }
-        // The pass is complete: every live fact up to its target has been checked.
+        // The pass is complete: every live fact up to its target has been checked (but for the subjects still
+        // outstanding, which the page counts and the next pass retries: 4.H-b, D32).
+        completed();
         return await finish('OK', claim, { coveredThrough: passTarget, passTarget: null, passCursor: null });
     } catch (err) {
         logger.error('continuity.check_failed', { component: 'continuity', runId: run.id, error: err instanceof Error ? err.name : 'unknown' });

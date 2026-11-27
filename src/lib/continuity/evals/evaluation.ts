@@ -17,6 +17,14 @@
  *   precision    over the whole set, proposed pairs that are expected, over all
  *                proposed, at least 0.9: fewer than one false alarm in ten
  *
+ * Every check also REPORTS (4.H-b, roadmap 4.H item 2) the false-alarm rate —
+ * proposed pairs no case expects, over all proposed — the false alarms by case,
+ * and the recall over every expected pair. The set holds near misses of each
+ * class the roadmap names (a name and a description of one place, negation,
+ * two subjects sharing a name, a relative age, knowing that against not
+ * knowing who, story positions that do not overlap, two orders the clock
+ * cannot compare, synonyms), so the rate means something.
+ *
  * THE REFERENCE CHECKER answers each case from its reference answer: a
  * structural record proves the set, the product's rules and the grader agree end
  * to end, and nothing about a model, so production refuses it (D11); a model
@@ -68,7 +76,39 @@ export interface ContinuityCaseGrade {
     readonly passed: boolean;
     readonly proposed: number;
     readonly correct: number;
+    /** 4.H-b: expected pairs in the case, and proposed pairs it does not expect. */
+    readonly expected: number;
+    readonly falseAlarms: number;
     readonly failures: readonly string[];
+}
+
+/** 4.H-b: what a set of grades amounts to (reported with every check, never a figure stored in a record). */
+export interface ContinuitySetReport {
+    readonly proposed: number;
+    readonly correct: number;
+    readonly expected: number;
+    /** correct / proposed; null when nothing was proposed (rule 6). */
+    readonly precision: number | null;
+    /** (proposed - correct) / proposed; null when nothing was proposed. */
+    readonly falseAlarmRate: number | null;
+    /** correct / expected; null when the set expects nothing. */
+    readonly recall: number | null;
+    readonly falseAlarmsByCase: ReadonlyArray<{ caseId: string; count: number }>;
+}
+
+export function continuitySetReport(grades: readonly ContinuityCaseGrade[]): ContinuitySetReport {
+    const proposed = grades.reduce((n, g) => n + g.proposed, 0);
+    const correct = grades.reduce((n, g) => n + g.correct, 0);
+    const expected = grades.reduce((n, g) => n + g.expected, 0);
+    return {
+        proposed,
+        correct,
+        expected,
+        precision: proposed === 0 ? null : correct / proposed,
+        falseAlarmRate: proposed === 0 ? null : (proposed - correct) / proposed,
+        recall: expected === 0 ? null : correct / expected,
+        falseAlarmsByCase: grades.filter((g) => g.falseAlarms > 0).map((g) => ({ caseId: g.caseId, count: g.falseAlarms })),
+    };
 }
 
 export function gradeContinuityCase(c: ContinuityEvalCase, answer: unknown): ContinuityCaseGrade {
@@ -82,13 +122,13 @@ export function gradeContinuityCase(c: ContinuityEvalCase, answer: unknown): Con
     }
     for (const [a, b] of c.mustNotPair) if (proposed.has(pairKey(a, b))) failures.push('FALSE_ALARM');
     const expected = new Set(c.expect.map((e) => pairKey(e.a, e.b)));
-    const correct = [...proposed.keys()].filter((k) => expected.has(k)).length;
-    return { caseId: c.id, passed: failures.length === 0, proposed: proposed.size, correct, failures: [...new Set(failures)] };
+    const correct = [...proposed.keys()].filter((k) => expected.has(k) && proposed.get(k) === c.expect.find((e) => pairKey(e.a, e.b) === k)?.kind).length;
+    return { caseId: c.id, passed: failures.length === 0, proposed: proposed.size, correct, expected: expected.size, falseAlarms: proposed.size - correct, failures: [...new Set(failures)] };
 }
 
 export type ContinuityRecordCheck =
-    | { ok: true; record: ContinuityRecord; grades: ContinuityCaseGrade[]; precision: number | null }
-    | { ok: false; reason: 'MALFORMED' | 'SET_CHANGED' | 'PROMPT_CHANGED' | 'CASES_MISSING' | 'STRUCTURAL_MISMATCH' | 'STRUCTURAL_OUTPUT_AS_MODEL' | 'BELOW_BAR'; detail: string };
+    | { ok: true; record: ContinuityRecord; grades: ContinuityCaseGrade[]; precision: number | null; report: ContinuitySetReport }
+    | { ok: false; reason: 'MALFORMED' | 'SET_CHANGED' | 'PROMPT_CHANGED' | 'CASES_MISSING' | 'STRUCTURAL_MISMATCH' | 'STRUCTURAL_OUTPUT_AS_MODEL' | 'BELOW_BAR'; detail: string; report?: ContinuitySetReport };
 
 function referenceAnswer(c: ContinuityEvalCase): ContinuityRecord['answers'][number] {
     return { caseId: c.id, output: c.reference };
@@ -128,14 +168,13 @@ export function checkContinuityRecord(raw: unknown): ContinuityRecordCheck {
         return { ok: false, reason: 'STRUCTURAL_OUTPUT_AS_MODEL', detail: 'every case with a contradiction holds the reference checker\'s answer, recorded as a model\'s' };
     }
     const grades = continuityCases.map((c) => gradeContinuityCase(c, byCase.get(c.id)!.output));
+    const report = continuitySetReport(grades);
     const failed = grades.filter((g) => !g.passed);
-    if (failed.length > 0) return { ok: false, reason: 'BELOW_BAR', detail: failed.map((g) => `${g.caseId}: ${g.failures.join('+')}`).join('; ') };
-    const proposed = grades.reduce((n, g) => n + g.proposed, 0);
-    const correct = grades.reduce((n, g) => n + g.correct, 0);
+    if (failed.length > 0) return { ok: false, reason: 'BELOW_BAR', detail: failed.map((g) => `${g.caseId}: ${g.failures.join('+')}`).join('; '), report };
     // Rule 6: a set over which nothing was proposed has no precision to report; the recall checks already failed it.
-    const precision = proposed === 0 ? null : correct / proposed;
-    if (precision !== null && precision < SET_PRECISION_BAR) return { ok: false, reason: 'BELOW_BAR', detail: `precision ${precision.toFixed(2)} < ${SET_PRECISION_BAR}` };
-    return { ok: true, record, grades, precision };
+    const precision = report.precision;
+    if (precision !== null && precision < SET_PRECISION_BAR) return { ok: false, reason: 'BELOW_BAR', detail: `precision ${precision.toFixed(2)} < ${SET_PRECISION_BAR}`, report };
+    return { ok: true, record, grades, precision, report };
 }
 
 /** The structural record the reference checker makes now (`npm run packs:evaluate -- --no-packs --continuity`). */

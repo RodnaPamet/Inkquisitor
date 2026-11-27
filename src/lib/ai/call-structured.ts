@@ -59,6 +59,7 @@ import {
     AiCallError,
     AiGuardBlockedError,
     AiOutputInvalidError,
+    AiPromptError,
     AiProviderError,
     AiSpendCeilingError,
     AiTimeoutError,
@@ -72,6 +73,7 @@ import { costMicroUsd, worstCaseCostMicroUsd } from './pricing';
 import {
     buildModelRequest,
     buildRepairRequest,
+    ID_PATTERN,
     inputTokenBound,
     newFenceNonce,
     OUTPUT_TOOL_NAME,
@@ -95,6 +97,19 @@ export interface StructuredCallInput<S extends z.ZodType> {
     readonly requestedById?: string | null;
     /** Cancels the call (an author leaving the page). */
     readonly signal?: AbortSignal;
+    /**
+     * 4.H-b (D32): the purpose the call is recorded, reserved and shared under, when it is a SUB-PURPOSE of the
+     * template's (`<template purpose>.<label>`, e.g. the backfill's `facts.bible-extract.backfill`): the same prompt
+     * (its record, its gate), its spend measured apart. Anything else is refused PROMPT_INVALID before a call.
+     */
+    readonly purpose?: string;
+}
+
+/** The purpose a call is recorded under: the template's, or a sub-purpose of it (4.H-b). */
+export function callPurposeOf(template: Readonly<PromptTemplate>, purpose: string | undefined): string {
+    if (purpose === undefined || purpose === template.purpose) return template.purpose;
+    if (!purpose.startsWith(`${template.purpose}.`) || !ID_PATTERN.test(purpose)) throw new AiPromptError(`prompt ${template.id}: a call's purpose must be a sub-purpose of the template's`);
+    return purpose;
 }
 
 export interface StructuredCallDeps {
@@ -341,6 +356,7 @@ export async function callStructured<S extends z.ZodType>(
     deps: StructuredCallDeps,
 ): Promise<StructuredCallResult<z.infer<S>>> {
     const { template, data, schema } = input;
+    const purpose = callPurposeOf(template, input.purpose);
     const switches = deps.env ?? env;
     const resolved = resolveCall(template);
     const nonce = newFenceNonce(data);
@@ -366,7 +382,7 @@ export async function callStructured<S extends z.ZodType>(
             id: callId,
             bookId: input.bookId ?? null,
             requestedById: input.requestedById ?? null,
-            purpose: template.purpose,
+            purpose,
             promptId: template.id,
             promptVersion: template.version,
             tier: template.tier,
@@ -395,7 +411,7 @@ export async function callStructured<S extends z.ZodType>(
         logger.info('ai: call settled', {
             component: 'ai',
             callId,
-            purpose: template.purpose,
+            purpose,
             promptId: template.id,
             templateVersion: template.version,
             model: resolved.model,
@@ -472,7 +488,7 @@ export async function callStructured<S extends z.ZodType>(
             ceilingMicroUsd: ceiling,
             ttlMs: timeoutMs + RESERVATION_GRACE_MS,
             startedAt,
-            purpose: template.purpose,
+            purpose,
         });
         if (!held.ok) {
             const details = {

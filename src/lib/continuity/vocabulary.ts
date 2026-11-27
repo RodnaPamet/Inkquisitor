@@ -177,6 +177,33 @@ export function continuityNightKey(at: Date): string {
  */
 export const CONTINUITY_PAGE_FAILURES_MAX = 3;
 
+/**
+ * PASSED-OVER SUBJECTS ARE REMEMBERED (owner decision 2026-11-27, D32). A subject the nightly check passes over —
+ * parked after `CONTINUITY_PAGE_FAILURES_MAX` failed nights, or refused by the guard — is stored on the check
+ * (`ContinuityCheck.passedOver`, its order key, at most this many; past it `passedOverCut` makes the next pass check
+ * every subject again), retried in the next pass, and removed once a page covering it succeeds. A pass is never
+ * reported complete while any is outstanding (rule 6), and the Continuity page shows how many are.
+ */
+export const CONTINUITY_PASSED_OVER_MAX = 500;
+/**
+ * A book with nothing new but subjects outstanding is queued again for a pass this long after its last run (a weekly
+ * retry, so a subject that fails every night is not paid for every night); a book that changes is queued the next
+ * night as ever, and its pass retries them too.
+ */
+export const CONTINUITY_PASSED_OVER_RETRY_MS = 7 * 24 * 60 * 60 * 1000;
+
+/** Add `keys` to a stored passed-over list (bounded): the list, and whether it overflowed. */
+export function withPassedOver(list: readonly string[], keys: readonly string[]): { list: string[]; cut: boolean } {
+    const out = [...list];
+    let cut = false;
+    for (const k of keys) {
+        if (out.includes(k)) continue;
+        if (out.length >= CONTINUITY_PASSED_OVER_MAX) cut = true;
+        else out.push(k);
+    }
+    return { list: out, cut };
+}
+
 /** The kinds of fact the continuity check reads (4.1's bible kinds, the author's explanations, confirmed book-library source facts). */
 export const CONTINUITY_FACT_KINDS = ['BIBLE_VERSION', 'RELATION_VERSION', 'AUTHOR_RESOLUTION', 'SOURCE_CHUNK'] as const;
 

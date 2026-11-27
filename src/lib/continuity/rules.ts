@@ -31,6 +31,27 @@
  * value), so it does not blow up, and two undated ages that differ are, nearly
  * always, the very slip the rule exists to catch.
  *
+ * PRECISION (4.H-b, roadmap 4.H item 2): the rules are graded over a set of
+ * seeded contradictions and near misses (`evals/rule-precision.json`, held at
+ * precision ≥ 0.9 by a unit test), and four near misses the set found are
+ * refused here, each narrowly — a refusal leaves the pair to the deep check:
+ *
+ *   • a NEGATED statement states no value ("Marrow is not a miller" says
+ *     nothing about whether he is a smith), so it takes part in no VALUE or
+ *     WHEREABOUTS rule;
+ *   • two values are compared only when they have the SAME SHAPE — both names
+ *     ("Paris", "the Iron Keep") or both descriptions ("the mill", "a smith"):
+ *     a name and a description may be the same thing ("Paris" and "the capital
+ *     of France"), which code cannot know;
+ *   • values are compared with their accents folded ("Zürich" is "Zurich");
+ *   • an AGE stated relative to someone ("three years younger than Tomas") is
+ *     not an age;
+ *   • a KNOWLEDGE proposition keeps its question word: knowing THAT the deed was
+ *     forged is not knowing WHO forged it.
+ *
+ * Synonyms of one shape ("a physician", "a doctor") are still raised: no rule
+ * can tell them apart without a thesaurus, and the set counts that false alarm.
+ *
  * A pair is reported once, older first by the caller's order. Nothing here
  * writes: the caller PROPOSES (rule 1).
  */
@@ -55,14 +76,47 @@ function firstNumber(text: string): string | null {
     return /\d+(?:\.\d+)?/.exec(text)?.[0] ?? null;
 }
 
+/** Words that make an age RELATIVE to someone else's (4.H-b): such a statement is not an age. */
+const RELATIVE_AGE = /\b(?:older|younger|elder|senior|junior|than)\b/i;
+
+/** A stated age, or null: the first number of the value (else the statement), unless it is relative to someone. */
+export function absoluteAge(f: Pick<RuleFact, 'objectLiteral' | 'statement'>): number | null {
+    const text = f.objectLiteral || f.statement;
+    if (RELATIVE_AGE.test(text) || RELATIVE_AGE.test(f.statement)) return null;
+    const n = firstNumber(text);
+    return n === null ? null : Number(n);
+}
+
+/** A value's key with its accents folded (4.H-b: "Zürich" is "Zurich"). */
+function foldedKey(value: string): string {
+    return nameKey(value.normalize('NFD').replace(/\p{M}/gu, ''));
+}
+
+/**
+ * A value's SHAPE (4.H-b): a NAME when its first word (after a leading article) is written with a capital ("Paris",
+ * "the Iron Keep", "Free City of Harrow"), else a DESCRIPTION ("the mill", "a smith", "the capital of France").
+ */
+export function valueShape(value: string): 'NAME' | 'DESCRIPTION' | null {
+    const ws = value.normalize('NFKC').trim().match(/[\p{L}\p{N}]+(?:['’][\p{L}\p{N}]+)*/gu) ?? [];
+    const rest = ['the', 'a', 'an'].includes(ws[0]?.toLowerCase() ?? '') ? ws.slice(1) : ws;
+    if (rest.length === 0) return null;
+    return /^\p{Lu}/u.test(rest[0]) ? 'NAME' : 'DESCRIPTION';
+}
+
 function valuesDiffer(a: RuleFact, b: RuleFact): boolean {
+    // A negated statement states what is NOT so, never a value (4.H-b).
+    if (negated(a.statement) || negated(b.statement)) return false;
     if (a.predicate === 'AGE') {
-        const x = firstNumber(a.objectLiteral || a.statement);
-        const y = firstNumber(b.objectLiteral || b.statement);
-        return x !== null && y !== null && Number(x) !== Number(y);
+        const x = absoluteAge(a);
+        const y = absoluteAge(b);
+        return x !== null && y !== null && x !== y;
     }
-    const x = nameKey(a.objectLiteral ?? '');
-    const y = nameKey(b.objectLiteral ?? '');
+    const sa = valueShape(a.objectLiteral ?? '');
+    const sb = valueShape(b.objectLiteral ?? '');
+    // A name and a description may name one thing ("Paris", "the capital of France"): not code's to call (4.H-b).
+    if (sa === null || sb === null || sa !== sb) return false;
+    const x = foldedKey(a.objectLiteral ?? '');
+    const y = foldedKey(b.objectLiteral ?? '');
     if (x === '' || y === '') return false;
     return x !== y && !x.includes(y) && !y.includes(x);
 }
@@ -75,10 +129,14 @@ function isNegator(word: string): boolean {
     return NEGATORS.has(w) || w.endsWith("n't");
 }
 
-/** A statement's proposition: its content words without its negation, sorted (what is known, whoever says it how). */
+/** Question words kept in a proposition (4.H-b): knowing that the deed was forged is not knowing who forged it. */
+const QUESTION_WORDS: ReadonlySet<string> = new Set(['who', 'whom', 'whose', 'what', 'which', 'where', 'when', 'why', 'how', 'whether']);
+
+/** A statement's proposition: its content words and question words without its negation, sorted (what is known, whoever says it how). */
 export function propositionKey(statement: string): string {
     const kept = statement.split(/\s+/).filter((w) => !isNegator(w.replace(/[^\p{L}\p{N}'’]/gu, ''))).join(' ');
-    return [...new Set(contentTokens(kept))].sort().join(' ');
+    const asked = kept.toLowerCase().match(/\p{L}+/gu)?.filter((w) => QUESTION_WORDS.has(w)) ?? [];
+    return [...new Set([...contentTokens(kept), ...asked.map((w) => `?${w}`)])].sort().join(' ');
 }
 
 /** Could code alone call these two facts contradictory, and how? Null when it cannot. */

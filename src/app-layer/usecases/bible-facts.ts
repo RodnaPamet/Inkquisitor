@@ -39,6 +39,17 @@
  *               ever, citing the version and its words; contradictions carry
  *               their KIND, and rules read the story order (D25) as a fact's time.
  *
+ * 4.H-b (D32): the baseline's record of what the guard refused
+ * (`guardRefused`, each section with the rule version that refused it) is
+ * carried forward while a section is unchanged, and a section refused under
+ * OLDER rules than `GUARD_RULES_VERSION` is sent again ONCE, in calls of its own
+ * (`guard-retry.ts`). A BACKFILL row (an entry saved before 4.1, D31) runs as
+ * its version's author or, when they may no longer edit, the workspace's
+ * longest-standing OWNER (else EDITOR); its calls are recorded under
+ * `facts.bible-extract.backfill` and held to the workspace's daily share (10 % of
+ * the month's ceiling, D32), checked before each call and by the ledger under
+ * its spend lock: past it the row stops DAILY_SHARE, resumable, no attempt counted.
+ *
  * IDEMPOTENT: a DONE or SKIPPED row is never claimed again, and a resolve run
  * twice over one version writes nothing new (the claim keys, the provenance's
  * and the proposals' unique keys). It never touches the bible or the version.
@@ -64,8 +75,10 @@ import { claimKey } from '@/lib/facts/claim-key';
 import { claimParts, resolveFacts, type FactOwner, type LiveFact, type NewFact } from '@/lib/facts/dedupe';
 import { changedSections, entryText, renderElementEntry, renderRelationEntry, type EntrySection, type RenderedEntry } from '@/lib/facts/entry-text';
 import { planBibleFactCalls } from '@/lib/facts/call-plan';
+import { guardRetryPlan, refusalsToRecord } from '@/lib/facts/guard-retry';
+import { GUARD_RULES_VERSION } from '@/lib/ai/guard';
 import { bibleFactsCallWorstCase } from '@/lib/facts/cost';
-import { defaultBibleFactExtractor } from '@/lib/facts/model-seam';
+import { BIBLE_FACTS_BACKFILL_PURPOSE, DAILY_SHARE_REFUSED, defaultBibleFactExtractor } from '@/lib/facts/model-seam';
 import { BIBLE_FACTS_CALL_COST_BUDGET_MICRO_USD, BIBLE_FACTS_PROMPT_VERSION, EXISTING_FACTS_SHOWN_MAX } from '@/lib/facts/prompt';
 import { bibleFactGate, type BibleFactGateVerdict } from '@/lib/facts/record-gate';
 import { validateBibleFacts, validateBibleThreads, type BibleFactDraft } from '@/lib/facts/validate';
@@ -75,7 +88,19 @@ import { NO_ORDER, storyClock, type StoryClock } from '@/lib/continuity/story-cl
 import { sanitiseThreadProposalForStorage } from '@/lib/continuity/storage';
 import { OPEN_THREADS_SHOWN_MAX } from '@/lib/continuity/vocabulary';
 import { CLOCK_ELEMENTS_MAX } from '@/lib/continuity/vocabulary';
-import { BIBLE_FACT_PIECE_MAX_CHARS, BIBLE_FACT_PIECE_MIN_CHARS, FACT_EXTRACTION_ATTEMPTS_MAX, FACT_EXTRACTION_RETRY_MS, RESUMABLE_EXTRACTION_OUTCOMES, type FactExtractionOutcome, type FactExtractionStatus } from '@/lib/facts/vocabulary';
+import {
+    BACKFILL_DAILY_SHARE,
+    BACKFILL_DAY_WINDOW_MS,
+    BIBLE_FACT_PIECE_MAX_CHARS,
+    BIBLE_FACT_PIECE_MIN_CHARS,
+    FACT_EXTRACTION_ATTEMPTS_MAX,
+    FACT_EXTRACTION_RETRY_MS,
+    readGuardRefused,
+    RESUMABLE_EXTRACTION_OUTCOMES,
+    type FactExtractionOutcome,
+    type FactExtractionStatus,
+    type GuardRefusedSection,
+} from '@/lib/facts/vocabulary';
 import type { PackRecordMode } from '@/lib/interview/pack-records-config';
 import { logger } from '@/lib/observability/logger';
 import { getPermissionsForRole } from '@/lib/permissions';
@@ -83,12 +108,17 @@ import { chargeModelCalls } from '@/lib/security/model-call-rate-limit';
 import type { FactExtractor } from '@/lib/sources/extractor';
 import { sanitiseFactForStorage } from '@/lib/sources/storage';
 import { deploymentPackRecordMode } from './interview-packs';
-import { modelUnavailableReason } from './model-calls';
+import { modelUnavailableReason, nightlyShareSpent, type NightlyShare } from './model-calls';
+import { env } from '@/env';
+import { monthlyCeilingMicroUsd } from '@/lib/ai/config';
 import { bookSourceSet } from './source-common';
 import { bookNamesOf } from './source-library';
 
 export interface BibleFactDeps {
-    extractor?: (ctx: WorkspaceRequestContext) => FactExtractor;
+    /** The extractor (tests: a fake); a BACKFILL extraction hands it the daily share its calls are held to (4.H-b). */
+    extractor?: (ctx: WorkspaceRequestContext, share?: NightlyShare) => FactExtractor;
+    /** The workspace's daily backfill share in µUSD (tests: a figure of their own; default `BACKFILL_DAILY_SHARE` of the month's ceiling). */
+    dailyCapMicroUsd?: number;
     recordMode?: PackRecordMode;
     gate?: () => BibleFactGateVerdict;
     signal?: AbortSignal;
@@ -124,6 +154,10 @@ interface RunMetrics {
     /** 4.H-a (#60 item 2): calls the guard refused (or that repeat the prompt), and the sections they carried: no fact. */
     refusedCalls?: number;
     refusedSections?: number;
+    /** 4.H-b (D32): sections the guard refused under older rules, sent again under the current ones. */
+    guardRetriedSections?: number;
+    /** 4.H-b (D31, D32): a backfill extraction (its purpose and the daily share). */
+    backfill?: boolean;
     errorCode?: string;
 }
 
@@ -139,8 +173,8 @@ export function defaultSleep(ms: number, signal?: AbortSignal): Promise<void> {
     });
 }
 
-/** Stops that wait on the deployment or the month, not on the extraction: they count no attempt. */
-const UNCOUNTED_STOPS: ReadonlySet<FactExtractionOutcome> = new Set(['CEILING', 'KILL_SWITCH']);
+/** Stops that wait on the deployment or the month, not on the extraction: they count no attempt (4.H-b: nor the backfill's daily share). */
+const UNCOUNTED_STOPS: ReadonlySet<FactExtractionOutcome> = new Set(['CEILING', 'KILL_SWITCH', 'DAILY_SHARE']);
 
 function statusOf(outcome: FactExtractionOutcome): FactExtractionStatus {
     if (outcome === 'OK' || outcome === 'NO_CHANGE') return 'DONE';
@@ -209,10 +243,20 @@ async function look(db: PrismaTx, scope: { workspaceId: string; requestId: strin
     }
     const slug = await WorkspaceRepository.findSlug(db, scope.workspaceId);
     const membership = authorId ? await MembershipRepository.findForUser(db, scope.workspaceId, authorId) : null;
-    if (!slug || !membership || !authorId) return skip('AUTHOR_NOT_PERMITTED');
-    const permissions = getPermissionsForRole(membership.role);
-    if (!permissions.bible.edit) return skip('AUTHOR_NOT_PERMITTED');
-    return { row, skip: null, ctx: { requestId: scope.requestId, userId: authorId, workspaceId: scope.workspaceId, workspaceSlug: slug, role: membership.role, permissions } };
+    if (slug && membership && authorId && getPermissionsForRole(membership.role).bible.edit) {
+        return { row, skip: null, ctx: { requestId: scope.requestId, userId: authorId, workspaceId: scope.workspaceId, workspaceSlug: slug, role: membership.role, permissions: getPermissionsForRole(membership.role) } };
+    }
+    // 4.H-b (D31): a BACKFILL row reads an entry saved before 4.1, often by someone long gone. The backfill is the
+    // product's own catching up, not the author's act, so it runs as the workspace's longest-standing OWNER (else
+    // EDITOR), as the nightly continuity check does; a SAVE row still runs only as the version's author.
+    if (row.origin === 'BACKFILL' && slug) {
+        for (const role of ['OWNER', 'EDITOR'] as const) {
+            const m = await MembershipRepository.oldestOfRole(db, scope.workspaceId, role);
+            const permissions = m ? getPermissionsForRole(m.role) : null;
+            if (m && permissions?.bible.edit) return { row, skip: null, ctx: { requestId: scope.requestId, userId: m.userId, workspaceId: scope.workspaceId, workspaceSlug: slug, role: m.role, permissions } };
+        }
+    }
+    return skip('AUTHOR_NOT_PERMITTED');
 }
 
 /** One call's answer and what it was shown. */
@@ -228,9 +272,12 @@ interface Prepared {
     subject: Subject;
     entry: RenderedEntry;
     whole: string;
-    /** The body sections changed since the baseline (sent in bounded calls, `call-plan.ts`). */
+    /** The body sections changed since the baseline, and (4.H-b, D32) those refused under older guard rules (sent in bounded calls, `call-plan.ts`). */
     changedSections: EntrySection[];
     changed: number;
+    /** 4.H-b (D32): sections retried under newer guard rules, and refusals carried forward unchanged from the baseline. */
+    retried: string[];
+    carried: GuardRefusedSection[];
     shown: LiveFact[];
     bookNames: string[];
     nameToId: (name: string | null) => string | null;
@@ -295,14 +342,18 @@ async function prepare(db: PrismaTx, ctx: WorkspaceRequestContext, row: FactExtr
     let subject: Subject;
     let entry: RenderedEntry;
     let baseline: RenderedEntry | null = null;
+    let baselineRefused: GuardRefusedSection[] = [];
     if (row.kind === 'BIBLE_VERSION') {
         const version = await BibleVersionReadRepository.elementVersion(db, ctx.workspaceId, row.bibleVersionId!);
         if (!version) return null;
         const snapshot = parseSnapshot(version.snapshot);
         entry = renderElementEntry(snapshot);
-        const baseId = await FactExtractionRepository.baselineForElement(db, ctx.workspaceId, row.elementId!, version.id);
-        const base = baseId ? await BibleVersionReadRepository.elementVersion(db, ctx.workspaceId, baseId) : null;
-        if (base) baseline = renderElementEntry(parseSnapshot(base.snapshot));
+        const baseRow = await FactExtractionRepository.baselineForElement(db, ctx.workspaceId, row.elementId!, version.id);
+        const base = baseRow ? await BibleVersionReadRepository.elementVersion(db, ctx.workspaceId, baseRow.versionId) : null;
+        if (base) {
+            baseline = renderElementEntry(parseSnapshot(base.snapshot));
+            baselineRefused = readGuardRefused(baseRow?.guardRefused);
+        }
         subject = { owner: { kind: 'BIBLE_VERSION', id: row.elementId! }, names: [snapshot.element.name], elementIds: [row.elementId!], kind: snapshot.element.kind as BibleKind };
     } else {
         const version = await BibleVersionReadRepository.relationVersion(db, ctx.workspaceId, row.relationVersionId!);
@@ -310,12 +361,17 @@ async function prepare(db: PrismaTx, ctx: WorkspaceRequestContext, row: FactExtr
         if (!version || !relation) return null;
         const ends = { fromKind: relation.from.kind as BibleKind, fromName: relation.from.name, toName: relation.to.name };
         entry = renderRelationEntry(parseRelationSnapshot(version.snapshot), ends);
-        const baseId = await FactExtractionRepository.baselineForRelation(db, ctx.workspaceId, row.relationId!, version.id);
-        const base = baseId ? await BibleVersionReadRepository.relationVersion(db, ctx.workspaceId, baseId) : null;
-        if (base) baseline = renderRelationEntry(parseRelationSnapshot(base.snapshot), ends);
+        const baseRow = await FactExtractionRepository.baselineForRelation(db, ctx.workspaceId, row.relationId!, version.id);
+        const base = baseRow ? await BibleVersionReadRepository.relationVersion(db, ctx.workspaceId, baseRow.versionId) : null;
+        if (base) {
+            baseline = renderRelationEntry(parseRelationSnapshot(base.snapshot), ends);
+            baselineRefused = readGuardRefused(baseRow?.guardRefused);
+        }
         subject = { owner: { kind: 'RELATION_VERSION', id: row.relationId! }, names: [relation.from.name, relation.to.name], elementIds: [relation.from.id, relation.to.id], kind: relation.from.kind as BibleKind };
     }
-    const changed = changedSections(entry, baseline);
+    // 4.H-b (D32): the sections the baseline's guard refused under OLDER rules are sent again with the changed ones.
+    const retry = guardRetryPlan({ body: entry.body, changed: changedSections(entry, baseline), baselineRefused, rulesVersion: GUARD_RULES_VERSION });
+    const changed = retry.send;
     const live = await liveFactsFor(db, ctx, row.bookId, subject);
     // Phase 4.2 (D28): the open threads a pay-off may name, and the story order a rule reads as a fact's time.
     const openThreads = await StoryThreadRepository.listOpen(db, ctx.workspaceId, row.bookId, OPEN_THREADS_SHOWN_MAX);
@@ -329,10 +385,17 @@ async function prepare(db: PrismaTx, ctx: WorkspaceRequestContext, row: FactExtr
         whole: entryText(entry),
         changedSections: changed,
         changed: changed.length,
+        retried: retry.retried,
+        carried: retry.carried,
         shown: live.slice(0, EXISTING_FACTS_SHOWN_MAX),
         bookNames: names.map((n) => n.name),
         nameToId,
     };
+}
+
+/** 4.H-b (D32): the backfill's daily share: its purpose's spend in the last day, at most a tenth of the month's ceiling. */
+export function backfillShare(at: Date, capMicroUsd?: number): NightlyShare {
+    return { purpose: BIBLE_FACTS_BACKFILL_PURPOSE, since: new Date(at.getTime() - BACKFILL_DAY_WINDOW_MS), capMicroUsd: capMicroUsd ?? Math.floor(BACKFILL_DAILY_SHARE * monthlyCeilingMicroUsd(env)) };
 }
 
 /** Run one extraction (the job's body). */
@@ -361,28 +424,46 @@ export async function executeBibleFactExtraction(payload: { workspaceId: string;
     if (!prepared) return end(ctx, row, 'SUBJECT_GONE', {}, now(), claim);
     metrics.sectionsChanged = prepared.changed;
 
+    // 4.H-b (D31, D32): a BACKFILL row's calls are recorded under the backfill's purpose and held to its daily share.
+    const share = row.origin === 'BACKFILL' ? backfillShare(now(), deps.dailyCapMicroUsd) : undefined;
+    if (share) metrics.backfill = true;
+    if (prepared.retried.length > 0) metrics.guardRetriedSections = prepared.retried.length;
     try {
         const outputs: CallOutput[] = [];
         const refused: FactExtractionOutcome[] = [];
+        /** 4.H-b (D32): the keys of every section a refused call carried (recorded under the current guard rules). */
+        const refusedKeys = new Set<string>();
         if (prepared.changed > 0) {
             // Bounded calls (the D27 addendum): pieces of at most BIBLE_FACT_PIECE_MAX_CHARS, each call's worst case
             // inside the per-call cost budget — refused, nothing sent, when even the smallest call is not.
-            const plan = planBibleFactCalls({
-                entry: prepared.entry,
-                changed: prepared.changedSections,
-                subjects: prepared.subject.names,
-                shown: prepared.shown,
-                bookNames: prepared.bookNames,
-                openThreads: prepared.openThreads,
-                budgetMicroUsd: BIBLE_FACTS_CALL_COST_BUDGET_MICRO_USD,
-                maxChars: BIBLE_FACT_PIECE_MAX_CHARS,
-                minChars: BIBLE_FACT_PIECE_MIN_CHARS,
-                worst: deps.worstCase ?? ((blocks) => bibleFactsCallWorstCase(blocks)),
-            });
-            if (!plan.ok) return end(ctx, row, 'CALL_OVER_BUDGET', { ...metrics, errorCode: 'CALL_OVER_BUDGET' }, now(), claim);
-            const extractor = (deps.extractor ?? defaultBibleFactExtractor)(ctx);
+            // 4.H-b (D32): a section retried under newer guard rules goes in calls of its OWN, after the changed ones, so a
+            // second refusal never takes a changed section's facts down with it.
+            const retried = new Set(prepared.retried);
+            const planOf = (sections: readonly EntrySection[]) =>
+                planBibleFactCalls({
+                    entry: prepared.entry,
+                    changed: sections,
+                    subjects: prepared.subject.names,
+                    shown: prepared.shown,
+                    bookNames: prepared.bookNames,
+                    openThreads: prepared.openThreads,
+                    budgetMicroUsd: BIBLE_FACTS_CALL_COST_BUDGET_MICRO_USD,
+                    maxChars: BIBLE_FACT_PIECE_MAX_CHARS,
+                    minChars: BIBLE_FACT_PIECE_MIN_CHARS,
+                    worst: deps.worstCase ?? ((blocks) => bibleFactsCallWorstCase(blocks)),
+                });
+            const fresh = planOf(prepared.changedSections.filter((x) => !retried.has(x.key)));
+            const again = retried.size > 0 ? planOf(prepared.changedSections.filter((x) => retried.has(x.key))) : { ok: true as const, calls: [] };
+            if (!fresh.ok || !again.ok) return end(ctx, row, 'CALL_OVER_BUDGET', { ...metrics, errorCode: 'CALL_OVER_BUDGET' }, now(), claim);
+            const plan = { calls: [...fresh.calls, ...again.calls] };
+            const extractor = deps.extractor ? deps.extractor(ctx, share) : defaultBibleFactExtractor(ctx, {}, share);
             for (const call of plan.calls) {
                 if (deps.signal?.aborted) return end(ctx, row, 'ABORTED', metrics, now(), claim);
+                // The backfill's day (D32): this call's worst case must fit what the day has left, asked before the call
+                // (and again by the ledger as it reserves); past it the row waits, resumable, no attempt counted.
+                if (share && (await runInWorkspaceContext(ctx, (db) => nightlyShareSpent(db, ctx, share))) + call.worstMicroUsd > share.capMicroUsd) {
+                    return end(ctx, row, 'DAILY_SHARE', { ...metrics, errorCode: 'DAILY_SHARE' }, now(), claim);
+                }
                 if (!(await waitForModelRate(ctx, deps.charge ?? chargeModelCalls, deps.sleep ?? defaultSleep, deps.signal))) {
                     return end(ctx, row, deps.signal?.aborted ? 'ABORTED' : 'MODEL_RATE_LIMITED', metrics, now(), claim);
                 }
@@ -395,7 +476,7 @@ export async function executeBibleFactExtraction(payload: { workspaceId: string;
                     metrics.errorCode = result.errorCode;
                     const outcome: FactExtractionOutcome =
                         result.failure === 'KILL_SWITCH' ? 'KILL_SWITCH'
-                        : result.failure === 'WORKSPACE_CEILING' ? 'CEILING'
+                        : result.failure === 'WORKSPACE_CEILING' ? (result.errorCode === DAILY_SHARE_REFUSED ? 'DAILY_SHARE' : 'CEILING')
                         : result.failure === 'AI_UNAVAILABLE' ? 'AI_UNAVAILABLE'
                         : result.failure === 'ABORTED' ? 'ABORTED'
                         : result.failure === 'GUARD_REFUSED' ? 'GUARD_REFUSED'
@@ -408,6 +489,7 @@ export async function executeBibleFactExtraction(payload: { workspaceId: string;
                         // again only once the author changes it. Before 4.H-a the whole version ended SKIPPED, the
                         // baseline stayed behind it, and one bad field blocked facts for the whole entry for ever.
                         refused.push(outcome);
+                        if (outcome === 'GUARD_REFUSED') for (const k of call.sectionKeys) refusedKeys.add(k);
                         metrics.refusedCalls = (metrics.refusedCalls ?? 0) + 1;
                         metrics.refusedSections = (metrics.refusedSections ?? 0) + call.sections;
                         continue;
@@ -419,7 +501,9 @@ export async function executeBibleFactExtraction(payload: { workspaceId: string;
         }
         // Every call refused: still DONE (the baseline moves past the refused text), the refusal named as the outcome.
         const settled: FactExtractionOutcome | undefined = outputs.length === 0 && refused.length > 0 ? refused[0] : undefined;
-        return await persist(ctx, row, claim, prepared, outputs, metrics, now, settled);
+        // 4.H-b (D32): what the guard has refused so far, each under the rules that refused it: the next version's baseline record.
+        const guardRefused = refusalsToRecord(prepared.carried, refusedKeys, GUARD_RULES_VERSION);
+        return await persist(ctx, row, claim, prepared, outputs, metrics, now, settled, guardRefused);
     } catch (err) {
         logger.error('facts.extraction_failed', { component: 'facts', extractionId: row.id, error: err instanceof Error ? err.name : 'unknown' });
         return end(ctx, row, 'INTERNAL', { ...metrics, errorCode: 'INTERNAL' }, now(), claim);
@@ -436,6 +520,7 @@ async function persist(
     metrics: RunMetrics,
     now: () => Date,
     settled?: FactExtractionOutcome,
+    guardRefused: GuardRefusedSection[] | null = null,
 ): Promise<Ended> {
     // Each call's answer is held to the text THAT call was shown (the span check per piece); the facts of all the
     // calls are then one version's facts, deduplicated by their claim key in `resolveFacts`.
@@ -578,6 +663,7 @@ async function persist(
             promptVersion: prepared.changed > 0 ? BIBLE_FACTS_PROMPT_VERSION : null,
             metrics: metrics as unknown as Prisma.InputJsonValue,
             at,
+            guardRefused: guardRefused as unknown as Prisma.InputJsonValue | null,
         });
         // AUDIT LAST (3.H): the audit lock is held to commit.
         await logEvent(

@@ -327,6 +327,8 @@ model StoryFactProposal {
   @@unique([workspaceId, id])
   /// A book's proposals by status, newest first (the Facts page).
   @@index([workspaceId, bookId, status, createdAt])
+  /// 4.H-b (roadmap 4.H item 6): a book's pending proposals of one reason, newest first, and their counts (the Continuity page).
+  @@index([workspaceId, bookId, status, reason, createdAt])
   @@index([workspaceId, factId])
   @@index([workspaceId, newerFactId])
   @@index([decidedById])
@@ -368,14 +370,25 @@ model BibleFactExtraction {
   queuedAt          DateTime?
   startedAt         DateTime?
   finishedAt        DateTime?
+  /// 4.H-b (D31, D32): SAVE (the outbox trigger, a save since 4.1) | BACKFILL (the backfill of an entry saved before
+  /// 4.1, its newest version; CHECK). The minutely dispatcher queues SAVE rows only; the backfill job its own, under
+  /// the workspace's daily share.
+  origin            String    @default("SAVE")
+  /// 4.H-b (D32): the sections the guard refused, and the guard's rule version that refused each, carried forward to
+  /// the next baseline while unchanged: `[{ "key": <section key>, "rulesVersion": <n> }]`. Product keys and numbers
+  /// only (a section key is a field key or `summary`, never author text). NULL: none refused.
+  guardRefused      Json?
 
   book            Book                  @relation(fields: [workspaceId, bookId], references: [workspaceId, id], onDelete: Cascade)
   bibleVersion    BibleEntryVersion?    @relation(fields: [bibleVersionId], references: [id], onDelete: Cascade)
   relationVersion BibleRelationVersion? @relation(fields: [relationVersionId], references: [id], onDelete: Cascade)
 
   @@unique([workspaceId, id])
-  /// The dispatcher's scan across workspaces: due rows by status and time.
-  @@index([status, createdAt])
+  /// The dispatchers' scans across workspaces: due rows by origin, status and time (4.H-b: the minutely one asks SAVE,
+  /// the backfill BACKFILL).
+  @@index([origin, status, createdAt])
+  /// 4.H-b (#60.4): the discoveries' distinct workspaces with due rows, in workspace order from a cursor.
+  @@index([origin, workspaceId, status])
   /// An element's extractions (its baseline: the newest DONE one).
   @@index([workspaceId, elementId, status, createdAt])
   @@index([workspaceId, relationId, status, createdAt])

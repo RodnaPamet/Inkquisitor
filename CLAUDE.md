@@ -39,7 +39,7 @@ npm run lint              # eslint . (flat config, eslint.config.mjs)
 npm run typecheck         # tsc --noEmit, then packages/ui alone (no `@/` imports there)
 npm test                  # Jest, unit (tests/unit, tests/guards, eslint-rules/__tests__) + rendered projects — no DB, no network
 npm run test:integration  # Jest, integration project (tests/integration) — real PostgreSQL and Redis
-npm run test:load         # the bible load test at full size (2,000 elements, 20,000 versions; CI runs 400 / 4,000)
+npm run test:load         # the load tests at full size: the bible (2,000 elements, 20,000 versions; CI 400 / 4,000) and the Continuity page (10,000 facts; CI 2,000)
 npm run test:e2e          # Playwright against `next start` on :3100 (E2E_PORT moves it; build first)
 npm run db:generate       # prisma generate (also the postinstall step)
 npm run db:migrate        # prisma migrate dev
@@ -460,6 +460,18 @@ src/lib/evals/record-gate-reports.ts → every model feature's D11 gate report, 
 src/app-layer/jobs/workspace-isolation.ts → servedWorkspace: one workspace's failure in a multi-workspace job is skipped, logged, counted
 tests/fixtures/workers/native-spike-worker.mjs → a parse worker held in one native call (the memory watchdog's test)
 tests/integration/{fact-layer,continuity,questioning}-hardening, retrieval-isolation, embedding-deletion; tests/rendered/phase4-not-assessed
+```
+
+Phase 4.H-b (hardening Phase 4: scale and evaluation, D31 and D32) added:
+
+```
+prisma/migrations/…_phase4_hardening_b → BibleFactExtraction.origin (SAVE | BACKFILL) / guardRefused / DAILY_SHARE, ContinuityCheck.passedOver(Cut),
+                               JobCursor (global), the proposals-by-reason index, the stale-flag raise that rewrites only a changed flag
+src/app-layer/usecases/fact-backfill.ts → the hourly `fact-backfill` job (the backfill of bibles saved before 4.1, D31, D32)
+src/app-layer/repositories/job-cursor.repository.ts → JobCursorRepository, fromCursor (round-robin discovery), roundRobin
+src/lib/continuity/evals/rule-precision.{json,ts} → the rules' precision set and grader (both production paths)
+src/lib/facts/guard-retry.ts, src/lib/ai/guard/version.ts → refused sections retried on a safety update (D32); GUARD_RULES_VERSION
+tests/integration/{phase4-scale-hardening,continuity-load}; tests/unit/{continuity/rule-precision,facts/guard-retry,ai/guard-rules-version,platform/job-cursor}
 ```
 
 ## Rules every change obeys
@@ -1729,6 +1741,60 @@ the guard refused is passed over at once and counted there too. The
   vector source model joins `tests/integration/embedding-deletion.test.ts`, and
   a new surface that feeds a model a book's context joins
   `retrieval-isolation.test.ts`.
+- **Hardening Phase 4 (4.H-b; D31, D32).** CONTRADICTION PRECISION: the code
+  rules are graded over `src/lib/continuity/evals/rule-precision.json` (seeded
+  contradictions and near misses) on BOTH paths that raise them (4.2's
+  `detectRuleContradictions`, 4.1's `resolveFacts`); a unit test holds precision
+  ≥ `RULE_PRECISION_BAR` (0.9) and recall ≥ 0.9, and names the one residual
+  false alarm (synonyms of one shape). A rule NEVER compares a NEGATED
+  statement's value, two values of different SHAPES (`valueShape`: a name — its
+  first word capitalised after an article — against a description), values with
+  their accents (folded), or a RELATIVE age (`absoluteAge`); a KNOWLEDGE
+  proposition keeps its question word; two facts placed in different orders
+  overlap only when both state a time. A new rule or a widened one joins the set
+  first. The deep set holds near misses of the same classes and every check
+  reports its false-alarm rate and recall (`continuitySetReport`). THE BACKFILL
+  (`fact-backfill`, hourly at :37): an entry with a version and NO extraction row
+  was last saved before 4.1; its NEWEST version gets a `BibleFactExtraction` of
+  origin BACKFILL and a `bible-facts` job (the existing path, never a second
+  one), at most `BACKFILL_ENTRIES_PER_WORKSPACE_TICK` a workspace and
+  `BACKFILL_DISPATCH_MAX` a tick, due rows first; discovery is the closed
+  `fact-backfill-discovery` bypass, ids only, from a round-robin cursor; each
+  workspace through `servedWorkspace`, waiting at the ceiling and at its DAILY
+  SHARE (D32: `BACKFILL_DAILY_SHARE`, 10 % of the month's ceiling, measured over
+  the last 24 hours from the ledger by the purpose `facts.bible-extract.backfill`
+  — a sub-purpose of the prompt's, `callPurposeOf` — and checked before queuing,
+  before each call and by the ledger under its spend lock; past it the row stops
+  DAILY_SHARE, resumable, no attempt counted). It stands beside the nightly
+  continuity share; the monthly ceiling bounds both. The minutely dispatcher
+  queues SAVE rows only. A BACKFILL row whose author may no longer edit runs as
+  the workspace's oldest OWNER (else EDITOR). The Continuity page shows
+  "N of M read" (`backfill`), nothing over zero. FAIR DISCOVERY: a
+  multi-workspace discovery takes workspaces in id order from a `JobCursor`
+  (global, ids only, no app_user grant), wrapping round (`fromCursor`), so every
+  busy workspace is served within ⌈busy ÷ per-tick bound⌉ ticks; the purge reads
+  distinct workspaces, an even share each. PASSED-OVER SUBJECTS (D32) are stored
+  on the check (`passedOver`, ≤ `CONTINUITY_PASSED_OVER_MAX`, else
+  `passedOverCut` and the next pass checks every subject), retried in the next
+  pass, removed once a page covering them succeeds; a book with only outstanding
+  subjects is due again `CONTINUITY_PASSED_OVER_RETRY_MS` (a week) after its last
+  run; `nightly.complete` is false while any is outstanding, and the page counts
+  them. REFUSED SECTIONS (D32): a DONE extraction records what the guard has
+  refused (`guardRefused`: section key and `GUARD_RULES_VERSION`), carried
+  forward while unchanged; a section refused under OLDER rules is re-sent once,
+  in calls of its own (`guard-retry.ts`). Editing the guard's rule files
+  (patterns, normalize, both scanners, policy) needs `GUARD_RULES_VERSION` bumped
+  and the new hash recorded in `tests/unit/ai/guard-rules-version.test.ts`.
+  STALE FLAGS: the raise rewrites a flag only when its state changes (a standing
+  OPEN flag is left alone), and readers take a change's end from the upstream
+  element as it stands, never from `upstreamVersionId`. SCALE: the Continuity
+  page's reads are bounded and indexed; `continuity-load.test.ts` holds its p95
+  under 300 ms (CI 2,000 facts, `npm run test:load` 10,000) and its statement
+  count equal at 1,000 facts and at the load size. A new list on that page is
+  bounded (take + 1, truncation named) and keeps the count constant. After
+  editing either precision set, re-run `npm run packs:evaluate -- --no-packs
+  --continuity` (the deep set; the rules' set needs no record). Phase 4 closes
+  with 4.H-b.
 - **Sanitising author text.** Every author-text write sanitises at the
   usecase layer before it is stored: plain text through `plainLine` /
   `plainBlock` (`src/lib/bible/text.ts`, over `sanitizePlainText`), rich text

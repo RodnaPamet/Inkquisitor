@@ -69,4 +69,16 @@ export const SCHEDULED_JOBS: readonly ScheduleDefinition[] = [
         description: 'Queue the nightly continuity check of every book changed since its last one: rules, then a bounded deep-tier page (Phase 4.2).',
         defaultPayload: {},
     },
+    {
+        // Hourly, at :37 (no other schedule's minute): the backfill of bibles
+        // saved before 4.1 (D31, D32). A tick gives at most
+        // BACKFILL_ENTRIES_PER_WORKSPACE_TICK entries of a workspace an outbox
+        // row and queues them; each workspace spends at most BACKFILL_DAILY_SHARE
+        // (10 %) of its monthly ceiling a day on it, so a large bible is read
+        // over days, never on a request's path.
+        name: 'fact-backfill',
+        pattern: '37 * * * *',
+        description: 'Extract facts from bible entries saved before 4.1, resumably, under each workspace\'s daily share (Phase 4.H-b).',
+        defaultPayload: {},
+    },
 ];

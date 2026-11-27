@@ -46,6 +46,12 @@ model ContinuityCheck {
   /// 4.H-a: subjects of the pass (or, once it completes, of the last pass) passed over unchecked: after
   /// `CONTINUITY_PAGE_FAILURES_MAX` failed nights, or refused by the guard. Counted, shown, never silent.
   parkedSubjects Int       @default(0)
+  /// 4.H-b (D32): the subjects passed over and not yet checked since — their order keys (`kind:id`, ids only), at
+  /// most `CONTINUITY_PASSED_OVER_MAX` — retried in the next pass, and removed once a page covering them succeeds. A
+  /// pass is never complete while any is outstanding (rule 6).
+  passedOver     String[]  @default([])
+  /// 4.H-b: more subjects were passed over than `passedOver` holds: the next pass checks every subject again.
+  passedOverCut  Boolean   @default(false)
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 

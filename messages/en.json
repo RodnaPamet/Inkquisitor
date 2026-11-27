@@ -1739,6 +1739,10 @@
             "notAssessed": "Not assessed yet",
             "notAssessedHelp": "Your bible states no facts yet, so nothing has been checked. Facts are drawn from your entries in the background when you save them."
         },
+        "backfill": {
+            "progress": "Entries saved before facts were read: {read} of {total} read so far, in the background.",
+            "notRead": "{count, plural, one {# could not be read (no member who may edit the bible could act for it, or every attempt failed).} other {# could not be read (no member who may edit the bible could act for them, or every attempt failed).}}"
+        },
         "nightly": {
             "title": "Nightly check",
             "never": "The nightly check has not run on this book yet.",
@@ -1747,6 +1751,8 @@
             "passUnderWay": "A check of a large change is under way; it continues tomorrow night.",
             "factsCut": "This book holds more facts than one night’s check reads: only {read} of {total} were checked, so the check is not complete.",
             "parked": "{count, plural, one {# subject was} other {# subjects were}} passed over (too large for one check, never answered in a usable way night after night, or refused by the safety check); the check is not complete.",
+            "outstanding": "{count, plural, one {# subject passed over is still to be checked; the next pass tries it again} other {# subjects passed over are still to be checked; the next pass tries them again}}, and until then the check is not complete.",
+            "outstandingCut": "More subjects were passed over than can be remembered; the next pass checks every subject again, and until then the check is not complete.",
             "outcome": {
                 "OK": "every fact checked",
                 "OK_INCOMPLETE": "the pass finished, but not every fact was checked",

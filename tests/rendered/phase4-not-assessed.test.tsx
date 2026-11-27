@@ -42,9 +42,12 @@ function continuity(over: Partial<PageData> = {}, nightly: Partial<PageData['nig
             passUnderWay: false,
             factsCut: false,
             parkedSubjects: 0,
+            passedOverOutstanding: 0,
+            passedOverCut: false,
             complete: true,
             ...nightly,
         },
+        backfill: { total: 0, read: 0, notRead: 0, waiting: 0 },
         ...over,
     };
 }
@@ -79,6 +82,23 @@ describe('the Continuity page', () => {
         expect(screen.getByTestId('continuity-nightly')).not.toHaveTextContent('every fact checked');
         expect(screen.getByTestId('continuity-nightly-cut')).toHaveTextContent('4000');
         expect(screen.getByTestId('continuity-nightly-cut')).toHaveTextContent('4100');
+    });
+
+    it('subjects passed over and still outstanding are counted, and the check is never complete while they are (D32)', () => {
+        mountContinuity(continuity({}, { passedOverOutstanding: 3, complete: false }));
+        expect(screen.getByTestId('continuity-nightly')).toHaveTextContent('not every fact was checked');
+        expect(screen.getByTestId('continuity-nightly-outstanding')).toHaveTextContent('still to be checked');
+    });
+
+    it('entries saved before facts were read: their background reading is shown as "N of M read", and nothing over zero (D31, D32)', () => {
+        mountContinuity(continuity({ backfill: { total: 40, read: 12, notRead: 1, waiting: 27 } }));
+        expect(screen.getByTestId('continuity-backfill')).toHaveTextContent('12 of 40 read so far');
+        expect(screen.getByTestId('continuity-backfill')).toHaveTextContent('could not be read');
+    });
+
+    it('a book with no such entries says nothing about them (rule 6: no claim over zero)', () => {
+        mountContinuity(continuity());
+        expect(screen.queryByTestId('continuity-backfill')).toBeNull();
     });
 
     it('a pass that passed subjects over says so (#62 item 3)', () => {

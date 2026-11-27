@@ -19,7 +19,10 @@ when the application is right). This page is the guide to the first layer.
 | RLS tripwire | A Prisma extension that logs (never blocks) a query on a workspace-scoped model made outside both a context and the bypass. |
 
 `app_user` holds no grant on `Account`, `UserSession` or `VerificationToken`:
-those are read only on the plain client. On `User` it holds SELECT on `id`,
+those are read only on the plain client. Nor on `JobCursor` (Phase 4.H-b): a
+job name and the last workspace id a multi-workspace discovery served, read and
+written only through that discovery's bypass (`fact-layer-discovery`,
+`fact-backfill-discovery`); it holds no workspace's data. On `User` it holds SELECT on `id`,
 `name` and `email` only (what a member list shows) and no write: a password
 hash or a session version is never readable from a workspace transaction. `AuditLog` is append-only for every
 role (a trigger refuses `UPDATE`, `DELETE` and `TRUNCATE`; `app_user` has no

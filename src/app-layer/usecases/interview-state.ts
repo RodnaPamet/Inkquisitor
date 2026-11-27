@@ -419,7 +419,9 @@ async function staleContext(db: PrismaTx, ctx: WorkspaceRequestContext, session:
     const flag = await StaleFlagRepository.find(db, ctx.workspaceId, session.bookId, session.staleFlagId!);
     const entry = flag ? elements.find((e) => e.elementId === flag.elementId && !e.relation && !e.pending) : undefined;
     if (!flag || !entry) return undefined;
-    const after = await BibleVersionReadRepository.elementVersion(db, ctx.workspaceId, flag.upstreamVersionId);
+    // 4.H-b (#62.2): the change runs to the upstream entry AS IT STANDS — a standing flag is no longer rewritten by
+    // each later save of it, so its `upstreamVersionId` names the save that opened the debt, not the newest.
+    const after = await BibleVersionReadRepository.elementVersion(db, ctx.workspaceId, (await BibleVersionReadRepository.newestElementVersionId(db, ctx.workspaceId, flag.upstreamElementId)) ?? flag.upstreamVersionId);
     if (!after) return undefined;
     const before = flag.baseVersionId ? await BibleVersionReadRepository.elementVersion(db, ctx.workspaceId, flag.baseVersionId) : null;
     const changeText = upstreamChangeText(before ? renderElementEntry(parseSnapshot(before.snapshot)) : null, renderElementEntry(parseSnapshot(after.snapshot)));

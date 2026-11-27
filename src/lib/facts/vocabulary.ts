@@ -68,11 +68,46 @@ export const FACT_EXTRACTION_OUTCOMES = [
      */
     'CALL_OVER_BUDGET',
     'INTERNAL',
+    /**
+     * 4.H-b (D32): a BACKFILL extraction stopped at the workspace's daily share of its monthly ceiling (10 %, measured
+     * from the ledger by the backfill's purpose): resumable, no attempt counted; the backfill job queues it again
+     * once the day has room.
+     */
+    'DAILY_SHARE',
 ] as const;
 export type FactExtractionOutcome = (typeof FACT_EXTRACTION_OUTCOMES)[number];
 
+/** 4.H-b (D31, D32): where an extraction row came from: a save's outbox trigger, or the backfill of an entry saved before 4.1. */
+export const FACT_EXTRACTION_ORIGINS = ['SAVE', 'BACKFILL'] as const;
+export type FactExtractionOrigin = (typeof FACT_EXTRACTION_ORIGINS)[number];
+
+/**
+ * 4.H-b (D32): a section the guard refused, by its key (a field key, `summary`, `note`: product words, never author
+ * text), and the guard rule version (`GUARD_RULES_VERSION`) that refused it. Carried forward from baseline to
+ * baseline while the section is unchanged; once the guard's version is newer, the section is sent again ONCE.
+ */
+export interface GuardRefusedSection {
+    readonly key: string;
+    readonly rulesVersion: number;
+}
+
+/** A row's `guardRefused` as stored, read defensively (anything malformed is dropped: it can only re-send less). */
+export function readGuardRefused(raw: unknown): GuardRefusedSection[] {
+    if (!Array.isArray(raw)) return [];
+    const out: GuardRefusedSection[] = [];
+    for (const item of raw.slice(0, GUARD_REFUSED_SECTIONS_MAX)) {
+        const key = (item as { key?: unknown } | null)?.key;
+        const rulesVersion = (item as { rulesVersion?: unknown } | null)?.rulesVersion;
+        if (typeof key === 'string' && /^[a-z][a-z0-9_]{0,63}$/.test(key) && typeof rulesVersion === 'number' && Number.isInteger(rulesVersion) && rulesVersion >= 1) out.push({ key, rulesVersion });
+    }
+    return out;
+}
+
+/** Sections a row records as refused at most (an entry's template holds far fewer). */
+export const GUARD_REFUSED_SECTIONS_MAX = 200;
+
 /** The outcomes after which the row is STOPPED and dispatched again later (the rest end it). */
-export const RESUMABLE_EXTRACTION_OUTCOMES: ReadonlySet<FactExtractionOutcome> = new Set(['CEILING', 'KILL_SWITCH', 'AI_UNAVAILABLE', 'NOT_EVALUATED', 'MODEL_RATE_LIMITED', 'CALL_FAILED', 'ABORTED', 'CLAIM_EXPIRED', 'INTERNAL']);
+export const RESUMABLE_EXTRACTION_OUTCOMES: ReadonlySet<FactExtractionOutcome> = new Set(['CEILING', 'KILL_SWITCH', 'AI_UNAVAILABLE', 'NOT_EVALUATED', 'MODEL_RATE_LIMITED', 'CALL_FAILED', 'ABORTED', 'CLAIM_EXPIRED', 'INTERNAL', 'DAILY_SHARE']);
 
 /** A version settles this long before it is dispatched: a run of autosaves is extracted once, at its newest version. */
 export const FACT_EXTRACTION_SETTLE_MS = 20_000;
@@ -98,6 +133,23 @@ export const BIBLE_FACT_PIECE_MIN_CHARS = 2_000;
 
 /** Extractions the dispatcher queues at most a tick, across workspaces. */
 export const DISPATCH_EXTRACTIONS_MAX = 200;
+
+/**
+ * THE BACKFILL OF BIBLES SAVED BEFORE 4.1 (4.H-b; D31, D32). Each workspace's backfill spends at most this share of
+ * its monthly ceiling a DAY (owner decision 2026-11-27, D32): measured from the ledger — the calls of
+ * `facts.bible-extract.backfill` charged in the last `BACKFILL_DAY_WINDOW_MS` plus their live reservations — before
+ * each call and again by the ledger under its spend lock. It stands beside the nightly continuity check's own 10 %
+ * (D28 addendum), measured apart by purpose; the monthly ceiling stays the hard bound over both and every other call.
+ */
+export const BACKFILL_DAILY_SHARE = 0.1;
+/** The day the backfill's share is measured over: the last 24 hours, rolling. */
+export const BACKFILL_DAY_WINDOW_MS = 24 * 60 * 60 * 1000;
+/** Entries the backfill gives an outbox row at most a tick, per workspace (it queues no more than it can dispatch). */
+export const BACKFILL_ENTRIES_PER_WORKSPACE_TICK = 20;
+/** Backfill extractions queued at most a tick, across workspaces. */
+export const BACKFILL_DISPATCH_MAX = 200;
+/** Workspaces the backfill serves at most a tick (from its cursor, round-robin: every workspace within a bounded number of ticks). */
+export const BACKFILL_WORKSPACES_PER_TICK = 50;
 /** Embedding tasks the dispatcher works at most a tick, across workspaces. */
 export const DISPATCH_EMBEDDINGS_MAX = 256;
 /** An embedding task that failed this many times is dropped (logged): its row is re-marked by its next change. */
