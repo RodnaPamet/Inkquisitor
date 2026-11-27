@@ -163,7 +163,7 @@ describe('end to end: a save, the debounced job, the real worker, the margin', (
             ['intensifiers', 'very'],
             ['repeated-words', 'the'],
         ]);
-        expect(view.findings[0].suggestion).toMatchObject({ replacement: '' });
+        expect(view.findings[0].suggestion).toMatchObject({ replacement: '', matched: 'very ' });
         expect(view.checkedRevision).toBe(saved.revision);
     });
 });
@@ -315,6 +315,41 @@ describe('the job', () => {
         await deleteScene(ctx, bookId, a.id);
         expect(await prisma.sceneProseCheck.count({ where: { sceneId: a.id } })).toBe(0);
         expect((await executeProseCheck({ workspaceId: ctx.workspaceId, sceneId: a.id })).outcome).toBe('SCENE_GONE');
+    });
+
+    it('the store takes the scene’s row before its check’s: a chapter deletion meanwhile neither deadlocks nor fails', async () => {
+        // A part or chapter deletion takes no scene lock: its cascade locks the scene row, then the scene's check.
+        const { chapterId, sceneId } = await newScene('<p>He was very tired.</p>', 'Lock order');
+        expect((await executeProseCheck({ workspaceId: ctx.workspaceId, sceneId })).outcome).toBe('CHECKED');
+        const deletion = new Client({ connectionString: process.env.DATABASE_URL });
+        await deletion.connect();
+        try {
+            await deletion.query('BEGIN');
+            await deletion.query(`SET LOCAL lock_timeout = '20s'`);
+            await deletion.query('SELECT id FROM "ManuscriptScene" WHERE id = $1 FOR UPDATE', [sceneId]);
+            const pid = (await deletion.query('SELECT pg_backend_pid() AS pid')).rows[0].pid as number;
+            const job = executeProseCheck({ workspaceId: ctx.workspaceId, sceneId });
+            // The job's store now waits on the scene row the deletion holds (a condition, polled).
+            await until(async () => {
+                const r = await deletion.query('SELECT count(*)::int AS n FROM pg_locks WHERE NOT granted AND pid <> $1', [pid]);
+                return r.rows[0].n > 0;
+            });
+            await deletion.query('DELETE FROM "ManuscriptChapter" WHERE id = $1', [chapterId]);
+            await deletion.query('COMMIT');
+            expect(await job).toEqual({ outcome: 'SCENE_GONE', findings: 0 });
+        } finally {
+            await deletion.end();
+        }
+        expect(await prisma.sceneProseCheck.count({ where: { sceneId } })).toBe(0);
+    });
+
+    it('two dismissals of one note at once both succeed (a double click is not an error)', async () => {
+        const { sceneId } = await newScene('<p>He was very tired.</p>', 'Double dismissal');
+        await executeProseCheck({ workspaceId: ctx.workspaceId, sceneId });
+        const note = (await getSceneProseChecks(ctx, bookId, sceneId)).findings.find((f) => f.ruleId === 'intensifiers')!;
+        const results = await Promise.allSettled(Array.from({ length: 6 }, () => dismissProseFinding(ctx, bookId, { findingId: note.id })));
+        expect(results.filter((r) => r.status === 'rejected')).toEqual([]);
+        expect((await getSceneProseChecks(ctx, bookId, sceneId)).findings.map((f) => f.ruleId)).not.toContain('intensifiers');
     });
 
     it('a check past the workspace’s minute goes back on the queue and runs nothing', async () => {

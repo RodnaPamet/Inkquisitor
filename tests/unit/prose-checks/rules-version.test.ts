@@ -23,7 +23,7 @@ const RULE_PACKAGES = ['retext', 'retext-english', 'retext-equality', 'retext-pr
 
 /** Each version and the hash it records. */
 const RECORDED: Readonly<Record<number, string>> = {
-    1: 'sha256:483bbd1bcb61bf3a91718438a87fd64407c4cb896bf3bb1c67eb076a1d6093b6',
+    1: 'sha256:8548ac1bb734cade981fc4520536eb3d9581a759da02b3e5306043cc721159fc',
 };
 
 /** The source files `file` imports at run time (relative or `@/`), resolved to repository paths. */

@@ -91,7 +91,8 @@ MIT License
   passive-voice, adverb-where and e-prime
   https://github.com/btford/write-good
   Copyright (c) 2014-2019 Brian Ford; too-wordy Copyright (c) 2014 Matt
-  Blair; no-cliches Copyright (c) 2021 Matt Blair
+  Blair; no-cliches Copyright (c) 2021 Matt Blair; adverb-where Copyright
+  (c) 2014 Matt Blair; e-prime Copyright (c) 2015 Paul J. Miller
 
   The manuscript's prose checks (Phase 5.2, decision D34,
   src/lib/prose-checks/rules/ported.ts) run these packages as npm

@@ -129,6 +129,11 @@ export function retextRules(ctx: RuleContext, alex: boolean): FindingDraft[] {
             if (!first || first.start !== start) continue;
             const second = ctx.seg.words[first.index + 1];
             if (!second || second.end !== end) continue;
+            // A run of three or more of one word ("No no no") is a voice’s emphasis, never a slip of the keys.
+            const before = ctx.seg.words[first.index - 1];
+            const after = ctx.seg.words[second.index + 1];
+            const sameRun = (w: Word | undefined, next: Word) => w !== undefined && w.surface === next.surface && w.sentence === next.sentence && ctx.text.slice(Math.min(w.end, next.end), Math.max(w.start, next.start)).trim() === '';
+            if (sameRun(before, first) || sameRun(after, second)) continue;
             out.push({ ruleId: 'repeated-words', start: second.start, end: second.end, params: { word: second.raw }, suggestion: { start: first.end, end: second.end, replacement: '' } });
         } else if (alex && (m.source === 'retext-equality' || m.source === 'retext-profanities')) {
             if (PRONOUNS.has(actual.toLowerCase())) continue;

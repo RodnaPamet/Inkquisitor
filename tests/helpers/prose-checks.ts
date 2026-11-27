@@ -22,10 +22,11 @@ export function sheetOf(fields: Record<string, FieldValue> | null | undefined): 
 
 /** The engine over scene HTML (paragraphs: pass `<p>…</p>`), or plain text when it holds no tag. */
 export function check(input: string, opts: CheckOptions = {}): ProseCheckOutput & { text: string } {
-    const prose = input.includes('<') ? sceneProseText(input) : { text: input, italics: [] };
+    const prose = input.includes('<') ? sceneProseText(input) : { text: input, italics: [], mentions: [] };
     const out = runProseChecks({
         text: prose.text,
         italics: prose.italics,
+        mentions: prose.mentions,
         sheet: sheetOf(opts.sheet),
         alexEnabled: opts.alex ?? false,
         characters: opts.characters ?? [],

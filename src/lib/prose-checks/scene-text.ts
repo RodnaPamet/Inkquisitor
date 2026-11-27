@@ -16,6 +16,13 @@
  * would mean the two passes read different text — yields no italic runs at
  * all, so the tense and person checks read the italics as narration rather
  * than skip text they should not.
+ *
+ * MENTION RUNS are found the same way (a `span[data-mention]`): a mention's
+ * `@Name` is a bible element's name, not the author's prose, so the engine
+ * raises no note on it (but similar names) and never offers a suggestion that
+ * would cover it — in the editor it is one atom, and replacing part of it
+ * would replace the whole mention. A mismatch yields no mention runs; the
+ * editor refuses such a suggestion again on its side.
  */
 import { Parser } from 'htmlparser2';
 import { HtmlTextReader } from '@/lib/search/plain-text';
@@ -29,52 +36,74 @@ export interface SceneProseText {
     text: string;
     /** Italic runs (thought and emphasis), offsets into `text`, sorted and disjoint. */
     italics: TextRange[];
+    /** Mentions (`@Name`, a bible element's name), offsets into `text`, sorted and disjoint. */
+    mentions: TextRange[];
 }
 
 const NON_TEXT_ELEMENTS: ReadonlySet<string> = new Set(['script', 'style', 'template', 'noscript', 'textarea', 'iframe', 'object', 'embed', 'svg', 'math']);
 const ITALIC_ELEMENTS: ReadonlySet<string> = new Set(['em', 'i']);
 const SPACE = /\s/;
 
-/** Every character the parser reports outside non-text elements, and whether it is inside an italic element. */
-function charStream(html: string): { chars: string; italic: boolean[] } {
+interface CharStream {
+    chars: string;
+    /** Per UTF-16 unit of `chars`: inside an italic element, inside a mention span. */
+    italic: boolean[];
+    mention: boolean[];
+}
+
+/** Every character the parser reports outside non-text elements, and whether it is inside an italic element or a mention. */
+function charStream(html: string): CharStream {
     let skipping = 0;
     let italicDepth = 0;
+    let mentionDepth = 0;
+    // Whether each open span is a mention (a span closes the span it opened).
+    const spans: boolean[] = [];
     let chars = '';
     const italic: boolean[] = [];
+    const mention: boolean[] = [];
     const parser = new Parser(
         {
-            onopentag(name) {
+            onopentag(name, attribs) {
                 if (NON_TEXT_ELEMENTS.has(name)) skipping++;
                 else if (ITALIC_ELEMENTS.has(name)) italicDepth++;
+                else if (name === 'span') {
+                    const isMention = attribs['data-mention'] !== undefined;
+                    spans.push(isMention);
+                    if (isMention) mentionDepth++;
+                }
             },
             onclosetag(name) {
                 if (NON_TEXT_ELEMENTS.has(name)) skipping = Math.max(0, skipping - 1);
                 else if (ITALIC_ELEMENTS.has(name)) italicDepth = Math.max(0, italicDepth - 1);
+                else if (name === 'span' && spans.pop() === true) mentionDepth = Math.max(0, mentionDepth - 1);
             },
             ontext(text) {
                 if (skipping > 0) return;
                 for (const c of text) {
                     // A code point may be two UTF-16 units: one flag per unit keeps indices aligned with `chars`.
                     chars += c;
-                    for (let k = 0; k < c.length; k++) italic.push(italicDepth > 0);
+                    for (let k = 0; k < c.length; k++) {
+                        italic.push(italicDepth > 0);
+                        mention.push(mentionDepth > 0);
+                    }
                 }
             },
         },
         { decodeEntities: true, lowerCaseTags: true },
     );
     parser.parseComplete(html);
-    return { chars, italic };
+    return { chars, italic, mention };
 }
 
-/** The italic runs of `text`, by matching its non-space characters with the stream's; [] when they disagree. */
-function italicRuns(text: string, stream: { chars: string; italic: boolean[] }): TextRange[] {
+/** The runs of `text` whose characters the stream flags, by matching its non-space characters with the stream's; [] when they disagree. */
+function flaggedRuns(text: string, stream: CharStream, flagOf: (stream: CharStream, j: number) => boolean): TextRange[] {
     const flags: Array<boolean | null> = new Array(text.length).fill(null);
     let j = 0;
     for (let i = 0; i < text.length; i++) {
         if (SPACE.test(text[i])) continue;
         while (j < stream.chars.length && SPACE.test(stream.chars[j])) j++;
         if (j >= stream.chars.length || stream.chars[j] !== text[i]) return [];
-        flags[i] = stream.italic[j];
+        flags[i] = flagOf(stream, j);
         j++;
     }
     while (j < stream.chars.length && SPACE.test(stream.chars[j])) j++;
@@ -103,11 +132,12 @@ function italicRuns(text: string, stream: { chars: string; italic: boolean[] }):
     return runs;
 }
 
-/** The scene's plain text and its italic runs. */
+/** The scene's plain text, its italic runs and its mentions. */
 export function sceneProseText(html: string, reader: HtmlTextReader = new HtmlTextReader()): SceneProseText {
-    if (html === '') return { text: '', italics: [] };
+    if (html === '') return { text: '', italics: [], mentions: [] };
     const text = reader.read(html);
-    return { text, italics: italicRuns(text, charStream(html)) };
+    const stream = charStream(html);
+    return { text, italics: flaggedRuns(text, stream, (st, j) => st.italic[j]), mentions: flaggedRuns(text, stream, (st, j) => st.mention[j]) };
 }
 
 /**

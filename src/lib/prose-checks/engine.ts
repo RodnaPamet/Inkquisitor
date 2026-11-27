@@ -10,7 +10,8 @@
  * ORDER. The text is bounded first (`PROSE_CHECK_TEXT_MAX_CHARS`, cut at a
  * line break and said so); speech and italic runs are found; the text is
  * segmented once (sentences, words); every rule runs over the same segments;
- * a NARRATION rule's findings that touch speech are dropped; each rule keeps
+ * a NARRATION rule's findings that touch speech are dropped, and every
+ * finding on a mention's `@Name` but a similar-names one; each rule keeps
  * at most `PROSE_FINDINGS_PER_RULE_MAX`, the scene at most
  * `PROSE_FINDINGS_PER_SCENE_MAX`, by position, and a cut is named.
  *
@@ -37,6 +38,8 @@ import { PROSE_CHECK_TEXT_MAX_CHARS, PROSE_FINDINGS_PER_RULE_MAX, PROSE_FINDINGS
 export interface ProseCheckInput {
     text: string;
     italics: readonly TextRange[];
+    /** Mentions' `@Name` runs (a bible element's name, one atom in the editor): no note but similar names, no suggestion over one. */
+    mentions?: readonly TextRange[];
     sheet: CompiledStyleSheet;
     alexEnabled: boolean;
     characters: readonly NamedCharacter[];
@@ -107,8 +110,13 @@ export function runProseChecks(input: ProseCheckInput): ProseCheckOutput {
     drafts.push(...writeGoodRules(ctx));
     drafts.push(...retextRules(ctx, input.alexEnabled));
 
-    // Scope: a narration rule never reads speech.
-    const scoped = drafts.filter((d) => PROSE_RULES[d.ruleId].scope === 'ALL' || !speech.overlaps(d.start, d.end));
+    // Scope: a narration rule never reads speech; no rule but similar names reads a mention (an element's name, not prose);
+    // a suggestion never covers a mention (replacing part of the atom would replace the whole mention).
+    const mentions = new RangeSet((input.mentions ?? []).filter((r) => r.start < text.length));
+    const scoped = drafts
+        .filter((d) => PROSE_RULES[d.ruleId].scope === 'ALL' || !speech.overlaps(d.start, d.end))
+        .filter((d) => d.ruleId === 'similar-names' || !mentions.overlaps(d.start, d.end))
+        .map((d) => (d.suggestion && mentions.overlaps(d.suggestion.start, d.suggestion.end) ? { ...d, suggestion: undefined } : d));
     scoped.sort((a, b) => a.start - b.start || a.end - b.end || (a.ruleId < b.ruleId ? -1 : a.ruleId > b.ruleId ? 1 : 0));
 
     // Bounds: per rule, then per scene, by position.

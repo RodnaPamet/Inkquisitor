@@ -264,7 +264,8 @@ export function SceneTextEditor({
                 unplaced++;
                 continue;
             }
-            const sRange = f.suggestion ? placeRange(map, f.suggestion.start, f.suggestion.end) : null;
+            // The suggestion too only where the editor still reads what the check read there, and never over a mention.
+            const sRange = f.suggestion ? placeRange(map, f.suggestion.start, f.suggestion.end, f.suggestion.matched, { textOnly: true }) : null;
             placed.push({
                 id: f.id,
                 from: range.from,

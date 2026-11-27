@@ -121,6 +121,7 @@ export async function executeProseCheck(payload: { workspaceId: string; sceneId:
         const out = runProseChecks({
             text: prose.text,
             italics: prose.italics,
+            mentions: prose.mentions,
             sheet: setup.sheet,
             alexEnabled: setup.alexEnabled,
             characters: setup.characters,
@@ -142,6 +143,10 @@ export async function executeProseCheck(payload: { workspaceId: string; sceneId:
             scope,
             async (db) => {
                 await ManuscriptRepository.lockScene(db, sceneId);
+                // The scene's ROW before its check's: the order a part or chapter deletion's cascade takes them (scene,
+                // then check). Deleting the old check first and then inserting (whose foreign key waits on the scene
+                // row) deadlocked with such a deletion, which takes no scene lock.
+                if (!(await ManuscriptRepository.lockSceneRow(db, workspaceId, sceneId))) return 'SCENE_GONE' as const;
                 const current = await ProseCheckRepository.sceneForCheck(db, workspaceId, sceneId);
                 if (!current) return 'SCENE_GONE' as const;
                 if (current.revision !== scene.revision && proseTextKey(workspaceId, current.text) !== textKey) return 'SUPERSEDED' as const;

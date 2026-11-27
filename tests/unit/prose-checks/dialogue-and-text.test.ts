@@ -27,8 +27,9 @@ describe('the dialogue detector', () => {
         expect(speech('— Come in, she said.\nThe door closed.', 'dash')).toEqual(['— Come in, she said.']);
         expect(speech('“Come in,” she said.', 'none')).toEqual([]);
     });
-    it('with no sheet: double, curly single and guillemets', () => {
-        expect(speech('“A,” ‘b,’ «c» \'d\'', null)).toEqual(['“A,”', '‘b,’', '«c»']);
+    it('with no sheet: double, single (curly and straight) and guillemets, an apostrophe never opening speech', () => {
+        expect(speech('“A,” ‘b,’ «c» \'d,\' she said.', null)).toEqual(['“A,”', '‘b,’', '«c»', "'d,'"]);
+        expect(speech("It's the dog's bowl, and they don't know.", null)).toEqual([]);
     });
     it('a range set answers overlaps by binary search', () => {
         const set = new RangeSet([
@@ -49,6 +50,14 @@ describe('the scene’s plain text', () => {
         expect(sceneProseText(sample.html).text).toBe(sample.plain);
     });
 
+    it('reads a CRLF inside a paragraph as one line break (one character, as the editor reads it as one space)', () => {
+        expect(sceneProseText('<p>The tide turned.\r\nHe was very tired.</p>').text).toBe('The tide turned.\nHe was very tired.');
+    });
+    it('finds mention runs beside the text', () => {
+        const html = '<p>She met <span data-mention="e1">@Gull  Rock</span> and <span>plain</span> <span data-mention="e2">@Wren</span>.</p>';
+        const { text, mentions } = sceneProseText(html);
+        expect(mentions.map((r) => text.slice(r.start, r.end))).toEqual(['@Gull Rock', '@Wren']);
+    });
     it('finds italic runs beside the text, a line break ending a run', () => {
         const html = '<p>He <em>never</em> went, <i>not  once</i>.</p><p><em>Yes</em></p>';
         const { text, italics } = sceneProseText(html);

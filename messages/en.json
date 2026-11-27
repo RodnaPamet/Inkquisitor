@@ -2299,6 +2299,7 @@
                 "checking": "Checking the latest text…",
                 "outdated": "{count, plural, =0 {No notes} one {# note} other {# notes}} from an older style sheet or older rules; checking again…",
                 "checked": "{count, plural, =0 {No notes in the text checked.} one {# note.} other {# notes.}}",
+                "empty": "Nothing checked yet: the scene holds no words.",
                 "checkedCut": "{count, plural, =0 {No notes} one {# note} other {# notes}} in the first {words} words (only those were checked).",
                 "off": "Prose checks are switched off on this server.",
                 "unavailable": "The check could not be queued; try again."

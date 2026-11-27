@@ -1922,8 +1922,11 @@ the guard refused is passed over at once and counted there too. The
   conservative (5.H samples 500 findings, 70 % useful): filter words only after
   a subject, tense and person only after a subject pronoun from closed verb
   lists, never in speech or italics, person only for a third-person sheet;
-  write-good narrowed to intensifiers and multi-word wordy phrases; a rule that
-  widens gets near-miss tests first. NARRATION rules never read SPEECH, found by
+  write-good narrowed to intensifiers and multi-word wordy phrases; the generic
+  "you" is no subject unless the sheet is second person; a run of three of one
+  word ("No no no") is not a repeated word; a rule that widens gets near-miss
+  tests first. A MENTION's `@Name` (an element's name, one atom in the editor)
+  takes no note but similar names and no suggestion covers one. NARRATION rules never read SPEECH, found by
   `dialogue.ts` from the sheet's speech marks (its limits in its header). The
   inclusive-language check (alex's `retext-equality` + `retext-profanities`; the
   alex package fails the audit gate) is OFF unless the book turns it on, never
@@ -1938,7 +1941,9 @@ the guard refused is passed over at once and counted there too. The
   CURRENT text, checks it outside every transaction (bounded,
   `PROSE_CHECK_TEXT_MAX_CHARS`, a cut named; work counted, never timed), and
   stores the check and its findings in one transaction under the scene's
-  advisory lock ONLY while the scene's text still keys as the text checked (a
+  advisory lock, then its ROW (`lockSceneRow`, before the check's row: a part or
+  chapter deletion's cascade takes scene then check, and takes no scene lock),
+  ONLY while the scene's text still keys as the text checked (a
   newer save supersedes; a details-only save does not) — no stale finding is
   ever stored; a broken key fails only that job (`servedWorkspace`). STORAGE: a
   finding is offsets, a rule, a message key and a keyed `sentenceKey`; the words
@@ -1955,8 +1960,9 @@ the guard refused is passed over at once and counted there too. The
   recorded in `tests/unit/prose-checks/rules-version.test.ts`. THE EDITOR: notes
   are ProseMirror DECORATIONS (`prose-notes-extension.ts`), never marks or nodes,
   so the scene's text, autosave and versions never see one; a note is placed
-  only where the editor's own text still reads the finding's `matched`, maps
-  through edits, and drops when its text changes. The SUGGESTION MARK: the open
+  only where the editor's own text still reads the finding's `matched` (and its
+  suggestion only where it reads the suggestion's own `matched`, never over a
+  mention), maps through edits, and drops when its text changes. The SUGGESTION MARK: the open
   note's suggestion is drawn (struck through, the replacement as a widget) and
   nothing changes until the author accepts, which is an ordinary edit
   (`tr.insertText` / `tr.delete`) saved by the autosave like a keystroke;

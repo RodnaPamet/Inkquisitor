@@ -102,7 +102,7 @@ describe('notes are decorations, and the suggestion mark draws without editing',
 });
 
 describe('accepting a suggestion is the author’s edit, through the editor’s autosave path', () => {
-    const finding: ProseFindingView = { id: 'f1', ruleId: 'intensifiers', severity: 'NOTE', start: 7, end: 11, matched: 'very', params: { word: 'very' }, suggestion: { start: 7, end: 12, replacement: '' } };
+    const finding: ProseFindingView = { id: 'f1', ruleId: 'intensifiers', severity: 'NOTE', start: 7, end: 11, matched: 'very', params: { word: 'very' }, suggestion: { start: 7, end: 12, replacement: '', matched: 'very ' } };
 
     it('places the finding, changes nothing until Accept, then reports the edit through onChange', async () => {
         const onChange = jest.fn();
@@ -155,5 +155,84 @@ describe('accepting a suggestion is the author’s edit, through the editor’s 
             />,
         );
         await waitFor(() => expect(placed).toHaveBeenCalledWith([], 1));
+    });
+});
+
+describe('a finding at the server’s offsets lands on the very words in the editor', () => {
+    function mount(html: string, findings: ProseFindingView[]) {
+        const placed = jest.fn();
+        const onChange = jest.fn();
+        let api: SceneEditorApi | null = null;
+        const view = render(
+            <SceneTextEditor
+                workspaceSlug="w"
+                bookId="b"
+                initialHtml={html}
+                editable
+                onChange={onChange}
+                label="Scene text"
+                kindLabel={(k) => k}
+                proseNotes={{ token: 1, findings }}
+                activeNoteId={findings[0]?.id ?? null}
+                onNotesPlaced={placed}
+                onApi={(a) => (api = a)}
+            />,
+        );
+        return { view, placed, onChange, api: () => api! };
+    }
+
+    /**
+     * An intensifier note as the worker would store it: offsets into the SERVER's plain text of the HTML (`plain`:
+     * the unit suite holds `sceneProseText` of each shared sample to it), its deletion taking the space after it.
+     */
+    function serverFindings(text: string): ProseFindingView[] {
+        const at = text.indexOf('very');
+        return [{ id: 'f0', ruleId: 'intensifiers', severity: 'NOTE', start: at, end: at + 4, matched: text.slice(at, at + 4), params: { word: 'very' }, suggestion: { start: at, end: at + 5, replacement: '', matched: text.slice(at, at + 5) } }];
+    }
+
+    it('after an emoji, a mention and marks: the note covers the word and Accept deletes exactly it', async () => {
+        const sample = PROSE_TEXT_SAMPLES.find((x) => x.name.startsWith('an emoji'))!;
+        const findings = serverFindings(sample.plain);
+        const { view, placed, onChange, api } = mount(sample.html, findings);
+        await waitFor(() => expect(placed).toHaveBeenCalledWith(['f0'], 0));
+        expect(view.container.querySelector('[data-note-id="f0"]')?.textContent).toBe('very');
+        await act(async () => {
+            expect(api().acceptSuggestion('f0')).toBe(true);
+        });
+        expect(onChange.mock.calls.at(-1)?.[0]).toBe('<p>She waved 👋🏽 at <span data-mention="e1" class="scene-mention">@Gull Rock</span> and <strong>was </strong>tired.</p>');
+    });
+
+    it('a line break inside a stored paragraph (CRLF) moves nothing after it', async () => {
+        // The server's reader reads the CRLF as a line break, the editor as a space: one character either way.
+        const findings = serverFindings('The tide turned.\nHe was very tired.');
+        const { view, placed } = mount('<p>The tide turned.\r\nHe was very tired.</p>', findings);
+        await waitFor(() => expect(placed).toHaveBeenCalledWith(['f0'], 0));
+        expect(view.container.querySelector('[data-note-id="f0"]')?.textContent).toBe('very');
+    });
+
+    it('places a note but not its suggestion when the text the suggestion covers changed (never a stale edit)', async () => {
+        // Checked as "Very sad news.": the deletion re-capitalises the next word ("Very s" → "S"). The editor now reads "Very bad".
+        const stale: ProseFindingView = { id: 'f1', ruleId: 'intensifiers', severity: 'NOTE', start: 0, end: 4, matched: 'Very', params: { word: 'Very' }, suggestion: { start: 0, end: 6, replacement: 'S', matched: 'Very s' } };
+        const { view, placed, onChange, api } = mount('<p>Very bad news.</p>', [stale]);
+        await waitFor(() => expect(placed).toHaveBeenCalledWith(['f1'], 0));
+        expect(view.container.querySelector('.prose-suggest-insert')).toBeNull();
+        const before = onChange.mock.calls.length;
+        await act(async () => {
+            expect(api().acceptSuggestion('f1')).toBe(false);
+        });
+        expect(onChange).toHaveBeenCalledTimes(before);
+    });
+
+    it('never places a suggestion over a mention (accepting would replace the whole atom)', async () => {
+        const html = '<p>The <span data-mention="e1">@Colour Guard</span> marched.</p>';
+        const f: ProseFindingView = { id: 'f1', ruleId: 'spelling-variant', severity: 'WARNING', start: 5, end: 11, matched: 'Colour', params: { word: 'Colour' }, suggestion: { start: 5, end: 11, replacement: 'Color', matched: 'Colour' } };
+        const { view, placed, onChange, api } = mount(html, [f]);
+        await waitFor(() => expect(placed).toHaveBeenCalledWith(['f1'], 0));
+        expect(view.container.querySelector('.prose-suggest-insert')).toBeNull();
+        const before = onChange.mock.calls.length;
+        await act(async () => {
+            expect(api().acceptSuggestion('f1')).toBe(false);
+        });
+        expect(onChange).toHaveBeenCalledTimes(before);
     });
 });

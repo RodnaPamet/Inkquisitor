@@ -104,11 +104,9 @@ export const ProseCheckRepository = {
 
     /** Record a dismissal (a repeat is a no-op); past `max` the oldest go first. */
     async dismiss(db: Db, workspaceId: string, bookId: string, ruleId: string, sentenceKey: string, max: number): Promise<void> {
-        await db.proseDismissal.upsert({
-            where: { workspaceId_bookId_ruleId_sentenceKey: { workspaceId, bookId, ruleId, sentenceKey } },
-            create: { workspaceId, bookId, ruleId, sentenceKey },
-            update: {},
-        });
+        // INSERT … ON CONFLICT DO NOTHING: an upsert with nothing to update is not run as one statement, so two
+        // dismissals of one note at once (a double click) raced to a unique violation.
+        await db.proseDismissal.createMany({ data: [{ workspaceId, bookId, ruleId, sentenceKey }], skipDuplicates: true });
         const count = await db.proseDismissal.count({ where: { workspaceId, bookId } });
         if (count > max) {
             const oldest = await db.proseDismissal.findMany({ where: { workspaceId, bookId }, select: { id: true }, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }], take: count - max });

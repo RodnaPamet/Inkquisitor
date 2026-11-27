@@ -158,6 +158,8 @@ export interface ProseSuggestionView {
     end: number;
     /** '' deletes. */
     replacement: string;
+    /** The text at that range when the check ran: the editor draws (and lets the author accept) the suggestion only where its own text still reads this. */
+    matched: string;
 }
 
 export interface ProseFindingView {

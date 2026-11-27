@@ -14,9 +14,9 @@ import { ProseNotesMargin, type ProseNotesMarginProps } from '@/components/manus
 import type { ProseFindingView, SceneProseChecksView } from '@/lib/prose-checks/vocabulary';
 
 const findings: ProseFindingView[] = [
-    { id: 'f1', ruleId: 'intensifiers', severity: 'NOTE', start: 7, end: 11, matched: 'very', params: { word: 'very' }, suggestion: { start: 7, end: 12, replacement: '' } },
+    { id: 'f1', ruleId: 'intensifiers', severity: 'NOTE', start: 7, end: 11, matched: 'very', params: { word: 'very' }, suggestion: { start: 7, end: 12, replacement: '', matched: 'very ' } },
     { id: 'f2', ruleId: 'filter-words', severity: 'NOTE', start: 20, end: 23, matched: 'saw', params: { word: 'saw' }, suggestion: null },
-    { id: 'f3', ruleId: 'spelling-variant', severity: 'WARNING', start: 30, end: 36, matched: 'colour', params: { word: 'colour', preferred: 'color', spelling: 'american' }, suggestion: { start: 30, end: 36, replacement: 'color' } },
+    { id: 'f3', ruleId: 'spelling-variant', severity: 'WARNING', start: 30, end: 36, matched: 'colour', params: { word: 'colour', preferred: 'color', spelling: 'american' }, suggestion: { start: 30, end: 36, replacement: 'color', matched: 'colour' } },
 ];
 
 function view(over: Partial<SceneProseChecksView> = {}): SceneProseChecksView {
@@ -58,6 +58,13 @@ it('a checked scene with nothing found says so of the text checked', () => {
     expect(screen.getByTestId('prose-notes-status')).toHaveAttribute('data-status', 'CHECKED');
     expect(screen.getByTestId('prose-notes-status')).toHaveTextContent('No notes in the text checked.');
     expect(screen.getByTestId('prose-readability')).toHaveTextContent('Reading ease 71 (plain) · grade 6.2');
+});
+
+it('a checked scene of no words says nothing was checked, never "no notes", and readability not assessed', () => {
+    margin({ view: view({ findings: [], wordsChecked: 0, readability: null }), placedIds: [] });
+    expect(screen.getByTestId('prose-notes-status')).toHaveTextContent('Nothing checked yet: the scene holds no words.');
+    expect(screen.getByTestId('prose-notes-status').textContent).not.toMatch(/No notes/);
+    expect(screen.getByTestId('prose-readability')).toHaveTextContent('Readability: not assessed (too few words).');
 });
 
 it('lists the placed notes as buttons named by rule and text, in order', () => {

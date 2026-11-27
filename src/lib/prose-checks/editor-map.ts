@@ -33,6 +33,8 @@ export interface EditorTextMap {
     /** For each character of `text`, the document position it starts at and the position after it. */
     from: number[];
     to: number[];
+    /** For each character of `text`, whether it is read from an inline atom (a mention's `@Name`), not from text. */
+    atom: boolean[];
 }
 
 /** One space per run of horizontal whitespace (the reader's `[^\S\n]+`). */
@@ -50,6 +52,7 @@ export function buildEditorTextMap(doc: DocNodeLike): EditorTextMap {
     const raw: string[] = [];
     const rawFrom: number[] = [];
     const rawTo: number[] = [];
+    const rawAtom: boolean[] = [];
     let any = false;
     doc.descendants((node, pos) => {
         if (!node.isTextblock) return true;
@@ -57,6 +60,7 @@ export function buildEditorTextMap(doc: DocNodeLike): EditorTextMap {
             raw.push('\n');
             rawFrom.push(pos);
             rawTo.push(pos);
+            rawAtom.push(false);
         }
         any = true;
         node.forEach((child, offset) => {
@@ -67,6 +71,7 @@ export function buildEditorTextMap(doc: DocNodeLike): EditorTextMap {
                     raw.push(t[i]);
                     rawFrom.push(at + i);
                     rawTo.push(at + i + 1);
+                    rawAtom.push(false);
                 }
             } else {
                 const t = leafText(child);
@@ -74,6 +79,7 @@ export function buildEditorTextMap(doc: DocNodeLike): EditorTextMap {
                     raw.push(t[i]);
                     rawFrom.push(at);
                     rawTo.push(at + child.nodeSize);
+                    rawAtom.push(true);
                 }
             }
         });
@@ -84,6 +90,7 @@ export function buildEditorTextMap(doc: DocNodeLike): EditorTextMap {
     const text: string[] = [];
     const from: number[] = [];
     const to: number[] = [];
+    const atom: boolean[] = [];
     let lineStart = 0;
     const flushLine = (endExclusive: number) => {
         let i = lineStart;
@@ -95,6 +102,7 @@ export function buildEditorTextMap(doc: DocNodeLike): EditorTextMap {
                 text.push('\n');
                 from.push(rawFrom[i]);
                 to.push(rawFrom[i]);
+                atom.push(false);
             }
             let k = i;
             while (k < j) {
@@ -104,10 +112,12 @@ export function buildEditorTextMap(doc: DocNodeLike): EditorTextMap {
                     text.push(' ');
                     from.push(rawFrom[start]);
                     to.push(rawTo[k - 1]);
+                    atom.push(rawAtom.slice(start, k).some(Boolean));
                 } else {
                     text.push(raw[k]);
                     from.push(rawFrom[k]);
                     to.push(rawTo[k]);
+                    atom.push(rawAtom[k]);
                     k++;
                 }
             }
@@ -116,7 +126,7 @@ export function buildEditorTextMap(doc: DocNodeLike): EditorTextMap {
     };
     for (let i = 0; i < raw.length; i++) if (raw[i] === '\n') flushLine(i);
     flushLine(raw.length);
-    return { text: text.join(''), from, to };
+    return { text: text.join(''), from, to, atom };
 }
 
 export interface PlacedRange {
@@ -124,9 +134,14 @@ export interface PlacedRange {
     to: number;
 }
 
-/** The document range of plain-text offsets [start, end), or null when they are out of range or the text there differs from `matched`. */
-export function placeRange(map: EditorTextMap, start: number, end: number, matched?: string): PlacedRange | null {
+/**
+ * The document range of plain-text offsets [start, end), or null when they are out of range or the text there
+ * differs from `matched`. With `textOnly`, also null when any character of the range is read from an inline atom
+ * (a mention): an edit over such a range would replace the whole atom, so a suggestion is never placed there.
+ */
+export function placeRange(map: EditorTextMap, start: number, end: number, matched?: string, opts: { textOnly?: boolean } = {}): PlacedRange | null {
     if (!Number.isInteger(start) || !Number.isInteger(end) || start < 0 || end <= start || end > map.text.length) return null;
     if (matched !== undefined && map.text.slice(start, end) !== matched) return null;
+    if (opts.textOnly && map.atom.slice(start, end).some(Boolean)) return null;
     return { from: map.from[start], to: map.to[end - 1] };
 }

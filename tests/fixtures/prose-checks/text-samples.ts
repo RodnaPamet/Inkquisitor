@@ -13,4 +13,9 @@ export const PROSE_TEXT_SAMPLES: ReadonlyArray<{ name: string; html: string; pla
     { name: 'a scene break and an empty paragraph', html: '<p>Before.</p><hr><p></p><p>After.</p>', plain: 'Before.\nAfter.' },
     { name: 'entities', html: '<p>Salt &amp; iron &lt;here&gt;.</p>', plain: 'Salt & iron <here>.' },
     { name: 'curly speech', html: '<p>“Come in,” she said.</p>', plain: '“Come in,” she said.' },
+    {
+        name: 'an emoji (two UTF-16 units), a mention and marks before a word',
+        html: '<p>She waved 👋🏽 at <span data-mention="e1">@Gull Rock</span> and <strong>was <em>very</em></strong> tired.</p>',
+        plain: 'She waved 👋🏽 at @Gull Rock and was very tired.',
+    },
 ];

@@ -194,6 +194,8 @@ function statusText(t: ReturnType<typeof useTranslations>, view: SceneProseCheck
         case 'OUTDATED':
             return t('status.outdated', { count: shown });
         default:
+            // Rule 6: a check of no words found nothing because it read nothing; never "no notes".
+            if (view.wordsChecked === 0) return t('status.empty');
             return view.textCut ? t('status.checkedCut', { count: shown, words: view.wordsChecked }) : t('status.checked', { count: shown });
     }
 }

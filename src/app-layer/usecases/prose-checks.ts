@@ -126,7 +126,7 @@ export async function getSceneProseChecks(ctx: WorkspaceRequestContext, bookId: 
                 end: r.end,
                 matched: text.slice(r.start, r.end),
                 params: detail.params,
-                suggestion: s && PROSE_RULES[r.ruleId].suggests && s.end <= text.length ? s : null,
+                suggestion: s && PROSE_RULES[r.ruleId].suggests && s.end <= text.length ? { ...s, matched: text.slice(s.start, s.end) } : null,
             });
         }
         return { ...base, findings, dismissed: dismissedCount, hiddenByRule };

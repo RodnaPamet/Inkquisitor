@@ -84,6 +84,13 @@ describe('tense slips (original)', () => {
         expect(hits(check('He walks away.'), 'tense-slip')).toEqual([]);
         expect(hits(check('She saunters off.', { sheet: { check_tense: 'past' } }), 'tense-slip')).toEqual([]);
     });
+    it('reads the generic “you” as an aside, not a subject, unless the sheet is second person', () => {
+        const text = 'It was the kind of cold you feel in your teeth. You see it in old faces. The places where you’re never alone were gone.';
+        expect(hits(check(text, { sheet: { check_tense: 'past', check_person: 'third_limited' } }), 'tense-slip')).toEqual([]);
+        expect(hits(check(text, { sheet: { check_tense: 'past' } }), 'filter-words')).toEqual([]);
+        expect(hits(check('You walked in. You see her.', { sheet: { check_tense: 'past', check_person: 'second' } }), 'tense-slip')).toEqual(['see']);
+        expect(hits(check('You walked in. You saw her.', { sheet: { check_person: 'second' } }), 'filter-words')).toEqual(['saw']);
+    });
 });
 
 describe('person slips (original)', () => {
@@ -106,6 +113,11 @@ describe('the style sheet’s words (original)', () => {
     it('matches whole words in sequence, never a word inside another', () => {
         expect(hits(check('A suddenness took them.', { sheet: { avoided_words: ['suddenly'] } }), 'banned-words')).toEqual([]);
         expect(hits(check('The dark and the night.', { sheet: { avoided_words: ['dark night'] } }), 'banned-words')).toEqual([]);
+    });
+    it('cuts an item into words as the scene is cut (a hyphenated word is found)', () => {
+        const out = check('A well-known face. Her ex-husband waved.', { sheet: { avoided_words: ['well-known'], word_swaps: ['ex-husband → former husband'] } });
+        expect(hits(out, 'banned-words')).toEqual(['well-known', 'ex-husband']);
+        expect(out.findings.filter((f) => f.ruleId === 'banned-words').map((f) => f.suggestion?.replacement ?? null)).toEqual([null, 'former husband']);
     });
 });
 
@@ -172,6 +184,10 @@ describe('retext’s repeated words', () => {
     it('stays quiet across a sentence break', () => {
         expect(hits(check('He said that. That was all.'), 'repeated-words')).toEqual([]);
     });
+    it('stays quiet on a run of three or more (a voice’s emphasis), and still flags a pair beside it', () => {
+        expect(hits(check('<p>“No no no,” Tom said. He felt that the the rain was near.</p>', { sheet: { quote_marks: 'double' } }), 'repeated-words')).toEqual(['the']);
+        expect(hits(check('Run run run, she told herself.'), 'repeated-words')).toEqual([]);
+    });
 });
 
 describe('alex’s rules (the inclusive-language check)', () => {
@@ -193,5 +209,27 @@ describe('readability per scene (original syllable count, published formulas)', 
         expect(r.readingEase).toBeGreaterThan(90);
         expect(r.band).toBe('very_easy');
         expect(check('Too short to say.').readability).toBeNull();
+    });
+});
+
+describe('mentions (a bible element’s name, one atom in the editor)', () => {
+    const html = '<p>She met <span data-mention="e1">@Harbour Master</span> by the harbour. <span data-mention="e2">@Mara</span> saw <span data-mention="e3">@Maya</span>.</p>';
+    const sheet = { check_spelling: 'american', avoided_words: ['master'] };
+    const characters = [
+        { id: 'e2', name: 'Mara' },
+        { id: 'e3', name: 'Maya' },
+    ];
+    it('raises no note on a mention but similar names, and still reads the prose around it', () => {
+        const out = check(html, { sheet, characters });
+        expect(hits(out, 'spelling-variant')).toEqual(['harbour']);
+        expect(out.text.slice(out.findings.find((f) => f.ruleId === 'spelling-variant')!.start - 4)).toMatch(/^the harbour\./);
+        expect(hits(out, 'banned-words')).toEqual([]);
+        expect(hits(out, 'similar-names')).toEqual(['Maya']);
+        expect(hits(out, 'filter-words')).toEqual(['saw']);
+    });
+    it('never offers a suggestion that covers a mention', () => {
+        const out = check('<p>The <span data-mention="e1">@Colour Guard</span> marched.</p>', { sheet: { check_spelling: 'american', word_swaps: ['marched → walked'] } });
+        expect(hits(out, 'spelling-variant')).toEqual([]);
+        expect(out.findings.filter((f) => f.suggestion !== null).map((f) => out.text.slice(f.suggestion!.start, f.suggestion!.end))).toEqual(['marched']);
     });
 });

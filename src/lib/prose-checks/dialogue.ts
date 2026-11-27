@@ -22,7 +22,10 @@
  *               included (the detector does not split "— Yes, she said —").
  *   none        nothing is speech: every word is narration (so the narration
  *               rules read speech too; the settings say so).
- *   no sheet    double marks, curly single marks and guillemets.
+ *   no sheet    double marks, single marks (curly and straight, read as under
+ *               `single`) and guillemets: with nothing to say which a book uses,
+ *               more is taken as speech, so the narration rules stay quiet on
+ *               it rather than read a character's words as narration.
  *
  * Speech ranges include their marks. Italic runs are NOT speech here (the
  * tense and person checks skip them separately).
@@ -48,7 +51,7 @@ function lineSpeech(line: string, style: StyleQuoteMarks | null): TextRange[] {
     }
     const double = style === null || style === 'double';
     const curlySingle = style === null || style === 'single';
-    const straightSingle = style === 'single';
+    const straightSingle = style === null || style === 'single';
     const guillemets = style === null || style === 'guillemets';
     const out: TextRange[] = [];
     let open: number | null = null;

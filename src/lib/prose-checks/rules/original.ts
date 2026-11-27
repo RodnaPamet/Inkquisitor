@@ -4,7 +4,7 @@
  * retunes any rule under 70 % useful — so each says in its own comment where
  * it stops. Pure functions of a `RuleContext`.
  */
-import { STOP_WORDS, foldWord } from '@/lib/search/analyse';
+import { STOP_WORDS, createAnalyzer } from '@/lib/search/analyse';
 import { firstNameOf, similarNamePairs } from '../similar-names';
 import { inCaseOf, variantFor } from '../spelling-variants';
 import type { Word } from '../segments';
@@ -14,6 +14,15 @@ const set = (words: string): ReadonlySet<string> => new Set(words.split(' ').fil
 
 /** Subject pronouns a filter verb or a tense slip follows. */
 const SUBJECT_PRONOUNS = set('i you he she it we they');
+
+/**
+ * Is `surface` a subject the narration's filter verbs and tense are held to? "you" counts only for a
+ * second-person sheet: anywhere else it is the generic "you" ("the kind of cold you feel in your teeth"),
+ * whose present tense is the narrator's aside, not a slip, and whose verb filters nothing.
+ */
+function isSubjectPronoun(surface: string, ctx: RuleContext): boolean {
+    return SUBJECT_PRONOUNS.has(surface) && (surface !== 'you' || ctx.sheet.person === 'second');
+}
 /** One word that may stand between a subject and its verb ("she could see", "he suddenly felt"). */
 const BRIDGES = set('could would suddenly then just finally slowly still also now barely only almost already distinctly clearly');
 /** The bridges a tense slip may cross: adverbs only (after a modal, "could see" is the past's own form). */
@@ -54,7 +63,7 @@ export function filterWords(ctx: RuleContext): FindingDraft[] {
         if (subject.sentence !== w.sentence || subject.speech) continue;
         // A tag after speech or a thought (", she thought", "” he heard") reports the words, it does not filter a perception.
         if (isTagPosition(ctx.text, subject.start)) continue;
-        const isSubject = SUBJECT_PRONOUNS.has(subject.surface) || (names.has(subject.surface) && /^\p{Lu}/u.test(subject.raw));
+        const isSubject = isSubjectPronoun(subject.surface, ctx) || (names.has(subject.surface) && /^\p{Lu}/u.test(subject.raw));
         if (!isSubject) continue;
         out.push({ ruleId: 'filter-words', start: w.start, end: w.end, params: { word: w.raw } });
     }
@@ -194,7 +203,8 @@ export function tenseSlips(ctx: RuleContext): FindingDraft[] {
         ctx.work.ops++;
         const w = words[i];
         if (w.speech || w.italic) continue;
-        if (tense === 'past' && PRESENT_CONTRACTIONS.has(w.raw.toLowerCase().replace(/’/g, "'"))) {
+        const contraction = w.raw.toLowerCase().replace(/’/g, "'");
+        if (tense === 'past' && PRESENT_CONTRACTIONS.has(contraction) && (contraction !== "you're" || ctx.sheet.person === 'second')) {
             out.push({ ruleId: 'tense-slip', start: w.start, end: w.end, params: { word: w.raw, expected: tense } });
             continue;
         }
@@ -202,7 +212,7 @@ export function tenseSlips(ctx: RuleContext): FindingDraft[] {
         let s = i - 1;
         if (TENSE_BRIDGES.has(words[s].surface) && s > 0 && words[s].sentence === w.sentence) s--;
         const subject = words[s];
-        if (subject.sentence !== w.sentence || !SUBJECT_PRONOUNS.has(subject.surface) || subject.speech || subject.italic) continue;
+        if (subject.sentence !== w.sentence || !isSubjectPronoun(subject.surface, ctx) || subject.speech || subject.italic) continue;
         const slip =
             tense === 'past'
                 ? SINGULAR_THIRD.has(subject.surface)
@@ -269,9 +279,12 @@ export function bannedWords(ctx: RuleContext): FindingDraft[] {
     if (items.length === 0) return [];
     const words = ctx.seg.words;
     const index = bySurface(words);
+    const analyzer = createAnalyzer('en');
     const out: FindingDraft[] = [];
     for (const item of items) {
-        const parts = item.phrase.split(' ').map((p) => foldWord(p));
+        // The item cut into words by the same word rules as the scene ("well-known" is two words there, so it is two here).
+        const parts = analyzer.tokenise(item.phrase).map((t) => t.surface);
+        if (parts.length === 0) continue;
         for (const i of index.get(parts[0]) ?? []) {
             ctx.work.ops++;
             let ok = true;
