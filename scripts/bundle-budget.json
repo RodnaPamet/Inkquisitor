@@ -66,6 +66,10 @@
       "recorded": 469183,
       "budget": 517120
     },
+    "/w/[workspaceSlug]/books/[bookId]/manuscript/deleted/page": {
+      "recorded": 479817,
+      "budget": 528384
+    },
     "/w/[workspaceSlug]/books/[bookId]/manuscript/page": {
       "recorded": 472131,
       "budget": 520192

@@ -149,6 +149,30 @@ export class LocalStorageProvider implements StorageProvider {
         }
     }
 
+    async deletePrefix(prefix: string): Promise<number> {
+        // A prefix is a directory here (`workspaces/<id>/`): count its files, then remove it whole. Resolved under the
+        // root like every key, and never the root itself.
+        const dir = resolveStoragePath(prefix);
+        if (dir === path.resolve(storageRoot())) throw new Error('Refusing to delete the storage root');
+        let count = 0;
+        const walk = async (at: string): Promise<void> => {
+            let entries: import('fs').Dirent[];
+            try {
+                entries = await fs.readdir(at, { withFileTypes: true });
+            } catch (err: unknown) {
+                if ((err as NodeJS.ErrnoException).code === 'ENOENT') return;
+                throw err;
+            }
+            for (const e of entries) {
+                if (e.isDirectory()) await walk(path.join(at, e.name));
+                else count++;
+            }
+        };
+        await walk(dir);
+        await fs.rm(dir, { recursive: true, force: true });
+        return count;
+    }
+
     async copy(srcKey: string, destKey: string): Promise<void> {
         const srcPath = resolveStoragePath(srcKey);
         const destPath = resolveStoragePath(destKey);

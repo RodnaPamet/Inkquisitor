@@ -30,14 +30,14 @@ it('reads every element and its fields across chunks when the book is within the
     const { ctx, book } = await bookOf(5);
     const r = await searchBook(ctx, book.id, { q: 'guarding lamps' }, { limits: small({ elements: 10 }) });
     expect(r.totalHits).toBe(5);
-    expect(r.coverage).toEqual({ elements: 5, searchedElements: 5, complete: true, cut: null });
+    expect(r.coverage).toEqual({ elements: 5, searchedElements: 5, scenes: 0, searchedScenes: 0, complete: true, cut: null });
 });
 
 it('past the element cap: the first by name are searched, and the coverage says so', async () => {
     const { ctx, book } = await bookOf(5);
     const r = await searchBook(ctx, book.id, { q: 'keeper' }, { limits: small() });
     expect(r.hits.map((h) => h.name)).toEqual(['Keeper A', 'Keeper B', 'Keeper C']);
-    expect(r.coverage).toEqual({ elements: 5, searchedElements: 3, complete: false, cut: 'ELEMENTS_CAP' });
+    expect(r.coverage).toEqual({ elements: 5, searchedElements: 3, scenes: 0, searchedScenes: 0, complete: false, cut: 'ELEMENTS_CAP' });
 });
 
 it('past the text budget: reading stops, and the coverage says so', async () => {
@@ -69,7 +69,7 @@ it('reads fields by stored bytes as well as by elements: no query holds more tha
         // One stored value is a few kilobytes: a bound of 5,000 bytes takes one element a query, not all six.
         const r = await searchBook(ctx, book.id, { q: 'wicks' }, { limits: { ...SEARCH_READ_LIMITS, fieldChunkBytes: 5_000 } });
         expect(r.totalHits).toBe(5);
-        expect(r.coverage).toEqual({ elements: 6, searchedElements: 6, complete: true, cut: null });
+        expect(r.coverage).toEqual({ elements: 6, searchedElements: 6, scenes: 0, searchedScenes: 0, complete: true, cut: null });
         // Five queries of one heavy element each (the element with no field rides along, costing no bytes).
         expect(reads.map((ids) => ids.filter((id) => heavy.has(id)).length)).toEqual([1, 1, 1, 1, 1]);
     } finally {
@@ -100,7 +100,7 @@ it('reads summaries and relation notes by stored bytes too, and stops with the t
     try {
         // Each summary and note is a few kilobytes: a 5,000-byte bound reads them an element at a time.
         const all = await searchBook(ctx, book.id, { q: 'wicks' }, { limits: { ...SEARCH_READ_LIMITS, fieldChunkBytes: 5_000 } });
-        expect(all.coverage).toEqual({ elements: 6, searchedElements: 6, complete: true, cut: null });
+        expect(all.coverage).toEqual({ elements: 6, searchedElements: 6, scenes: 0, searchedScenes: 0, complete: true, cut: null });
         expect(all.totalHits).toBe(6);
         expect(summaryReads.every((r) => r.length === 1)).toBe(true);
         expect(summaryReads.flat().sort()).toEqual([...ids].sort());

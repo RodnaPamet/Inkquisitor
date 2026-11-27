@@ -11,6 +11,7 @@
  * night's share and D11 are the run's to meet. A book whose workspace cannot be served (its data key will not unwrap)
  * is skipped, logged with its ids and a code and counted (`servedWorkspace`): every other book is still queued.
  */
+import { withoutDeletedWorkspaces } from '@/app-layer/repositories/workspace.repository';
 import { randomUUID } from 'node:crypto';
 import { DraftDiscovery, DraftReadRunRepository } from '@/app-layer/repositories/draft-facts.repository';
 import type { JobName, JobPayload } from '@/app-layer/jobs/types';
@@ -44,7 +45,7 @@ export async function executeDraftReadDispatch(deps: DraftReadDispatchDeps = {})
     const enqueue = deps.enqueue ?? (async (name, payload, options) => (await import('@/app-layer/jobs/queue')).enqueue(name, payload, options));
     const result: DraftReadDispatchResult = { due: 0, queued: 0, expired: 0, enqueueFailed: 0, alreadyTonight: 0, workspacesSkipped: 0 };
     const nightKey = deps.nightKey ?? continuityNightKey(now);
-    const due = await runWithoutRls({ reason: 'draft-discovery' }, (db) => DraftDiscovery.listDueBooks(db, { take: deps.take ?? DRAFT_DISPATCH_MAX, staleBefore, nightKey, workspaceIds: deps.workspaceIds }));
+    const due = await runWithoutRls({ reason: 'draft-discovery' }, async (db) => withoutDeletedWorkspaces(db, await DraftDiscovery.listDueBooks(db, { take: deps.take ?? DRAFT_DISPATCH_MAX, staleBefore, nightKey, workspaceIds: deps.workspaceIds })));
     result.due = due.length;
     for (const book of due) {
         const scope = { workspaceId: book.workspaceId, requestId: randomUUID() };

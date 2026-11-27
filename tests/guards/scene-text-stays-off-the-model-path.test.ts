@@ -50,7 +50,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as ts from 'typescript';
-import { reachFrom } from '../helpers/client-import-graph';
+import { reachFrom, resolveSpecifier, specifiersOf } from '../helpers/client-import-graph';
 import { REPO_ROOT, repoFiles, repoRelative } from '../helpers/repo-files';
 
 const SEAM = 'src/app-layer/usecases/manuscript-text.ts';
@@ -90,13 +90,31 @@ function relationFieldsToTextTables(): string[] {
 }
 const NESTED_WRITE_KEYS = new Set(['create', 'createMany', 'update', 'updateMany', 'upsert', 'connectOrCreate', 'set']);
 
-/** The model layer, repo-relative: every module that loads the SDK, makes a call, or wires a feature to one. */
+/** The model layer's core: the SDK's one file, the structured call, the server-tool loop, the stub, the ledger-bound call. */
+const MODEL_CORE = ['src/lib/ai/client.ts', 'src/lib/ai/call-structured.ts', 'src/lib/ai/server-tool-loop.ts', 'src/lib/ai/model-stub.ts', 'src/app-layer/usecases/model-calls.ts'];
+
+/**
+ * EVERY MODEL-CALLING MODULE, derived from the import graph (Phase 5.H-a, roadmap 5.H item 5: D3 re-verified): the
+ * core, and every module under src that imports one of them directly, as the bundler resolves its specifiers
+ * (`clientForRun`'s file, `callStructured`'s, the server-tool loop's, the stub's, the ledger-bound call's). No module can
+ * call a model without importing one of these, so a path that reaches no module of this set reaches no model call —
+ * and a NEW feature's seam joins the set by being written, with no list to update. A hand list (the seams found by
+ * name) is kept beside it only to prove the derivation misses none of them.
+ */
 function modelModules(): string[] {
-    const fixed = ['src/lib/ai/client.ts', 'src/lib/ai/call-structured.ts', 'src/lib/ai/server-tool-loop.ts', 'src/lib/ai/model-stub.ts', 'src/app-layer/usecases/model-calls.ts'];
-    const seams = repoFiles({ under: 'src', extensions: ['.ts', '.tsx'] })
+    const core = new Set(MODEL_CORE.map((f) => path.join(REPO_ROOT, f)));
+    const importers = repoFiles({ under: 'src', extensions: ['.ts', '.tsx'] }).filter((f) => specifiersOf(f).some((spec) => {
+        const target = resolveSpecifier(spec, f);
+        return target !== null && core.has(target);
+    }));
+    return [...new Set([...MODEL_CORE, ...importers.map(repoRelative)])].sort();
+}
+
+/** The feature seams found by NAME (the 5.1 guard's list): the derivation above must hold every one. */
+function seamsByName(): string[] {
+    return repoFiles({ under: 'src', extensions: ['.ts', '.tsx'] })
         .map(repoRelative)
         .filter((f) => /(^|\/)(model-seam|[a-z-]+-seam)\.ts$/.test(f) && fs.readFileSync(path.join(REPO_ROOT, f), 'utf8').includes('callStructured'));
-    return [...new Set([...fixed, ...seams])];
 }
 
 const abs = (rel: string) => path.join(REPO_ROOT, rel);
@@ -335,6 +353,19 @@ describe('the scene text column has one writer', () => {
 
 describe('the text write path never reaches the model layer', () => {
     const models = new Set(modelModules());
+
+    it('the model-calling modules come from the import graph and include every feature seam (5.H-a)', () => {
+        const derived = modelModules();
+        // Every seam found by name is a direct importer of the core: the derivation is never narrower than the 5.1 list.
+        expect(seamsByName().filter((f) => !derived.includes(f))).toEqual([]);
+        expect(seamsByName().length).toBeGreaterThanOrEqual(10);
+        // Every module that names `clientForRun` or `callStructured` outside a comment-free type import is in the set.
+        const callers = repoFiles({ under: 'src', extensions: ['.ts', '.tsx'] })
+            .map((f) => ({ rel: repoRelative(f), text: fs.readFileSync(f, 'utf8') }))
+            .filter((x) => /\b(clientForRun|callStructured|runServerToolLoop)\s*\(/.test(x.text) && !x.rel.startsWith('src/lib/ai/'));
+        expect(callers.length).toBeGreaterThan(0);
+        expect(callers.map((c) => c.rel).filter((f) => !derived.includes(f))).toEqual([]);
+    });
 
     it('no module the writer or its callers reach is a model module', () => {
         const reach = reachFrom([SEAM, ...ALLOWED_CALLERS].map(abs));

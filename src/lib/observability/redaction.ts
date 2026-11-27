@@ -46,6 +46,8 @@ export const REDACTED_KEYS: readonly string[] = [
     'newPassword',
     'currentPassword',
     'passwd',
+    // Phase 5.H-a: the full export's archive passphrase.
+    'passphrase',
     'secret',
     'token',
     'accessToken',

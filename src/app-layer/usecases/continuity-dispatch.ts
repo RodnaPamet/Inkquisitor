@@ -20,6 +20,7 @@
  * skipped, logged with its ids and a code and counted (`servedWorkspace`,
  * 4.H-a): every other book is still queued.
  */
+import { withoutDeletedWorkspaces } from '@/app-layer/repositories/workspace.repository';
 import { randomUUID } from 'node:crypto';
 import { ContinuityDiscovery, ContinuityRunRepository } from '@/app-layer/repositories/continuity.repository';
 import type { JobName, JobPayload } from '@/app-layer/jobs/types';
@@ -56,7 +57,9 @@ export async function executeContinuityDispatch(deps: ContinuityDispatchDeps = {
     const enqueue = deps.enqueue ?? (async (name, payload, options) => (await import('@/app-layer/jobs/queue')).enqueue(name, payload, options));
     const result: ContinuityDispatchResult = { due: 0, queued: 0, expired: 0, enqueueFailed: 0, alreadyTonight: 0, workspacesSkipped: 0 };
     const nightKey = deps.nightKey ?? continuityNightKey(now);
-    const due = await runWithoutRls({ reason: 'continuity-discovery' }, (db) => ContinuityDiscovery.listDueBooks(db, { take: deps.take ?? CONTINUITY_DISPATCH_MAX, staleBefore, nightKey, workspaceIds: deps.workspaceIds, retryBefore: new Date(now.getTime() - CONTINUITY_PASSED_OVER_RETRY_MS) }));
+    const due = await runWithoutRls({ reason: 'continuity-discovery' }, async (db) =>
+        withoutDeletedWorkspaces(db, await ContinuityDiscovery.listDueBooks(db, { take: deps.take ?? CONTINUITY_DISPATCH_MAX, staleBefore, nightKey, workspaceIds: deps.workspaceIds, retryBefore: new Date(now.getTime() - CONTINUITY_PASSED_OVER_RETRY_MS) })),
+    );
     result.due = due.length;
     for (const book of due) {
         const scope = { workspaceId: book.workspaceId, requestId: randomUUID() };

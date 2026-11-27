@@ -29,6 +29,8 @@ export async function readMembershipClaims(userId: string): Promise<MembershipCl
             select: {
                 sessionVersion: true,
                 memberships: {
+                    // A deleted workspace (5.H-a) is no membership to claim.
+                    where: { workspace: { deletedAt: null } },
                     orderBy: { createdAt: 'asc' },
                     // One past the cap, so a capped list is a fact, not a guess.
                     take: MAX_JWT_MEMBERSHIPS + 1,

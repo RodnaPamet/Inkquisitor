@@ -140,6 +140,22 @@ export async function exportBibleBundle(ctx: WorkspaceRequestContext, bookId: st
 }
 
 /**
+ * The book's bundle, exactly as `exportBibleBundle` writes it (the same bytes: Phase 5.H-a's full export carries it
+ * unchanged), in the caller's transaction, with no permission check and no audit row of its own: the caller (the full
+ * export, `workspace.export`) asks and audits. `TOO_LARGE` when the import's bounds would refuse it (the full export
+ * says so in its README rather than failing: the book's whole history is in the archive beside it).
+ */
+export async function bibleBundleBytesInTx(db: PrismaTx, ctx: WorkspaceRequestContext, bookId: string): Promise<{ fileName: string; bytes: Uint8Array } | 'TOO_LARGE'> {
+    try {
+        const bundle = await readBibleBundle(db, ctx, bookId);
+        return { fileName: fileNameFor(bundle.book.title, 'zip'), bytes: importableZip(bundleFiles(bundle)) };
+    } catch (err) {
+        if (err instanceof ValidationError && (err.details as { reason?: string } | undefined)?.reason === 'EXPORT_TOO_LARGE') return 'TOO_LARGE';
+        throw err;
+    }
+}
+
+/**
  * The bundle's files zipped, refused (`EXPORT_TOO_LARGE`, `what: 'bytes'`)
  * unless the import would take the archive: within the upload bound, and
  * read by `readZip` under the import's own limits (each file's and the total

@@ -37,6 +37,9 @@ model User {
   accounts                Account[]
   sessions                UserSession[]
   memberships             WorkspaceMembership[]
+  /// Phase 5.H-a: the workspaces this person asked to delete, and those whose purge deletes this account too.
+  workspacesDeleted       Workspace[]            @relation("WorkspaceDeletedBy")
+  workspacesPurgingAccount Workspace[]           @relation("WorkspacePurgeAccountOf")
   /// Bible versions this person saved; the link is cleared (and the version
   /// kept) when the person is deleted.
   bibleVersions           BibleEntryVersion[]

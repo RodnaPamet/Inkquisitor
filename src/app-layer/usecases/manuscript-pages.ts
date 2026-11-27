@@ -4,7 +4,7 @@
  */
 import type { WorkspaceRequestContext } from '@/app-layer/types';
 import { getBook } from './books';
-import { getManuscriptOutline } from './manuscript';
+import { getManuscriptOutline, listDeletedScenes } from './manuscript';
 import { getScene } from './manuscript-scenes';
 
 export async function loadManuscriptPage(ctx: WorkspaceRequestContext, bookId: string) {
@@ -15,4 +15,10 @@ export async function loadManuscriptPage(ctx: WorkspaceRequestContext, bookId: s
 export async function loadScenePage(ctx: WorkspaceRequestContext, bookId: string, sceneId: string) {
     const [book, scene] = await Promise.all([getBook(ctx, bookId), getScene(ctx, bookId, sceneId)]);
     return { book, scene };
+}
+
+/** Phase 5.H-a (issue #71): the book and its manuscript's Recently deleted scenes. */
+export async function loadDeletedScenesPage(ctx: WorkspaceRequestContext, bookId: string) {
+    const [book, deleted] = await Promise.all([getBook(ctx, bookId), listDeletedScenes(ctx, bookId)]);
+    return { book, ...deleted };
 }

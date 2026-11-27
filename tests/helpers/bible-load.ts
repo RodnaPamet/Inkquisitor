@@ -17,6 +17,7 @@ import { encodeFieldValue } from '@/lib/bible/field-values';
 import { BIBLE_KINDS, type BibleKind } from '@/lib/bible/kinds';
 import { buildSnapshot, serialiseSnapshot } from '@/lib/bible/snapshot';
 import { getTemplate } from '@/lib/bible/templates';
+import { rebalancedRanks } from '@/lib/bible/story-order';
 
 export interface LoadBook {
     bookId: string;
@@ -102,6 +103,50 @@ export async function seedLoadBook(ctx: WorkspaceRequestContext, options: { elem
         SEED_TX,
     );
     return { bookId: book.id, hotElementId: rows[0].id, elementIds: rows.map((r) => r.id), elements, versions };
+}
+
+/** A seeded, deterministic word source (mulberry32), so the manuscript reads the same on every run. */
+function wordsOf(seed: number) {
+    const VOCAB = 'the a she he they rowed reef lamp harbour storm tide boat rope keeper night water light salt wind gull stair rock quay sea bell fog rail mast cold long slow under over beyond before after because while'.split(' ');
+    let t = seed >>> 0;
+    const next = () => {
+        t = (t + 0x6d2b79f5) >>> 0;
+        let r = Math.imul(t ^ (t >>> 15), 1 | t);
+        r ^= r + Math.imul(r ^ (r >>> 7), 61 | r);
+        return ((r ^ (r >>> 14)) >>> 0) / 4294967296;
+    };
+    return (n: number) => Array.from({ length: n }, () => VOCAB[Math.floor(next() * VOCAB.length)]).join(' ');
+}
+
+/**
+ * A manuscript of about `words` words (Phase 5.H-a: word search covers the scenes, held to the same bound with a
+ * 150,000-word manuscript in the load test), in chapters of ten scenes of about 2,500 words, as paragraphs of prose
+ * HTML. Through the FAST path (`createMany` in the workspace's context: every author-text column sealed as the product
+ * seals it). Answers the scene count.
+ */
+export async function seedLoadManuscript(ctx: WorkspaceRequestContext, bookId: string, words: number): Promise<{ scenes: number; words: number }> {
+    const SCENE_WORDS = 2_500;
+    const scenes = Math.max(1, Math.round(words / SCENE_WORDS));
+    const say = wordsOf(42);
+    await runInWorkspaceContext(
+        ctx,
+        async (db) => {
+            const manuscript = await db.manuscript.create({ data: { workspaceId: ctx.workspaceId, bookId }, select: { id: true } });
+            const part = await db.manuscriptPart.create({ data: { workspaceId: ctx.workspaceId, bookId, manuscriptId: manuscript.id, title: null, rank: rebalancedRanks(1)[0] }, select: { id: true } });
+            const chapterCount = Math.ceil(scenes / 10);
+            const chapterRanks = rebalancedRanks(chapterCount);
+            const sceneRanks = rebalancedRanks(10);
+            const chapters = Array.from({ length: chapterCount }, (_, c) => ({ id: `lc${randomBytes(10).toString('hex')}`, rank: chapterRanks[c] }));
+            await db.manuscriptChapter.createMany({ data: chapters.map((c, i) => ({ id: c.id, workspaceId: ctx.workspaceId, bookId, partId: part.id, title: `Chapter ${i + 1}`, rank: c.rank })) });
+            const rows = Array.from({ length: scenes }, (_, i) => {
+                const paragraphs = Array.from({ length: 25 }, () => `<p>${say(SCENE_WORDS / 25)}.</p>`).join('');
+                return { workspaceId: ctx.workspaceId, bookId, chapterId: chapters[Math.floor(i / 10)].id, title: `Scene ${i + 1}`, rank: sceneRanks[i % 10], text: paragraphs, wordCount: SCENE_WORDS };
+            });
+            for (let i = 0; i < rows.length; i += 20) await db.manuscriptScene.createMany({ data: rows.slice(i, i + 20) });
+        },
+        SEED_TX,
+    );
+    return { scenes, words: scenes * SCENE_WORDS };
 }
 
 /** The p50 and p95 of `samples` (milliseconds). */

@@ -79,8 +79,11 @@ export interface SearchSource {
 }
 
 export interface SearchDocument {
-    kind: 'book' | 'element';
+    kind: 'book' | 'element' | 'scene';
     elementId: string | null;
+    /** A scene's id and its chapter's title (Phase 5.H-a); absent otherwise. */
+    sceneId?: string | null;
+    chapterTitle?: string | null;
     elementKind: string | null;
     name: string;
     customLabel: string | null;
@@ -103,7 +106,7 @@ export interface RankedSearch {
 }
 
 /** Sources whose capitals are names, not sentence starts. */
-const NAME_LIKE: ReadonlySet<SearchSourceKind> = new Set(['title', 'name', 'label']);
+const NAME_LIKE: ReadonlySet<SearchSourceKind> = new Set(['title', 'name', 'label', 'sceneTitle']);
 
 interface Span {
     start: number;
@@ -286,7 +289,7 @@ export function rankDocuments(docs: readonly SearchDocument[], query: ParsedQuer
         }
         return { d, score, contribution };
     });
-    scored.sort((a, b) => b.score - a.score || compare(a.d.doc.name, b.d.doc.name) || compare(a.d.doc.elementId ?? '', b.d.doc.elementId ?? '') || a.d.order - b.d.order);
+    scored.sort((a, b) => b.score - a.score || compare(a.d.doc.name, b.d.doc.name) || compare(a.d.doc.elementId ?? a.d.doc.sceneId ?? '', b.d.doc.elementId ?? b.d.doc.sceneId ?? '') || a.d.order - b.d.order);
 
     const hits = scored.slice(0, options.limit).map(({ d, contribution }): SearchHitView => {
         // Each source's place read once, not searched for inside the comparator (#48 item 5).
@@ -295,6 +298,8 @@ export function rankDocuments(docs: readonly SearchDocument[], query: ParsedQuer
         return {
             kind: d.doc.kind,
             elementId: d.doc.elementId,
+            sceneId: d.doc.sceneId ?? null,
+            chapterTitle: d.doc.chapterTitle ?? null,
             elementKind: d.doc.elementKind,
             name: d.doc.name,
             customLabel: d.doc.customLabel,

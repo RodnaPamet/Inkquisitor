@@ -10,8 +10,10 @@
  * is never put in the page's URL, so it stays out of history and every log
  * that records a URL.
  *
- * Each result links to its element (the book's own result names where on the
- * board the words are) and shows its best matched sources, each a plain-text
+ * Each result links to its element, or to its manuscript scene at the match
+ * (Phase 5.H-a: the editor opened at the highlighted word's offset, never the
+ * query), and the book's own result names where on the board the words are;
+ * each shows its best matched sources, each a plain-text
  * snippet whose highlighted words are `<mark>` elements built from the
  * server's ranges — React text, never `innerHTML`, and the server never sends
  * HTML. The count of results is announced politely; a truncated list or a
@@ -21,7 +23,7 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
-import { BookOpen } from 'lucide-react';
+import { BookOpen, FileText } from 'lucide-react';
 import { FormField } from '@/components/ui/form-field';
 import { Input } from '@/components/ui/input';
 import { APP_ROUTES } from '@/lib/app-routes';
@@ -118,14 +120,16 @@ export function BookSearch({ workspaceSlug, bookId, kindLabels }: BookSearchProp
                 {shown && shown.hits.length > 0 ? (
                     <ul className="mt-tight divide-y divide-[var(--border-subtle)]" aria-label={t('resultsAria')} data-testid="book-search-results">
                         {shown.hits.map((hit) => (
-                            <SearchHit key={hit.elementId ?? 'book'} hit={hit} workspaceSlug={workspaceSlug} bookId={bookId} kindLabels={kindLabels} />
+                            <SearchHit key={hit.elementId ?? (hit.sceneId ? `scene:${hit.sceneId}` : 'book')} hit={hit} workspaceSlug={workspaceSlug} bookId={bookId} kindLabels={kindLabels} />
                         ))}
                     </ul>
                 ) : null}
                 {shown && shown.truncated ? <p className="mt-tight text-xs text-content-muted">{t('truncated', { shown: shown.hits.length, count: shown.totalHits })}</p> : null}
                 {shown && !shown.emptyQuery && !shown.coverage.complete && shown.coverage.cut !== null ? (
                     <p className="mt-tight text-xs text-content-muted" data-testid="book-search-partial">
-                        {t(`partial.${shown.coverage.cut}`, { searched: shown.coverage.searchedElements, count: shown.coverage.elements })}
+                        {shown.coverage.cut === 'SCENES_CAP' || shown.coverage.cut === 'SCENE_TEXT_BUDGET'
+                            ? t(`partial.${shown.coverage.cut}`, { searched: shown.coverage.searchedScenes, count: shown.coverage.scenes })
+                            : t(`partial.${shown.coverage.cut}`, { searched: shown.coverage.searchedElements, count: shown.coverage.elements })}
                     </p>
                 ) : null}
             </div>
@@ -162,6 +166,11 @@ function SearchHit({ hit, workspaceSlug, bookId, kindLabels }: { hit: SearchHitV
                     <Link href={APP_ROUTES.bibleElement(workspaceSlug, bookId, hit.elementId)} className="text-sm font-medium text-content-emphasis hover:underline">
                         {hit.name}
                     </Link>
+                ) : hit.kind === 'scene' && hit.sceneId ? (
+                    <Link href={sceneHref(workspaceSlug, bookId, hit)} className="inline-flex items-center gap-1 text-sm font-medium text-content-emphasis hover:underline" data-testid="book-search-scene-link">
+                        <FileText className="size-3.5" aria-hidden="true" />
+                        {hit.name !== '' ? t('scene', { title: hit.name }) : t('sceneUntitled')}
+                    </Link>
                 ) : (
                     <span className="inline-flex items-center gap-1 text-sm font-medium text-content-emphasis">
                         <BookOpen className="size-3.5" aria-hidden="true" />
@@ -169,6 +178,7 @@ function SearchHit({ hit, workspaceSlug, bookId, kindLabels }: { hit: SearchHitV
                     </span>
                 )}
                 {hit.customLabel ? <span className="text-xs text-content-muted">({hit.customLabel})</span> : null}
+                {hit.kind === 'scene' ? <span className="text-xs text-content-muted">{hit.chapterTitle ? t('inChapter', { title: hit.chapterTitle }) : t('manuscript')}</span> : null}
                 {hit.elementKind ? <span className="text-xs text-content-muted">{kindLabels[hit.elementKind] ?? hit.elementKind}</span> : null}
             </div>
             <ul className="space-y-1">
@@ -182,6 +192,18 @@ function SearchHit({ hit, workspaceSlug, bookId, kindLabels }: { hit: SearchHitV
             {more > 0 ? <p className="text-xs text-content-muted">{more === 1 ? t('moreOne') : t('more', { count: more })}</p> : null}
         </li>
     );
+}
+
+/**
+ * A scene result's link: the editor at the first highlighted word of its best TEXT match (the snippet's offsets are
+ * into the scene's plain text as the editor rebuilds it), or the scene itself when only its title or note matched.
+ */
+export function sceneHref(workspaceSlug: string, bookId: string, hit: SearchHitView): string {
+    const text = hit.matches.find((m) => m.source === 'sceneText' && m.snippet.highlights.length > 0);
+    if (!hit.sceneId) return APP_ROUTES.manuscript(workspaceSlug, bookId);
+    if (!text) return APP_ROUTES.scene(workspaceSlug, bookId, hit.sceneId);
+    const first = [...text.snippet.highlights].sort((a, b) => a.start - b.start)[0];
+    return APP_ROUTES.sceneAt(workspaceSlug, bookId, hit.sceneId, text.snippet.start + first.start, first.end - first.start);
 }
 
 function sourceLabel(t: T, m: SearchMatchView): string {

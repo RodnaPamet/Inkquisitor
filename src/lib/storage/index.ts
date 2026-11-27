@@ -120,6 +120,18 @@ export function assertWorkspaceKey(pathKey: string, workspaceId: string): void {
     }
 }
 
+/** A workspace id as the object keys spell it: a cuid's characters, nothing a path could read as a separator. */
+const WORKSPACE_ID_SHAPE = /^[A-Za-z0-9_-]{1,64}$/;
+
+/**
+ * Delete EVERY object a workspace holds (`workspaces/<id>/`), at its purge (Phase 5.H-a, D36). The id is checked
+ * before it becomes a prefix, so no value can name another workspace's objects or the root. Returns the count deleted.
+ */
+export async function deleteWorkspaceObjects(workspaceId: string, provider: StorageProvider = getStorageProvider()): Promise<number> {
+    if (!WORKSPACE_ID_SHAPE.test(workspaceId)) throw badRequest('A workspace id is required to delete its objects');
+    return provider.deletePrefix(`workspaces/${workspaceId}/`);
+}
+
 export function parseWorkspaceKey(pathKey: string): { workspaceId: string; domain: StorageDomain } | null {
     const m = WORKSPACE_KEY_RE.exec(pathKey);
     return m ? { workspaceId: m[1], domain: m[2] as StorageDomain } : null;

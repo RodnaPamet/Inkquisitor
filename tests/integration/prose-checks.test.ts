@@ -37,6 +37,7 @@ import { scheduleProseCheck, type EnqueueProseCheck } from '@/app-layer/usecases
 import { clearProseDismissals, dismissProseFinding, getProseCheckSettings, getSceneProseChecks, requestSceneProseCheck, rerunChapterProseChecks, saveProseCheckSettings } from '@/app-layer/usecases/prose-checks';
 import { NotFoundError } from '@/lib/errors/types';
 import { createAccount, workspaceCtx } from '../helpers/workspaces';
+import { purgeScene } from '../helpers/scene-purge';
 
 const log = createProcessLogger('worker');
 let ctx: ReturnType<typeof workspaceCtx>;
@@ -302,7 +303,7 @@ describe('the job', () => {
         await expect(requestSceneProseCheck(reader, bookId, sceneId, { enqueue: async () => undefined })).rejects.toMatchObject({ status: 403 });
     });
 
-    it('a chapter re-run queues every scene; a deleted scene takes its check with it', async () => {
+    it('a chapter re-run queues every scene; a deleted scene is checked no more (5.H-a), and its purge takes its check', async () => {
         const chapter = await createChapter(ctx, bookId, { title: 'Re-run' });
         const a = await createScene(ctx, bookId, { chapterId: chapter.id, title: 'A' });
         const b = await createScene(ctx, bookId, { chapterId: chapter.id, title: 'B' });
@@ -313,8 +314,14 @@ describe('the job', () => {
         await saveSceneText(ctx, bookId, a.id, { html: '<p>Very well.</p>', baseRevision: 0 }, { enqueueProseCheck: async () => undefined });
         await executeProseCheck({ workspaceId: ctx.workspaceId, sceneId: a.id });
         await deleteScene(ctx, bookId, a.id);
-        expect(await prisma.sceneProseCheck.count({ where: { sceneId: a.id } })).toBe(0);
         expect((await executeProseCheck({ workspaceId: ctx.workspaceId, sceneId: a.id })).outcome).toBe('SCENE_GONE');
+        expect(await getSceneProseChecks(ctx, bookId, a.id).catch((e) => e)).toBeInstanceOf(NotFoundError);
+        // A re-run of the chapter no longer queues it.
+        const again: string[] = [];
+        await rerunChapterProseChecks(ctx, bookId, chapter.id, { enqueue: async (p) => void again.push(p.sceneId) });
+        expect(again).toEqual([b.id]);
+        await purgeScene(a.id);
+        expect(await prisma.sceneProseCheck.count({ where: { sceneId: a.id } })).toBe(0);
     });
 
     it('the store takes the scene’s row before its check’s: a chapter deletion meanwhile neither deadlocks nor fails', async () => {

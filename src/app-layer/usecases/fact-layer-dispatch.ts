@@ -28,6 +28,7 @@
  * (its data key will not unwrap, a write fails) is skipped, logged with its id
  * and a code and counted (`servedWorkspace`, 4.H-a); the others are served.
  */
+import { withoutDeletedWorkspaces } from '@/app-layer/repositories/workspace.repository';
 import { randomUUID } from 'node:crypto';
 import { EmbeddingSourceRepository, EmbeddingTaskRepository, FactExtractionRepository } from '@/app-layer/repositories/fact-layer.repository';
 import { JobCursorRepository } from '@/app-layer/repositories/job-cursor.repository';
@@ -108,7 +109,7 @@ export async function executeFactLayerDispatch(deps: DispatchDeps = {}): Promise
         const due = await runWithoutRls({ reason: 'fact-layer-discovery' }, async (db) => {
             const found = await FactExtractionRepository.listDue(db, { ...window, take: deps.extractionsMax ?? DISPATCH_EXTRACTIONS_MAX, workspaceIds: deps.workspaceIds, cursor: await JobCursorRepository.read(db, cursorName) });
             if (found.rows.length > 0) await JobCursorRepository.save(db, cursorName, found.next);
-            return found.rows;
+            return withoutDeletedWorkspaces(db, found.rows);
         });
         const byWorkspace = new Map<string, typeof due>();
         for (const d of due) byWorkspace.set(d.workspaceId, [...(byWorkspace.get(d.workspaceId) ?? []), d]);
@@ -150,7 +151,10 @@ export async function executeFactLayerDispatch(deps: DispatchDeps = {}): Promise
 
     // ── Embeddings ──
     const provider = deps.embedder ? deps.embedder() : (() => { const p = getEmbeddingProvider(); return p.ok ? p.provider : null; })();
-    const workspaces = await runWithoutRls({ reason: 'fact-layer-discovery' }, (db) => EmbeddingTaskRepository.listDueWorkspaces(db, DISPATCH_EMBEDDINGS_MAX, deps.workspaceIds));
+    const workspaces = await runWithoutRls({ reason: 'fact-layer-discovery' }, async (db) => {
+        const ids = await EmbeddingTaskRepository.listDueWorkspaces(db, DISPATCH_EMBEDDINGS_MAX, deps.workspaceIds);
+        return (await withoutDeletedWorkspaces(db, ids.map((workspaceId) => ({ workspaceId })))).map((w) => w.workspaceId);
+    });
     let budget = DISPATCH_EMBEDDINGS_MAX;
     for (const workspaceId of workspaces) {
         if (budget <= 0) break;

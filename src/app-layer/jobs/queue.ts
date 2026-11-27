@@ -149,3 +149,48 @@ export async function closeQueue(): Promise<void> {
     }
     if (all.length > 0) logger.info('job queue closed', { component: 'queue' });
 }
+
+/** Job states a workspace's jobs are looked for in at its deletion (an ACTIVE job cannot be removed: it runs on). */
+const REMOVABLE_JOB_STATES = ['waiting', 'delayed', 'prioritized', 'waiting-children', 'completed', 'failed'] as const;
+/** Jobs read per page, and at most per state, when a workspace's jobs are removed. */
+const REMOVE_SCAN_PAGE = 500;
+export const REMOVE_SCAN_MAX_PER_STATE = 50_000;
+
+export interface RemovedWorkspaceJobs {
+    removed: number;
+    /** Jobs of the workspace running right now: left to finish (they find their rows gone). */
+    active: number;
+    /** True when a state held more jobs than one scan reads; the rest are removed at the next attempt. */
+    cut: boolean;
+}
+
+/**
+ * Remove every job that names `workspaceId` in its payload (Phase 5.H-a, D36): at the workspace's deletion request
+ * (nothing queued for it runs while it waits) and again at its purge (nothing that names it stays). A payload names
+ * rows by id (CLAUDE.md), so the workspace is matched on `data.workspaceId`, never on text. Bounded per state, a cut
+ * named; an active job is counted and left (it holds a lock, and it finds its rows gone).
+ */
+export async function removeWorkspaceJobs(workspaceId: string, options: { queueName?: string } = {}): Promise<RemovedWorkspaceJobs> {
+    const queue = getQueue(options.queueName);
+    const result: RemovedWorkspaceJobs = { removed: 0, active: 0, cut: false };
+    for (const state of REMOVABLE_JOB_STATES) {
+        const doomed: Array<{ remove(): Promise<unknown> }> = [];
+        for (let start = 0; start < REMOVE_SCAN_MAX_PER_STATE; start += REMOVE_SCAN_PAGE) {
+            const page = await queue.getJobs([state], start, start + REMOVE_SCAN_PAGE - 1, true);
+            for (const job of page) {
+                const data = job?.data as { workspaceId?: unknown } | undefined;
+                if (job && data?.workspaceId === workspaceId) doomed.push(job);
+            }
+            if (page.length < REMOVE_SCAN_PAGE) break;
+            if (start + REMOVE_SCAN_PAGE >= REMOVE_SCAN_MAX_PER_STATE) result.cut = true;
+        }
+        // Removed after the scan, so removing does not shift the pages being read.
+        for (const job of doomed) {
+            await job.remove();
+            result.removed++;
+        }
+    }
+    const active = await queue.getJobs(['active'], 0, REMOVE_SCAN_PAGE - 1, true);
+    result.active = active.filter((j) => (j?.data as { workspaceId?: unknown } | undefined)?.workspaceId === workspaceId).length;
+    return result;
+}

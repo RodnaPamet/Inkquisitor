@@ -211,13 +211,14 @@ export const InterviewSessionRepository = {
     },
 
     find(db: Db, workspaceId: string, bookId: string, sessionId: string) {
-        return db.interviewSession.findFirst({ where: { id: sessionId, workspaceId, bookId }, select: SESSION_SELECT });
+        return db.interviewSession.findFirst({ where: { id: sessionId, workspaceId, bookId, OR: [{ sceneId: null }, { scene: { deletedAt: null } }] }, select: SESSION_SELECT });
     },
 
     /** A book's sessions, newest first (`take` of them). */
     listForBook(db: Db, workspaceId: string, bookId: string, take: number) {
         return db.interviewSession.findMany({
-            where: { workspaceId, bookId },
+            // 5.H-a: a scene session is hidden while its scene is deleted (issue #71), and comes back with it.
+            where: { workspaceId, bookId, OR: [{ sceneId: null }, { scene: { deletedAt: null } }] },
             orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
             take,
             select: SESSION_SELECT,

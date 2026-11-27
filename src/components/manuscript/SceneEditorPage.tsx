@@ -72,13 +72,16 @@ export interface SceneEditorPageProps {
     initial: SceneView;
     canEdit: boolean;
     kindLabels: Record<string, string>;
+    /** Phase 5.H-a: open the text at a place (a word-search result's offsets), or null. */
+    openAt?: { start: number; length: number } | null;
 }
 
 type PanelTab = 'details' | 'links' | 'note' | 'card' | 'draft' | 'history';
 const PANEL_TABS: readonly PanelTab[] = ['details', 'links', 'note', 'card', 'draft', 'history'];
 
-export function SceneEditorPage({ workspaceSlug, book, initial, canEdit, kindLabels }: SceneEditorPageProps) {
+export function SceneEditorPage({ workspaceSlug, book, initial, canEdit, kindLabels, openAt = null }: SceneEditorPageProps) {
     const t = useTranslations('manuscript.editor');
+    const tAi = useTranslations('aiUse');
     const reasonText = useManuscriptReason();
     const [scene, setScene] = useState<SceneView>(initial);
     const [editorKey, setEditorKey] = useState(0);
@@ -294,6 +297,9 @@ export function SceneEditorPage({ workspaceSlug, book, initial, canEdit, kindLab
                             </div>
                         </div>
                     ) : null}
+                    <p className="text-xs text-content-muted" data-testid="scene-d3-line">
+                        {tAi('editorLine')}
+                    </p>
                     <Card className="p-6">
                         <div className="gap-default lg:grid lg:grid-cols-[minmax(0,1fr)_14rem]">
                             <SceneTextEditor
@@ -301,6 +307,7 @@ export function SceneEditorPage({ workspaceSlug, book, initial, canEdit, kindLab
                                 workspaceSlug={workspaceSlug}
                                 bookId={book.id}
                                 initialHtml={editorHtml}
+                                openAt={editorKey === 0 ? openAt : null}
                                 editable={canEdit}
                                 onChange={onChange}
                                 label={t('textLabel')}

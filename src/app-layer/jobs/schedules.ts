@@ -43,6 +43,22 @@ export const SCHEDULED_JOBS: readonly ScheduleDefinition[] = [
         defaultPayload: {},
     },
     {
+        // Daily, off the hour (03:23 UTC), after the book purge (5.H-a, issue #71): a scene becomes due 30 days after
+        // its deletion by the database's clock; a day's lateness is the most it waits.
+        name: 'scene-purge',
+        pattern: '23 3 * * *',
+        description: 'Delete for good every manuscript scene deleted more than 30 days ago, with its history and research proposals (Phase 5.H-a).',
+        defaultPayload: {},
+    },
+    {
+        // Daily, off the hour (03:29 UTC), after the scene purge (5.H-a, D36): a workspace becomes due 30 days after
+        // its OWNER asked; a day's lateness is the most it waits, so every deletion completes within 31 days.
+        name: 'workspace-purge',
+        pattern: '29 3 * * *',
+        description: 'Delete for good every workspace deleted more than 30 days ago: every row, vector, stored object and queued job of it, and the requesting owner’s account when asked (Phase 5.H-a).',
+        defaultPayload: {},
+    },
+    {
         // Daily, off the hour (03:41 UTC), after the book purge. A record
         // becomes due after AI_CALL_LOG_RETENTION_DAYS days; a day's lateness
         // is the most it waits.

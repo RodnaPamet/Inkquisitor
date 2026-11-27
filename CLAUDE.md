@@ -40,7 +40,7 @@ npm run lint              # eslint . (flat config, eslint.config.mjs)
 npm run typecheck         # tsc --noEmit, then packages/ui alone (no `@/` imports there)
 npm test                  # Jest, unit (tests/unit, tests/guards, eslint-rules/__tests__) + rendered projects — no DB, no network
 npm run test:integration  # Jest, integration project (tests/integration) — real PostgreSQL and Redis
-npm run test:load         # the load tests at full size: the bible (2,000 elements, 20,000 versions; CI 400 / 4,000) and the Continuity page (10,000 facts; CI 2,000)
+npm run test:load         # the load tests at full size: the bible (2,000 elements, 20,000 versions, a 150,000-word manuscript; CI 400 / 4,000 / 30,000) and the Continuity page (10,000 facts; CI 2,000)
 npm run test:e2e          # Playwright against `next start` on :3100 (E2E_PORT moves it; build first)
 npm run db:generate       # prisma generate (also the postinstall step)
 npm run db:migrate        # prisma migrate dev
@@ -524,6 +524,27 @@ src/app-layer/usecases/      → draft-read (the `draft-read` job), draft-read-d
                                the prefill and save, a scene's notes), thread-scene-links, scene-card (THE card writer)
 src/app/api/w/[workspaceSlug]/books/[bookId]/{draft-mismatches/**,thread-scene-links/**,manuscript/scenes/[sceneId]/{draft-notes,card}}
 src/components/continuity/DraftAgainstBible.tsx, src/components/manuscript/{SceneCardPanel,SceneDraftPanel,use-scene-draft-notes}
+```
+
+Phase 5.H-a (hardening Phase 5: the author's data, D36 and issue #71) added:
+
+```
+prisma/migrations/…_your_data → ManuscriptScene.deletedAt (+ the partial unique live rank, the purge-window and
+                               deleted_at_is_now triggers), the version trigger's purge branch; Workspace.deletedAt /
+                               deletedById / purgeAccountOfId (+ app_user may never delete a workspace, deleted_at_is_now)
+src/lib/manuscript/scene-retention.ts, src/lib/workspace/workspace-retention.ts → the two 30-day windows (client-safe)
+src/app-layer/usecases/      → manuscript (soft deleteScene, listDeletedScenes, restoreScene), scene-purge (the `scene-purge`
+                               job), workspace-deletion (request, restore, the `workspace-purge` job), workspace-export
+src/app-layer/repositories/  → export.repository (paged readers of every table), workspace-deletion.repository
+src/lib/export/              → encrypted-zip (THE AES-256 AE-2 writer, @zip.js/zip.js), manuscript-files (DOCX + Markdown),
+                               archive-layout (THE file table the writer and the README share), passphrase (client-safe)
+src/lib/manuscript/scene-blocks.ts → a stored scene as styled blocks (the export's reader)
+src/app-layer/jobs/queue.ts  → removeWorkspaceJobs; src/lib/storage → deletePrefix, deleteWorkspaceObjects
+src/app/api/w/[workspaceSlug]/{export,deletion,books/[bookId]/manuscript/deleted-scenes/**}, src/app/api/account/deleted-workspaces/**
+src/app/w/[workspaceSlug]/books/[bookId]/manuscript/deleted → src/components/manuscript/DeletedScenesList
+src/components/settings/{AiUseStatement,YourDataPanel,RestorableWorkspaces} → Settings (D3 statement, export, deletion), /no-workspace
+docs/backup-restore.md, docs/your-data.md; tests/integration/backup-restore-drill.test.ts (THE drill, run on every CI build)
+tests/helpers/ae2-zip.ts     → an independent WinZip AES (AE-2) reader and writer over node:crypto (the export's proof)
 ```
 
 ## Rules every change obeys
@@ -1324,8 +1345,14 @@ closed beta with an explicit operator flag (D5, amended 2026-11-19).
   field (rich text through `HtmlTextReader`, never a tag-stripping pattern,
   with a break between blocks, and a phrase never matches across one; a
   list's items; a choice's label; not a scale)
-  and its relation notes (both ends), and the book's title and logline; not
-  answers, research, versions or proposals yet. A plain-text source is never
+  and its relation notes (both ends), and the book's title and logline, and
+  (Phase 5.H-a, D33 addendum A) every LIVE manuscript scene's title, text and
+  note — a document of kind `scene`, its text read by the same `HtmlTextReader`
+  the editor's text map rebuilds, so a result links to the editor AT the match
+  (`APP_ROUTES.sceneAt`: offsets only, never the query), sized by stored bytes and
+  decrypted a chunk at a time under the scenes' OWN text budget, its cuts named
+  (`SCENES_CAP`, `SCENE_TEXT_BUDGET`); not a scene's card, answers, research,
+  versions or proposals yet. A plain-text source is never
   parsed as HTML again. THE STEMMER is `porter2Stem`, Snowball English
   written from `english.sbl` and held to Snowball's own 42,649-word
   vocabulary and output (`tests/fixtures/snowball/`); a change that moves a
@@ -1927,9 +1954,10 @@ the guard refused is passed over at once and counted there too. The
   shown their scenes as fenced data (never the gather request) and may propose a
   SCENE_NOTE citing findings, grounded in the findings alone, never prose;
   accepting appends to the note (a RESEARCH note version naming the proposal and
-  its findings). The brief's quote check reads manuscript text too. Word search
-  and the bible export do not read the manuscript yet: both land in 5.H (D33
-  addendum A; 5.H item 4's export, and word search over scenes).
+  its findings). The brief's quote check reads manuscript text too (a deleted
+  scene's too, until its purge). Since 5.H-a (D33 addendum A) word search reads
+  the scenes and the full export carries the manuscript; a scene's deletion is
+  soft (below, "The author's data").
 - **Prose checks (Phase 5.2; D3, D34).** DETERMINISTIC CODE, NO MODEL: the
   engine (`src/lib/prose-checks/engine.ts`, worker-only — retext, write-good and
   alex's plugins never reach a browser bundle) reads a scene's plain text (3.4's
@@ -2099,6 +2127,68 @@ the guard refused is passed over at once and counted there too. The
   an empty list says only that nothing settled lately. After editing the deep
   set, prompt or schema, re-run `npm run packs:evaluate -- --no-packs
   --continuity`.
+- **The author's data (Phase 5.H-a; D36, issue #71).** DELETED SCENES: a scene's
+  deletion is SOFT (`ManuscriptScene.deletedAt`, stamped by the database's clock
+  for app_user): every scene read asks LIVE (`ManuscriptSceneRepository`'s `LIVE`,
+  `OF_LIVE_SCENE` on a link, card, mismatch, thread link, research proposal or
+  scene session; `"deletedAt" IS NULL` in raw SQL — the draft reading's due
+  scenes, the prose checks' reads, the deep check's draft facts), so a deleted
+  scene is hidden from every list, the editor, the board's cards, the beat's
+  scenes, search, the research review, the interview list and every save, and
+  KEEPS its text, note, card, links, versions, draft facts and research
+  proposals for its restore. A new read of a scene, or of a row keyed by one,
+  asks LIVE. `restoreScene` (`bible.edit`, the window by the database's clock)
+  puts it back at its rank when no live scene holds it, else at the end of its
+  chapter (a live place is the partial unique index
+  `ManuscriptScene_chapterId_rank_live_key`; never a `@@unique`). After
+  `SCENE_RESTORE_DAYS` the daily `scene-purge` deletes it as the OWNING role
+  (`scene-purge`: app_user has no DELETE on the version tables), then its
+  book-keyed history through `SceneHistoryRepository.deleteForGoneScene`, which
+  names the scene in `inkquisitor.scene_purge` for the append-only trigger, then
+  audits under the workspace's RLS. The trigger
+  `manuscript_scene_delete_only_when_purge_due` refuses any earlier delete for
+  every role except the chapter's cascade (a deleted chapter takes its
+  recently deleted scenes: `NOT_EMPTY` counts them, `recentlyDeleted`, and the
+  confirm names live + deleted). THE WORKSPACE: an OWNER's `requestWorkspaceDeletion`
+  (`workspace.delete`, the exact name typed, `deleteAccount` only when it is the
+  account's only workspace: 409 ACCOUNT_HAS_OTHER_WORKSPACES) sets
+  `Workspace.deletedAt`: the gate (`findForGate`), the first-workspace lookup and
+  the JWT claims leave a deleted workspace out (a 404, `/no-workspace`), every
+  multi-workspace job drops it after discovery (`withoutDeletedWorkspaces`: a new
+  dispatcher does the same), and its queued jobs are removed
+  (`removeWorkspaceJobs`, matched on `data.workspaceId`). An OWNER restores it
+  from `/no-workspace` (account routes, `workspace-deletion-discovery`) within
+  `WORKSPACE_RESTORE_DAYS`; then `workspace-purge` deletes its stored objects
+  (`deleteWorkspaceObjects`), its jobs, and — as the owning role (app_user may
+  never delete a workspace row: trigger) — the row, whose cascade takes every
+  workspace-scoped row, and the requester's account when asked and they hold no
+  membership left; it appends WORKSPACE_PURGED to the workspace's own audit
+  chain, the ONE thing kept (`docs/your-data.md`). A new workspace-scoped table
+  must go with its workspace by cascade: `workspace-deletion.test.ts` counts zero
+  rows in every model with a `workspaceId`, from the schema. THE FULL EXPORT
+  (`POST /api/w/<slug>/export`, `workspace.export`, OWNER) is ONE WinZip AES-256
+  (AE-2) zip — never ZipCrypto (`createEncryptedZip`, `@zip.js/zip.js`, workers
+  off) — streamed as the response is read, each table a page at a time in a
+  transaction of its own (`BookExportReaders`), one stream slot held. Its files
+  and their descriptions are ONE table (`archive-layout.ts`) the README is
+  generated from: a new table of author data joins it. The passphrase (≥ 12
+  characters, `passphraseRefusal`, shared with the dialog) is in the POST body
+  only and reaches nothing but the writer: never stored, logged (`passphrase` is
+  a redacted key), audited, queued or put in a URL; a background job is refused
+  for that reason. The bundle inside is `bibleBundleBytesInTx`, byte for byte the
+  bible export's. The manuscript is `manuscriptDocx` / `manuscriptMarkdown` over
+  `sceneBlocks` (deterministic). `tests/helpers/ae2-zip.ts` is an independent
+  AE-2 implementation the tests read every archive with. D3 IN WORDS: Settings →
+  "How Inkquisitor uses AI" (`AiUseStatement`, the catalogue's `aiUse`) and a
+  line under the manuscript outline and the scene editor; the D3 guard's model
+  modules are DERIVED from the import graph (every direct importer of the model
+  core), so a new seam is covered by being written. THE DRILL
+  (`docs/backup-restore.md`): `backup-restore-drill.test.ts` dumps the
+  integration database with `pg_dump`, restores it with `pg_restore` into a fresh
+  database and reads one workspace back through `createDatabase` (rows, the same
+  ciphertexts decrypting, the audit chain, every policy, the triggers, vectors);
+  CI runs the tools in the Postgres container (`PG_TOOLS_CONTAINER`), locally
+  from PATH at the server's major, and missing tools fail it.
 - **Sanitising author text.** Every author-text write sanitises at the
   usecase layer before it is stored: plain text through `plainLine` /
   `plainBlock` (`src/lib/bible/text.ts`, over `sanitizePlainText`), rich text

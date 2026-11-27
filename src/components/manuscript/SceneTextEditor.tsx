@@ -125,6 +125,11 @@ export interface SceneTextEditorProps {
     onNoteActivate?: (id: string) => void;
     /** The page's handle on the editor: accept a suggestion (an ordinary edit, autosaved), show a note's text. */
     onApi?: (api: SceneEditorApi | null) => void;
+    /**
+     * Phase 5.H-a: open at a place in the text (a word-search result), offsets into the scene's plain text as the
+     * editor rebuilds it; selected and scrolled into view once, and ignored when out of range.
+     */
+    openAt?: { start: number; length: number } | null;
 }
 
 export interface SceneEditorApi {
@@ -163,6 +168,7 @@ export function SceneTextEditor({
     onNotesLayout,
     onNoteActivate,
     onApi,
+    openAt = null,
 }: SceneTextEditorProps) {
     const t = useTranslations('manuscript.editor');
     const [picker, setPicker] = useState<PickerState | null>(null);
@@ -258,6 +264,19 @@ export function SceneTextEditor({
     useEffect(() => {
         editor?.setEditable(editable);
     }, [editor, editable]);
+
+    // Phase 5.H-a: a word-search result opens the editor at its match, once.
+    const openedAt = useRef(false);
+    useEffect(() => {
+        if (!editor || !openAt || openedAt.current) return;
+        openedAt.current = true;
+        const map = buildEditorTextMap(editor.state.doc as unknown as DocNodeLike);
+        const range = placeRange(map, openAt.start, openAt.start + Math.max(1, openAt.length));
+        if (!range) return;
+        editor.chain().setTextSelection({ from: range.from, to: range.to }).scrollIntoView().run();
+        const dom = editor.view.domAtPos(range.from).node;
+        (dom instanceof Element ? dom : dom.parentElement)?.scrollIntoView?.({ block: 'center' });
+    }, [editor, openAt]);
 
     // Place a fresh check's notes: each where the editor's own text still reads what the check read.
     const notesToken = proseNotes?.token ?? null;

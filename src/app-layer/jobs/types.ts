@@ -53,6 +53,13 @@ export interface HeartbeatPayload {
 export type BookPurgePayload = Record<string, never>;
 
 /**
+ * The daily scene purge (Phase 5.H-a, issue #71) and workspace purge (5.H-a, D36): no payload. Each finds what is due
+ * itself (`usecases/scene-purge.ts`, `usecases/workspace-deletion.ts`).
+ */
+export type ScenePurgePayload = Record<string, never>;
+export type WorkspacePurgePayload = Record<string, never>;
+
+/**
  * One research run (Phase 2.6, decision D9): the run's id and its workspace,
  * never the brief's text. The executor reads the run, rebuilds the requester's
  * context from their CURRENT membership (refused if they may no longer edit
@@ -159,6 +166,8 @@ export interface ProseCheckPayload {
 export interface JobPayloadMap {
     heartbeat: HeartbeatPayload;
     'book-purge': BookPurgePayload;
+    'scene-purge': ScenePurgePayload;
+    'workspace-purge': WorkspacePurgePayload;
     'research-run': ResearchRunPayload;
     'ai-call-log-retention': AiCallLogRetentionPayload;
     'source-ingest': SourceIngestPayload;
@@ -195,6 +204,20 @@ export const JOB_DEFAULTS: Record<JobName, JobDefaults> = {
     'book-purge': {
         // A failed run is retried twice; a book that fails every time is
         // logged and due again the next day (the purge is idempotent).
+        attempts: 3,
+        backoff: { type: 'exponential', delay: 60_000 },
+        removeOnComplete: 30,
+        removeOnFail: 100,
+    },
+    'scene-purge': {
+        // As the book purge: idempotent, a failed run retried twice, a scene that fails every time due again tomorrow.
+        attempts: 3,
+        backoff: { type: 'exponential', delay: 60_000 },
+        removeOnComplete: 30,
+        removeOnFail: 100,
+    },
+    'workspace-purge': {
+        // As the book purge: idempotent (a purged workspace is not found again), a failed one due again tomorrow.
         attempts: 3,
         backoff: { type: 'exponential', delay: 60_000 },
         removeOnComplete: 30,

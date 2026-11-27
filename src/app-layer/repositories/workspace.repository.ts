@@ -4,7 +4,7 @@
  * discovery happen before any context exists and run on the plain client
  * (`runWithoutRls`, reasons `workspace-creation` / `workspace-discovery`).
  */
-import type { Prisma } from '@prisma/client';
+import type { Prisma, PrismaClient } from '@prisma/client';
 import { generateAndWrapDek, type WorkspaceDek } from '@/lib/security/workspace-keys';
 
 type Db = Prisma.TransactionClient;
@@ -47,4 +47,22 @@ export const WorkspaceRepository = {
     slugTaken(db: Db, slug: string) {
         return db.workspace.findUnique({ where: { slug }, select: { id: true } }).then((row) => row !== null);
     },
+
+    /**
+     * Phase 5.H-a: of these workspace ids, the ones DELETED (awaiting their purge). A job that serves every workspace
+     * leaves them out after its discovery (`withoutDeletedWorkspaces`), so nothing is extracted, embedded, checked or
+     * read for a workspace its OWNER asked to delete. Runs on the discovery's own bypass client; ids only.
+     */
+    async deletedAmong(db: PrismaClient | Db, ids: readonly string[]): Promise<Set<string>> {
+        if (ids.length === 0) return new Set();
+        const unique = [...new Set(ids)];
+        const rows = await db.workspace.findMany({ where: { id: { in: unique }, deletedAt: { not: null } }, select: { id: true }, take: unique.length });
+        return new Set(rows.map((r) => r.id));
+    },
 };
+
+/** `rows` without those of a deleted workspace (5.H-a), in their order. */
+export async function withoutDeletedWorkspaces<T extends { workspaceId: string }>(db: PrismaClient, rows: readonly T[]): Promise<T[]> {
+    const deleted = await WorkspaceRepository.deletedAmong(db, rows.map((r) => r.workspaceId));
+    return deleted.size === 0 ? [...rows] : rows.filter((r) => !deleted.has(r.workspaceId));
+}

@@ -72,9 +72,9 @@ export const ProseCheckRepository = {
         return row.id;
     },
 
-    /** The scene a check reads: its book, its current text (decrypted) and revision. */
+    /** The scene a check reads: its book, its current text (decrypted) and revision; null when it is gone or deleted (5.H-a). */
     async sceneForCheck(db: Db, workspaceId: string, sceneId: string) {
-        return db.manuscriptScene.findFirst({ where: { workspaceId, id: sceneId }, select: { id: true, bookId: true, text: true, revision: true } });
+        return db.manuscriptScene.findFirst({ where: { workspaceId, id: sceneId, deletedAt: null }, select: { id: true, bookId: true, text: true, revision: true } });
     },
 
     async findSettings(db: Db, workspaceId: string, bookId: string) {
@@ -121,18 +121,18 @@ export const ProseCheckRepository = {
 
     /** The book's scenes' ids and word counts in no particular order (the baseline picks what it reads), at most `take`. */
     async listSceneSizes(db: Db, workspaceId: string, bookId: string, take: number) {
-        return db.manuscriptScene.findMany({ where: { workspaceId, bookId }, select: { id: true, wordCount: true }, orderBy: { id: 'asc' }, take });
+        return db.manuscriptScene.findMany({ where: { workspaceId, bookId, deletedAt: null }, select: { id: true, wordCount: true }, orderBy: { id: 'asc' }, take });
     },
 
     /** Scenes' stored text, at most `ids.length` (the baseline's read, a batch at a time). */
     async sceneTexts(db: Db, workspaceId: string, bookId: string, ids: readonly string[]) {
         if (ids.length === 0) return [];
-        return db.manuscriptScene.findMany({ where: { workspaceId, bookId, id: { in: [...ids] } }, select: { id: true, text: true }, take: ids.length });
+        return db.manuscriptScene.findMany({ where: { workspaceId, bookId, id: { in: [...ids] }, deletedAt: null }, select: { id: true, text: true }, take: ids.length });
     },
 
     /** A chapter's scenes' ids, in manuscript order, at most `take`. */
     async chapterSceneIds(db: Db, workspaceId: string, bookId: string, chapterId: string, take: number): Promise<string[]> {
-        const rows = await db.manuscriptScene.findMany({ where: { workspaceId, bookId, chapterId }, select: { id: true, rank: true }, take });
+        const rows = await db.manuscriptScene.findMany({ where: { workspaceId, bookId, chapterId, deletedAt: null }, select: { id: true, rank: true }, take });
         return rows.sort((a, b) => (a.rank < b.rank ? -1 : a.rank > b.rank ? 1 : 0)).map((r) => r.id);
     },
 

@@ -48,6 +48,9 @@ export const SCENE_IDLE_CHECKPOINT_MS = 2 * 60_000;
 /** Versions a history page lists. */
 export const SCENE_VERSION_PAGE_SIZE = 50;
 
+/** Recently deleted scenes a manuscript's list shows at most (5.H-a; the rest are named as cut). */
+export const DELETED_SCENES_LISTED_MAX = 200;
+
 /** Scenes a beat's list shows at most (the rest are counted and said). */
 export const BEAT_SCENES_MAX = 50;
 

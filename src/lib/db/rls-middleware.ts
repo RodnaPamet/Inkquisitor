@@ -154,6 +154,29 @@ export type RlsBypassReason =
      * was last read, in every workspace: ids only; each book's run is then created and queued inside its own context.
      */
     | 'draft-discovery'
+    /**
+     * The daily scene purge (Phase 5.H-a, issue #71) finding scenes deleted more than 30 days ago, in every workspace:
+     * ids only; each is then purged inside its own workspace's context.
+     */
+    | 'scene-purge-discovery'
+    /**
+     * The scene purge itself (Phase 5.H-a): deleting a scene due for purge and its book-keyed history (text, note and
+     * card versions), on which app_user holds no DELETE, as the owning role, in one transaction after a re-check under
+     * the scene row's lock; its audit row is then appended under the workspace's row-level security.
+     */
+    | 'scene-purge'
+    /**
+     * Whole-workspace deletion (Phase 5.H-a, D36): the account's list of the workspaces it may restore (a deleted
+     * workspace has no context a request can enter), and the daily purge finding workspaces deleted more than 30 days
+     * ago. Ids, names and dates only.
+     */
+    | 'workspace-deletion-discovery'
+    /**
+     * The workspace purge itself (Phase 5.H-a, D36): deleting a due workspace row, whose cascade takes everything it
+     * holds, and the account of an OWNER who asked for it with no other workspace. The `Workspace` delete is refused to
+     * app_user by trigger, so it runs here, as the owning role, after a re-check under the row's lock.
+     */
+    | 'workspace-purge'
     /** Tests exercising the bypass path or seeding rows. */
     | 'test';
 
@@ -168,6 +191,10 @@ const KNOWN_REASONS: ReadonlySet<RlsBypassReason> = new Set<RlsBypassReason>([
     'continuity-discovery',
     'fact-backfill-discovery',
     'draft-discovery',
+    'scene-purge-discovery',
+    'scene-purge',
+    'workspace-deletion-discovery',
+    'workspace-purge',
     'test',
 ]);
 

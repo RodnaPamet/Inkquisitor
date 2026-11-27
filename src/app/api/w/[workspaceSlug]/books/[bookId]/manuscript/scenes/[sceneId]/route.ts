@@ -3,7 +3,8 @@
  *        beats, word counts, its neighbours (Phase 5.1, `bible.view`).
  * PATCH  …/manuscript/scenes/:sceneId — its details `{ baseRevision, title?, povElementId?, settingElementId?, storyTime?,
  *        linkedElementIds?, beatElementIds? }` (`bible.edit`; 409 VERSION_CONFLICT, 400 UNKNOWN_ELEMENT / WRONG_KIND).
- * DELETE …/manuscript/scenes/:sceneId — delete it; its history stays with the book (`bible.edit`).
+ * DELETE …/manuscript/scenes/:sceneId — delete it, softly: restorable for 30 days from Recently deleted, with its text,
+ *        note, card, links, history and research proposals, then purged (`bible.edit`; Phase 5.H-a, issue #71).
  */
 import { NextResponse } from 'next/server';
 import { withApiErrorHandling } from '@/lib/errors/api';

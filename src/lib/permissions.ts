@@ -9,6 +9,11 @@
  *
  *   workspace.view     see the workspace                     all
  *   workspace.manage   rename, settings                      OWNER
+ *   workspace.export   download everything the workspace     OWNER
+ *                      holds, in one passphrase-protected
+ *                      archive (Phase 5.H-a, D36)
+ *   workspace.delete   delete the whole workspace (soft: 30  OWNER
+ *                      days to restore, then purged; 5.H-a)
  *   members.view       see who belongs                       all
  *   members.manage     invite, change a role, remove         OWNER
  *   bible.view         read books and their bibles           all
@@ -26,7 +31,7 @@
 import type { WorkspaceRole } from '@/app-layer/types';
 
 export interface PermissionSet {
-    workspace: { view: boolean; manage: boolean };
+    workspace: { view: boolean; manage: boolean; export: boolean; delete: boolean };
     members: { view: boolean; manage: boolean };
     bible: { view: boolean; edit: boolean };
     books: { delete: boolean };
@@ -40,21 +45,21 @@ export type PermissionKey = {
 
 const ROLE_PERMISSIONS: Readonly<Record<WorkspaceRole, PermissionSet>> = {
     OWNER: {
-        workspace: { view: true, manage: true },
+        workspace: { view: true, manage: true, export: true, delete: true },
         members: { view: true, manage: true },
         bible: { view: true, edit: true },
         books: { delete: true },
         audit: { view: true },
     },
     EDITOR: {
-        workspace: { view: true, manage: false },
+        workspace: { view: true, manage: false, export: false, delete: false },
         members: { view: true, manage: false },
         bible: { view: true, edit: true },
         books: { delete: false },
         audit: { view: false },
     },
     READER: {
-        workspace: { view: true, manage: false },
+        workspace: { view: true, manage: false, export: false, delete: false },
         members: { view: true, manage: false },
         bible: { view: true, edit: false },
         books: { delete: false },

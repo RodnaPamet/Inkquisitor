@@ -118,6 +118,10 @@ jobs:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/inkquisitor_test?schema=public
       DIRECT_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/inkquisitor_test?schema=public
       REDIS_URL: redis://localhost:6379
+      # Phase 5.H-a: the backup and restore drill (tests/integration/backup-restore-drill.test.ts) runs pg_dump and
+      # pg_restore INSIDE the Postgres container start.sh names, so they are exactly the server's version (the
+      # runner's client tools may be another major, and the drill never skips).
+      PG_TOOLS_CONTAINER: ci-postgres
     steps:
       - uses: actions/checkout@v7
       # Postgres with pgvector, from the Dockerfile in this checkout.

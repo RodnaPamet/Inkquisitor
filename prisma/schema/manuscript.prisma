@@ -140,6 +140,13 @@ model ManuscriptScene {
   note             String?
   /// The newest SceneNoteVersion's number (0: the note was never written).
   noteVersion      Int      @default(0)
+  /// Phase 5.H-a (issue #71): when the author deleted it (UTC, the database's
+  /// clock for app_user: trigger `manuscript_scene_deleted_at_is_now`). A
+  /// deleted scene is hidden from every list and read and restorable for
+  /// `SCENE_RESTORE_DAYS` (30) with everything it holds; only the daily
+  /// `scene-purge` job deletes it for good (trigger
+  /// `manuscript_scene_delete_only_when_purge_due`). NULL is live.
+  deletedAt        DateTime?
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
@@ -163,12 +170,20 @@ model ManuscriptScene {
   questions         Question[]             @relation("QuestionScene")
   enrichmentProposals EnrichmentProposal[] @relation("EnrichmentProposalScene")
 
-  @@unique([chapterId, rank])
+  /// A LIVE scene's place is unique in its chapter: the partial unique index
+  /// `ManuscriptScene_chapterId_rank_live_key` (WHERE "deletedAt" IS NULL, in
+  /// the 5.H-a migration; Prisma cannot spell it, so never add a `@@unique`
+  /// for it). A deleted scene keeps its old rank, which a live one may take.
+  @@index([chapterId, rank])
   @@unique([workspaceId, id])
   @@unique([workspaceId, bookId, id])
   @@unique([bookId, id])
   /// The outline and the manuscript's word counts: a book's scenes.
   @@index([workspaceId, bookId])
+  /// A manuscript's Recently deleted list (5.H-a).
+  @@index([workspaceId, bookId, deletedAt])
+  /// The purge's scan (5.H-a): scenes deleted at or before the cutoff, every workspace.
+  @@index([deletedAt])
   @@index([bookId, povElementId])
   @@index([bookId, settingElementId])
 }

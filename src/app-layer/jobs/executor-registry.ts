@@ -143,6 +143,44 @@ function registerDefaultExecutors(): void {
         });
     });
 
+    // Phase 5.H-a (issue #71): scenes deleted more than 30 days ago, deleted for good with their history.
+    executorRegistry.register('scene-purge', async () => {
+        const startedAt = new Date().toISOString();
+        const startMs = performance.now();
+        return runJob('scene-purge', async () => {
+            const { purgeDeletedScenes } = await import('@/app-layer/usecases/scene-purge');
+            const r = await purgeDeletedScenes();
+            return {
+                ...emptyResult('scene-purge', startedAt, startMs),
+                success: r.failed === 0,
+                itemsScanned: r.due,
+                itemsActioned: r.purged,
+                itemsSkipped: r.skipped,
+                ...(r.failed > 0 ? { errorMessage: `${r.failed} scene(s) could not be purged` } : {}),
+                details: { failed: r.failed, more: r.more },
+            };
+        });
+    });
+
+    // Phase 5.H-a (D36): workspaces deleted more than 30 days ago, deleted for good with everything they hold.
+    executorRegistry.register('workspace-purge', async () => {
+        const startedAt = new Date().toISOString();
+        const startMs = performance.now();
+        return runJob('workspace-purge', async () => {
+            const { purgeDeletedWorkspaces } = await import('@/app-layer/usecases/workspace-deletion');
+            const r = await purgeDeletedWorkspaces();
+            return {
+                ...emptyResult('workspace-purge', startedAt, startMs),
+                success: r.failed === 0,
+                itemsScanned: r.due,
+                itemsActioned: r.purged,
+                itemsSkipped: r.skipped,
+                ...(r.failed > 0 ? { errorMessage: `${r.failed} workspace(s) could not be purged` } : {}),
+                details: { failed: r.failed, more: r.more, accountsDeleted: r.accountsDeleted },
+            };
+        });
+    });
+
     // Phase 2.H: call records past their retention, deleted (issue #30 item 4).
     executorRegistry.register('ai-call-log-retention', async () => {
         const startedAt = new Date().toISOString();

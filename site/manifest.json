@@ -1,4 +1,11 @@
 {
     "$comment": "The help site's ALLOWLIST. docs/user/index.md is the landing page and is always published. Any other page is published only when a section below lists it, and only from docs/user/: the roadmap, the carve manifest, the implementation notes and every other internal doc stay off the site (site/scripts/stage-docs.js refuses them). An entry ending in / publishes every .md in that folder.",
-    "sections": []
+    "sections": [
+        {
+            "label": "Your work",
+            "docs": [
+                "docs/user/your-data.md"
+            ]
+        }
+    ]
 }

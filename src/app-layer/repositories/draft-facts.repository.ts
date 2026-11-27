@@ -14,6 +14,12 @@ import type { PrismaTx } from '@/lib/db/rls-middleware';
 
 type Db = PrismaTx;
 
+/**
+ * Phase 5.H-a (issue #71): a row of a LIVE scene. A deleted scene keeps its draft facts, mismatches and thread links for
+ * its restore; until then nothing lists, counts, decides or reads them.
+ */
+const OF_LIVE_SCENE = { scene: { deletedAt: null } } as const;
+
 // ─── Discovery (outside RLS, ids only) ────────────────────────────
 
 export interface DueDraftBook {
@@ -39,7 +45,7 @@ export const DraftDiscovery = {
                 WHERE b."deletedAt" IS NULL ${scope}
                   AND EXISTS (SELECT 1 FROM "ManuscriptScene" s
                               LEFT JOIN "SceneDraftRead" d ON d."workspaceId" = s."workspaceId" AND d."bookId" = s."bookId" AND d."sceneId" = s."id"
-                              WHERE s."workspaceId" = b."workspaceId" AND s."bookId" = b."id"
+                              WHERE s."workspaceId" = b."workspaceId" AND s."bookId" = b."id" AND s."deletedAt" IS NULL
                                 AND ((d."id" IS NULL AND s."wordCount" > 0) OR (d."id" IS NOT NULL AND d."revision" <> s."revision")))
                   AND NOT EXISTS (SELECT 1 FROM "DraftReadRun" r
                                   WHERE r."workspaceId" = b."workspaceId" AND r."bookId" = b."id"
@@ -140,7 +146,7 @@ export const DraftReadRunRepository = {
             FROM "ManuscriptScene" s
             JOIN "Book" b ON b."workspaceId" = s."workspaceId" AND b."id" = s."bookId" AND b."deletedAt" IS NULL
             LEFT JOIN "SceneDraftRead" d ON d."workspaceId" = s."workspaceId" AND d."bookId" = s."bookId" AND d."sceneId" = s."id"
-            WHERE s."workspaceId" = ${workspaceId}
+            WHERE s."workspaceId" = ${workspaceId} AND s."deletedAt" IS NULL
               AND ((d."id" IS NULL AND s."wordCount" > 0) OR (d."id" IS NOT NULL AND d."revision" <> s."revision"))
             LIMIT 1`);
         return due !== undefined;
@@ -173,7 +179,7 @@ export const SceneDraftReadRepository = {
             SELECT s."id" AS "sceneId", s."revision", s."wordCount", d."textKey" AS "readTextKey", d."outcome" AS "readOutcome", d."failures"
             FROM "ManuscriptScene" s
             LEFT JOIN "SceneDraftRead" d ON d."workspaceId" = s."workspaceId" AND d."bookId" = s."bookId" AND d."sceneId" = s."id"
-            WHERE s."workspaceId" = ${workspaceId} AND s."bookId" = ${bookId}
+            WHERE s."workspaceId" = ${workspaceId} AND s."bookId" = ${bookId} AND s."deletedAt" IS NULL
               AND ((d."id" IS NULL AND s."wordCount" > 0) OR (d."id" IS NOT NULL AND d."revision" <> s."revision"))
             ORDER BY d."readAt" ASC NULLS FIRST, s."id"
             LIMIT ${take}`);
@@ -182,7 +188,7 @@ export const SceneDraftReadRepository = {
     /** One scene's stored text and what the read needs of it (decrypted by the extension), or null when it is gone. */
     async sceneForRead(db: Db, workspaceId: string, bookId: string, sceneId: string) {
         return db.manuscriptScene.findFirst({
-            where: { workspaceId, bookId, id: sceneId },
+            where: { workspaceId, bookId, id: sceneId, deletedAt: null },
             select: { id: true, title: true, text: true, revision: true, storyTime: true, chapter: { select: { title: true } }, beatLinks: { select: { beatElementId: true }, take: 13 } },
         });
     },
@@ -190,7 +196,7 @@ export const SceneDraftReadRepository = {
     async sceneTimes(db: Db, workspaceId: string, bookId: string, sceneIds: readonly string[]) {
         if (sceneIds.length === 0) return [];
         return db.manuscriptScene.findMany({
-            where: { workspaceId, bookId, id: { in: [...sceneIds] } },
+            where: { workspaceId, bookId, id: { in: [...sceneIds] }, deletedAt: null },
             take: sceneIds.length,
             select: { id: true, title: true, storyTime: true, beatLinks: { select: { beatElementId: true }, take: 13 } },
         });
@@ -232,7 +238,7 @@ export const SceneDraftReadRepository = {
                    count(*) FILTER (WHERE d."id" IS NOT NULL AND d."revision" = s."revision" AND d."outcome" IN ('CALL_OVER_BUDGET', 'PASSED_OVER', 'GUARD_REFUSED'))::int AS "passedOver"
             FROM "ManuscriptScene" s
             LEFT JOIN "SceneDraftRead" d ON d."workspaceId" = s."workspaceId" AND d."bookId" = s."bookId" AND d."sceneId" = s."id"
-            WHERE s."workspaceId" = ${workspaceId} AND s."bookId" = ${bookId}`);
+            WHERE s."workspaceId" = ${workspaceId} AND s."bookId" = ${bookId} AND s."deletedAt" IS NULL`);
         return row ?? { withText: 0, read: 0, waiting: 0, passedOver: 0 };
     },
 };
@@ -333,10 +339,10 @@ export const DraftMismatchRepository = {
     },
     /** A book's mismatches of these statuses, newest first (the Continuity page). */
     async forBook(db: Db, workspaceId: string, bookId: string, statuses: readonly string[], take: number): Promise<DraftMismatchRow[]> {
-        return db.storyFactProposal.findMany({ where: { workspaceId, bookId, basis: 'DRAFT', status: { in: [...statuses] } }, orderBy: [{ createdAt: 'desc' }, { id: 'asc' }], take, select: MISMATCH_SELECT });
+        return db.storyFactProposal.findMany({ where: { workspaceId, bookId, basis: 'DRAFT', status: { in: [...statuses] }, ...OF_LIVE_SCENE }, orderBy: [{ createdAt: 'desc' }, { id: 'asc' }], take, select: MISMATCH_SELECT });
     },
     async countForBook(db: Db, workspaceId: string, bookId: string, statuses: readonly string[]): Promise<number> {
-        return db.storyFactProposal.count({ where: { workspaceId, bookId, basis: 'DRAFT', status: { in: [...statuses] } } });
+        return db.storyFactProposal.count({ where: { workspaceId, bookId, basis: 'DRAFT', status: { in: [...statuses] }, ...OF_LIVE_SCENE } });
     },
     /**
      * D35 addendum C: a book's draft mismatches that SETTLED BY THEMSELVES (FIXED by a re-read, or settled because their
@@ -347,14 +353,14 @@ export const DraftMismatchRepository = {
         const [{ now }] = await db.$queryRaw<Array<{ now: Date }>>`SELECT now() AS "now"`;
         const since = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
         return db.storyFactProposal.findMany({
-            where: { workspaceId, bookId, basis: 'DRAFT', status: { in: ['FIXED', 'INVALIDATED'] }, settledAt: { gte: since } },
+            where: { workspaceId, bookId, basis: 'DRAFT', status: { in: ['FIXED', 'INVALIDATED'] }, settledAt: { gte: since }, ...OF_LIVE_SCENE },
             orderBy: [{ settledAt: 'desc' }, { id: 'asc' }],
             take,
             select: MISMATCH_SELECT,
         });
     },
     async find(db: Db, workspaceId: string, bookId: string, id: string): Promise<DraftMismatchRow | null> {
-        return db.storyFactProposal.findFirst({ where: { workspaceId, bookId, id, basis: 'DRAFT' }, select: MISMATCH_SELECT });
+        return db.storyFactProposal.findFirst({ where: { workspaceId, bookId, id, basis: 'DRAFT', ...OF_LIVE_SCENE }, select: MISMATCH_SELECT });
     },
     /** Decide a PENDING mismatch, once (FIX_PENDING, BIBLE_UPDATED or KEPT). */
     async decide(db: Db, workspaceId: string, id: string, data: { status: 'FIX_PENDING' | 'BIBLE_UPDATED' | 'KEPT'; decidedById: string; at: Date }): Promise<boolean> {
@@ -415,7 +421,7 @@ export const ThreadSceneLinkRepository = {
         return r.count;
     },
     async find(db: Db, workspaceId: string, bookId: string, id: string): Promise<ThreadSceneLinkRow | null> {
-        return db.storyThreadSceneLink.findFirst({ where: { workspaceId, bookId, id }, select: LINK_SELECT });
+        return db.storyThreadSceneLink.findFirst({ where: { workspaceId, bookId, id, ...OF_LIVE_SCENE }, select: LINK_SELECT });
     },
     async decide(db: Db, workspaceId: string, id: string, data: { status: 'CONFIRMED' | 'REJECTED'; decidedById: string; at: Date }): Promise<boolean> {
         const r = await db.storyThreadSceneLink.updateMany({ where: { workspaceId, id, status: 'PENDING' }, data: { status: data.status, decidedById: data.decidedById, decidedAt: data.at } });
@@ -423,10 +429,10 @@ export const ThreadSceneLinkRepository = {
     },
     /** A book's links of these statuses, newest first (the Continuity page). */
     async forBook(db: Db, workspaceId: string, bookId: string, statuses: readonly string[], take: number): Promise<ThreadSceneLinkRow[]> {
-        return db.storyThreadSceneLink.findMany({ where: { workspaceId, bookId, status: { in: [...statuses] } }, orderBy: [{ createdAt: 'desc' }, { id: 'asc' }], take, select: LINK_SELECT });
+        return db.storyThreadSceneLink.findMany({ where: { workspaceId, bookId, status: { in: [...statuses] }, ...OF_LIVE_SCENE }, orderBy: [{ createdAt: 'desc' }, { id: 'asc' }], take, select: LINK_SELECT });
     },
     async countForBook(db: Db, workspaceId: string, bookId: string, statuses: readonly string[]): Promise<number> {
-        return db.storyThreadSceneLink.count({ where: { workspaceId, bookId, status: { in: [...statuses] } } });
+        return db.storyThreadSceneLink.count({ where: { workspaceId, bookId, status: { in: [...statuses] }, ...OF_LIVE_SCENE } });
     },
     /** A scene's links of these statuses (the editor's side panel). */
     async forScene(db: Db, workspaceId: string, bookId: string, sceneId: string, statuses: readonly string[], take: number): Promise<ThreadSceneLinkRow[]> {
@@ -435,7 +441,7 @@ export const ThreadSceneLinkRepository = {
     /** The CONFIRMED links of these threads (the Continuity page's threads; the unpaid-setup signal). */
     async confirmedForThreads(db: Db, workspaceId: string, bookId: string, threadIds: readonly string[], take: number): Promise<ThreadSceneLinkRow[]> {
         if (threadIds.length === 0) return [];
-        return db.storyThreadSceneLink.findMany({ where: { workspaceId, bookId, threadId: { in: [...threadIds] }, status: 'CONFIRMED' }, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }], take, select: LINK_SELECT });
+        return db.storyThreadSceneLink.findMany({ where: { workspaceId, bookId, threadId: { in: [...threadIds] }, status: 'CONFIRMED', ...OF_LIVE_SCENE }, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }], take, select: LINK_SELECT });
     },
 };
 
@@ -443,7 +449,7 @@ export const ThreadSceneLinkRepository = {
 export async function scenesInOrder(db: Db, workspaceId: string, bookId: string, sceneIds: readonly string[]) {
     if (sceneIds.length === 0) return [];
     return db.manuscriptScene.findMany({
-        where: { workspaceId, bookId, id: { in: [...sceneIds] } },
+        where: { workspaceId, bookId, id: { in: [...sceneIds] }, deletedAt: null },
         take: sceneIds.length,
         select: { id: true, title: true, rank: true, chapter: { select: { rank: true, title: true, part: { select: { rank: true } } } } },
     });

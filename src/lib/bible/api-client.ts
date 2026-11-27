@@ -82,6 +82,12 @@ export const BIBLE_API = {
     search: (slug: string, bookId: string) => `${BIBLE_API.book(slug, bookId)}/search`,
     deletedBooks: (slug: string) => `/api/w/${enc(slug)}/deleted-books`,
     restoreBook: (slug: string, bookId: string) => `/api/w/${enc(slug)}/deleted-books/${enc(bookId)}/restore`,
+    /** Phase 5.H-a: the full export (POST `{ passphrase }`) and the whole workspace's deletion (POST `{ confirmName, deleteAccount }`). */
+    workspaceExport: (slug: string) => `/api/w/${enc(slug)}/export`,
+    workspaceDeletion: (slug: string) => `/api/w/${enc(slug)}/deletion`,
+    /** The account's deleted workspaces, and one's restore (account routes: a deleted workspace has no context). */
+    restorableWorkspaces: () => '/api/account/deleted-workspaces',
+    restoreWorkspace: (workspaceId: string) => `/api/account/deleted-workspaces/${enc(workspaceId)}/restore`,
 } as const;
 
 export class BibleApiError extends Error {
@@ -131,8 +137,15 @@ export async function bibleUpload<T>(url: string, file: Blob, contentType: strin
  * `BibleApiError` with its reason for the page to show, rather than the JSON
  * error being saved as the "export". Answers the file name it saved.
  */
-export async function bibleDownload(url: string, fallbackName: string): Promise<string> {
-    const res = await fetch(url, { credentials: 'same-origin', cache: 'no-store' });
+export async function bibleDownload(url: string, fallbackName: string, init: { method?: 'GET' | 'POST'; body?: unknown } = {}): Promise<string> {
+    // Phase 5.H-a: the full export is a POST whose body carries the archive's passphrase (never a URL).
+    const res = await fetch(url, {
+        method: init.method ?? 'GET',
+        headers: init.body !== undefined ? { 'content-type': 'application/json' } : undefined,
+        body: init.body !== undefined ? JSON.stringify(init.body) : undefined,
+        credentials: 'same-origin',
+        cache: 'no-store',
+    });
     if (!res.ok) await refusalOf(res);
     const blob = await res.blob();
     const name = fileNameOf(res.headers.get('content-disposition')) ?? fallbackName;

@@ -25,6 +25,14 @@ export const APP_ROUTES = {
     manuscript: (workspaceSlug: string, bookId: string) => `${bookPath(workspaceSlug, bookId)}/manuscript`,
     /** One scene's editor (Phase 5.1). */
     scene: (workspaceSlug: string, bookId: string, sceneId: string) => `${bookPath(workspaceSlug, bookId)}/manuscript/scenes/${encodeURIComponent(sceneId)}`,
+    /**
+     * A scene's editor opened at a place in its text (Phase 5.H-a, a word-search result): offsets into the scene's
+     * plain text, never the words searched for (a query is author text and never goes in a URL).
+     */
+    sceneAt: (workspaceSlug: string, bookId: string, sceneId: string, at: number, length: number) =>
+        `${bookPath(workspaceSlug, bookId)}/manuscript/scenes/${encodeURIComponent(sceneId)}?at=${Math.max(0, Math.floor(at))}&len=${Math.max(0, Math.floor(length))}`,
+    /** A manuscript's Recently deleted scenes (Phase 5.H-a, issue #71). */
+    deletedScenes: (workspaceSlug: string, bookId: string) => `${bookPath(workspaceSlug, bookId)}/manuscript/deleted`,
     /** A book's source library: its drafts, notes and earlier books, and the series sources it draws on (Phase 4.0). */
     bookSources: (workspaceSlug: string, bookId: string) => `${bookPath(workspaceSlug, bookId)}/sources`,
     /** The facts a book's sources state, for the author to confirm (Phase 4.0, D23). */

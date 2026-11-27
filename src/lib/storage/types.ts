@@ -115,6 +115,13 @@ export interface StorageProvider {
      * Copy an object within the same storage backend.
      */
     copy(srcKey: string, destKey: string): Promise<void>;
+
+    /**
+     * Delete every object whose key starts with `prefix` (a whole workspace's
+     * objects, `workspaces/<id>/`, at its purge — Inkquisitor 5.H-a). Returns
+     * how many were deleted; 0 when there were none.
+     */
+    deletePrefix(prefix: string): Promise<number>;
 }
 
 // ─── Provider Type ───

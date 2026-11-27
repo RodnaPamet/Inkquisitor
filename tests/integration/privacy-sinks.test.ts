@@ -53,6 +53,7 @@ import { defaultStressTester } from '@/lib/stress-test/model-seam';
 import { MOUNTED as MOUNTED_INTERROGATION, runStressTest } from '../helpers/interrogation';
 import { saveStoryMap } from '@/app-layer/usecases/story-maps';
 import { searchBook } from '@/app-layer/usecases/book-search';
+import { startWorkspaceExport } from '@/app-layer/usecases/workspace-export';
 import { POST as searchRoute } from '@/app/api/w/[workspaceSlug]/books/[bookId]/search/route';
 import { enforceRateLimit } from '@/lib/security/rate-limit-middleware';
 import { API_READ_LIMIT } from '@/lib/security/rate-limit';
@@ -76,7 +77,7 @@ import { closeRoundAndReconcile } from '@/app-layer/usecases/enrichment-reconcil
 import { attachResearchSource, createResearchBrief, dispatchResearchRun } from '@/app-layer/usecases/research-briefs';
 import { executeResearchRun } from '@/app-layer/usecases/research-run';
 import { acceptResearchProposal } from '@/app-layer/usecases/research-review';
-import { createChapter, createScene } from '@/app-layer/usecases/manuscript';
+import { createChapter, createScene, deleteScene, restoreScene } from '@/app-layer/usecases/manuscript';
 import { restoreSceneVersion, saveSceneNote, saveSceneText, updateSceneMeta } from '@/app-layer/usecases/manuscript-scenes';
 import { executeProseCheck } from '@/app-layer/usecases/prose-check-run';
 import { dismissProseFinding, getSceneProseChecks, saveProseCheckSettings } from '@/app-layer/usecases/prose-checks';
@@ -540,6 +541,27 @@ it('a marker planted in every author-text path reaches no log line, span, Sentry
         expect((await staleCard.text()).toLowerCase()).not.toContain(MARKER.toLowerCase());
     }
 
+    // Phase 5.H-a: word search over the scene's text (the query and its snippet), the full export — its passphrase
+    // planted as the marker, answered and refused through the request wrapper — and a scene deleted and restored.
+    const sceneSearch = await wrapped(() => searchBook(ctx, bookId, { q: `${MARKER} lamp` }));
+    expect(sceneSearch.status).toBe(200);
+    expect(await sceneSearch.text()).toContain(MARKER);
+    {
+        const longMarker = `${MARKER} ${MARKER} passphrase`;
+        const started = await startWorkspaceExport(ctx, { passphrase: longMarker });
+        const reader = started.stream.getReader();
+        for (let r = await reader.read(); !r.done; r = await reader.read()) void r;
+        const weak = await wrapped(() => startWorkspaceExport(ctx, { passphrase: MARKER.slice(0, 8) }));
+        expect(weak.status).toBe(400);
+        expect((await weak.text()).toLowerCase()).not.toContain(MARKER.toLowerCase().slice(0, 8));
+        const extra = await wrapped(() => startWorkspaceExport(ctx, { passphrase: longMarker, note: MARKER }));
+        expect(extra.status).toBe(400);
+        expect((await extra.text()).toLowerCase()).not.toContain(MARKER.toLowerCase());
+        const doomed = (await createScene(ctx, bookId, { chapterId, title: marked('A cut scene') })).id;
+        await wrapped(() => deleteScene(ctx, bookId, doomed));
+        await wrapped(() => restoreScene(ctx, bookId, doomed));
+    }
+
     const twoFacts = await prisma.storyFact.findMany({ where: { bookId, sourceKind: 'BIBLE_VERSION' }, orderBy: { createdAt: 'asc' }, take: 2, select: { id: true } });
     expect(twoFacts).toHaveLength(2);
     const pr = await prisma.storyFactProposal.create({ data: { workspaceId: ctx.workspaceId, bookId, factId: twoFacts[0].id, newerFactId: twoFacts[1].id, reason: 'CONTRADICTED', basis: 'RULE', kind: 'VALUE' }, select: { id: true } });
@@ -569,6 +591,8 @@ it('a marker planted in every author-text path reaches no log line, span, Sentry
     expect(read['audit details']).toContain('BIBLE_FACTS_EXTRACTED');
     expect(read['audit details']).toContain('MANUSCRIPT_IMPORTED');
     expect(read['audit details']).toContain('MANUSCRIPT_SCENE_RESTORED');
+    expect(read['audit details']).toContain('WORKSPACE_EXPORTED');
+    expect(read['audit details']).toContain('MANUSCRIPT_SCENE_UNDELETED');
     expect(read['audit details']).toContain('PROSE_FINDING_DISMISSED');
     expect(read['audit details']).toContain('PROSE_CHECK_SETTINGS_CHANGED');
     expect(read['logs (as written, after the redacting formatter)']).toContain('prose check finished');

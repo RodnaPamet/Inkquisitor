@@ -255,7 +255,15 @@
         "title": "No workspace here",
         "description": "You are not a member of that workspace, or it does not exist.",
         "home": "Go to your workspace",
-        "signOut": "Sign out"
+        "signOut": "Sign out",
+        "deleted": {
+            "title": "Workspaces you deleted",
+            "until": "restorable until {date}",
+            "untilWithAccount": "restorable until {date}; your account is deleted with it",
+            "restore": "Restore",
+            "restoreAria": "Restore {name}",
+            "failed": "The workspace could not be restored."
+        }
     },
     "settingsPage": {
         "sessions": {
@@ -272,6 +280,48 @@
             "undo": "Undo",
             "failed": "The session could not be signed out.",
             "none": "No other sessions."
+        },
+        "yourData": {
+            "title": "Your data",
+            "exportHelp": "Download everything this workspace holds — every book's bible, manuscript, interviews, sources, research and every version and decision — in one archive protected by a passphrase you choose.",
+            "export": "Export everything",
+            "deleteHelp": "Delete this workspace and everything in it. It closes at once; you can restore it for {days} days, then it is deleted for good.",
+            "delete": "Delete workspace",
+            "exportDialog": {
+                "title": "Export everything",
+                "description": "One zip archive, encrypted with AES-256. Choose a passphrase you will remember: Inkquisitor does not keep it and cannot recover it.",
+                "passphrase": "Passphrase",
+                "passphraseHelp": "At least {min} characters. A few unrelated words make a good one.",
+                "again": "Passphrase again",
+                "mismatch": "The two passphrases differ.",
+                "warning": "Any zip tool that reads AES archives opens it: 7-Zip, WinZip, Keka or The Unarchiver.",
+                "submit": "Download archive",
+                "cancel": "Cancel",
+                "done": "Your archive is downloading.",
+                "errors": {
+                    "PASSPHRASE_TOO_SHORT": "The passphrase is too short.",
+                    "PASSPHRASE_TOO_LONG": "The passphrase is too long.",
+                    "PASSPHRASE_TOO_SIMPLE": "The passphrase repeats too few characters; choose a varied one.",
+                    "STREAM_CAPACITY": "Too many downloads are running; try again in a moment.",
+                    "EXPORT_TOO_MANY_BOOKS": "This workspace holds too many books for one archive.",
+                    "FAILED": "The archive could not be made. Try again."
+                }
+            },
+            "deleteDialog": {
+                "title": "Delete {name}?",
+                "description": "The workspace closes now, for every member. An owner can restore it until {date} ({days} days); after that it, every book in it and their whole history are deleted for good.",
+                "exportFirst": "Export everything first if you want to keep a copy.",
+                "confirmLabel": "Type {name} to confirm",
+                "confirmHelp": "The workspace's name, exactly.",
+                "account": "Also delete my account when the workspace is deleted (only when this is my only workspace)",
+                "submit": "Delete workspace",
+                "cancel": "Cancel",
+                "errors": {
+                    "NAME_MISMATCH": "That is not the workspace's name.",
+                    "ACCOUNT_HAS_OTHER_WORKSPACES": "Your account belongs to another workspace too, so it is kept. Untick it to delete only this workspace.",
+                    "FAILED": "The workspace could not be deleted. Try again."
+                }
+            }
         }
     },
     "bible": {
@@ -1566,7 +1616,7 @@
     },
     "search": {
         "label": "Search this book",
-        "help": "Finds words in names, labels, summaries, fields and relation notes, in any form (ran finds running). Put a phrase in quotes to find its words in order.",
+        "help": "Finds words in names, labels, summaries, fields, relation notes and your manuscript's scenes, in any form (ran finds running). Put a phrase in quotes to find its words in order.",
         "placeholder": "A word, or a \"quoted phrase\"",
         "searching": "Searching…",
         "resultsAria": "Search results",
@@ -1579,7 +1629,9 @@
         "partial": {
             "ELEMENTS_CAP": "Only the first {searched} of {count} entries, by name, were searched.",
             "RELATIONS_CAP": "Some relation notes were not searched: the book holds more than one search reads.",
-            "TEXT_BUDGET": "Only {searched} of {count} entries were searched: the book holds more text than one search reads."
+            "TEXT_BUDGET": "Only {searched} of {count} entries were searched: the book holds more text than one search reads.",
+            "SCENES_CAP": "Only {searched} of {count} scenes were searched: the manuscript holds more than one search reads.",
+            "SCENE_TEXT_BUDGET": "Only {searched} of {count} scenes were searched: the manuscript holds more text than one search reads."
         },
         "book": "{title} (this book)",
         "moreOne": "1 more match in this entry",
@@ -1594,13 +1646,20 @@
             "relationNote": "Note on the link to {name}",
             "relationNoteUnnamed": "Note on a link",
             "relationField": "{field} on the link to {name}",
-            "relationFieldUnnamed": "{field} on a link"
+            "relationFieldUnnamed": "{field} on a link",
+            "sceneTitle": "Scene title",
+            "sceneText": "Scene text",
+            "sceneNote": "Scene note"
         },
         "errors": {
             "QUERY_TOO_LONG": "That search is too long. Use fewer words.",
             "QUERY_TOO_MANY_TERMS": "That search has too many words. Use twelve or fewer.",
             "QUERY_TOO_MANY_PHRASES": "That search has too many quoted phrases. Use four or fewer."
-        }
+        },
+        "scene": "Scene: {title}",
+        "sceneUntitled": "Untitled scene",
+        "inChapter": "in {title}",
+        "manuscript": "in the manuscript"
     },
     "sources": {
         "title": "Sources",
@@ -2175,7 +2234,8 @@
     "manuscript": {
         "meta": {
             "title": "Manuscript",
-            "scene": "Scene"
+            "scene": "Scene",
+            "deletedScenes": "Recently deleted scenes"
         },
         "reasons": {
             "VERSION_CONFLICT": "This was saved elsewhere since you began; reload it or keep yours.",
@@ -2350,7 +2410,9 @@
             "recheck": "Check the prose of {what} again",
             "recheckQueued": "{count, plural, one {# scene} other {# scenes}} of {what} will be checked in a moment.",
             "recheckOff": "Prose checks are switched off on this server.",
-            "recheckUnavailable": "The checks could not be queued; try again in a moment."
+            "recheckUnavailable": "The checks could not be queued; try again in a moment.",
+            "recentlyDeleted": "{count, plural, one {# scene} other {# scenes}} in Recently deleted",
+            "confirmRecentlyDeleted": "{count, plural, one {# recently deleted scene of it is} other {# recently deleted scenes of it are}} deleted for good with it."
         },
         "import": {
             "title": "Import a manuscript",
@@ -2598,6 +2660,43 @@
             "fixRecorded": "Noted: you'll fix the draft.",
             "linkConfirmed": "Link confirmed.",
             "linkRejected": "Link rejected."
+        },
+        "deletedScenes": {
+            "title": "Recently deleted",
+            "breadcrumbManuscript": "Manuscript",
+            "description": "Scenes deleted in the last {days} days. Restore one to bring it back with its text, note, card, links and history; after its date it is deleted for good.",
+            "truncated": "Showing the {count} most recently deleted scenes from the last {days} days",
+            "empty": "No recently deleted scenes",
+            "emptyHint": "A scene you delete stays here for {days} days.",
+            "untitled": "Untitled scene",
+            "untitledChapter": "Untitled chapter",
+            "words": "{count, plural, one {# word} other {# words}}",
+            "columns": {
+                "title": "Scene",
+                "chapter": "Chapter",
+                "words": "Words",
+                "deleted": "Deleted",
+                "until": "Restorable until",
+                "action": "Restore"
+            },
+            "restore": "Restore",
+            "restoreAria": "Restore {title}",
+            "restored": "{title} is back in its place",
+            "restoredAtEnd": "{title} is back, at the end of its chapter (its place was taken)",
+            "resourceSingular": "deleted scene",
+            "resourcePlural": "deleted scenes"
         }
+    },
+    "aiUse": {
+        "title": "How Inkquisitor uses AI",
+        "statement": "No AI model writes or rewrites your manuscript. Every word of your scenes is yours.",
+        "points": {
+            "writes": "A scene's text changes only when you type, paste, import a file you chose, accept a margin suggestion, or restore one of your own earlier versions.",
+            "margin": "Margin notes and their suggestions come from fixed rules, not a model, and nothing changes until you accept one.",
+            "research": "A research finding reaches a scene only as a note beside it, never in its text.",
+            "checked": "This is checked automatically: the build fails if any path would let a model's output reach a scene's text."
+        },
+        "models": "Inkquisitor's models ask you questions, summarise your own answers into your book bible when you accept them, and point out what is missing or does not fit.",
+        "editorLine": "No AI writes or rewrites your manuscript: its words are yours."
     }
 }

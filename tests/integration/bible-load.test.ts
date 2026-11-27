@@ -18,8 +18,9 @@
  * test (`book-search-work.test.ts`) holds how the work grows.
  *
  * Size: CI runs a smaller book so the Test job keeps its time budget
- * (`BIBLE_LOAD_ELEMENTS` / `BIBLE_LOAD_VERSIONS`, default 400 / 4,000);
- * `npm run test:load` runs the roadmap's 2,000 elements and 20,000 versions.
+ * (`BIBLE_LOAD_ELEMENTS` / `BIBLE_LOAD_VERSIONS` / `BIBLE_LOAD_MANUSCRIPT_WORDS`, default 400 / 4,000 / 30,000);
+ * `npm run test:load` runs the roadmap's 2,000 elements and 20,000 versions, and since Phase 5.H-a a
+ * 150,000-word manuscript (roadmap 5.H item 1's size), which word search reads beside the bible under the same bound.
  * The p95 bound is the same at every size. The numbers are printed (stderr)
  * and recorded in docs/implementation-notes/2026-11-19-1.H-phase-1-hardening.md.
  */
@@ -27,7 +28,7 @@ import { prisma } from '@/lib/db';
 import { listElements } from '@/app-layer/usecases/bible-elements';
 import { loadBookPage, loadBooksPage, loadElementPage } from '@/app-layer/usecases/bible-pages';
 import { searchBook } from '@/app-layer/usecases/book-search';
-import { measure, seedLoadBook, type LoadBook } from '../helpers/bible-load';
+import { measure, seedLoadBook, seedLoadManuscript, type LoadBook } from '../helpers/bible-load';
 import { createAccount, workspaceCtx } from '../helpers/workspaces';
 
 afterAll(() => prisma.$disconnect());
@@ -35,6 +36,8 @@ afterAll(() => prisma.$disconnect());
 const ELEMENTS = Number(process.env.BIBLE_LOAD_ELEMENTS ?? 400);
 const VERSIONS = Number(process.env.BIBLE_LOAD_VERSIONS ?? 4_000);
 const RUNS = Number(process.env.BIBLE_LOAD_RUNS ?? 30);
+/** Phase 5.H-a: the manuscript word search reads beside the bible (CI 30,000 words; `npm run test:load` 150,000). */
+const MANUSCRIPT_WORDS = Number(process.env.BIBLE_LOAD_MANUSCRIPT_WORDS ?? 30_000);
 const P95_BOUND_MS = 300;
 /** Word search's bound: a whole-book read and decrypt per request (option A, the 3.4 note). */
 const WORD_SEARCH_P95_BOUND_MS = 1_000;
@@ -56,7 +59,8 @@ beforeAll(async () => {
     await prisma.$executeRawUnsafe('ANALYZE "Book", "BibleElement", "BibleField", "BibleRelation", "BibleEntryVersion"');
     const started = performance.now();
     book = await seedLoadBook(ctx, { elements: ELEMENTS, versions: VERSIONS });
-    process.stderr.write(`bible load: seeded ${ELEMENTS} elements and ${VERSIONS} versions in ${Math.round(performance.now() - started)} ms\n`);
+    const manuscript = await seedLoadManuscript(ctx, book.bookId, MANUSCRIPT_WORDS);
+    process.stderr.write(`bible load: seeded ${ELEMENTS} elements, ${VERSIONS} versions and a ${manuscript.words}-word manuscript in ${Math.round(performance.now() - started)} ms\n`);
 });
 
 afterAll(() => {
@@ -70,6 +74,13 @@ it('seeded what it says (a load test over an empty book proves nothing)', async 
     expect(await prisma.bibleEntryVersion.count({ where: { elementId: book.hotElementId } })).toBeGreaterThanOrEqual(Math.floor(VERSIONS / 10));
     const { board } = await loadBookPage(ctx, book.bookId);
     expect(board.reduce((n, k) => n + k.entryCount, 0)).toBe(ELEMENTS);
+    // Phase 5.H-a: the manuscript is there, and word search reads all of it (no cut).
+    const words = await prisma.manuscriptScene.aggregate({ where: { bookId: book.bookId }, _sum: { wordCount: true } });
+    expect(words._sum.wordCount).toBeGreaterThanOrEqual(MANUSCRIPT_WORDS * 0.9);
+    const r = await searchBook(ctx, book.bookId, { q: 'harbour' });
+    expect(r.coverage).toMatchObject({ complete: true, cut: null });
+    expect(r.coverage.searchedScenes).toBe(r.coverage.scenes);
+    expect(r.hits.some((h) => h.kind === 'scene')).toBe(true);
 });
 
 it.each([
@@ -89,6 +100,8 @@ it.each([
 it.each([
     ['search (common)', () => searchBook(ctx, book.bookId, { q: 'considered paragraphs' })],
     ['search (a name)', () => searchBook(ctx, book.bookId, { q: 'entry 00042' })],
+    // Phase 5.H-a: a word all through the manuscript (every scene tokenised) — the scenes read with the bible.
+    ['search (scenes)', () => searchBook(ctx, book.bookId, { q: 'rowed harbour' })],
 ] as const)(`%s: p95 under ${WORD_SEARCH_P95_BOUND_MS} ms`, async (page, read) => {
     const r = await measure(read, RUNS);
     results[page] = r;

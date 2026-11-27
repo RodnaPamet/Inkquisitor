@@ -106,6 +106,9 @@ const LIST_QUERY_INDEXES: readonly ListQueryIndex[] = [
     { model: 'MapNode', fields: ['mapId', 'bibleElementId'], justification: 'a story map’s nodes, by element (Phase 3.1)' },
     { model: 'MapEdge', fields: ['mapId', 'bibleRelationId'], justification: 'a story map’s edges, by relation (Phase 3.1)' },
     { model: 'MapSnapshot', fields: ['mapId', 'version'], justification: 'a story map’s history, newest save first (Phase 3.1)' },
+    { model: 'ManuscriptScene', fields: ['workspaceId', 'bookId', 'deletedAt'], justification: 'a manuscript’s Recently deleted scenes, newest first, and its deleted scenes per chapter (5.H-a, issue #71)' },
+    { model: 'ManuscriptScene', fields: ['deletedAt'], justification: 'the daily scene purge’s scan for scenes deleted 30 days ago, every workspace (5.H-a)' },
+    { model: 'Workspace', fields: ['deletedAt'], justification: 'the daily workspace purge’s scan for workspaces deleted 30 days ago (5.H-a, D36)' },
     { model: 'ManuscriptPart', fields: ['workspaceId', 'bookId'], justification: 'a book’s manuscript parts: the outline (Phase 5.1)' },
     { model: 'ManuscriptChapter', fields: ['workspaceId', 'bookId'], justification: 'a book’s manuscript chapters: the outline (Phase 5.1)' },
     { model: 'ManuscriptChapter', fields: ['partId', 'rank'], justification: 'a part’s chapters in order: placing a new or moved chapter (Phase 5.1)' },
@@ -131,6 +134,8 @@ const LIST_QUERY_INDEXES: readonly ListQueryIndex[] = [
 const LIST_MODELS_INDEX_SUFFICIENT: Readonly<Record<string, string>> = {
     AiSpendReservation:
         'the expired-reservation sweep (2.H, issue #30 item 9): a workspace holds one row per call in flight, so `[workspaceId, periodStart, expiresAt]`, led by the workspace, bounds the read to a handful of rows',
+    AuditLog: 'the full export’s pages of one workspace’s trail in id order (5.H-a): `[workspaceId, createdAt]`, led by the workspace, bounds the read to that workspace; a page is 500 rows, read once a download',
+    SceneNoteVersion: 'the full export’s pages of one book’s note versions in id order (5.H-a): `[workspaceId, bookId]` bounds the read to the book; read once a download',
 };
 
 // ─── The checks (pure, so the negative controls can drive them) ─────

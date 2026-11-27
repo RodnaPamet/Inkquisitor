@@ -202,6 +202,8 @@ export interface OutlineChapterView {
     title: string | null;
     wordCount: number;
     scenes: OutlineSceneView[];
+    /** Scenes of this chapter deleted and still restorable (5.H-a): they go, for good, if the chapter is deleted. */
+    recentlyDeleted: number;
 }
 export interface OutlinePartView {
     id: string;
@@ -214,7 +216,7 @@ export interface OutlineView {
     /** True when the manuscript holds one untitled part: the outline shows no part level (the 5.1 note). */
     singleDefaultPart: boolean;
     parts: OutlinePartView[];
-    totals: { parts: number; chapters: number; scenes: number; words: number };
+    totals: { parts: number; chapters: number; scenes: number; words: number; recentlyDeleted: number };
 }
 
 export interface OutlineRows {
@@ -222,18 +224,21 @@ export interface OutlineRows {
     parts: PartRow[];
     chapters: ChapterRow[];
     scenes: SceneOutlineRow[];
+    /** Restorable deleted scenes per chapter (5.H-a; empty when none). */
+    deletedByChapter: ReadonlyMap<string, number>;
 }
 
 /** Every part, chapter and scene of the book (no text): three bounded reads. */
 export async function readOutlineRows(db: PrismaTx, ctx: WorkspaceRequestContext, bookId: string): Promise<OutlineRows> {
     const manuscript = await ManuscriptRepository.find(db, ctx.workspaceId, bookId);
-    if (!manuscript) return { manuscriptId: null, parts: [], chapters: [], scenes: [] };
-    const [parts, chapters, scenes] = [
+    if (!manuscript) return { manuscriptId: null, parts: [], chapters: [], scenes: [], deletedByChapter: new Map() };
+    const [parts, chapters, scenes, deletedByChapter] = [
         await ManuscriptPartRepository.list(db, ctx.workspaceId, bookId, PARTS_PER_MANUSCRIPT_MAX + 1),
         await ManuscriptChapterRepository.list(db, ctx.workspaceId, bookId, CHAPTERS_PER_MANUSCRIPT_MAX + 1),
         await ManuscriptSceneRepository.listOutline(db, ctx.workspaceId, bookId, OUTLINE_READ_MAX),
+        await ManuscriptSceneRepository.deletedByChapter(db, ctx.workspaceId, bookId),
     ];
-    return { manuscriptId: manuscript.id, parts, chapters, scenes };
+    return { manuscriptId: manuscript.id, parts, chapters, scenes, deletedByChapter };
 }
 
 /** The rows as the outline: ordered by rank at every level, words summed up the tree. */
@@ -247,7 +252,7 @@ export function outlineView(rows: OutlineRows): OutlineView {
         const chapters = byRank(chaptersBy.get(p.id) ?? []).map((c) => {
             const scenes = byRank(scenesBy.get(c.id) ?? []).map((s) => ({ id: s.id, title: s.title, wordCount: s.wordCount, povElementId: s.povElementId }));
             const wordCount = scenes.reduce((n, s) => n + s.wordCount, 0);
-            return { id: c.id, title: c.title, wordCount, scenes };
+            return { id: c.id, title: c.title, wordCount, scenes, recentlyDeleted: rows.deletedByChapter.get(c.id) ?? 0 };
         });
         const wordCount = chapters.reduce((n, c) => n + c.wordCount, 0);
         words += wordCount;
@@ -257,7 +262,7 @@ export function outlineView(rows: OutlineRows): OutlineView {
         manuscriptId: rows.manuscriptId,
         singleDefaultPart: parts.length === 1 && parts[0].title === null,
         parts,
-        totals: { parts: rows.parts.length, chapters: rows.chapters.length, scenes: rows.scenes.length, words },
+        totals: { parts: rows.parts.length, chapters: rows.chapters.length, scenes: rows.scenes.length, words, recentlyDeleted: [...rows.deletedByChapter.values()].reduce((n, c) => n + c, 0) },
     };
 }
 

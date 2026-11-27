@@ -15,10 +15,13 @@ export const MembershipRepository = {
         return db.workspaceMembership.create({ data, select: { id: true, role: true } });
     },
 
-    /** The gate's lookup: the workspace by slug and the user's membership in it. */
+    /**
+     * The gate's lookup: the workspace by slug and the user's membership in it. A DELETED workspace (Phase 5.H-a)
+     * is not found: deleting it closes it to every member at once, as a missing one.
+     */
     findForGate(db: Db, slug: string, userId: string) {
-        return db.workspace.findUnique({
-            where: { slug },
+        return db.workspace.findFirst({
+            where: { slug, deletedAt: null },
             select: {
                 id: true,
                 slug: true,
@@ -28,10 +31,10 @@ export const MembershipRepository = {
         });
     },
 
-    /** The user's workspaces, oldest membership first. */
+    /** The user's LIVE workspaces (a deleted one is left out, 5.H-a), oldest membership first. */
     listForUser(db: Db, userId: string, take: number) {
         return db.workspaceMembership.findMany({
-            where: { userId },
+            where: { userId, workspace: { deletedAt: null } },
             orderBy: { createdAt: 'asc' },
             take,
             select: { role: true, workspace: { select: { id: true, slug: true } } },

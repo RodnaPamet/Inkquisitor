@@ -14,7 +14,9 @@ import {
     GetObjectCommand,
     HeadObjectCommand,
     DeleteObjectCommand,
+    DeleteObjectsCommand,
     CopyObjectCommand,
+    ListObjectsV2Command,
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { env } from '@/env';
@@ -191,6 +193,23 @@ export class S3StorageProvider implements StorageProvider {
             Bucket: this.bucket,
             Key: pathKey,
         }));
+    }
+
+    async deletePrefix(prefix: string): Promise<number> {
+        // Listed a page (at most 1,000 keys) at a time and deleted in one DeleteObjects call a page.
+        let deleted = 0;
+        let token: string | undefined;
+        do {
+            const page = await this.client.send(new ListObjectsV2Command({ Bucket: this.bucket, Prefix: prefix, ContinuationToken: token }));
+            const keys = (page.Contents ?? []).map((o) => o.Key).filter((k): k is string => typeof k === 'string' && k.startsWith(prefix));
+            if (keys.length > 0) {
+                const r = await this.client.send(new DeleteObjectsCommand({ Bucket: this.bucket, Delete: { Objects: keys.map((Key) => ({ Key })), Quiet: true } }));
+                if (r.Errors && r.Errors.length > 0) throw new Error(`S3 refused to delete ${r.Errors.length} object(s)`);
+                deleted += keys.length;
+            }
+            token = page.IsTruncated ? page.NextContinuationToken : undefined;
+        } while (token);
+        return deleted;
     }
 
     async copy(srcKey: string, destKey: string): Promise<void> {

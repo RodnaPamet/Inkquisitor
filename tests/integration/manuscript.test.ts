@@ -195,7 +195,7 @@ describe('versions (D33: at a checkpoint, never on every autosave)', () => {
         await expect(prisma.sceneVersion.deleteMany({ where: { sceneId } })).rejects.toThrow(/SCENE_VERSION_APPEND_ONLY/);
     });
 
-    it('keeps a deleted scene\'s history with the book', async () => {
+    it('keeps a deleted scene\'s history with it while it can be restored (5.H-a: its purge takes it)', async () => {
         const { sceneId } = await newScene('Deleted');
         await saveSceneText(ctx, bookId, sceneId, { html: '<p>Words</p>', baseRevision: 0 });
         await deleteScene(ctx, bookId, sceneId);

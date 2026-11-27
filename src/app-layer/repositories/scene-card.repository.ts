@@ -44,7 +44,7 @@ export const SceneCardRepository = {
      */
     async sceneForInterview(db: Db, workspaceId: string, bookId: string, sceneId: string) {
         return db.manuscriptScene.findFirst({
-            where: { workspaceId, bookId, id: sceneId },
+            where: { workspaceId, bookId, id: sceneId, deletedAt: null },
             select: {
                 id: true,
                 title: true,

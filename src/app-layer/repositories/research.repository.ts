@@ -284,11 +284,17 @@ export const ResearchProposalRepository = {
     },
 
     listForRun(db: Db, workspaceId: string, runId: string, take: number) {
-        return db.researchProposal.findMany({ where: { workspaceId, runId }, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }], take, select: RESEARCH_PROPOSAL_SELECT });
+        // 5.H-a: a SCENE_NOTE proposal follows its scene (issue #71): hidden while the scene is deleted, back with it.
+        return db.researchProposal.findMany({
+            where: { workspaceId, runId, OR: [{ sceneId: null }, { scene: { deletedAt: null } }] },
+            orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+            take,
+            select: RESEARCH_PROPOSAL_SELECT,
+        });
     },
 
     find(db: Db, workspaceId: string, proposalId: string) {
-        return db.researchProposal.findFirst({ where: { id: proposalId, workspaceId }, select: RESEARCH_PROPOSAL_SELECT });
+        return db.researchProposal.findFirst({ where: { id: proposalId, workspaceId, OR: [{ sceneId: null }, { scene: { deletedAt: null } }] }, select: RESEARCH_PROPOSAL_SELECT });
     },
 
     /** The pending research proposals for one field, other than `exceptId`. */

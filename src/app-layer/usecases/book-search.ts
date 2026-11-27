@@ -16,8 +16,10 @@
  * list's items, a choice's label; a scale is a number and is not text) and
  * the notes of its relations (a note belongs to both of its ends) and, since
  * Phase 3.3 (D24), its relations' fields, from both ends too; and the
- * book itself: its title and logline. Interview answers and research are
- * not searched yet (the 3.4 note lists them as later candidates). An element
+ * book itself: its title and logline; and, since Phase 5.H-a (D33 addendum A),
+ * every live manuscript scene's title, text and note (`readSceneDocuments`).
+ * Interview answers and research are not searched yet (the 3.4 note lists
+ * them as later candidates). An element
  * belongs to one book, so a term from another book, or another workspace,
  * can never match; a deleted book is not found (`requireBook`), and a deleted
  * element has no rows left to read.
@@ -41,6 +43,7 @@
 import type { WorkspaceRequestContext } from '@/app-layer/types';
 import { assertPermission } from '@/app-layer/policies/permission.policy';
 import { BibleElementRepository, BibleFieldRepository, BibleRelationFieldRepository, BibleRelationRepository } from '@/app-layer/repositories/bible.repository';
+import { ManuscriptChapterRepository, ManuscriptSceneRepository } from '@/app-layer/repositories/manuscript.repository';
 import { BookSearchRequest } from '@/app-layer/schemas/search';
 import { runInWorkspaceContext, type PrismaTx } from '@/lib/db/rls-middleware';
 import { ValidationError } from '@/lib/errors/types';
@@ -59,6 +62,9 @@ import {
     SEARCH_FIELDS_PER_ELEMENT,
     SEARCH_RELATIONS_MAX,
     SEARCH_RESULTS_MAX,
+    SEARCH_SCENE_READ_BYTES,
+    SEARCH_SCENE_TEXT_MAX_CHARS,
+    SEARCH_SCENES_MAX,
     SEARCH_TEXT_MAX_CHARS,
     type BookSearchView,
     type SearchCoverageCut,
@@ -121,6 +127,10 @@ export interface SearchReadLimits {
     /** Stored field bytes read per query (a chunk ends before the element that would pass it). */
     fieldChunkBytes: number;
     textChars: number;
+    /** Phase 5.H-a: scenes read at most, stored scene bytes read per query, and the scenes' own plain-text budget. */
+    scenes: number;
+    sceneChunkBytes: number;
+    sceneTextChars: number;
 }
 
 export const SEARCH_READ_LIMITS: SearchReadLimits = {
@@ -129,6 +139,9 @@ export const SEARCH_READ_LIMITS: SearchReadLimits = {
     fieldChunk: SEARCH_FIELD_READ_CHUNK,
     fieldChunkBytes: SEARCH_FIELD_READ_BYTES,
     textChars: SEARCH_TEXT_MAX_CHARS,
+    scenes: SEARCH_SCENES_MAX,
+    sceneChunkBytes: SEARCH_SCENE_READ_BYTES,
+    sceneTextChars: SEARCH_SCENE_TEXT_MAX_CHARS,
 };
 
 /** Read and decrypt the book's searchable text as plain-text documents, within the bounds. */
@@ -257,7 +270,74 @@ export async function readSearchDocuments(
         }
     }
     if (searched < elements.length) cut ??= 'TEXT_BUDGET';
-    return { documents, coverage: { elements: elementCount, searchedElements: searched, complete: cut === null && searched === elementCount, cut } };
+
+    const scenes = await readSceneDocuments(db, ctx, book.id, limits, html);
+    documents.push(...scenes.documents);
+    cut ??= scenes.cut;
+    return {
+        documents,
+        coverage: {
+            elements: elementCount,
+            searchedElements: searched,
+            scenes: scenes.count,
+            searchedScenes: scenes.searched,
+            complete: cut === null && searched === elementCount && scenes.searched === scenes.count,
+            cut,
+        },
+    };
+}
+
+/**
+ * THE MANUSCRIPT'S SCENES (Phase 5.H-a, D33 addendum A), read as the bible is: option A, decrypt and scan, nothing
+ * stored. Each LIVE scene (a deleted one is not searched, issue #71) is a document of its title, its text and its note;
+ * its card is not searched (four short fields about the scene, not of it; the 5.H-a note). The text is 3.4's HTML
+ * reader over the stored HTML — the very plain text the editor rebuilds from its document (`sceneProseText`, 5.2) — so
+ * a snippet's offsets open the editor at the match. Scenes are sized by stored bytes first and decrypted a chunk of at
+ * most `sceneChunkBytes` at a time, under their own text budget, and every cut is named.
+ */
+async function readSceneDocuments(
+    db: PrismaTx,
+    ctx: WorkspaceRequestContext,
+    bookId: string,
+    limits: SearchReadLimits,
+    html: HtmlTextReader,
+): Promise<{ documents: SearchDocument[]; count: number; searched: number; cut: SearchCoverageCut | null }> {
+    const count = await ManuscriptSceneRepository.count(db, ctx.workspaceId, bookId);
+    if (count === 0) return { documents: [], count: 0, searched: 0, cut: null };
+    const sized = await ManuscriptSceneRepository.storedBytesForSearch(db, ctx.workspaceId, bookId, limits.scenes + 1);
+    let cut: SearchCoverageCut | null = sized.length > limits.scenes ? 'SCENES_CAP' : null;
+    const rows = sized.slice(0, limits.scenes);
+    const chapterTitles = new Map(
+        (await ManuscriptChapterRepository.findByIds(db, ctx.workspaceId, bookId, [...new Set(rows.map((r) => r.chapterId))])).map((c) => [c.id, c.title] as const),
+    );
+    let budget = limits.sceneTextChars;
+    const documents: SearchDocument[] = [];
+    let searched = 0;
+    for (let i = 0; i < rows.length && budget > 0; ) {
+        const start = i;
+        let bytes = 0;
+        while (i < rows.length && (i === start || bytes + rows[i].bytes <= limits.sceneChunkBytes)) {
+            bytes += rows[i].bytes;
+            i++;
+        }
+        const chunk = rows.slice(start, i);
+        const texts = new Map((await ManuscriptSceneRepository.textsForSearch(db, ctx.workspaceId, bookId, chunk.map((r) => r.id))).map((t) => [t.id, t] as const));
+        for (const r of chunk) {
+            if (budget <= 0) break;
+            const t = texts.get(r.id);
+            if (!t) continue; // deleted between the sizing and the read: not a scene any more
+            const sources: SearchSource[] = [];
+            if (t.title) sources.push({ kind: 'sceneTitle', text: tidyPlainText(t.title) });
+            const text = t.text === '' ? '' : html.read(t.text);
+            if (text !== '') sources.push({ kind: 'sceneText', text });
+            if (t.note) sources.push({ kind: 'sceneNote', text: tidyPlainText(t.note) });
+            budget -= sources.reduce((n, src) => n + src.text.length, 0);
+            documents.push({ kind: 'scene', elementId: null, sceneId: r.id, chapterTitle: chapterTitles.get(r.chapterId) ?? null, elementKind: null, name: t.title ?? '', customLabel: null, sources });
+            searched++;
+        }
+    }
+    if (searched < rows.length) cut ??= 'SCENE_TEXT_BUDGET';
+    return { documents, count, searched, cut };
 }
 
 export interface BookSearchOptions {
@@ -289,7 +369,7 @@ export async function searchBook(ctx: WorkspaceRequestContext, bookId: string, i
             hits: [],
             totalHits: 0,
             truncated: false,
-            coverage: { elements: 0, searchedElements: 0, complete: false, cut: null },
+            coverage: { elements: 0, searchedElements: 0, scenes: 0, searchedScenes: 0, complete: false, cut: null },
             language: analyzer.language,
             analyzerVersion: SEARCH_ANALYZER_VERSION,
         };

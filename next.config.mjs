@@ -107,6 +107,9 @@ const nextConfig = {
         // one copy in node_modules.
         'pdfkit',
         'fontkit',
+        // Phase 5.H-a: the full export's AES zip writer, loaded as published (its
+        // Web Worker and wasm assets are never bundled: it runs with workers off).
+        '@zip.js/zip.js',
     ],
 };
 

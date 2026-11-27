@@ -13,6 +13,7 @@
  * Client-safe: no imports but types and the client-safe vocabulary.
  */
 import type { OutlineView } from '@/app-layer/usecases/manuscript-common';
+import type { DeletedSceneView } from '@/app-layer/usecases/manuscript';
 import type { BeatSceneView, SceneLinkView, SceneVersionMetaView, SceneVersionPage, SceneView } from '@/app-layer/usecases/manuscript-scenes';
 import type { SceneTextResult } from '@/app-layer/usecases/manuscript-text';
 import type { ImportPreviewView } from '@/app-layer/usecases/manuscript-import';
@@ -20,7 +21,7 @@ import type { ImportPlan } from './import-split';
 import { answerOf } from '@/lib/bible/api-client';
 import { IMPORT_PLAN_HEADER } from './vocabulary';
 
-export type { OutlineView, BeatSceneView, SceneLinkView, SceneVersionMetaView, SceneVersionPage, SceneView, SceneTextResult, ImportPreviewView, ImportPlan };
+export type { OutlineView, DeletedSceneView, BeatSceneView, SceneLinkView, SceneVersionMetaView, SceneVersionPage, SceneView, SceneTextResult, ImportPreviewView, ImportPlan };
 
 const enc = encodeURIComponent;
 const base = (slug: string, bookId: string) => `/api/w/${enc(slug)}/books/${enc(bookId)}/manuscript`;
@@ -54,6 +55,9 @@ export const MANUSCRIPT_API = {
     proseDismissals: (slug: string, bookId: string) => `${base(slug, bookId)}/prose-checks/dismissals`,
     /** GET / PUT the book's prose-check settings. */
     proseSettings: (slug: string, bookId: string) => `${base(slug, bookId)}/prose-checks/settings`,
+    /** Recently deleted scenes (5.H-a, issue #71), and one's restore. */
+    deletedScenes: (slug: string, bookId: string) => `${base(slug, bookId)}/deleted-scenes`,
+    restoreDeletedScene: (slug: string, bookId: string, sceneId: string) => `${base(slug, bookId)}/deleted-scenes/${enc(sceneId)}/restore`,
     /** A plot beat's scenes (D33 item 2). */
     beatScenes: (slug: string, bookId: string, elementId: string) => `/api/w/${enc(slug)}/books/${enc(bookId)}/elements/${enc(elementId)}/scenes`,
 } as const;

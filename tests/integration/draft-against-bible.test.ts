@@ -34,6 +34,7 @@ import { fakeGenerator } from '../helpers/fake-question-generator';
 import { stubQuestionEmbedder } from '../helpers/interview';
 import { scripted } from '../helpers/enrichment';
 import { createAccount, workspaceCtx } from '../helpers/workspaces';
+import { purgeScene } from '../helpers/scene-purge';
 
 /** A scripted bible fact extractor: "<Name> has <colour> eyes" in an entry is an APPEARANCE fact. */
 function eyesExtractor(name: string): () => FactExtractor {
@@ -304,10 +305,16 @@ describe('plant and pay-off links (D35 item 4)', () => {
 });
 
 describe('deletion', () => {
-    it('a deleted scene takes its draft facts, its mismatches, its links and its reading cursor with it', async () => {
+    it('a deleted scene hides its mismatches and links (5.H-a), and its purge takes its draft facts, mismatches, links and cursor', async () => {
         const f = await fixture();
         await readNight(f.ctx, { reader: draftReader('Mara', []) });
+        const before = (await getContinuityPage(f.ctx, f.bookId)).draft;
         await deleteScene(f.ctx, f.bookId, f.sceneId);
+        // Soft (issue #71): kept for its restore, listed nowhere meanwhile.
+        const page = (await getContinuityPage(f.ctx, f.bookId)).draft;
+        expect(JSON.stringify(page)).not.toContain(f.sceneId);
+        expect(JSON.stringify(before)).toContain(f.sceneId);
+        await purgeScene(f.sceneId);
         const left = await runWithoutRls({ reason: 'test' }, async (db) => ({
             facts: await db.storyFact.count({ where: { bookId: f.bookId, sourceKind: 'SCENE_TEXT' } }),
             mismatches: await db.storyFactProposal.count({ where: { bookId: f.bookId, basis: 'DRAFT' } }),

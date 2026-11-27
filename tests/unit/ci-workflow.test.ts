@@ -34,6 +34,13 @@ describe('.github/workflows/ci.yml', () => {
         expect(names).toEqual(['Lint', 'Typecheck', 'Test', 'Build', 'Security', 'CodeQL', 'Docker', 'E2E']);
     });
 
+    it('runs the backup and restore drill’s tools inside the Postgres container the Test job starts (Phase 5.H-a)', () => {
+        const name = /^NAME="([^"]+)"$/m.exec(fs.readFileSync(path.resolve(__dirname, '../../deploy/postgres/start.sh'), 'utf8'))?.[1];
+        expect(name).toBeTruthy();
+        expect(all.test).toMatch(new RegExp(`^ {6}PG_TOOLS_CONTAINER: ${name}$`, 'm'));
+        expect(all.test).toMatch(/deploy\/postgres\/start\.sh/);
+    });
+
     it('is read-only by default; only CodeQL may write, and only security events', () => {
         expect(ci).toMatch(/^permissions:\n {2}contents: read\n/m);
         const writers = Object.entries(all).filter(([, b]) => /: write/.test(b)).map(([id]) => id);

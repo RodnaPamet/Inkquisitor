@@ -24,6 +24,10 @@ import type { PrismaTx } from '@/lib/db/rls-middleware';
 export type AuditAction =
     | 'USER_SIGNED_UP'
     | 'WORKSPACE_CREATED'
+    | 'WORKSPACE_EXPORTED'
+    | 'WORKSPACE_DELETION_REQUESTED'
+    | 'WORKSPACE_RESTORED'
+    | 'WORKSPACE_PURGED'
     | 'MEMBERSHIP_CREATED'
     | 'MEMBERSHIP_ROLE_CHANGED'
     | 'MEMBERSHIP_REMOVED'
@@ -103,6 +107,8 @@ export type AuditAction =
     | 'MANUSCRIPT_CHAPTER_DELETED'
     | 'MANUSCRIPT_SCENE_CREATED'
     | 'MANUSCRIPT_SCENE_DELETED'
+    | 'MANUSCRIPT_SCENE_UNDELETED'
+    | 'MANUSCRIPT_SCENE_PURGED'
     | 'MANUSCRIPT_SCENE_RESTORED'
     | 'MANUSCRIPT_IMPORTED'
     /** A spent rank gap re-spaced one parent's parts, chapters or scenes (no version; a count). */

@@ -23,8 +23,24 @@ model Workspace {
   /// The previous wrapped DEK while a key rotation is in flight; NULL
   /// otherwise. A CHECK refuses it equal to `encryptedDek`.
   previousEncryptedDek String?
+  /// Phase 5.H-a: when an OWNER asked for the whole workspace to be deleted
+  /// (UTC, the database's clock for app_user: trigger
+  /// `workspace_deleted_at_is_now`). A deleted workspace is closed to every
+  /// member and to the background jobs; an OWNER may restore it for
+  /// `WORKSPACE_RESTORE_DAYS` (30), then the daily `workspace-purge` job
+  /// deletes it, everything it holds and its stored objects. NULL is live.
+  deletedAt            DateTime?
+  /// Who asked for the deletion; NULL once that account is deleted.
+  deletedById          String?
+  /// The OWNER who also asked for their ACCOUNT to be deleted with the
+  /// workspace (only when it was their only workspace). The purge deletes that
+  /// account too, unless they belong to another workspace by then.
+  purgeAccountOfId     String?
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
+
+  deletedBy      User? @relation("WorkspaceDeletedBy", fields: [deletedById], references: [id], onDelete: SetNull)
+  purgeAccountOf User? @relation("WorkspacePurgeAccountOf", fields: [purgeAccountOfId], references: [id], onDelete: SetNull)
 
   memberships       WorkspaceMembership[]
   books             Book[]
@@ -37,6 +53,11 @@ model Workspace {
   sourceLibraries   SourceLibrary[]
   /// Phase 4.1: the vectors waiting to be (re)embedded.
   embeddingTasks    EmbeddingTask[]
+
+  /// The purge's scan (5.H-a): workspaces deleted at or before the cutoff.
+  @@index([deletedAt])
+  @@index([deletedById])
+  @@index([purgeAccountOfId])
 }
 
 /// A person's role in a workspace. One per (workspace, user).

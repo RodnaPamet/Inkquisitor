@@ -47,6 +47,8 @@ interface PendingDelete {
     id: string;
     title: string;
     scenes: number;
+    /** Its recently deleted scenes (5.H-a): they go for good with it, and are counted in what the author confirms. */
+    recentlyDeleted: number;
 }
 
 function InlineTitle({ id, value, placeholder, label, onSave }: { id: string; value: string | null; placeholder: string; label: string; onSave: (title: string | null) => Promise<void> }) {
@@ -81,6 +83,7 @@ function InlineTitle({ id, value, placeholder, label, onSave }: { id: string; va
 
 export function ManuscriptPage({ workspaceSlug, book, initial, canEdit }: ManuscriptPageProps) {
     const t = useTranslations('manuscript.outline');
+    const tAi = useTranslations('aiUse');
     const reasonText = useManuscriptReason();
     const triggerUndo = useToastWithUndo();
     const [outline, setOutline] = useState<OutlineView>(initial);
@@ -176,6 +179,14 @@ export function ManuscriptPage({ workspaceSlug, book, initial, canEdit }: Manusc
                     <p className="text-sm text-content-muted" data-testid="manuscript-totals">
                         {outline.totals.scenes === 0 ? t('notStarted') : t('totals', { words: outline.totals.words, chapters: outline.totals.chapters, scenes: outline.totals.scenes })}
                     </p>
+                    {outline.totals.recentlyDeleted > 0 ? (
+                        <Link href={APP_ROUTES.deletedScenes(slug, book.id)} className="text-sm font-medium text-content-brand hover:underline" id="manuscript-recently-deleted">
+                            {t('recentlyDeleted', { count: outline.totals.recentlyDeleted })}
+                        </Link>
+                    ) : null}
+                    <p className="text-xs text-content-muted" data-testid="manuscript-d3-line">
+                        {tAi('editorLine')}
+                    </p>
                 </div>
                 {canEdit ? (
                     <div className="flex flex-wrap gap-tight">
@@ -218,8 +229,9 @@ export function ManuscriptPage({ workspaceSlug, book, initial, canEdit }: Manusc
                                             icon={<Trash2 className="size-4" aria-hidden="true" />}
                                             onClick={() => {
                                                 const scenes = part.chapters.reduce((n, c) => n + c.scenes.length, 0);
+                                                const recentlyDeleted = part.chapters.reduce((n, c) => n + c.recentlyDeleted, 0);
                                                 const name = part.title ?? t('untitledPart', { n: pi + 1 });
-                                                if (scenes > 0) setConfirm({ level: 'part', id: part.id, title: name, scenes });
+                                                if (scenes + recentlyDeleted > 0) setConfirm({ level: 'part', id: part.id, title: name, scenes, recentlyDeleted });
                                                 else deleteWithUndo('part', part.id, name);
                                             }}
                                             aria-label={t('delete', { what: part.title ?? t('untitledPart', { n: pi + 1 }) })}
@@ -258,7 +270,11 @@ export function ManuscriptPage({ workspaceSlug, book, initial, canEdit }: Manusc
                                                             variant="secondary"
                                                             size="sm"
                                                             icon={<Trash2 className="size-4" aria-hidden="true" />}
-                                                            onClick={() => (scenes.length > 0 ? setConfirm({ level: 'chapter', id: chapter.id, title: chapterName, scenes: scenes.length }) : deleteWithUndo('chapter', chapter.id, chapterName))}
+                                                            onClick={() =>
+                                                                scenes.length + chapter.recentlyDeleted > 0
+                                                                    ? setConfirm({ level: 'chapter', id: chapter.id, title: chapterName, scenes: scenes.length, recentlyDeleted: chapter.recentlyDeleted })
+                                                                    : deleteWithUndo('chapter', chapter.id, chapterName)
+                                                            }
                                                             aria-label={t('delete', { what: chapterName })}
                                                         />
                                                     </div>
@@ -309,7 +325,10 @@ export function ManuscriptPage({ workspaceSlug, book, initial, canEdit }: Manusc
                     }}
                     title={t('confirmTitle', { title: confirm.title })}
                 >
-                    <Modal.Header title={t('confirmTitle', { title: confirm.title })} description={t(`confirmHelp.${confirm.level}`, { scenes: confirm.scenes })} />
+                    <Modal.Header
+                        title={t('confirmTitle', { title: confirm.title })}
+                        description={`${t(`confirmHelp.${confirm.level}`, { scenes: confirm.scenes })}${confirm.recentlyDeleted > 0 ? ` ${t('confirmRecentlyDeleted', { count: confirm.recentlyDeleted })}` : ''}`}
+                    />
                     <Modal.Actions>
                         <Button type="button" variant="secondary" onClick={() => setConfirm(null)}>
                             {t('cancel')}
@@ -321,11 +340,11 @@ export function ManuscriptPage({ workspaceSlug, book, initial, canEdit }: Manusc
                             onClick={() => {
                                 const c = confirm;
                                 setConfirm(null);
-                                deleteWithUndo(c.level, c.id, c.title, c.scenes);
+                                deleteWithUndo(c.level, c.id, c.title, c.scenes + c.recentlyDeleted);
                             }}
                             id="manuscript-confirm-delete"
                         >
-                            {t('confirmDelete', { scenes: confirm.scenes })}
+                            {t('confirmDelete', { scenes: confirm.scenes + confirm.recentlyDeleted })}
                         </Button>
                     </Modal.Actions>
                 </Modal>

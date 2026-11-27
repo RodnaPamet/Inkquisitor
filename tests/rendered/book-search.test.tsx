@@ -19,6 +19,8 @@ const RESULT: BookSearchView = {
         {
             kind: 'element',
             elementId: 'el_1',
+            sceneId: null,
+            chapterTitle: null,
             elementKind: 'CHARACTER',
             name: 'Ilse',
             customLabel: null,
@@ -35,11 +37,22 @@ const RESULT: BookSearchView = {
                 { source: 'relationNote', fieldKey: null, fieldLabel: null, otherElementName: 'Wenna', snippet: { text: 'runs with her', start: 0, cutBefore: false, cutAfter: false, highlights: [{ start: 0, end: 4 }] } },
             ],
         },
-        { kind: 'book', elementId: null, elementKind: null, name: 'The Salt Roads', customLabel: null, matchedSourceCount: 1, matches: [{ source: 'logline', fieldKey: null, fieldLabel: null, otherElementName: null, snippet: { text: 'A run across a drowned country.', start: 0, cutBefore: false, cutAfter: false, highlights: [{ start: 2, end: 5 }] } }] },
+        {
+            kind: 'scene',
+            elementId: null,
+            sceneId: 'sc_1',
+            chapterTitle: 'The Harbour',
+            elementKind: null,
+            name: 'Low tide',
+            customLabel: null,
+            matchedSourceCount: 1,
+            matches: [{ source: 'sceneText', fieldKey: null, fieldLabel: null, otherElementName: null, snippet: { text: 'and then she ran for the boats', start: 120, cutBefore: true, cutAfter: false, highlights: [{ start: 14, end: 17 }] } }],
+        },
+        { kind: 'book', elementId: null, sceneId: null, chapterTitle: null, elementKind: null, name: 'The Salt Roads', customLabel: null, matchedSourceCount: 1, matches: [{ source: 'logline', fieldKey: null, fieldLabel: null, otherElementName: null, snippet: { text: 'A run across a drowned country.', start: 0, cutBefore: false, cutAfter: false, highlights: [{ start: 2, end: 5 }] } }] },
     ],
-    totalHits: 2,
+    totalHits: 3,
     truncated: false,
-    coverage: { elements: 2, searchedElements: 2, complete: true, cut: null },
+    coverage: { elements: 2, searchedElements: 2, scenes: 1, searchedScenes: 1, complete: true, cut: null },
     language: 'en',
     analyzerVersion: 'test',
 };
@@ -58,7 +71,7 @@ it('searches as the author types, the query in a POST body, never the URL', asyn
     const { requests } = mockFetch({ [`POST ${URL_}`]: { json: RESULT } });
     render(<BookSearch workspaceSlug={SLUG} bookId={BOOK_ID} kindLabels={{ CHARACTER: 'Character' }} />);
     await typeAndWait('run');
-    await waitFor(() => expect(screen.getByTestId('book-search-status')).toHaveTextContent('2 results'));
+    await waitFor(() => expect(screen.getByTestId('book-search-status')).toHaveTextContent('3 results'));
     expect(requests).toEqual([{ method: 'POST', url: URL_, body: { q: 'run' } }]);
     expect(requests[0].url).not.toContain('run');
 });
@@ -68,12 +81,18 @@ it('lists results with links, source labels and highlighted snippets as text', a
     const { container } = render(<BookSearch workspaceSlug={SLUG} bookId={BOOK_ID} kindLabels={{ CHARACTER: 'Character' }} />);
     await typeAndWait('run');
     const list = await screen.findByRole('list', { name: 'Search results' });
-    const [ilse, book] = within(list).getAllByTestId('book-search-hit');
+    const [ilse, scene, book] = within(list).getAllByTestId('book-search-hit');
     expect(within(ilse).getByRole('link', { name: 'Ilse' })).toHaveAttribute('href', `/w/${SLUG}/books/${BOOK_ID}/elements/el_1`);
     expect(ilse).toHaveTextContent('Character');
     expect(ilse).toHaveTextContent('Want');
     expect(ilse).toHaveTextContent('Note on the link to Wenna');
     expect(ilse).toHaveTextContent('1 more match in this entry');
+    // Phase 5.H-a: a scene result opens the editor AT the match — offsets into the scene's text, never the query.
+    const sceneLink = within(scene).getByRole('link', { name: 'Scene: Low tide' });
+    expect(sceneLink).toHaveAttribute('href', `/w/${SLUG}/books/${BOOK_ID}/manuscript/scenes/sc_1?at=134&len=3`);
+    expect(sceneLink.getAttribute('href')).not.toContain('run');
+    expect(scene).toHaveTextContent('in The Harbour');
+    expect(scene).toHaveTextContent('Scene text');
     expect(book).toHaveTextContent('The Salt Roads (this book)');
     expect(within(book).queryByRole('link')).toBeNull();
     const marks = Array.from(ilse.querySelectorAll('mark')).map((m) => m.textContent);
@@ -110,7 +129,7 @@ it('never shows an answer under newer text: a change aborts the request in fligh
     await act(async () => {
         pending[0]({ json: RESULT });
     });
-    expect(screen.getByTestId('book-search-status')).not.toHaveTextContent('2 results');
+    expect(screen.getByTestId('book-search-status')).not.toHaveTextContent('3 results');
     expect(screen.queryByRole('list', { name: 'Search results' })).toBeNull();
     // The newer text is searched and answered.
     await act(async () => {
@@ -135,11 +154,18 @@ it('says when nothing matches, and words a refusal from its reason', async () =>
 });
 
 it('says when the book was only partly searched, and when results were cut', async () => {
-    mockFetch({ [`POST ${URL_}`]: { json: { ...RESULT, truncated: true, totalHits: 80, coverage: { elements: 2400, searchedElements: 2000, complete: false, cut: 'ELEMENTS_CAP' } } } });
+    mockFetch({ [`POST ${URL_}`]: { json: { ...RESULT, truncated: true, totalHits: 80, coverage: { elements: 2400, searchedElements: 2000, scenes: 0, searchedScenes: 0, complete: false, cut: 'ELEMENTS_CAP' } } } });
     render(<BookSearch workspaceSlug={SLUG} bookId={BOOK_ID} kindLabels={{}} />);
     await typeAndWait('run');
     await waitFor(() => expect(screen.getByTestId('book-search-partial')).toHaveTextContent('Only the first 2000 of 2400 entries, by name, were searched.'));
-    expect(screen.getByText('Showing the best 2 of 80 results. Add a word to narrow the search.')).toBeInTheDocument();
+    expect(screen.getByText('Showing the best 3 of 80 results. Add a word to narrow the search.')).toBeInTheDocument();
+});
+
+it('says when the manuscript was only partly searched (Phase 5.H-a)', async () => {
+    mockFetch({ [`POST ${URL_}`]: { json: { ...RESULT, coverage: { elements: 2, searchedElements: 2, scenes: 6000, searchedScenes: 5000, complete: false, cut: 'SCENES_CAP' } } } });
+    render(<BookSearch workspaceSlug={SLUG} bookId={BOOK_ID} kindLabels={{}} />);
+    await typeAndWait('run');
+    await waitFor(() => expect(screen.getByTestId('book-search-partial')).toHaveTextContent('Only 5000 of 6000 scenes were searched'));
 });
 
 describe('HighlightedSnippet', () => {

@@ -62,7 +62,7 @@ it('stores the book sealed, and finds an element by a stemmed variant of a word 
     const match = r.hits[0].matches[0];
     expect(match).toMatchObject({ source: 'field', fieldKey: 'want', fieldLabel: 'Conscious want' });
     expect(match.snippet.highlights.map((h) => match.snippet.text.slice(h.start, h.end))).toEqual(['burning']);
-    expect(r.coverage).toEqual({ elements: 3, searchedElements: 3, complete: true, cut: null });
+    expect(r.coverage).toEqual({ elements: 3, searchedElements: 3, scenes: 0, searchedScenes: 0, complete: true, cut: null });
     expect(r.language).toBe('en');
 });
 

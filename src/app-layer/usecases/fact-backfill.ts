@@ -46,6 +46,7 @@
  * done gives nothing a row. The monthly ceiling stays the hard bound over this,
  * the nightly continuity check's own share and every other call.
  */
+import { withoutDeletedWorkspaces } from '@/app-layer/repositories/workspace.repository';
 import { randomUUID } from 'node:crypto';
 import { FactBackfillRepository, FactExtractionRepository } from '@/app-layer/repositories/fact-layer.repository';
 import { fromCursor, JobCursorRepository } from '@/app-layer/repositories/job-cursor.repository';
@@ -123,7 +124,7 @@ export async function executeFactBackfill(deps: FactBackfillDeps = {}): Promise<
             (after, n) => FactBackfillRepository.listWorkspaces(db, { ...window, take: n, after, workspaceIds: deps.workspaceIds }),
             (upTo, n) => FactBackfillRepository.listWorkspaces(db, { ...window, take: n, upTo, workspaceIds: deps.workspaceIds }),
         );
-        return found.items.map((w) => w.workspaceId);
+        return (await withoutDeletedWorkspaces(db, found.items)).map((w) => w.workspaceId);
     });
     result.workspaces = workspaces.length;
     const floor = (deps.callFloorMicroUsd ?? bibleFactsCallFloor)();

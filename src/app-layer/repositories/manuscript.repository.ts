@@ -14,9 +14,18 @@
  * and only `src/app-layer/usecases/manuscript-text.ts` calls them (D3,
  * `tests/guards/scene-text-stays-off-the-model-path.test.ts`).
  */
-import type { BibleVersionSource, Prisma, SceneVersionSource } from '@prisma/client';
+import type { BibleVersionSource, Prisma, PrismaClient, SceneVersionSource } from '@prisma/client';
 
 type Db = Prisma.TransactionClient;
+
+/**
+ * A LIVE scene (Phase 5.H-a, issue #71): every read and write of a scene below asks it, so a deleted scene is hidden
+ * from the outline, the editor, its board cards, its mentions, the research fit and every save, and is reached only
+ * by the Recently deleted list, its restore and the purge.
+ */
+const LIVE = { deletedAt: null } as const satisfies Prisma.ManuscriptSceneWhereInput;
+/** A row of a LIVE scene (a link, a card, a proposal: reached through its `scene` relation). */
+export const OF_LIVE_SCENE = { scene: LIVE } as const;
 
 const PART_SELECT = { id: true, manuscriptId: true, title: true, rank: true, updatedAt: true } as const satisfies Prisma.ManuscriptPartSelect;
 const CHAPTER_SELECT = { id: true, partId: true, title: true, rank: true, updatedAt: true } as const satisfies Prisma.ManuscriptChapterSelect;
@@ -97,11 +106,11 @@ export const ManuscriptRepository = {
      * elements it names (`lockElements`) and BEFORE any link row. A deletion of
      * the scene's part or chapter takes the scene row by cascade and then its
      * links; a save that wrote a link first and waited for the scene row
-     * would deadlock with it (40P01). False when the scene is gone.
+     * would deadlock with it (40P01). False when the scene is gone or deleted (5.H-a).
      */
     async lockSceneRow(db: Db, workspaceId: string, sceneId: string): Promise<boolean> {
         const rows = await db.$queryRaw<Array<{ id: string }>>`
-            SELECT "id" FROM "ManuscriptScene" WHERE "workspaceId" = ${workspaceId} AND "id" = ${sceneId} FOR NO KEY UPDATE`;
+            SELECT "id" FROM "ManuscriptScene" WHERE "workspaceId" = ${workspaceId} AND "id" = ${sceneId} AND "deletedAt" IS NULL FOR NO KEY UPDATE`;
         return rows.length > 0;
     },
 
@@ -265,49 +274,74 @@ export interface SceneInsert {
 
 export const ManuscriptSceneRepository = {
     async listOutline(db: Db, workspaceId: string, bookId: string, take: number): Promise<SceneOutlineRow[]> {
-        return db.manuscriptScene.findMany({ where: { workspaceId, bookId }, select: SCENE_OUTLINE_SELECT, take });
+        return db.manuscriptScene.findMany({ where: { workspaceId, bookId, ...LIVE }, select: SCENE_OUTLINE_SELECT, take });
     },
 
     async listForChapter(db: Db, workspaceId: string, chapterId: string, take: number): Promise<SceneOutlineRow[]> {
-        return db.manuscriptScene.findMany({ where: { workspaceId, chapterId }, select: SCENE_OUTLINE_SELECT, take });
+        return db.manuscriptScene.findMany({ where: { workspaceId, chapterId, ...LIVE }, select: SCENE_OUTLINE_SELECT, take });
     },
 
     async listForChapters(db: Db, workspaceId: string, bookId: string, chapterIds: readonly string[], take: number): Promise<SceneOutlineRow[]> {
         if (chapterIds.length === 0) return [];
-        return db.manuscriptScene.findMany({ where: { workspaceId, bookId, chapterId: { in: [...chapterIds] } }, select: SCENE_OUTLINE_SELECT, take });
+        return db.manuscriptScene.findMany({ where: { workspaceId, bookId, chapterId: { in: [...chapterIds] }, ...LIVE }, select: SCENE_OUTLINE_SELECT, take });
     },
 
     async findOutline(db: Db, workspaceId: string, bookId: string, ids: readonly string[]): Promise<SceneOutlineRow[]> {
         if (ids.length === 0) return [];
-        return db.manuscriptScene.findMany({ where: { workspaceId, bookId, id: { in: [...ids] } }, select: SCENE_OUTLINE_SELECT, take: ids.length });
+        return db.manuscriptScene.findMany({ where: { workspaceId, bookId, id: { in: [...ids] }, ...LIVE }, select: SCENE_OUTLINE_SELECT, take: ids.length });
     },
 
     async find(db: Db, workspaceId: string, bookId: string, sceneId: string): Promise<SceneRow | null> {
-        return db.manuscriptScene.findFirst({ where: { workspaceId, bookId, id: sceneId }, select: SCENE_SELECT });
+        return db.manuscriptScene.findFirst({ where: { workspaceId, bookId, id: sceneId, ...LIVE }, select: SCENE_SELECT });
     },
 
     /** Several scenes with their text and note (the research fit's excerpts), at most `ids.length`. */
     async findFull(db: Db, workspaceId: string, bookId: string, ids: readonly string[]): Promise<SceneRow[]> {
         if (ids.length === 0) return [];
-        return db.manuscriptScene.findMany({ where: { workspaceId, bookId, id: { in: [...ids] } }, select: SCENE_SELECT, take: ids.length });
+        return db.manuscriptScene.findMany({ where: { workspaceId, bookId, id: { in: [...ids] }, ...LIVE }, select: SCENE_SELECT, take: ids.length });
     },
 
     async head(db: Db, workspaceId: string, bookId: string, sceneId: string): Promise<SceneHeadRow | null> {
-        return db.manuscriptScene.findFirst({ where: { workspaceId, bookId, id: sceneId }, select: SCENE_HEAD_SELECT });
+        return db.manuscriptScene.findFirst({ where: { workspaceId, bookId, id: sceneId, ...LIVE }, select: SCENE_HEAD_SELECT });
     },
 
-    /** Every scene's title, text and note of a book, for the research egress index (bounded by the caller). */
+    /**
+     * Every scene's title, text and note of a book, for the research egress index (bounded by the caller). A DELETED
+     * scene is read too (5.H-a): its words are still the author's until the purge, and the brief's quote check is
+     * stricter for holding them.
+     */
     async listTextForIndex(db: Db, workspaceId: string, bookId: string, take: number) {
         return db.manuscriptScene.findMany({ where: { workspaceId, bookId }, select: { id: true, title: true, text: true, note: true, storyTime: true }, take });
     },
 
     async count(db: Db, workspaceId: string, bookId: string): Promise<number> {
-        return db.manuscriptScene.count({ where: { workspaceId, bookId } });
+        return db.manuscriptScene.count({ where: { workspaceId, bookId, ...LIVE } });
+    },
+
+    /**
+     * Word search over scenes (Phase 5.H-a, D33 addendum A): a book's LIVE scenes sized by STORED bytes of their
+     * title, text and note (nothing decrypted), in id order, at most `take`, so the search reads them a bounded chunk at a
+     * time (`textsForSearch`).
+     */
+    async storedBytesForSearch(db: Db, workspaceId: string, bookId: string, take: number): Promise<Array<{ id: string; chapterId: string; bytes: number }>> {
+        return db.$queryRaw<Array<{ id: string; chapterId: string; bytes: number }>>`
+            SELECT "id", "chapterId",
+                   (octet_length("text") + COALESCE(octet_length("title"), 0) + COALESCE(octet_length("note"), 0))::int AS "bytes"
+            FROM "ManuscriptScene"
+            WHERE "workspaceId" = ${workspaceId} AND "bookId" = ${bookId} AND "deletedAt" IS NULL
+            ORDER BY "id"
+            LIMIT ${take}`;
+    },
+
+    /** These live scenes' title, text and note (decrypted by the extension), at most `ids.length`: one chunk of a search. */
+    async textsForSearch(db: Db, workspaceId: string, bookId: string, ids: readonly string[]) {
+        if (ids.length === 0) return [];
+        return db.manuscriptScene.findMany({ where: { workspaceId, bookId, id: { in: [...ids] }, ...LIVE }, select: { id: true, title: true, text: true, note: true }, take: ids.length });
     },
 
     /** Words per chapter, an aggregate. */
     async wordsByChapter(db: Db, workspaceId: string, bookId: string) {
-        const rows = await db.manuscriptScene.groupBy({ by: ['chapterId'], where: { workspaceId, bookId }, _sum: { wordCount: true } });
+        const rows = await db.manuscriptScene.groupBy({ by: ['chapterId'], where: { workspaceId, bookId, ...LIVE }, _sum: { wordCount: true } });
         return new Map(rows.map((r) => [r.chapterId, r._sum.wordCount ?? 0]));
     },
 
@@ -318,7 +352,7 @@ export const ManuscriptSceneRepository = {
 
     /** THE TEXT WRITER, one scene: its sanitised text, its word count and the next revision. Called only by `manuscript-text.ts`. */
     async setText(db: Db, workspaceId: string, sceneId: string, data: { text: string; wordCount: number; revision: number }) {
-        return db.manuscriptScene.updateMany({ where: { workspaceId, id: sceneId }, data: { text: data.text, wordCount: data.wordCount, revision: data.revision } });
+        return db.manuscriptScene.updateMany({ where: { workspaceId, id: sceneId, ...LIVE }, data: { text: data.text, wordCount: data.wordCount, revision: data.revision } });
     },
 
     /** THE TEXT WRITER, an import's scenes in one statement each batch. Called only by `manuscript-text.ts`. */
@@ -335,21 +369,82 @@ export const ManuscriptSceneRepository = {
         data: { title: string | null; povElementId: string | null; settingElementId: string | null; storyTime: string | null; revision: number },
     ) {
         return db.manuscriptScene.updateMany({
-            where: { workspaceId, id: sceneId },
+            where: { workspaceId, id: sceneId, ...LIVE },
             data: { title: data.title, povElementId: data.povElementId, settingElementId: data.settingElementId, storyTime: data.storyTime, revision: data.revision },
         });
     },
 
     async setNote(db: Db, workspaceId: string, sceneId: string, data: { note: string | null; noteVersion: number }) {
-        return db.manuscriptScene.updateMany({ where: { workspaceId, id: sceneId }, data: { note: data.note, noteVersion: data.noteVersion } });
+        return db.manuscriptScene.updateMany({ where: { workspaceId, id: sceneId, ...LIVE }, data: { note: data.note, noteVersion: data.noteVersion } });
     },
 
     async move(db: Db, workspaceId: string, sceneId: string, to: { chapterId: string; rank: string }) {
-        return db.manuscriptScene.updateMany({ where: { workspaceId, id: sceneId }, data: { chapterId: to.chapterId, rank: to.rank } });
+        return db.manuscriptScene.updateMany({ where: { workspaceId, id: sceneId, ...LIVE }, data: { chapterId: to.chapterId, rank: to.rank } });
     },
 
-    async remove(db: Db, workspaceId: string, bookId: string, sceneId: string): Promise<number> {
-        return (await db.manuscriptScene.deleteMany({ where: { workspaceId, bookId, id: sceneId } })).count;
+    // ─── Deletion (Phase 5.H-a, issue #71): soft for SCENE_RESTORE_DAYS, then the purge ───
+
+    /**
+     * Delete a live scene SOFTLY: hidden from every read above, its rows (text, note, links, card, versions, research
+     * proposals) kept. `deletedAt` is the database's clock for app_user (trigger `manuscript_scene_deleted_at_is_now`;
+     * the value written here is replaced). 0 when it was not live.
+     */
+    async softDelete(db: Db, workspaceId: string, bookId: string, sceneId: string): Promise<number> {
+        return (await db.manuscriptScene.updateMany({ where: { workspaceId, bookId, id: sceneId, ...LIVE }, data: { deletedAt: new Date() } })).count;
+    },
+
+    /** A manuscript's scenes deleted after `since` (still restorable), newest deletion first, at most `take`. */
+    async listDeleted(db: Db, workspaceId: string, bookId: string, since: Date, take: number) {
+        return db.manuscriptScene.findMany({
+            where: { workspaceId, bookId, deletedAt: { gt: since } },
+            orderBy: [{ deletedAt: 'desc' }, { id: 'asc' }],
+            select: { id: true, title: true, wordCount: true, deletedAt: true, chapterId: true, rank: true, chapter: { select: { title: true } } },
+            take,
+        });
+    },
+
+    /** How many recently deleted scenes each chapter holds (they go, for good, with a deleted chapter). */
+    async deletedByChapter(db: Db, workspaceId: string, bookId: string): Promise<Map<string, number>> {
+        const rows = await db.manuscriptScene.groupBy({ by: ['chapterId'], where: { workspaceId, bookId, deletedAt: { not: null } }, _count: { _all: true } });
+        return new Map(rows.map((r) => [r.chapterId, r._count._all]));
+    },
+
+    /** A deleted scene still restorable (deleted after `since`), with what its restore needs; null otherwise. */
+    async findDeleted(db: Db, workspaceId: string, bookId: string, sceneId: string, since: Date) {
+        return db.manuscriptScene.findFirst({
+            where: { workspaceId, bookId, id: sceneId, deletedAt: { gt: since } },
+            select: { id: true, chapterId: true, rank: true, wordCount: true, deletedAt: true },
+        });
+    },
+
+    /** Bring a restorable deleted scene back at `rank` in its chapter (deleted after `since`); 0 when it is not. */
+    async restore(db: Db, workspaceId: string, bookId: string, sceneId: string, since: Date, rank: string): Promise<number> {
+        return (await db.manuscriptScene.updateMany({ where: { workspaceId, bookId, id: sceneId, deletedAt: { gt: since } }, data: { deletedAt: null, rank } })).count;
+    },
+
+    /**
+     * Scenes of EVERY workspace deleted at or before `cutoff` (the purge's discovery, outside row-level security under
+     * `scene-purge-discovery`), oldest deletion first, at most `take`. Ids only.
+     */
+    async listPurgeDue(db: PrismaClient, cutoff: Date, take: number): Promise<Array<{ id: string; workspaceId: string; bookId: string }>> {
+        return db.manuscriptScene.findMany({
+            where: { deletedAt: { lte: cutoff } },
+            orderBy: [{ deletedAt: 'asc' }, { id: 'asc' }],
+            select: { id: true, workspaceId: true, bookId: true },
+            take,
+        });
+    },
+
+    /**
+     * Delete, for good, a scene deleted at or before `cutoff`, locked first (a restore that won the race leaves it
+     * alone): everything that cascades from it goes with it. The trigger refuses any other hard delete.
+     */
+    async purge(db: Db, workspaceId: string, bookId: string, sceneId: string, cutoff: Date): Promise<number> {
+        const locked = await db.$queryRaw<Array<{ id: string }>>`
+            SELECT "id" FROM "ManuscriptScene" WHERE "workspaceId" = ${workspaceId} AND "bookId" = ${bookId} AND "id" = ${sceneId}
+              AND "deletedAt" IS NOT NULL AND "deletedAt" <= ${cutoff} FOR UPDATE`;
+        if (locked.length === 0) return 0;
+        return (await db.manuscriptScene.deleteMany({ where: { workspaceId, bookId, id: sceneId, deletedAt: { lte: cutoff } } })).count;
     },
 };
 
@@ -391,19 +486,19 @@ export const SceneBeatRepository = {
     /** How many scenes dramatise each of the beats (an aggregate, one row a beat). */
     async countForBeats(db: Db, workspaceId: string, bookId: string, beatIds: readonly string[]): Promise<Map<string, number>> {
         if (beatIds.length === 0) return new Map();
-        const rows = await db.sceneBeatLink.groupBy({ by: ['beatElementId'], where: { workspaceId, bookId, beatElementId: { in: [...beatIds] } }, _count: { _all: true } });
+        const rows = await db.sceneBeatLink.groupBy({ by: ['beatElementId'], where: { workspaceId, bookId, beatElementId: { in: [...beatIds] }, ...OF_LIVE_SCENE }, _count: { _all: true } });
         return new Map(rows.map((r) => [r.beatElementId, r._count._all]));
     },
 
     /** The beat-to-scene links of the beats, at most `take`. */
     async linksForBeats(db: Db, workspaceId: string, bookId: string, beatIds: readonly string[], take: number) {
         if (beatIds.length === 0) return [];
-        return db.sceneBeatLink.findMany({ where: { workspaceId, bookId, beatElementId: { in: [...beatIds] } }, select: { beatElementId: true, sceneId: true }, take });
+        return db.sceneBeatLink.findMany({ where: { workspaceId, bookId, beatElementId: { in: [...beatIds] }, ...OF_LIVE_SCENE }, select: { beatElementId: true, sceneId: true }, take });
     },
 
     /** The scenes that dramatise a beat (ids), at most `take`. */
     async scenesOf(db: Db, workspaceId: string, bookId: string, beatElementId: string, take: number) {
-        return db.sceneBeatLink.findMany({ where: { workspaceId, bookId, beatElementId }, select: { sceneId: true }, take });
+        return db.sceneBeatLink.findMany({ where: { workspaceId, bookId, beatElementId, ...OF_LIVE_SCENE }, select: { sceneId: true }, take });
     },
 };
 
@@ -451,6 +546,23 @@ export const SceneVersionRepository = {
         return db.sceneVersion.createMany({
             data: rows.map((r) => ({ workspaceId, bookId, sceneId: r.sceneId, versionNumber: 1, text: r.text, wordCount: r.wordCount, source: 'IMPORT' as const, restoredFromVersion: null, authorId })),
         });
+    },
+};
+
+/**
+ * A PURGED scene's history (Phase 5.H-a, issue #71): its text, note and card versions, deleted for good once the scene
+ * row is gone. The append-only trigger admits these deletes only for the scene the transaction names in the
+ * `inkquisitor.scene_purge` setting (transaction-local) and only while no scene of that id stands. Called only by
+ * `usecases/scene-purge.ts`, after the scene's own deletion, in its transaction.
+ */
+export const SceneHistoryRepository = {
+    async deleteForGoneScene(db: Db, workspaceId: string, bookId: string, sceneId: string): Promise<{ versionCount: number; noteVersionCount: number; cardVersionCount: number }> {
+        await db.$executeRaw`SELECT set_config('inkquisitor.scene_purge', ${sceneId}, true)`;
+        const versions = await db.sceneVersion.deleteMany({ where: { workspaceId, bookId, sceneId } });
+        const notes = await db.sceneNoteVersion.deleteMany({ where: { workspaceId, bookId, sceneId } });
+        const cards = await db.sceneCardVersion.deleteMany({ where: { workspaceId, bookId, sceneId } });
+        await db.$executeRaw`SELECT set_config('inkquisitor.scene_purge', '', true)`;
+        return { versionCount: versions.count, noteVersionCount: notes.count, cardVersionCount: cards.count };
     },
 };
 

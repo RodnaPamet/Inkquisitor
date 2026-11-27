@@ -283,7 +283,8 @@ export const ContinuityFactRepository = {
      */
     async listLiveDraftForBook(db: Db, workspaceId: string, bookId: string, take: number): Promise<CheckDraftFactRow[]> {
         return db.storyFact.findMany({
-            where: { workspaceId, bookId, sourceKind: 'SCENE_TEXT', supersededAt: null, subjectElementId: { not: null }, sceneId: { not: null }, dedupeKey: { not: null } },
+            // 5.H-a: a deleted scene's draft facts are kept for its restore, and read by nothing meanwhile.
+            where: { workspaceId, bookId, sourceKind: 'SCENE_TEXT', supersededAt: null, subjectElementId: { not: null }, sceneId: { not: null }, dedupeKey: { not: null }, scene: { is: { deletedAt: null } } },
             orderBy: [{ subjectElementId: 'asc' }, { createdAt: 'desc' }, { id: 'asc' }],
             take,
             select: CHECK_DRAFT_FACT_SELECT,
