@@ -135,6 +135,8 @@ export interface DueScene {
     revision: number;
     wordCount: number;
     readTextKey: string | null;
+    /** The cursor's outcome (null: never read). Only an OK / EMPTY / GUARD_REFUSED cursor with no failure counted is a READ of `readTextKey`. */
+    readOutcome: string | null;
     failures: number;
 }
 
@@ -144,8 +146,8 @@ export const SceneDraftReadRepository = {
      * first, then by id. Bounded; one more is asked by the caller to know scenes remain.
      */
     async dueScenes(db: Db, workspaceId: string, bookId: string, take: number): Promise<DueScene[]> {
-        const rows = await db.$queryRaw<Array<{ sceneId: string; revision: number; wordCount: number; readTextKey: string | null; failures: number | null }>>(Prisma.sql`
-            SELECT s."id" AS "sceneId", s."revision", s."wordCount", d."textKey" AS "readTextKey", d."failures"
+        const rows = await db.$queryRaw<Array<{ sceneId: string; revision: number; wordCount: number; readTextKey: string | null; readOutcome: string | null; failures: number | null }>>(Prisma.sql`
+            SELECT s."id" AS "sceneId", s."revision", s."wordCount", d."textKey" AS "readTextKey", d."outcome" AS "readOutcome", d."failures"
             FROM "ManuscriptScene" s
             LEFT JOIN "SceneDraftRead" d ON d."workspaceId" = s."workspaceId" AND d."bookId" = s."bookId" AND d."sceneId" = s."id"
             WHERE s."workspaceId" = ${workspaceId} AND s."bookId" = ${bookId}
@@ -185,13 +187,17 @@ export const SceneDraftReadRepository = {
         });
         return failures;
     },
-    /** A book's reading, counted (the Continuity page): scenes with words, read at their revision, waiting, passed over. */
+    /**
+     * A book's reading, counted (the Continuity page): scenes with words, READ at their revision (rule 6: a scene whose
+     * text the guard refused in every piece was not read — it counts as passed over until it changes, never as read
+     * with nothing found), waiting, passed over.
+     */
     async progressForBook(db: Db, workspaceId: string, bookId: string): Promise<{ withText: number; read: number; waiting: number; passedOver: number }> {
         const [row] = await db.$queryRaw<Array<{ withText: number; read: number; waiting: number; passedOver: number }>>(Prisma.sql`
             SELECT count(*) FILTER (WHERE s."wordCount" > 0)::int AS "withText",
-                   count(*) FILTER (WHERE s."wordCount" > 0 AND d."id" IS NOT NULL AND d."revision" = s."revision" AND d."outcome" IN ('OK', 'GUARD_REFUSED'))::int AS "read",
+                   count(*) FILTER (WHERE s."wordCount" > 0 AND d."id" IS NOT NULL AND d."revision" = s."revision" AND d."outcome" IN ('OK', 'EMPTY') AND d."failures" = 0)::int AS "read",
                    count(*) FILTER (WHERE (d."id" IS NULL AND s."wordCount" > 0) OR (d."id" IS NOT NULL AND d."revision" <> s."revision"))::int AS "waiting",
-                   count(*) FILTER (WHERE d."id" IS NOT NULL AND d."revision" = s."revision" AND d."outcome" IN ('CALL_OVER_BUDGET', 'PASSED_OVER'))::int AS "passedOver"
+                   count(*) FILTER (WHERE d."id" IS NOT NULL AND d."revision" = s."revision" AND d."outcome" IN ('CALL_OVER_BUDGET', 'PASSED_OVER', 'GUARD_REFUSED'))::int AS "passedOver"
             FROM "ManuscriptScene" s
             LEFT JOIN "SceneDraftRead" d ON d."workspaceId" = s."workspaceId" AND d."bookId" = s."bookId" AND d."sceneId" = s."id"
             WHERE s."workspaceId" = ${workspaceId} AND s."bookId" = ${bookId}`);
@@ -305,6 +311,17 @@ export const DraftMismatchRepository = {
     async settleFixed(db: Db, workspaceId: string, ids: readonly string[], at: Date): Promise<number> {
         if (ids.length === 0) return 0;
         const pending = await db.storyFactProposal.updateMany({ where: { workspaceId, id: { in: [...ids] }, basis: 'DRAFT', status: 'PENDING' }, data: { status: 'FIXED', decidedAt: at, settledAt: at } });
+        const fixing = await db.storyFactProposal.updateMany({ where: { workspaceId, id: { in: [...ids] }, basis: 'DRAFT', status: 'FIX_PENDING' }, data: { status: 'FIXED', settledAt: at } });
+        return pending.count + fixing.count;
+    },
+    /**
+     * Settle these open mismatches whose BIBLE fact no longer stands (the caller read every live bible fact): a PENDING
+     * one INVALIDATED (4.2's settling of a contradiction with a fact set aside), a FIX_PENDING one FIXED (its pair no
+     * longer stands; its decision kept, `settledAt` set).
+     */
+    async settleBibleGone(db: Db, workspaceId: string, ids: readonly string[], at: Date): Promise<number> {
+        if (ids.length === 0) return 0;
+        const pending = await db.storyFactProposal.updateMany({ where: { workspaceId, id: { in: [...ids] }, basis: 'DRAFT', status: 'PENDING' }, data: { status: 'INVALIDATED', decidedAt: at } });
         const fixing = await db.storyFactProposal.updateMany({ where: { workspaceId, id: { in: [...ids] }, basis: 'DRAFT', status: 'FIX_PENDING' }, data: { status: 'FIXED', settledAt: at } });
         return pending.count + fixing.count;
     },

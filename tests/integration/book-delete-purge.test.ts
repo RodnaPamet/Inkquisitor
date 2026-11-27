@@ -203,7 +203,9 @@ describe('a deleted book', () => {
         await deleteBook(ctx, seeded.bookId);
         for (const c of cases) expect([`${c.method} ${c.file}`, (await call(c.file, c.method)).status]).toEqual([`${c.method} ${c.file}`, 404]);
         session.userId = null;
-    });
+        // A harness bound, not a verdict: it loads every route module under a book and seeds a manuscript, a draft
+        // reading and a research run, which since 5.3 passes Jest's default 5 s on an ordinary machine.
+    }, 60_000);
 
     it('is listed for its OWNER and restored whole within 30 days; past the window it is gone', async () => {
         const seeded = await seedBible(ctx, 'restore');

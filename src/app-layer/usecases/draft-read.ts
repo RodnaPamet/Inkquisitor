@@ -81,6 +81,7 @@ import {
     DRAFT_SCENES_PER_NIGHT,
     DRAFT_TEXT_MAX_CHARS,
     DRAFT_THREADS_SHOWN_MAX,
+    cursorReadItsText,
     type DraftReadOutcome,
     type DraftReadRunStatus,
 } from '@/lib/draft-facts/vocabulary';
@@ -161,6 +162,8 @@ interface SceneReadResult {
     facts: FactDraft[];
     links: Array<{ threadId: string; role: string; quote: string; quoteStart: number; quoteEnd: number; flags: string[] }>;
     guardRefusedAll: boolean;
+    /** The text of each piece the guard refused (or that repeated the prompt): nothing was read from it this night. */
+    refusedPieces: string[];
     textCut: boolean;
     costMicroUsd: number;
 }
@@ -320,9 +323,16 @@ export async function executeDraftRead(payload: { workspaceId: string; runId: st
                 const heldHere = new Map(live.filter((f) => f.sceneTextKey === read.textKey && f.dedupeKey).map((f) => [f.dedupeKey!, f] as const));
                 const fresh = rows.filter((r) => !heldHere.has(r.dedupeKey));
                 const keep = new Set(rows.filter((r) => heldHere.has(r.dedupeKey)).map((r) => heldHere.get(r.dedupeKey)!.id));
+                // A piece the guard refused was not read: a claim whose words still stand in such a piece is not gone
+                // (reading nothing is not evidence it was removed), so it is kept live, and its mismatch stays open.
+                const refused = read.result.refusedPieces;
+                if (refused.length > 0) {
+                    const freshKeys = new Set(fresh.map((r) => r.dedupeKey));
+                    for (const f of live) if (!keep.has(f.id) && !(f.dedupeKey && freshKeys.has(f.dedupeKey)) && f.quote !== '' && refused.some((t) => t.includes(f.quote))) keep.add(f.id);
+                }
                 await StoryFactRepository.supersedeDraftFacts(db, ctx.workspaceId, live.filter((f) => !keep.has(f.id)).map((f) => f.id), at);
                 const inserted = await StoryFactRepository.createDraftFacts(db, ctx.workspaceId, fresh);
-                kept = rows.length;
+                kept = fresh.length + keep.size;
                 const byId = new Map(fresh.map((r, i) => [inserted[i].id, r] as const));
                 liveAfter = [
                     ...live.filter((f) => keep.has(f.id)),
@@ -339,6 +349,10 @@ export async function executeDraftRead(payload: { workspaceId: string; runId: st
             // An open mismatch the draft no longer makes is settled FIXED — judged only against a bible fact this run read.
             const gone = open.filter((m) => bibleRead.has(m.factId) && !standing.has(`${m.factId}|${m.draftClaimKey}`)).map((m) => m.id);
             counts.mismatchesFixed += await DraftMismatchRepository.settleFixed(db, ctx.workspaceId, gone, at);
+            // An open mismatch whose bible fact no longer stands (set aside, or retracted with its relation) has nothing
+            // left to decide — known only when every live bible fact was read: PENDING is settled INVALIDATED, a fix the
+            // author promised FIXED (its pair no longer stands).
+            if (!metrics.bibleFactsCut) await DraftMismatchRepository.settleBibleGone(db, ctx.workspaceId, open.filter((m) => !bibleRead.has(m.factId)).map((m) => m.id), at);
             const room = Math.max(0, DRAFT_MISMATCHES_PER_RUN_MAX - counts.mismatchesRaised);
             const toRaise = compared.pairs.slice(0, room).map((p) => ({ bookId, sceneId: dueScene.sceneId, factId: p.bibleFactId, newerFactId: p.draftFactId, kind: p.kind, draftClaimKey: keyOf.get(p.draftFactId)!, draftRunId: run.id }));
             if (compared.pairs.length > room) metrics.refusals.MISMATCH_DEFERRED = (metrics.refusals.MISMATCH_DEFERRED ?? 0) + compared.pairs.length - room;
@@ -391,10 +405,21 @@ export async function executeDraftRead(payload: { workspaceId: string; runId: st
                 processed++;
                 continue;
             }
-            if (textKey === dueScene.readTextKey) {
-                // A details-only save: no call, the scene's facts compared again at its new place.
-                if (await persist(dueScene, { ...base, result: null, empty: false, outcome: 'OK' })) counts.scenesRead++;
+            if (textKey === dueScene.readTextKey && cursorReadItsText({ outcome: dueScene.readOutcome, failures: dueScene.failures })) {
+                // A details-only save of a text that WAS read: no call, the scene's facts compared again at its new place
+                // (its cursor keeps its outcome: a text the guard refused stays refused, nothing read from it).
+                const outcome = dueScene.readOutcome === 'GUARD_REFUSED' ? 'GUARD_REFUSED' : 'OK';
+                if (await persist(dueScene, { ...base, result: null, empty: false, outcome })) counts.scenesRead++;
                 else metrics.scenesDiscarded++;
+                processed++;
+                continue;
+            }
+            if (textKey === dueScene.readTextKey && dueScene.readOutcome === 'PASSED_OVER') {
+                // A details-only save of a text passed over (it failed every night): still passed over until it changes.
+                metrics.scenesPassedOver++;
+                await runInWorkspaceContext(ctx, (db) =>
+                    SceneDraftReadRepository.upsert(db, ctx.workspaceId, bookId, dueScene.sceneId, { revision: scene.revision, textKey, outcome: 'PASSED_OVER', textCut: false, failures: dueScene.failures, factsKept: 0, costMicroUsd: 0, at: now() }),
+                );
                 processed++;
                 continue;
             }
@@ -438,7 +463,7 @@ export async function executeDraftRead(payload: { workspaceId: string; runId: st
             const spent = await runInWorkspaceContext(ctx, (db) => nightlyShareSpent(db, ctx, share));
             if (spent + sceneWorst > share.capMicroUsd) return await finish('NIGHTLY_CAP', true);
 
-            const result: SceneReadResult = { facts: [], links: [], guardRefusedAll: true, textCut: plan.cut, costMicroUsd: 0 };
+            const result: SceneReadResult = { facts: [], links: [], guardRefusedAll: true, refusedPieces: [], textCut: plan.cut, costMicroUsd: 0 };
             let sceneFailed: string | null = null;
             for (const call of plan.calls) {
                 if (deps.signal?.aborted) return await finish('ABORTED', true);
@@ -459,6 +484,7 @@ export async function executeDraftRead(payload: { workspaceId: string; runId: st
                     // The guard refused this piece (or it repeats the prompt): it yields nothing, the scene goes on.
                     if (r.failure === 'GUARD_REFUSED' || (r.failure === 'PROMPT_INVALID' && r.errorCode === 'REPEATS_PROMPT')) {
                         metrics.refusals[r.failure] = (metrics.refusals[r.failure] ?? 0) + 1;
+                        result.refusedPieces.push(call.piece.text);
                         continue;
                     }
                     if (TEXT_OWN_FAILURES.has(r.failure)) {

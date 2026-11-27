@@ -5,17 +5,20 @@
  */
 import { randomUUID } from 'node:crypto';
 import { prisma } from '@/lib/db';
-import { runWithoutRls } from '@/lib/db/rls-middleware';
+import { runInWorkspaceContext, runWithoutRls } from '@/lib/db/rls-middleware';
+import { BibleElementRepository } from '@/app-layer/repositories/bible.repository';
+import { recordVersion } from '@/app-layer/usecases/bible-common';
 import type { WorkspaceRequestContext } from '@/app-layer/types';
 import { createBook } from '@/app-layer/usecases/books';
 import { createElement, updateElementFields } from '@/app-layer/usecases/bible-elements';
 import { createChapter, createScene, deleteScene } from '@/app-layer/usecases/manuscript';
-import { saveSceneText } from '@/app-layer/usecases/manuscript-scenes';
+import { saveSceneText, updateSceneMeta } from '@/app-layer/usecases/manuscript-scenes';
 import { createThread, getContinuityPage } from '@/app-layer/usecases/continuity';
 import { executeDraftReadDispatch } from '@/app-layer/usecases/draft-read-dispatch';
 import { executeDraftRead, type DraftReadDeps } from '@/app-layer/usecases/draft-read';
 import { decideDraftMismatch, getDraftUpdatePrefill, getSceneDraftNotes, updateBibleFromDraft } from '@/app-layer/usecases/draft-mismatches';
 import { decideThreadSceneLink } from '@/app-layer/usecases/thread-scene-links';
+import { decideFactProposal } from '@/app-layer/usecases/fact-proposals';
 import { getSceneCard, saveSceneCard } from '@/app-layer/usecases/scene-card';
 import { getInterview, startInterview } from '@/app-layer/usecases/interviews';
 import { answerQuestion } from '@/app-layer/usecases/interview-answers';
@@ -375,5 +378,167 @@ describe('the scene card and "Grill me on this scene" (never the prose, D3)', ()
         const chapterId = (await createChapter(ctx, bookId, { title: 'One' })).id;
         const sceneId = (await createScene(ctx, bookId, { chapterId, title: 'Empty' })).id;
         await expect(startInterview(ctx, bookId, { scope: 'SCENE', sceneId, depth: 2, detail: 3 }, { generator: fakeGenerator(), embedder: stubQuestionEmbedder })).rejects.toMatchObject({ details: { reason: 'SCENE_HAS_NO_ELEMENT' } });
+    });
+});
+
+describe('review fixes (5.3 review)', () => {
+    /** A reader that fails every call the same way the text would every night (INVALID_OUTPUT). */
+    function failingReader(requests: Array<readonly AuthorDataBlock[]>): NonNullable<DraftReadDeps['reader']> {
+        return () => ({
+            async extract(request) {
+                requests.push(request.data);
+                return { ok: false as const, failure: 'INVALID_OUTPUT' as const, errorCode: 'SCHEMA_MISMATCH', tokensUsed: 5, costMicroUsd: 5, callIds: [] as string[] };
+            },
+        });
+    }
+
+    it('a text whose read failed is read AGAIN the next night (never taken as "unchanged"), passed over after three, and stays passed over through a details-only save', async () => {
+        const f = await fixture();
+        const requests: Array<readonly AuthorDataBlock[]> = [];
+        // Night 1: the call fails; nothing is read, the scene stays due.
+        expect(await readNight(f.ctx, { reader: failingReader(requests) })).toEqual(['OK']);
+        expect(requests).toHaveLength(1);
+        let notes = await getSceneDraftNotes(f.ctx, f.bookId, f.sceneId);
+        expect(notes).toMatchObject({ readAtCurrentText: false, passedOver: false });
+        // Night 2: the same text is SENT again (a failed read is no read of it), and this time it reads.
+        const good: Array<readonly AuthorDataBlock[]> = [];
+        expect(await readNight(f.ctx, { reader: draftReader('Mara', good) })).toEqual(['OK']);
+        expect(good).toHaveLength(1);
+        expect((await getContinuityPage(f.ctx, f.bookId)).draft.mismatches.open).toBe(1);
+
+        // A changed text that fails three nights running is passed over, and a later details-only save keeps it so.
+        const g = await fixture();
+        const tries: Array<readonly AuthorDataBlock[]> = [];
+        for (let night = 0; night < 3; night++) await readNight(g.ctx, { reader: failingReader(tries) });
+        expect(tries).toHaveLength(3);
+        notes = await getSceneDraftNotes(g.ctx, g.bookId, g.sceneId);
+        expect(notes).toMatchObject({ readAtCurrentText: false, passedOver: true });
+        const view = await updateSceneMeta(g.ctx, g.bookId, g.sceneId, { baseRevision: g.revision, storyTime: 'Midwinter' });
+        expect(view.revision).toBeGreaterThan(g.revision);
+        await readNight(g.ctx, { reader: failingReader(tries) });
+        expect(tries).toHaveLength(3);
+        expect(await getSceneDraftNotes(g.ctx, g.bookId, g.sceneId)).toMatchObject({ readAtCurrentText: false, passedOver: true });
+        expect((await getContinuityPage(g.ctx, g.bookId)).draft.reading).toMatchObject({ scenesRead: 0, scenesPassedOver: 1 });
+    });
+
+    it('a piece the guard refuses retracts nothing it held: a claim still in that piece keeps its mismatch open', async () => {
+        const html = '<p>Mara looked up at the lamp, Mara’s blue eyes wet.</p><p>The storm rose over the harbour all that night.</p>';
+        const f = await fixture(html);
+        await readNight(f.ctx, { reader: draftReader('Mara', []), pieceMaxChars: 60 });
+        expect((await getContinuityPage(f.ctx, f.bookId)).draft.mismatches.open).toBe(1);
+        // The second paragraph changes; tonight the guard refuses the piece holding the eyes (its text did not change).
+        await saveSceneText(f.ctx, f.bookId, f.sceneId, { html: html.replace('all that night', 'until the dawn'), baseRevision: f.revision });
+        const inner = draftReader('Mara', []);
+        const guarded: NonNullable<DraftReadDeps['reader']> = (c, s) => {
+            const r = inner(c, s);
+            return {
+                async extract(request, signal) {
+                    if (textOf(request.data, 'scene.text').includes('blue eyes')) return { ok: false as const, failure: 'GUARD_REFUSED' as const, errorCode: 'GUARD', tokensUsed: 0, costMicroUsd: 0, callIds: [] as string[] };
+                    return r.extract(request, signal);
+                },
+            };
+        };
+        expect(await readNight(f.ctx, { reader: guarded, pieceMaxChars: 60 })).toEqual(['OK']);
+        const page = await getContinuityPage(f.ctx, f.bookId);
+        expect(page.draft.mismatches.open).toBe(1);
+        expect(page.draft.mismatches.items[0].status).toBe('PENDING');
+        const live = await runWithoutRls({ reason: 'test' }, (db) => db.storyFact.count({ where: { bookId: f.bookId, sourceKind: 'SCENE_TEXT', supersededAt: null } }));
+        expect(live).toBe(1);
+    });
+
+    it('a MANUSCRIPT version names a scene of its own book: the database refuses another book’s scene', async () => {
+        const f = await fixture();
+        const other = (await createBook(f.ctx, { title: 'Elsewhere' })).id;
+        const otherScene = (await createScene(f.ctx, other, { chapterId: (await createChapter(f.ctx, other, { title: 'Far' })).id, title: 'Far scene' })).id;
+        const write = (sceneId: string) =>
+            runInWorkspaceContext(f.ctx, async (db) => {
+                await BibleElementRepository.lock(db, f.maraId);
+                return recordVersion(db, f.ctx, f.bookId, f.maraId, { source: 'MANUSCRIPT', sourceSceneId: sceneId });
+            });
+        await expect(write(otherScene)).rejects.toThrow(/BIBLE_VERSION_MANUSCRIPT_SCENE/);
+        await expect(write('no-such-scene')).rejects.toThrow(/BIBLE_VERSION_MANUSCRIPT_SCENE/);
+        // Its own book's scene is accepted.
+        expect((await write(f.sceneId)).versionNumber).toBeGreaterThan(1);
+    });
+
+    it('a scene whose every piece the guard refused is not "read" (rule 6): counted as passed over, never as read with nothing found', async () => {
+        const f = await fixture();
+        const refusing: NonNullable<DraftReadDeps['reader']> = () => ({
+            async extract() {
+                return { ok: false as const, failure: 'GUARD_REFUSED' as const, errorCode: 'GUARD', tokensUsed: 0, costMicroUsd: 0, callIds: [] as string[] };
+            },
+        });
+        expect(await readNight(f.ctx, { reader: refusing })).toEqual(['OK']);
+        expect((await getContinuityPage(f.ctx, f.bookId)).draft.reading).toMatchObject({ scenesWithText: 1, scenesRead: 0, scenesWaiting: 0, scenesPassedOver: 1 });
+        expect(await getSceneDraftNotes(f.ctx, f.bookId, f.sceneId)).toMatchObject({ readAtCurrentText: false, passedOver: true });
+    });
+
+    it('an open mismatch whose bible fact no longer stands leaves the list at the scene’s next read (INVALIDATED; a promised fix FIXED)', async () => {
+        const f = await fixture();
+        await readNight(f.ctx, { reader: draftReader('Mara', []) });
+        const m = (await getContinuityPage(f.ctx, f.bookId)).draft.mismatches.items[0];
+        // The bible fact is set aside (as a retracted relation's facts are, with no author decision on this mismatch).
+        await runWithoutRls({ reason: 'test' }, (db) => db.storyFact.updateMany({ where: { bookId: f.bookId, sourceKind: 'BIBLE_VERSION' }, data: { supersededAt: new Date() } }));
+        await saveSceneText(f.ctx, f.bookId, f.sceneId, { html: '<p>Mara looked up at the high lamp, Mara’s blue eyes wet. She promised to find the Key before the storm.</p>', baseRevision: f.revision });
+        await readNight(f.ctx, { reader: draftReader('Mara', []) });
+        const row = await runWithoutRls({ reason: 'test' }, (db) => db.storyFactProposal.findFirstOrThrow({ where: { id: m.id }, select: { status: true } }));
+        expect(row.status).toBe('INVALIDATED');
+        expect((await getContinuityPage(f.ctx, f.bookId)).draft.mismatches.open).toBe(0);
+
+        const g = await fixture();
+        await readNight(g.ctx, { reader: draftReader('Mara', []) });
+        const gm = (await getContinuityPage(g.ctx, g.bookId)).draft.mismatches.items[0];
+        await decideDraftMismatch(g.ctx, g.bookId, gm.id, { decision: 'FIX_DRAFT' });
+        await runWithoutRls({ reason: 'test' }, (db) => db.storyFact.updateMany({ where: { bookId: g.bookId, sourceKind: 'BIBLE_VERSION' }, data: { supersededAt: new Date() } }));
+        await saveSceneText(g.ctx, g.bookId, g.sceneId, { html: '<p>Mara looked up at the high lamp, Mara’s blue eyes wet. She promised to find the Key before the storm.</p>', baseRevision: g.revision });
+        await readNight(g.ctx, { reader: draftReader('Mara', []) });
+        expect(await runWithoutRls({ reason: 'test' }, (db) => db.storyFactProposal.findFirstOrThrow({ where: { id: gm.id }, select: { status: true } }))).toEqual({ status: 'FIXED' });
+
+        // The author sets the bible fact aside on the Continuity page (4.1's decision): a promised fix leaves the list at once.
+        const h = await fixture();
+        await readNight(h.ctx, { reader: draftReader('Mara', []) });
+        const hm = (await getContinuityPage(h.ctx, h.bookId)).draft.mismatches.items[0];
+        await decideDraftMismatch(h.ctx, h.bookId, hm.id, { decision: 'FIX_DRAFT' });
+        const latest = await prisma.bibleEntryVersion.findFirstOrThrow({ where: { elementId: h.maraId }, orderBy: { versionNumber: 'desc' }, select: { versionNumber: true } });
+        await updateElementFields(h.ctx, h.bookId, h.maraId, { fields: [{ key: 'physical_presence', value: 'A slow way of walking.' }], baseVersion: latest.versionNumber });
+        await extractPending(h.ctx, h.bookId, eyesExtractor('Mara'));
+        const gone = (await getContinuityPage(h.ctx, h.bookId)).noLongerStated.items[0];
+        await decideFactProposal(h.ctx, h.bookId, gone.id, { decision: 'INVALIDATE' });
+        expect(await runWithoutRls({ reason: 'test' }, (db) => db.storyFactProposal.findFirstOrThrow({ where: { id: hm.id }, select: { status: true } }))).toEqual({ status: 'FIXED' });
+        expect((await getContinuityPage(h.ctx, h.bookId)).draft.mismatches.open).toBe(0);
+    });
+
+    it('a clash settled because the scene moved in story time is raised again when it moves back (the same draft fact)', async () => {
+        const ctx = workspaceCtx(await createAccount());
+        const bookId = (await createBook(ctx, { title: 'The order' })).id;
+        const isolde = await createElement(ctx, bookId, { kind: 'CHARACTER', name: 'Isolde' });
+        // The bible says green in 1203 (a fact with a stated story time).
+        await updateElementFields(ctx, bookId, isolde.id, { fields: [{ key: 'physical_presence', value: 'In 1203 Isolde has green eyes.' }], baseVersion: isolde.versionNumber });
+        await extractPending(ctx, bookId, () => ({
+            async extract(request) {
+                const text = textOf(request.data, 'entry.text');
+                const facts = text.includes('In 1203 Isolde has green eyes')
+                    ? [{ subject: 'Isolde', predicate: 'APPEARANCE', object: 'green eyes', statement: 'Isolde has green eyes.', quote: 'In 1203 Isolde has green eyes', storyTimeFrom: '1203', storyTimeTo: '', contradicts: [] }]
+                    : [];
+                return { ok: true, output: { facts }, tokensUsed: 1, costMicroUsd: 1, callIds: [] };
+            },
+        }));
+        const chapterId = (await createChapter(ctx, bookId, { title: 'One' })).id;
+        const sceneId = (await createScene(ctx, bookId, { chapterId, title: 'The water' })).id;
+        let rev = (await saveSceneText(ctx, bookId, sceneId, { html: '<p>Isolde turned, Isolde’s blue eyes wide.</p>', baseRevision: 0 })).revision;
+        rev = (await updateSceneMeta(ctx, bookId, sceneId, { baseRevision: rev, storyTime: '1203' })).revision;
+        await readNight(ctx, { reader: draftReader('Isolde', []) });
+        const all = async () => runWithoutRls({ reason: 'test' }, (db) => db.storyFactProposal.findMany({ where: { bookId, basis: 'DRAFT' }, orderBy: { createdAt: 'asc' }, select: { status: true, newerFactId: true } }));
+        expect((await all()).map((r) => r.status)).toEqual(['PENDING']);
+        // The scene moves to 1210: the two no longer overlap, settled FIXED with no call.
+        rev = (await updateSceneMeta(ctx, bookId, sceneId, { baseRevision: rev, storyTime: '1210' })).revision;
+        await readNight(ctx, { reader: draftReader('Isolde', []) });
+        expect((await all()).map((r) => r.status)).toEqual(['FIXED']);
+        // And back: the same draft fact clashes again, and is raised again.
+        await updateSceneMeta(ctx, bookId, sceneId, { baseRevision: rev, storyTime: '1203' });
+        await readNight(ctx, { reader: draftReader('Isolde', []) });
+        const rows = await all();
+        expect(rows.map((r) => r.status)).toEqual(['FIXED', 'PENDING']);
+        expect(rows[1].newerFactId).toBe(rows[0].newerFactId);
     });
 });

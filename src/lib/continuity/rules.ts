@@ -13,7 +13,7 @@
  *                time (`story-clock.ts`). A ROLE or a WANT can hold several values,
  *                so code never calls two of them contradictory. Since 5.3 (the
  *                roadmap's "eye colour") also two APPEARANCE facts that give ONE
- *                colour each to the same feature (eyes, hair, beard, skin), from a
+ *                colour each to the same feature (eyes, hair, beard), from its own
  *                closed list of colours, and the colours differ: an appearance
  *                holds many things, so only a colour of one feature is compared
  *                (`appearanceColours`), never "tall" against "scarred".
@@ -85,33 +85,67 @@ export interface RuleFact extends ClockFact {
 /** The predicates a VALUE rule may call contradictory (4.1's list, LOCATION moved to WHEREABOUTS; APPEARANCE since 5.3, by colour only). */
 export const VALUE_PREDICATES: ReadonlySet<string> = new Set(['AGE', 'OCCUPATION', 'PLACE_TYPE', 'APPEARANCE']);
 
-/** The features an appearance's colour is compared for (5.3), each by its own words. */
-const COLOUR_FEATURES: Readonly<Record<string, string>> = { eye: 'eyes', eyes: 'eyes', hair: 'hair', beard: 'beard', skin: 'skin' };
-/** The colours compared (closed; "dark", "pale" and "light" are shades, never compared), each by its key. */
-const COLOURS: Readonly<Record<string, string>> = {
+/**
+ * The features an appearance's colour is compared for (5.3), each with the colours it is compared by (closed; "dark",
+ * "pale" and "light" are shades, never compared). Each list holds only the colours that NAME that feature's colour, so
+ * a state is not read as one: red or white EYES are crying, fever or blindness, never an eye colour. Singular "eye" is
+ * not a feature ("a black eye" is a bruise; one eye may differ from the other), and skin is not compared (red with
+ * anger, white with cold, grey with sickness: its colour words are states far more often than a description).
+ */
+const EYE_COLOURS = ['black', 'blue', 'brown', 'green', 'grey', 'hazel', 'amber', 'violet', 'silver', 'golden'] as const;
+const HAIR_COLOURS = ['black', 'brown', 'grey', 'red', 'white', 'blond', 'auburn', 'golden', 'silver'] as const;
+const COLOUR_FEATURES: Readonly<Record<string, { feature: string; colours: ReadonlySet<string> }>> = {
+    eyes: { feature: 'eyes', colours: new Set(EYE_COLOURS) },
+    hair: { feature: 'hair', colours: new Set(HAIR_COLOURS) },
+    beard: { feature: 'beard', colours: new Set(HAIR_COLOURS) },
+};
+/** Colour words, by their key (spellings folded). */
+const COLOUR_WORDS: Readonly<Record<string, string>> = {
     black: 'black', blue: 'blue', brown: 'brown', green: 'green', grey: 'grey', gray: 'grey', hazel: 'hazel', amber: 'amber',
     red: 'red', white: 'white', blond: 'blond', blonde: 'blond', auburn: 'auburn', golden: 'golden', silver: 'silver', violet: 'violet',
 };
 const LINKING = new Set(['is', 'are', 'was', 'were']);
+/** A colour followed by one of these is a state or a light, not the feature's colour ("green with envy", "white in the moonlight"). */
+const STATE_AFTER = new Set(['with', 'in', 'from']);
+/** A feature followed by one of these is a modifier, not the feature ("a red hair ribbon"). */
+const MODIFIES = new Set(['ribbon', 'ribbons', 'band', 'bands', 'pin', 'pins', 'clip', 'clips', 'net', 'tie', 'ties', 'brush', 'comb', 'dye', 'oil', 'cut']);
 
 /**
  * The colour an appearance gives each feature (5.3): a colour word at most two words before the feature ("grey
- * eyes", "bright green eyes") or right after the feature and a linking verb ("her eyes were green"). A feature given
- * two colours ("grey-green eyes", "black and grey hair") gives none: it is not one value. Bounded word lists only.
+ * eyes", "bright green eyes") or right after the feature and a linking verb ("her eyes were green"), from that
+ * feature's own colours. A feature given two colours ("grey-green eyes", "black and grey hair") gives none: it is not
+ * one value. Bounded word lists only.
  */
 export function appearanceColours(text: string): Map<string, string> {
     const ws = text.toLowerCase().match(/\p{L}+/gu) ?? [];
     const found = new Map<string, Set<string>>();
+    const colourAt = (j: number, colours: ReadonlySet<string>): string | null => {
+        const c = j >= 0 && j < ws.length ? COLOUR_WORDS[ws[j]] : undefined;
+        return c !== undefined && colours.has(c) ? c : null;
+    };
     ws.forEach((w, i) => {
-        const feature = COLOUR_FEATURES[w];
-        if (!feature) return;
+        const f = COLOUR_FEATURES[w];
+        if (!f || MODIFIES.has(ws[i + 1] ?? '')) return;
         const near = new Set<string>();
-        for (const j of [i - 1, i - 2]) if (j >= 0 && COLOURS[ws[j]]) near.add(COLOURS[ws[j]]);
-        if (LINKING.has(ws[i + 1] ?? '') && COLOURS[ws[i + 2] ?? '']) near.add(COLOURS[ws[i + 2]]);
+        // Any colour word near the feature counts as one more colour (so "grey-green eyes" gives none), but only the
+        // feature's own colours are a value: "red-rimmed eyes" is no eye colour.
+        let foreign = false;
+        for (const j of [i - 1, i - 2]) {
+            if (j < 0 || COLOUR_WORDS[ws[j]] === undefined) continue;
+            const c = colourAt(j, f.colours);
+            if (c) near.add(c);
+            else foreign = true;
+        }
+        if (LINKING.has(ws[i + 1] ?? '') && COLOUR_WORDS[ws[i + 2] ?? ''] !== undefined && !STATE_AFTER.has(ws[i + 3] ?? '')) {
+            const c = colourAt(i + 2, f.colours);
+            if (c) near.add(c);
+            else foreign = true;
+        }
         if (near.size === 0) return;
-        const set = found.get(feature) ?? new Set<string>();
+        const set = found.get(f.feature) ?? new Set<string>();
         for (const c of near) set.add(c);
-        found.set(feature, set);
+        if (foreign) set.add('\u0000foreign');
+        found.set(f.feature, set);
     });
     const out = new Map<string, string>();
     for (const [feature, colours] of found) if (colours.size === 1) out.set(feature, [...colours][0]);

@@ -41,6 +41,7 @@ import {
     relationRoundInputFor,
     roundInputFor,
     runInjectionCase,
+    sceneRoundInputFor,
     runInjectionSuite,
     SCENE,
     type InjectionSeams,
@@ -210,7 +211,7 @@ function compromisedAnswer(body: Record<string, unknown>): string {
         });
     }
     // Question generation: the round's planned fields, and every attack beside them.
-    const input = c ? (c.surface === 'RELATION_TEXT' ? relationRoundInputFor(c) : roundInputFor(c)) : null;
+    const input = c ? (c.surface === 'RELATION_TEXT' ? relationRoundInputFor(c) : c.surface === 'SCENE_INTERVIEW' ? sceneRoundInputFor(c) : roundInputFor(c)) : null;
     const target = input?.plan.targets[0];
     const elementId = target?.elementId ?? SCENE.character.id;
     const key = target?.fieldKey ?? 'want';

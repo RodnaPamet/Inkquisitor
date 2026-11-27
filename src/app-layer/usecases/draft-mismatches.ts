@@ -46,7 +46,7 @@ import type { BibleKind } from '@/lib/bible/kinds';
 import { sanitiseExplanationForStorage } from '@/lib/continuity/storage';
 import { draftTextKey } from '@/lib/draft-facts/keys';
 import { draftPrefill } from '@/lib/draft-facts/prefill';
-import { DRAFT_LIST_MAX, OPEN_DRAFT_STATUSES, type DraftMismatchStatus, type DraftMismatchView, type DraftUpdatePrefillView, type SceneLinkView } from '@/lib/draft-facts/vocabulary';
+import { cursorReadItsText, DRAFT_LIST_MAX, OPEN_DRAFT_STATUSES, type DraftMismatchStatus, type DraftMismatchView, type DraftUpdatePrefillView, type SceneLinkView } from '@/lib/draft-facts/vocabulary';
 import { runInWorkspaceContext, type PrismaTx } from '@/lib/db/rls-middleware';
 import { ConflictError, NotFoundError, ValidationError } from '@/lib/errors/types';
 import { renderElementEntry } from '@/lib/facts/entry-text';
@@ -138,6 +138,8 @@ export interface SceneDraftNotesView {
     /** It was read at some text before (its notes may be from an older text: placed only where their quote still stands). */
     everRead: boolean;
     readOutcome: string | null;
+    /** Its current text was PASSED OVER (it failed every night, no call over it fits the per-call budget, or the guard refused every piece): not read until it changes. */
+    passedOver: boolean;
     mismatches: DraftMismatchView[];
     /** Placed by the editor only when the quote was read from the text as it stands. */
     currentTextKeyMatches: Record<string, boolean>;
@@ -166,9 +168,12 @@ export async function getSceneDraftNotes(ctx: WorkspaceRequestContext, bookId: s
         const linkRows = await ThreadSceneLinkRepository.forScene(db, ctx.workspaceId, bookId, sceneId, ['PENDING', 'CONFIRMED'], DRAFT_LIST_MAX + 1);
         const links = await threadLinkViews(db, ctx, bookId, linkRows.slice(0, DRAFT_LIST_MAX));
         return {
-            readAtCurrentText: !!read && read.textKey === textKey && read.revision >= 0,
+            // Read at this text: the cursor names it AND records a read of it (a text that failed, or was passed over or
+            // over the per-call budget, was not read — its notes, if any, are from an earlier text).
+            readAtCurrentText: !!read && read.textKey === textKey && cursorReadItsText(read) && read.outcome !== 'GUARD_REFUSED',
             everRead: !!read && read.revision >= 0,
             readOutcome: read?.outcome ?? null,
+            passedOver: !!read && read.textKey === textKey && (read.outcome === 'PASSED_OVER' || read.outcome === 'CALL_OVER_BUDGET' || read.outcome === 'GUARD_REFUSED'),
             mismatches,
             currentTextKeyMatches,
             links,

@@ -2015,15 +2015,23 @@ the guard refused is passed over at once and counted there too. The
   page; they are written only by `StoryFactRepository.createDraftFacts`, under
   the book's fact lock alone, with the scene's text key re-checked, and compared
   only with BIBLE facts by 4.2's rules (APPEARANCE since 5.3: one colour per
-  named feature, from a closed list). A MISMATCH is a `StoryFactProposal` of
+  named feature — eyes, hair, beard — each from its own closed list; no skin,
+  no singular "eye", "red with tears" is a state). A MISMATCH is a `StoryFactProposal` of
   basis DRAFT (its statuses held by CHECK; one open a bible fact, scene and
-  claim by a partial unique index); the author decides with FIX_DRAFT (settles
+  claim by a partial unique index; 4.1's "one proposal a pair, ever" leaves
+  DRAFT out, so a clash settled by the clock is raised again); the cursor's
+  "unchanged" shortcut is only for a text it READ (`cursorReadItsText`: a failed
+  or passed-over text is never taken as unchanged), a guard-refused piece
+  retracts nothing it held, an open mismatch whose bible fact no longer stands
+  is settled (INVALIDATED, a promised fix FIXED), and a scene whose every piece
+  the guard refused counts as passed over, never as read (rule 6). The author decides with FIX_DRAFT (settles
   FIXED once a re-read no longer finds the claim), BOTH_TRUE (an explanation
   REQUIRED, stored as an AUTHOR_RESOLUTION fact) or UPDATE THE BIBLE: the GET
   opens the field PREFILLED (`draftPrefill`) and writes nothing; the author's
   POST is the ordinary versioned save (`baseVersion`, the field's own
   normalisation), one version of source MANUSCRIPT naming the scene
-  (`sourceSceneId`, CHECK), the mismatch decided in the same transaction; a
+  (`sourceSceneId`, CHECK; a trigger refuses a scene not of the version's own
+  book), the mismatch decided in the same transaction; a
   save that changes nothing is refused. 4.1's `decideFactProposal` refuses a
   DRAFT proposal. PLANTS AND PAY-OFFS are proposed (`StoryThreadSceneLink`, one
   per thread, scene and role, ever; decided once by trigger) and only CONFIRMED
@@ -2038,7 +2046,8 @@ the guard refused is passed over at once and counted there too. The
   interview of scope SCENE whose subject is `scene:<sceneId>`, its questions
   filed under a carrier element (POV, setting, first beat, first linked
   element; none is 409 SCENE_HAS_NO_ELEMENT), the frontier alone over the
-  card's fields, the scene's text a fenced, bounded `scene-text` block. THE
+  card's fields, the scene's text a fenced, bounded `scene-text` block (the
+  injection corpus's `SCENE_INTERVIEW` surface). THE
   EDITOR shows a mismatch as a draft note (`prose-note--draft`, id
   `draft:<id>`) only where its own text still reads the quoted sentence. The
   D3 guard holds the reading, its decisions, reconcile, review and the card

@@ -389,7 +389,10 @@ export const FactProposalRepository = {
     async settleAllForFact(db: Db, workspaceId: string, factId: string, data: { decidedById: string; at: Date }): Promise<number> {
         const older = await db.storyFactProposal.updateMany({ where: { workspaceId, factId, status: 'PENDING' }, data: { status: 'INVALIDATED', decidedById: data.decidedById, decidedAt: data.at } });
         const newer = await db.storyFactProposal.updateMany({ where: { workspaceId, newerFactId: factId, status: 'PENDING', reason: 'CONTRADICTED' }, data: { status: 'INVALIDATED_NEWER', decidedById: data.decidedById, decidedAt: data.at } });
-        return older.count + newer.count;
+        // Phase 5.3: a draft mismatch the author said they would fix (FIX_PENDING) against the fact set aside has no pair
+        // left: settled FIXED (its decision kept), so it leaves the open list now rather than at the scene's next read.
+        const fixing = await db.storyFactProposal.updateMany({ where: { workspaceId, factId, basis: 'DRAFT', status: 'FIX_PENDING' }, data: { status: 'FIXED', settledAt: data.at } });
+        return older.count + newer.count + fixing.count;
     },
 };
 

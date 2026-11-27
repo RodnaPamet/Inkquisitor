@@ -16,6 +16,8 @@ jest.mock('next/navigation', () => ({
 
 import { DraftAgainstBible, type DraftAgainstBibleProps } from '@/components/continuity/DraftAgainstBible';
 import { SceneCardPanel } from '@/components/manuscript/SceneCardPanel';
+import { SceneDraftPanel } from '@/components/manuscript/SceneDraftPanel';
+import type { SceneDraftNotesView } from '@/lib/draft-facts/api-client';
 import { KeyboardShortcutProvider } from '@/lib/hooks/use-keyboard-shortcut';
 import type { DraftMismatchView, DraftUpdatePrefillView } from '@/lib/draft-facts/vocabulary';
 import { SCENE_CARD_FIELDS } from '@/lib/manuscript/scene-card';
@@ -200,5 +202,20 @@ describe('the scene card', () => {
         expect(await screen.findByTestId('scene-card-value-goal')).toHaveTextContent('Find the key.');
         expect(screen.queryByRole('textbox')).toBeNull();
         expect(screen.queryByTestId('scene-grill')).toBeNull();
+    });
+});
+
+describe('the scene editor’s "Draft vs bible" panel (rule 6)', () => {
+    const base: SceneDraftNotesView = { readAtCurrentText: true, everRead: true, readOutcome: 'OK', passedOver: false, mismatches: [], currentTextKeyMatches: {}, links: [], truncated: false };
+    const panel = (notes: SceneDraftNotesView) =>
+        render(<SceneDraftPanel workspaceSlug="ada" bookId="book_1" canEdit notes={notes} loadError={false} placedIds={[]} activeId={null} onReveal={jest.fn()} onFixDraft={jest.fn()} onLink={jest.fn()} />);
+
+    it('a text read with nothing at odds says so; a text passed over never says "no mismatches"', () => {
+        const { unmount } = panel(base);
+        expect(screen.getByTestId('scene-draft-status')).toHaveTextContent('No mismatches with the bible in this scene.');
+        unmount();
+        panel({ ...base, readAtCurrentText: false, readOutcome: 'GUARD_REFUSED', passedOver: true });
+        expect(screen.getByTestId('scene-draft-status')).toHaveTextContent(/could not be read overnight/);
+        expect(screen.getByTestId('scene-draft-status')).not.toHaveTextContent(/No mismatches/);
     });
 });

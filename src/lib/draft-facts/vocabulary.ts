@@ -70,6 +70,16 @@ export type DraftReadOutcome = (typeof DRAFT_READ_OUTCOMES)[number];
 /** A scene cursor's outcome (`SceneDraftRead.outcome`). */
 export const SCENE_READ_OUTCOMES = ['OK', 'EMPTY', 'CALL_OVER_BUDGET', 'GUARD_REFUSED', 'PASSED_OVER'] as const;
 export type SceneReadOutcome = (typeof SCENE_READ_OUTCOMES)[number];
+/**
+ * The cursor outcomes that record a READ of the cursor's text (its facts stand for that text). A cursor of any other
+ * outcome, or one with a failure counted against its text (`failures` > 0: the text failed, nothing was read), has NOT
+ * read it: a scene whose revision moved with that same text must be sent again (or stay passed over), never treated as
+ * "unchanged".
+ */
+export const SCENE_READ_DONE_OUTCOMES: readonly SceneReadOutcome[] = ['OK', 'EMPTY', 'GUARD_REFUSED'];
+export function cursorReadItsText(cursor: { outcome: string | null; failures: number; revision?: number }): boolean {
+    return cursor.failures === 0 && (cursor.revision ?? 0) >= 0 && (SCENE_READ_DONE_OUTCOMES as readonly string[]).includes(cursor.outcome ?? '');
+}
 
 /** The night's draft reading runs at 03:07 UTC, AFTER the continuity check (02:23): the order is the 5.3 note's. */
 export const DRAFT_DISPATCH_CRON = '7 3 * * *';

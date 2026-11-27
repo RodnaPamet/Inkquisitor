@@ -38,7 +38,7 @@ export interface SceneDraftPanelProps {
 export function SceneDraftPanel({ workspaceSlug, bookId, canEdit, notes, loadError, placedIds, activeId, onReveal, onFixDraft, onLink }: SceneDraftPanelProps) {
     const t = useTranslations('manuscript.draft');
     const placed = new Set(placedIds);
-    const status = loadError && !notes ? t('loadError') : !notes ? t('loading') : !notes.everRead ? t('notRead') : !notes.readAtCurrentText ? t('readEarlier') : notes.mismatches.length === 0 ? t('none') : t('count', { count: notes.mismatches.length });
+    const status = loadError && !notes ? t('loadError') : !notes ? t('loading') : notes.passedOver ? t('passedOver') : !notes.everRead ? t('notRead') : !notes.readAtCurrentText ? t('readEarlier') : notes.mismatches.length === 0 ? t('none') : t('count', { count: notes.mismatches.length });
     return (
         <Card className="space-y-default p-4" data-testid="scene-draft">
             <p role="status" className="text-sm text-content-muted" data-testid="scene-draft-status">

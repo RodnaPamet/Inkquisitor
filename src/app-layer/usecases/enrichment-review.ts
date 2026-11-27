@@ -940,7 +940,8 @@ async function acceptSceneCardField(db: PrismaTx, ctx: WorkspaceRequestContext, 
     if (input.value !== undefined && typeof input.value !== 'string') throw new ValidationError('A card field is text.', { reason: 'EDIT_NOT_ALLOWED' });
     const key = peek.fieldKey;
     if (!key || !isSceneCardField(key)) throw new NotFoundError('Proposal not found.');
-    // The scene's lock is the writer's; it is taken BEFORE the proposal is read again, so two acceptances queue on it.
+    // The scene's lock is the writer's (inside `acceptSceneCardFieldInTx`): two acceptances queue on it, and the second
+    // finds the card's version moved (409 VERSION_CONFLICT) or the proposal decided (409 PROPOSAL_DECIDED).
     const p = await requirePending(db, ctx, bookId, sessionId, proposalId);
     const proposed = decodeProposedValue(p.proposedValue);
     const answerIds = citationIds(p);

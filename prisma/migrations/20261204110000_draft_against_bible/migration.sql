@@ -267,6 +267,14 @@ ALTER TABLE "StoryFactProposal" ADD CONSTRAINT "StoryFactProposal_known" CHECK (
 CREATE UNIQUE INDEX "StoryFactProposal_one_open_draft" ON "StoryFactProposal"("workspaceId", "factId", "sceneId", "draftClaimKey")
     WHERE "basis" = 'DRAFT' AND "status" IN ('PENDING', 'FIX_PENDING', 'KEPT', 'BIBLE_UPDATED');
 
+-- 4.1's "one proposal a pair, ever" (20261126110000) holds for the bible's own proposals only: a draft mismatch is held
+-- by the index above instead. Kept ever for a draft pair, it silently refused the same pair raised again after a
+-- settlement that left the draft fact live (FIXED when the scene's place in story time moved so the two facts no longer
+-- overlapped): moved back, the clash stood again and was never raised.
+DROP INDEX "StoryFactProposal_pair_key";
+CREATE UNIQUE INDEX "StoryFactProposal_pair_key" ON "StoryFactProposal"("workspaceId", "factId", "newerFactId") NULLS NOT DISTINCT
+    WHERE "basis" <> 'DRAFT';
+
 -- 4.2's function, the draft columns added to what is fixed, and one more move: a FIX_PENDING proposal is SETTLED
 -- (FIXED) once, by the re-read that no longer finds the claim, its decision (who, when) unchanged.
 CREATE OR REPLACE FUNCTION story_fact_proposal_fixed() RETURNS trigger
@@ -384,6 +392,24 @@ CREATE TRIGGER scene_card_version_no_truncate
 -- ─── A MANUSCRIPT bible version names its scene ─────────────────────────
 ALTER TABLE "BibleEntryVersion" ADD CONSTRAINT "BibleEntryVersion_manuscript_names_scene"
     CHECK (("source"::text = 'MANUSCRIPT') = ("sourceSceneId" IS NOT NULL));
+-- ... and that scene is one of the version's own book, as it stands when the version is written. Held by a trigger,
+-- not a foreign key: the version outlives its scene (an append-only history keeps the id it named), and AFTER, so
+-- row-level security refuses another workspace's scene first (the 5.1 kind triggers' shape).
+CREATE OR REPLACE FUNCTION bible_entry_version_manuscript_scene_in_book() RETURNS trigger
+LANGUAGE plpgsql
+VOLATILE
+AS $$
+BEGIN
+    IF NEW."source"::text = 'MANUSCRIPT' AND NOT EXISTS (
+        SELECT 1 FROM "ManuscriptScene" s WHERE s."id" = NEW."sourceSceneId" AND s."bookId" = NEW."bookId" AND s."workspaceId" = NEW."workspaceId") THEN
+        RAISE EXCEPTION 'BIBLE_VERSION_MANUSCRIPT_SCENE: a MANUSCRIPT version names a scene of its own book' USING ERRCODE = 'P0001';
+    END IF;
+    RETURN NEW;
+END;
+$$;
+DROP TRIGGER IF EXISTS bible_entry_version_manuscript_scene_in_book ON "BibleEntryVersion";
+CREATE TRIGGER bible_entry_version_manuscript_scene_in_book AFTER INSERT ON "BibleEntryVersion"
+    FOR EACH ROW WHEN (NEW."sourceSceneId" IS NOT NULL) EXECUTE FUNCTION bible_entry_version_manuscript_scene_in_book();
 -- A relation's version is never MANUSCRIPT (5.3 updates an element's field only), nor RESEARCH (3.3).
 ALTER TABLE "BibleRelationVersion" DROP CONSTRAINT "BibleRelationVersion_interview_names_answers";
 ALTER TABLE "BibleRelationVersion" ADD CONSTRAINT "BibleRelationVersion_interview_names_answers"
