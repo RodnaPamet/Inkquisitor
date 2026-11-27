@@ -191,6 +191,12 @@ export function ImportManuscriptModal({ open, setOpen, workspaceSlug, bookId, on
                                 <li key={h.index} className="flex flex-wrap items-center justify-between gap-tight border-b border-border-subtle py-1">
                                     <span className="min-w-0 text-sm text-content-default" style={{ paddingLeft: `${(h.level - 1) * 0.75}rem` }}>
                                         {h.text} <span className="text-xs text-content-muted">· {t('sectionWords', { count: h.sectionWords })}</span>
+                                        {h.titleTooLong ? (
+                                            <span className="text-xs text-content-warning" data-testid="manuscript-import-title-too-long">
+                                                {' '}
+                                                · {t('titleTooLong')}
+                                            </span>
+                                        ) : null}
                                     </span>
                                     <ToggleGroup
                                         size="sm"

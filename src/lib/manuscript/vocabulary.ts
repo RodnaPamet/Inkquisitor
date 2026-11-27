@@ -38,9 +38,11 @@ export const SCENE_BEATS_MAX = 12;
  * the newest version writes a version when the client says "checkpoint" (the
  * author paused about two minutes, or left the scene), or when the newest
  * version is older than this — so a checkpoint signal the network lost never
- * leaves more than this much writing outside the history.
+ * leaves more than this much writing outside the history. Thirty minutes (D33
+ * addendum, owner decision 2026-11-27, item C): long enough that a session the
+ * pause and leave signals already cover is not cut into extra versions.
  */
-export const SCENE_VERSION_MAX_GAP_MS = 10 * 60_000;
+export const SCENE_VERSION_MAX_GAP_MS = 30 * 60_000;
 /** The client's idle pause before it sends a checkpoint (about two minutes, D33). */
 export const SCENE_IDLE_CHECKPOINT_MS = 2 * 60_000;
 /** Versions a history page lists. */

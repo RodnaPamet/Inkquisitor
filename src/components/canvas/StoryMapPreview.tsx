@@ -15,6 +15,10 @@
  * screen reader; the "Open" link goes to the editable map.
  *
  * Read-only for everybody: a reader sees the same picture an editor does.
+ *
+ * Phase 5.1 (D33 addendum B): on the plot board each beat that scenes
+ * dramatise says how many (the map view's `beatScenes`, display data), as part
+ * of its link's text.
  */
 import Link from 'next/link';
 import { useMemo } from 'react';
@@ -72,6 +76,7 @@ export function StoryMapPreview({ workspaceSlug, bookId, mapKind, map, currentEl
     }, [map, lanes]);
 
     const centre = new Map(map.nodes.map((n) => [n.elementId, { x: n.x + n.w / 2, y: n.y + n.h / 2 }]));
+    const sceneCounts = new Map((map.beatScenes ?? []).map((b) => [b.beatElementId, b.total] as const));
     const current = map.nodes.find((n) => n.elementId === currentElementId);
     const mapHref = APP_ROUTES.storyMap(workspaceSlug, bookId, mapKindSlug(mapKind));
 
@@ -140,6 +145,11 @@ export function StoryMapPreview({ workspaceSlug, bookId, mapKind, map, currentEl
                                     <text x={n.x + 12} y={n.y + 52} className="fill-[var(--content-muted)] text-[13px]">
                                         {short(kind)}
                                     </text>
+                                    {sceneCounts.get(n.elementId) ? (
+                                        <text x={n.x + 12} y={n.y + 74} className="fill-[var(--content-muted)] text-[13px]" data-preview-scenes={n.elementId}>
+                                            {t('scenes.previewCount', { count: sceneCounts.get(n.elementId)! })}
+                                        </text>
+                                    ) : null}
                                 </a>
                             );
                         })}

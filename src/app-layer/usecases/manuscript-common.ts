@@ -10,25 +10,29 @@
  * its siblings (`story-order.ts`), compared in code. A new or moved row names
  * the sibling it goes after or before (by id, as the author saw it); `placeRank`
  * puts it strictly between, and a named sibling that is gone or moved is 409
- * ORDER_STALE. A gap spent past the rank bound is 409 ORDER_RANK_EXHAUSTED (a
- * sibling rebalance, as the bible's, is left for 5.H: it needs about three
- * hundred moves into one gap). An import gives its new rows fresh, evenly
+ * ORDER_STALE. A gap spent past the rank bound REBALANCES the parent's rows
+ * (`placeAmong`, as the bible's order does: short, evenly spaced ranks in the
+ * same order, no version, one audit row), and only a rank still past the
+ * bound is 409 ORDER_RANK_EXHAUSTED. An import gives its new rows fresh, evenly
  * spaced ranks (`appendRanks`), so a five-thousand-scene chapter never
  * lengthens a key past its bound.
  */
 import type { WorkspaceRequestContext } from '@/app-layer/types';
+import { logEvent } from '@/app-layer/events/audit';
 import {
     ManuscriptChapterRepository,
+    ManuscriptOrderRepository,
     ManuscriptPartRepository,
     ManuscriptRepository,
     ManuscriptSceneRepository,
     type ChapterRow,
+    type RankedLevel,
     type PartRow,
     type SceneOutlineRow,
 } from '@/app-layer/repositories/manuscript.repository';
 import type { PrismaTx } from '@/lib/db/rls-middleware';
 import { ConflictError, NotFoundError, ValidationError } from '@/lib/errors/types';
-import { compareRanks, placeRank, rankBetween, rebalancedRanks, RankExhaustedError, ORDER_RANK_MAX } from '@/lib/bible/story-order';
+import { compareRanks, placeRank, rankBetween, rebalancedRanks, RankExhaustedError, ORDER_RANK_MAX, type RankDecision } from '@/lib/bible/story-order';
 import { ManuscriptTextTooLongError } from '@/lib/manuscript/storage';
 import { CHAPTERS_PER_MANUSCRIPT_MAX, OUTLINE_READ_MAX, PARTS_PER_MANUSCRIPT_MAX } from '@/lib/manuscript/vocabulary';
 import { requireBook } from './bible-common';
@@ -73,19 +77,91 @@ export const ORDER_STALE = { reason: 'ORDER_STALE' } as const;
  * own entry, when it is a move within its parent, is left out by the caller).
  */
 export function rankAmong(siblings: ReadonlyArray<{ id: string; rank: string }>, placement: Placement): string {
+    const decision = placementDecision(siblings, placement);
+    if (decision.ok) return decision.rank;
+    if (decision.reason === 'ORDER_RANK_EXHAUSTED') throw exhausted();
+    throw new ConflictError('The place you chose has changed; look again.', ORDER_STALE);
+}
+
+function exhausted(): ConflictError {
+    return new ConflictError('This gap is full; place it elsewhere.', { reason: 'ORDER_RANK_EXHAUSTED' });
+}
+
+function placementDecision(siblings: ReadonlyArray<{ id: string; rank: string }>, placement: Placement): RankDecision {
     const rankOf = (id: string | null | undefined) => {
         if (!id) return null;
         const s = siblings.find((x) => x.id === id);
         if (!s) throw new ConflictError('The place you chose has changed; look again.', ORDER_STALE);
         return s.rank;
     };
-    const decision = placeRank(
+    return placeRank(
         siblings.map((s) => s.rank),
         { after: rankOf(placement.after), before: rankOf(placement.before) },
     );
-    if (decision.ok) return decision.rank;
-    if (decision.reason === 'ORDER_RANK_EXHAUSTED') throw new ConflictError('This gap is full; place it elsewhere.', { reason: 'ORDER_RANK_EXHAUSTED' });
-    throw new ConflictError('The place you chose has changed; look again.', ORDER_STALE);
+}
+
+/**
+ * Temporary ranks for a rebalance's first pass: `count` keys, each a valid
+ * rank, clear of every rank in `taken` (the parent's old ranks and its new
+ * ones), so the first pass never lands on a rank a row still holds.
+ */
+export function temporaryRanks(count: number, taken: ReadonlySet<string>): string[] {
+    const out: string[] = [];
+    for (let k = 0; out.length < count; k++) {
+        const candidate = `z${k.toString(36)}z`;
+        if (!taken.has(candidate)) out.push(candidate);
+    }
+    return out;
+}
+
+/**
+ * The rank a row takes at `placement` among the rows of ONE parent, under the
+ * structure lock the CALLER holds — as `rankAmong`, but a gap spent past the
+ * rank's bound is not refused at once: every row of the parent (`rows`, the
+ * moving row's own entry included when it is already there) is given short,
+ * evenly spaced ranks in the same order (`rebalancedRanks`), and the place is
+ * computed again; only a rank still past the bound is 409
+ * ORDER_RANK_EXHAUSTED. Repeated inserts at one spot, or a scene moved up and
+ * down past its neighbour, spend a gap in about three hundred moves, which a
+ * long-lived manuscript reaches. A rebalance changes no row's place relative
+ * to another and writes no version; its one audit row (`recordManuscriptRebalance`)
+ * is the CALLER's to write, after its own row writes ("audit last").
+ */
+export async function placeAmong(
+    db: PrismaTx,
+    ctx: WorkspaceRequestContext,
+    level: RankedLevel,
+    rows: ReadonlyArray<{ id: string; rank: string }>,
+    selfId: string | null,
+    placement: Placement,
+): Promise<{ rank: string; rebalanced: number }> {
+    const others = (list: ReadonlyArray<{ id: string; rank: string }>) => list.filter((r) => r.id !== selfId);
+    const first = placementDecision(others(rows), placement);
+    if (first.ok) return { rank: first.rank, rebalanced: 0 };
+    if (first.reason !== 'ORDER_RANK_EXHAUSTED') throw new ConflictError('The place you chose has changed; look again.', ORDER_STALE);
+    const sorted = byRank(rows);
+    const fresh = rebalancedRanks(sorted.length);
+    const temporary = temporaryRanks(sorted.length, new Set([...sorted.map((r) => r.rank), ...fresh]));
+    await ManuscriptOrderRepository.rebalanceRanks(
+        db,
+        ctx.workspaceId,
+        level,
+        sorted.map((r) => r.id),
+        temporary,
+        fresh,
+    );
+    const again = placementDecision(
+        others(sorted.map((r, i) => ({ id: r.id, rank: fresh[i] }))),
+        placement,
+    );
+    if (!again.ok) throw again.reason === 'ORDER_RANK_EXHAUSTED' ? exhausted() : new ConflictError('The place you chose has changed; look again.', ORDER_STALE);
+    return { rank: again.rank, rebalanced: sorted.length };
+}
+
+/** A rebalance's one audit row (ids and a count), written by the caller after its row writes. */
+export async function recordManuscriptRebalance(db: PrismaTx, ctx: WorkspaceRequestContext, bookId: string, level: RankedLevel, parentId: string, rowCount: number): Promise<void> {
+    if (rowCount === 0) return;
+    await logEvent(ctx, { action: 'MANUSCRIPT_ORDER_REBALANCED', entityType: 'Manuscript', entityId: bookId, details: { bookId, level, parentId, rowCount } }, { db });
 }
 
 /**

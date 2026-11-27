@@ -32,6 +32,13 @@ export interface OutlineHeading {
     readonly text: string;
     /** Words of the paragraphs under it, up to the next heading. */
     readonly sectionWords: number;
+    /**
+     * Its words are too long to be stored as a title (`MANUSCRIPT_TITLE_MAX`
+     * after sanitising; set by the server, which sanitises): a paragraph styled
+     * as a heading. The proposed split keeps it as text, and a plan that makes
+     * it a title is refused `HEADING_TOO_LONG` — never cut to fit.
+     */
+    readonly titleTooLong?: boolean;
 }
 
 export interface ImportOutline {
@@ -74,7 +81,7 @@ export interface SplitResult {
     readonly work: number;
 }
 
-export type PlanProblem = 'LEVELS_NOT_DISTINCT' | 'LEVEL_UNUSED' | 'OVERRIDE_OUT_OF_RANGE' | 'OVERRIDE_DUPLICATE' | 'OVERRIDE_ROLE' | 'TOO_MANY_OVERRIDES';
+export type PlanProblem = 'LEVELS_NOT_DISTINCT' | 'LEVEL_UNUSED' | 'OVERRIDE_OUT_OF_RANGE' | 'OVERRIDE_DUPLICATE' | 'OVERRIDE_ROLE' | 'TOO_MANY_OVERRIDES' | 'HEADING_TOO_LONG';
 
 /** The preview of a document's blocks. */
 export function outlineOf(blocks: readonly DocBlock[]): ImportOutline {
@@ -121,23 +128,40 @@ export function defaultPlan(outline: ImportOutline): ImportPlan {
               : l.length === 1
                 ? { part: null, chapter: l[0], scene: null }
                 : { part: null, chapter: null, scene: null };
-    return { levels, sceneBreaks: outline.sceneBreaks > 0, overrides: [] };
+    // A heading too long to be a title is kept as text (its words a paragraph of the section before), never cut.
+    const plan: ImportPlan = { levels, sceneBreaks: outline.sceneBreaks > 0, overrides: [] };
+    const noOverrides = new Map<number, ImportRole>();
+    const overrides = outline.headings.filter((h) => h.titleTooLong && roleOf(plan, noOverrides, h.index, h.level) !== 'text').map((h) => [h.index, 'text'] as const);
+    return { ...plan, overrides };
 }
 
-/** What is wrong with a plan for this outline, or null. */
-export function planProblem(plan: ImportPlan, outline: ImportOutline): PlanProblem | null {
+/** What is wrong with a plan for this outline: EVERY problem, in a fixed order (none: an empty list). */
+export function planProblems(plan: ImportPlan, outline: ImportOutline): { problems: PlanProblem[]; longHeadings: number[] } {
+    const problems = new Set<PlanProblem>();
     const set = [plan.levels.part, plan.levels.chapter, plan.levels.scene].filter((v): v is number => v !== null);
-    if (new Set(set).size !== set.length) return 'LEVELS_NOT_DISTINCT';
-    if (set.some((v) => !outline.levels.includes(v))) return 'LEVEL_UNUSED';
-    if (plan.overrides.length > IMPORT_OVERRIDES_MAX) return 'TOO_MANY_OVERRIDES';
+    if (new Set(set).size !== set.length) problems.add('LEVELS_NOT_DISTINCT');
+    if (set.some((v) => !outline.levels.includes(v))) problems.add('LEVEL_UNUSED');
+    if (plan.overrides.length > IMPORT_OVERRIDES_MAX) problems.add('TOO_MANY_OVERRIDES');
     const seen = new Set<number>();
-    for (const [index, role] of plan.overrides) {
-        if (!Number.isInteger(index) || index < 0 || index >= outline.headings.length) return 'OVERRIDE_OUT_OF_RANGE';
-        if (seen.has(index)) return 'OVERRIDE_DUPLICATE';
-        if (!(IMPORT_ROLES as readonly string[]).includes(role)) return 'OVERRIDE_ROLE';
+    for (const [index, role] of plan.overrides.slice(0, IMPORT_OVERRIDES_MAX)) {
+        if (!Number.isInteger(index) || index < 0 || index >= outline.headings.length) problems.add('OVERRIDE_OUT_OF_RANGE');
+        else if (seen.has(index)) problems.add('OVERRIDE_DUPLICATE');
+        if (!(IMPORT_ROLES as readonly string[]).includes(role)) problems.add('OVERRIDE_ROLE');
         seen.add(index);
     }
-    return null;
+    const longHeadings: number[] = [];
+    if (problems.size === 0) {
+        // Only for a plan otherwise sound: a role is read through its overrides.
+        const overrides = new Map<number, ImportRole>(plan.overrides.map(([i, r]) => [i, r] as const));
+        for (const h of outline.headings) if (h.titleTooLong && roleOf(plan, overrides, h.index, h.level) !== 'text') longHeadings.push(h.index);
+        if (longHeadings.length > 0) problems.add('HEADING_TOO_LONG');
+    }
+    return { problems: [...problems], longHeadings };
+}
+
+/** The first problem of a plan for this outline, or null. */
+export function planProblem(plan: ImportPlan, outline: ImportOutline): PlanProblem | null {
+    return planProblems(plan, outline).problems[0] ?? null;
 }
 
 /** The role a heading of `level` at `index` takes under the plan. */

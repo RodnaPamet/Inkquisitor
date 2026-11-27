@@ -315,3 +315,60 @@ test('the plot board’s list: a beat moves in the story order by keyboard', asy
     await page.keyboard.press('Enter');
     await expect.poll(order, { timeout: 15_000 }).toEqual([two, one]);
 });
+
+test('the plot board’s scene cards: drawn on the board, opened by keyboard, listed in the list view, never saved (D33 B)', async ({ page }) => {
+    test.setTimeout(120_000);
+    const slug = await signUp(page, newCredentials('scene-cards'));
+    const bookId = await book(page, slug, 'The carded board');
+    const api = `/api/w/${slug}/books/${bookId}`;
+    const beat = await element(page, api, 'PLOT_BEAT', 'The night crossing', [{ key: 'act', value: 'opening' }]);
+    const quiet = await element(page, api, 'PLOT_BEAT', 'The quiet harbour', [{ key: 'act', value: 'opening' }]);
+    const chapter = ((await (await page.request.post(`${api}/manuscript/chapters`, { data: { title: 'One' } })).json()) as { id: string }).id;
+    const scenes: string[] = [];
+    for (const title of ['Ashore at dusk', 'The ferry waits', 'Lanterns out']) {
+        const id = ((await (await page.request.post(`${api}/manuscript/scenes`, { data: { chapterId: chapter, title } })).json()) as { id: string }).id;
+        await page.request.patch(`${api}/manuscript/scenes/${id}`, { data: { baseRevision: 0, beatElementIds: [beat] } });
+        scenes.push(id);
+    }
+    await page.request.put(`${api}/maps/plot`, { data: { expectedVersion: 0, nodes: [node(beat, 0), node(quiet, 0)], edges: [], freeform: [] } });
+
+    await page.goto(`/w/${slug}/books/${bookId}/maps/plot`);
+    await canvasReady(page);
+    // On the board: the first two scenes as cards under their beat, the third counted.
+    const cards = page.locator('[data-scene-card]');
+    await expect(cards).toHaveCount(2);
+    await expect(cards.first()).toHaveText('Ashore at dusk');
+    await expect(page.locator(`[data-scene-card-more="${beat}"]`)).toHaveText('+1 more');
+    await expect(page.locator(`[data-scene-card-beat="${quiet}"]`)).toHaveCount(0);
+    // Showing them wrote nothing: the map is still the one version the seed saved.
+    await expect(saveStatus(page)).not.toHaveAttribute('data-status', 'saving');
+    expect((await mapOf(page, api, 'plot')).version).toBe(1);
+
+    // "+1 more" opens the beat, whose sheet lists every scene.
+    await tabTo(page, page.locator(`[data-scene-card-more="${beat}"]`));
+    await page.keyboard.press('Enter');
+    const sheet = page.getByRole('dialog', { name: 'The night crossing' });
+    await expect(sheet.getByTestId('beat-scenes')).toContainText('Lanterns out');
+    await page.keyboard.press('Escape');
+    await expect(sheet).toBeHidden();
+
+    // A card is a link: Tab to it, Enter opens the scene's editor.
+    await tabTo(page, cards.first());
+    await page.keyboard.press('Enter');
+    await expect(page).toHaveURL(new RegExp(`/manuscript/scenes/${scenes[0]}$`));
+    await expect(page.getByRole('main').getByTestId('scene-text').getByRole('textbox')).toBeVisible();
+
+    // The list view says the same, by keyboard: the beat's scenes as links.
+    await page.goto(`/w/${slug}/books/${bookId}/maps/plot`);
+    await canvasReady(page);
+    await tabTo(page, page.locator('#map-view-canvas'));
+    await page.keyboard.press('ArrowRight');
+    const list = page.getByTestId('map-list-view');
+    const beatScenes = list.locator(`[data-testid="map-list-beat-scenes"][data-beat-id="${beat}"]`);
+    await expect(beatScenes.getByTestId('map-list-scene')).toHaveText(['Ashore at dusk', 'The ferry waits']);
+    await expectNoAxeViolations(page, 'plot board list view with scenes');
+    await tabTo(page, beatScenes.getByRole('link', { name: 'Open scene: The ferry waits' }));
+    await page.keyboard.press('Enter');
+    await expect(page).toHaveURL(new RegExp(`/manuscript/scenes/${scenes[1]}$`));
+    expect((await mapOf(page, api, 'plot')).version).toBe(1);
+});

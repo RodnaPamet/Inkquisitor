@@ -142,6 +142,58 @@ describe('refusals write nothing', () => {
     });
 });
 
+describe('every problem answered at once', () => {
+    it('keeps a heading too long to be a title as text by default, and refuses a plan that makes it one, naming every problem', async () => {
+        const { ctx, bookId } = await setup();
+        const long = 'A heading that is really a whole paragraph styled as a heading '.repeat(5).trim();
+        const bytes = enc(`# Chapter One\n\n## ${long}\n\nThe words under it.\n\n## A real scene\n\nMore words.\n`);
+        const preview = await previewManuscriptImport(ctx, bookId, { bytes, filename: 'long.md' }, CLEAN);
+        expect(preview.outline.headings.map((h) => h.titleTooLong)).toEqual([false, true, false]);
+        // The proposed split keeps it as text: the author's words are not lost, and not cut to fit a title.
+        expect(preview.plan.overrides).toEqual([[1, 'text']]);
+
+        // The plain levels (no override) would make it a scene's title; with two other problems as well, all are named at once.
+        const bad: ImportPlan = { levels: { part: 2, chapter: 2, scene: null }, sceneBreaks: false, overrides: [[7, 'scene']] };
+        await expect(confirmManuscriptImport(ctx, bookId, { bytes, filename: 'long.md' }, header(bad, preview.token, preview.issuedAt), CLEAN)).rejects.toMatchObject({
+            details: { reason: 'IMPORT_PLAN_INVALID', problems: ['LEVELS_NOT_DISTINCT', 'OVERRIDE_OUT_OF_RANGE'] },
+        });
+        const levelsOnly: ImportPlan = { ...preview.plan, overrides: [] };
+        await expect(confirmManuscriptImport(ctx, bookId, { bytes, filename: 'long.md' }, header(levelsOnly, preview.token, preview.issuedAt), CLEAN)).rejects.toMatchObject({
+            details: { reason: 'IMPORT_PLAN_INVALID', problems: ['HEADING_TOO_LONG'], headings: [1] },
+        });
+        expect(await counts(bookId)).toEqual({ parts: 0, chapters: 0, scenes: 0 });
+
+        const done = await confirmManuscriptImport(ctx, bookId, { bytes, filename: 'long.md' }, header(preview.plan, preview.token, preview.issuedAt), CLEAN);
+        expect(done).toMatchObject({ chapters: 1, scenes: 2 });
+        const outline = await getManuscriptOutline(ctx, bookId);
+        const first = await getScene(ctx, bookId, outline.parts[0].chapters[0].scenes[0].id);
+        expect(first.text).toBe(`<p>${long}</p><p>The words under it.</p>`);
+    });
+
+    it('names every bound an import would pass, not only the first', async () => {
+        const { ctx, bookId } = await setup();
+        const parts = Array.from({ length: 101 }, (_, i) => `# Part ${i}\n\n## Chapter ${i}\n\nWords.\n`).join('\n');
+        const bytes = enc(parts);
+        const preview = await previewManuscriptImport(ctx, bookId, { bytes, filename: 'parts.md' }, CLEAN);
+        const plan: ImportPlan = { levels: { part: 1, chapter: 2, scene: null }, sceneBreaks: false, overrides: [] };
+        await expect(confirmManuscriptImport(ctx, bookId, { bytes, filename: 'parts.md' }, header(plan, preview.token, preview.issuedAt), CLEAN)).rejects.toMatchObject({
+            details: { reason: 'TOO_MANY_PARTS', problems: ['TOO_MANY_PARTS'] },
+        });
+        expect(await counts(bookId)).toEqual({ parts: 0, chapters: 0, scenes: 0 });
+    });
+
+    it('refuses a token minted for another book of the same workspace and user', async () => {
+        const { ctx, bookId } = await setup();
+        const otherBook = (await createBook(ctx, { title: 'Another' })).id;
+        const bytes = enc(MARKDOWN);
+        const preview = await previewManuscriptImport(ctx, bookId, { bytes, filename: 'draft.md' }, CLEAN);
+        await expect(confirmManuscriptImport(ctx, otherBook, { bytes, filename: 'draft.md' }, header(preview.plan, preview.token, preview.issuedAt), CLEAN)).rejects.toMatchObject({
+            details: { reason: 'IMPORT_FILE_CHANGED' },
+        });
+        expect(await counts(otherBook)).toEqual({ parts: 0, chapters: 0, scenes: 0 });
+    });
+});
+
 describe('scale', () => {
     /** Statements sent to PostgreSQL while `fn` runs. */
     async function statements<T>(fn: () => Promise<T>): Promise<{ result: T; count: number }> {

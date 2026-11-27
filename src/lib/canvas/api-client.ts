@@ -17,9 +17,10 @@ import type {
     StoryMapSaveResult,
     StoryMapView,
 } from '@/app-layer/usecases/story-maps';
+import type { BoardBeatScenes, BoardSceneCard } from '@/app-layer/usecases/manuscript-board';
 import type { MapEdgeRow, MapNodeRow } from './map-state';
 
-export type { MapRelationView, MapNodeView, MapRestoreResult, MapSnapshotMetaView, MapSnapshotPage, MapSnapshotView, StoryMapSaveResult, StoryMapView };
+export type { MapRelationView, MapNodeView, MapRestoreResult, MapSnapshotMetaView, MapSnapshotPage, MapSnapshotView, StoryMapSaveResult, StoryMapView, BoardBeatScenes, BoardSceneCard };
 
 const enc = encodeURIComponent;
 

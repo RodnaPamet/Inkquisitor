@@ -1496,6 +1496,15 @@
         "ghost": {
             "proposed": "Proposed"
         },
+        "scenes": {
+            "untitled": "Untitled scene",
+            "open": "Open scene: {title}",
+            "more": "+{count} more",
+            "moreAria": "{count, plural, one {# more scene: open the beat to see it} other {# more scenes: open the beat to see them}}",
+            "moreOf": "{count, plural, one {# more scene} other {# more scenes}} of {name}: open the beat",
+            "listLabel": "{count, plural, one {# scene:} other {# scenes:}}",
+            "previewCount": "{count, plural, one {# scene} other {# scenes}}"
+        },
         "structure": {
             "title": "Waiting for you",
             "help": "New entries and links your answers propose. Dashed cards and lines on the map show them; nothing is added until you accept it here.",
@@ -2239,6 +2248,7 @@
             "appends": "They are added after the {scenes, plural, one {# scene} other {# scenes}} the manuscript holds.",
             "headings": "Headings",
             "sectionWords": "{count, plural, one {# word} other {# words}}",
+            "titleTooLong": "too long for a title: kept as text unless you change it (then refused)",
             "roleOf": "What “{heading}” starts",
             "role": {
                 "part": "Part",

@@ -2,9 +2,11 @@
 
 /**
  * The manuscript scenes that dramatise a plot beat (Phase 5.1, D33 item 2), read
- * only: shown on the beat's element page and in the plot board's element sheet,
- * never drawn on the canvas (the map's rows are the bible's alone). Each scene
- * links to its editor; a beat no scene names says so.
+ * only: shown on the beat's element page and in the plot board's element sheet
+ * (the board itself draws the first few as read-only cards from display data,
+ * never as map rows or canvas records: `SceneCardLayer`, D33 addendum B — and
+ * its "+N more" opens this list). Each scene links to its editor; a beat no
+ * scene names says so.
  */
 import { useEffect, useState } from 'react';
 import Link from 'next/link';

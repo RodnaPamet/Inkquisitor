@@ -31,8 +31,11 @@
  *
  * Every function runs in the caller's transaction, under the scene's lock
  * (`ManuscriptRepository.lockScene`), after the caller checked the revision.
- * LOCK ORDER: the elements a text names are locked FOR KEY SHARE before any
- * link or scene row is written (`ManuscriptRepository.lockElements`).
+ * LOCK ORDER: the elements a text names are locked FOR KEY SHARE
+ * (`ManuscriptRepository.lockElements`), then the scene's own row
+ * (`lockSceneRow`), and only then is a link row written — the order a bible
+ * deletion's cascade (element, then scene and links) and a part or chapter
+ * deletion's (scene, then links) both take.
  */
 import { randomUUID } from 'node:crypto';
 import type { WorkspaceRequestContext } from '@/app-layer/types';
@@ -122,6 +125,8 @@ export async function writeSceneText(
     const elements = await ManuscriptRepository.lockElements(db, ctx.workspaceId, head.bookId, mentionCandidates(raw));
     const stored = storableSceneHtml(raw, (id) => elements.has(id));
     if (stored.length > SCENE_TEXT_MAX_CHARS) tooLongText();
+    // The scene's row before any link row: a part or chapter deletion's cascade takes them in that order.
+    if (!(await ManuscriptRepository.lockSceneRow(db, ctx.workspaceId, head.id))) throw new NotFoundError('Scene not found.');
     const scene = await ManuscriptSceneRepository.find(db, ctx.workspaceId, head.bookId, head.id);
     if (!scene) throw new NotFoundError('Scene not found.');
     let revision = scene.revision;
@@ -164,6 +169,7 @@ export async function restoreSceneText(db: PrismaTx, ctx: WorkspaceRequestContex
     const elements = await ManuscriptRepository.lockElements(db, ctx.workspaceId, head.bookId, mentionCandidates(version.text));
     const stored = storableSceneHtml(version.text, (id) => elements.has(id));
     if (stored.length > SCENE_TEXT_MAX_CHARS) tooLongText();
+    if (!(await ManuscriptRepository.lockSceneRow(db, ctx.workspaceId, head.id))) throw new NotFoundError('Scene not found.');
     const revision = head.revision + 1;
     const wordCount = countSceneWords(stored);
     const { cut: mentionsCut, changed: linksChanged } = await syncMentionLinks(db, ctx, head.bookId, head.id, stored);

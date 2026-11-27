@@ -104,7 +104,9 @@ export type AuditAction =
     | 'MANUSCRIPT_SCENE_CREATED'
     | 'MANUSCRIPT_SCENE_DELETED'
     | 'MANUSCRIPT_SCENE_RESTORED'
-    | 'MANUSCRIPT_IMPORTED';
+    | 'MANUSCRIPT_IMPORTED'
+    /** A spent rank gap re-spaced one parent's parts, chapters or scenes (no version; a count). */
+    | 'MANUSCRIPT_ORDER_REBALANCED';
 
 export interface AuditEventPayload {
     action: AuditAction;

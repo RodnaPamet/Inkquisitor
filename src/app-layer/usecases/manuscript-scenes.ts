@@ -238,6 +238,8 @@ export async function updateSceneMeta(ctx: WorkspaceRequestContext, bookId: stri
         if (linked) check('linkedElementIds', linked);
         if (beats) check('beatElementIds', beats, 'PLOT_BEAT');
 
+        // The scene's row before any link row (`lockSceneRow`: a part or chapter deletion's cascade order).
+        if (!(await ManuscriptRepository.lockSceneRow(db, ctx.workspaceId, id))) throw new NotFoundError('Scene not found.');
         const scene = await ManuscriptSceneRepository.find(db, ctx.workspaceId, bookId, id);
         if (!scene) throw new NotFoundError('Scene not found.');
         if (linked) {

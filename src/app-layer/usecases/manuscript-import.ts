@@ -17,9 +17,13 @@
  *             chose in the `x-import-plan` header (levels, scene breaks,
  *             heading overrides, the token). A different file is 409
  *             IMPORT_FILE_CHANGED, an old preview 409 IMPORT_PREVIEW_EXPIRED,
- *             a plan that does not fit the outline 400 IMPORT_PLAN_INVALID.
+ *             a plan that does not fit the outline 400 IMPORT_PLAN_INVALID —
+ *             with EVERY problem it has (`problems`), among them a heading too
+ *             long to be a title made one (`HEADING_TOO_LONG`, `headings`: the
+ *             preview's proposed split keeps such a heading as text, never
+ *             cutting the author's words to fit).
  *             Then ONE transaction under the structure lock: the bounds
- *             (409 TOO_MANY_*), the parts, chapters and scenes (each scene
+ *             (409 TOO_MANY_*, every bound passed named in `problems`), the parts, chapters and scenes (each scene
  *             with its first version, IMPORT), one audit row. Everything is
  *             refused or written together.
  *
@@ -47,9 +51,9 @@ import { ConflictError, ValidationError } from '@/lib/errors/types';
 import { RankExhaustedError } from '@/lib/bible/story-order';
 import { parseSource, SourceRefusal, type ParseDeps } from '@/lib/sources/parse';
 import type { DocBlock } from '@/lib/sources/document';
-import { defaultPlan, outlineOf, planProblem, splitManuscript, type ImportOutline, type ImportPlan, type SplitResult } from '@/lib/manuscript/import-split';
+import { defaultPlan, outlineOf, planProblems, splitManuscript, type ImportOutline, type ImportPlan, type SplitResult } from '@/lib/manuscript/import-split';
 import { fileSha256, signImportToken, verifyImportToken } from '@/lib/manuscript/import-token';
-import { sanitiseManuscriptTitle } from '@/lib/manuscript/storage';
+import { ManuscriptTextTooLongError, sanitiseManuscriptTitle } from '@/lib/manuscript/storage';
 import { CHAPTERS_PER_MANUSCRIPT_MAX, IMPORT_HEADINGS_MAX, IMPORT_PLAN_HEADER_MAX, PARTS_PER_MANUSCRIPT_MAX, SCENES_PER_MANUSCRIPT_MAX } from '@/lib/manuscript/vocabulary';
 import { assertUploadClean } from './bible-import';
 import { requireBook } from './bible-common';
@@ -89,12 +93,26 @@ async function readBlocks(ctx: WorkspaceRequestContext, upload: { bytes: Uint8Ar
     return { format: parsed.format, blocks: parsed.blocks };
 }
 
-function checkedOutline(blocks: readonly DocBlock[]): ImportOutline {
-    const outline = outlineOf(blocks);
-    if (outline.words === 0) throw new ValidationError('The file holds no text.', { reason: 'IMPORT_EMPTY' });
-    if (outline.headings.length > IMPORT_HEADINGS_MAX) throw new ValidationError('The file has more headings than one manuscript can hold.', { reason: 'IMPORT_TOO_LARGE', headings: outline.headings.length });
-    return outline;
+/** A heading's words cannot be stored as a title (the sanitiser's own bound, so the check and the write agree). */
+function titleTooLong(text: string): boolean {
+    try {
+        sanitiseManuscriptTitle(text);
+        return false;
+    } catch (err) {
+        if (err instanceof ManuscriptTextTooLongError) return true;
+        throw err;
+    }
 }
+
+function checkedOutline(blocks: readonly DocBlock[]): ImportOutline {
+    const read = outlineOf(blocks);
+    if (read.words === 0) throw new ValidationError('The file holds no text.', { reason: 'IMPORT_EMPTY' });
+    if (read.headings.length > IMPORT_HEADINGS_MAX) throw new ValidationError('The file has more headings than one manuscript can hold.', { reason: 'IMPORT_TOO_LARGE', headings: read.headings.length });
+    return { ...read, headings: read.headings.map((h) => ({ ...h, titleTooLong: titleTooLong(h.text) })) };
+}
+
+/** Headings a refusal names at most (the rest are counted). */
+const PROBLEM_HEADINGS_MAX = 50;
 
 async function existingCounts(ctx: WorkspaceRequestContext, bookId: string) {
     return runInWorkspaceContext(ctx, async (db) => {
@@ -147,8 +165,9 @@ export function readPlanHeader(value: string | null): ImportPlanInput {
     return parsed.data;
 }
 
-function full(what: 'TOO_MANY_PARTS' | 'TOO_MANY_CHAPTERS' | 'TOO_MANY_SCENES'): never {
-    throw new ConflictError('The manuscript cannot hold this import as well as what it holds.', { reason: what });
+/** Every bound the import would pass, at once (the reason names the first). */
+function full(over: ReadonlyArray<'TOO_MANY_PARTS' | 'TOO_MANY_CHAPTERS' | 'TOO_MANY_SCENES'>): never {
+    throw new ConflictError('The manuscript cannot hold this import as well as what it holds.', { reason: over[0], problems: [...over] });
 }
 
 const newId = () => randomUUID().replace(/-/g, '');
@@ -183,8 +202,16 @@ export async function confirmManuscriptImport(
     const { format, blocks } = await readBlocks(ctx, upload, deps);
     const outline = checkedOutline(blocks);
     const plan: ImportPlan = { levels: input.levels, sceneBreaks: input.sceneBreaks, overrides: input.overrides };
-    const problem = planProblem(plan, outline);
-    if (problem) throw new ValidationError('The split does not fit this file.', { reason: 'IMPORT_PLAN_INVALID', problem });
+    // Every problem the plan has, answered at once (as the bundle import answers its own).
+    const { problems, longHeadings } = planProblems(plan, outline);
+    if (problems.length > 0) {
+        throw new ValidationError('The split does not fit this file.', {
+            reason: 'IMPORT_PLAN_INVALID',
+            problem: problems[0],
+            problems,
+            ...(longHeadings.length > 0 ? { headings: longHeadings.slice(0, PROBLEM_HEADINGS_MAX), headingsCut: Math.max(0, longHeadings.length - PROBLEM_HEADINGS_MAX) } : {}),
+        });
+    }
     const split = splitManuscript(blocks, plan);
     if (split.counts.scenes === 0) throw new ValidationError('The split holds no scene.', { reason: 'IMPORT_EMPTY' });
 
@@ -199,9 +226,11 @@ export async function confirmManuscriptImport(
             // Without a part level the split is one untitled part: its chapters join the manuscript's last part.
             const intoLast = plan.levels.part === null && !plan.overrides.some(([, r]) => r === 'part') && split.parts.length === 1 && split.parts[0].title === null;
             const newParts = intoLast && parts.length > 0 ? 0 : split.parts.length;
-            if (parts.length + newParts > PARTS_PER_MANUSCRIPT_MAX) full('TOO_MANY_PARTS');
-            if (chapterCount + split.counts.chapters > CHAPTERS_PER_MANUSCRIPT_MAX) full('TOO_MANY_CHAPTERS');
-            if (sceneCount + split.counts.scenes > SCENES_PER_MANUSCRIPT_MAX) full('TOO_MANY_SCENES');
+            const over: Array<'TOO_MANY_PARTS' | 'TOO_MANY_CHAPTERS' | 'TOO_MANY_SCENES'> = [];
+            if (parts.length + newParts > PARTS_PER_MANUSCRIPT_MAX) over.push('TOO_MANY_PARTS');
+            if (chapterCount + split.counts.chapters > CHAPTERS_PER_MANUSCRIPT_MAX) over.push('TOO_MANY_CHAPTERS');
+            if (sceneCount + split.counts.scenes > SCENES_PER_MANUSCRIPT_MAX) over.push('TOO_MANY_SCENES');
+            if (over.length > 0) full(over);
             try {
                 const partRows: Array<{ id: string; title: string | null; rank: string }> = [];
                 const targets: string[] = [];

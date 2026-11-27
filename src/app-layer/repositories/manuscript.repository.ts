@@ -92,6 +92,20 @@ export const ManuscriptRepository = {
     },
 
     /**
+     * The scene's ROW, held FOR NO KEY UPDATE to commit: taken by every save
+     * that writes the scene's links (its text, its details, a restore) AFTER the
+     * elements it names (`lockElements`) and BEFORE any link row. A deletion of
+     * the scene's part or chapter takes the scene row by cascade and then its
+     * links; a save that wrote a link first and waited for the scene row
+     * would deadlock with it (40P01). False when the scene is gone.
+     */
+    async lockSceneRow(db: Db, workspaceId: string, sceneId: string): Promise<boolean> {
+        const rows = await db.$queryRaw<Array<{ id: string }>>`
+            SELECT "id" FROM "ManuscriptScene" WHERE "workspaceId" = ${workspaceId} AND "id" = ${sceneId} FOR NO KEY UPDATE`;
+        return rows.length > 0;
+    },
+
+    /**
      * The bible elements of the book among `ids`, each row held FOR KEY SHARE
      * to commit (a deletion of one waits for this save, or this save for it).
      * Taken BEFORE the save touches any link or scene row: a bible deletion
@@ -122,6 +136,40 @@ export const ManuscriptRepository = {
         return rows[0].now;
     },
 };
+
+/** The three ranked levels of the manuscript (a rebalance names one). */
+export type RankedLevel = 'part' | 'chapter' | 'scene';
+
+/**
+ * REBALANCE one parent's ranks (Phase 5.1 review): `ids` (every row of the
+ * parent, in their order) take `ranks`. In two passes, because the unique
+ * `(parent, rank)` is checked row by row inside a statement: first every row
+ * takes a TEMPORARY rank the caller chose clear of every old and new rank, then
+ * its final one — so no row ever lands on a rank another still holds. The
+ * caller holds the manuscript's structure lock. A constant number of
+ * statements a thousand rows.
+ */
+async function rebalanceRanks(db: Db, workspaceId: string, level: RankedLevel, ids: readonly string[], temporary: readonly string[], ranks: readonly string[]): Promise<number> {
+    if (ids.length !== ranks.length || ids.length !== temporary.length) throw new RangeError('rebalanceRanks: ids and ranks differ in length');
+    let written = 0;
+    for (const pass of [temporary, ranks]) {
+        written = 0;
+        for (let i = 0; i < ids.length; i += 1_000) {
+            const batch = [...ids.slice(i, i + 1_000)];
+            const values = [...pass.slice(i, i + 1_000)];
+            if (level === 'part') {
+                written += await db.$executeRaw`UPDATE "ManuscriptPart" AS t SET "rank" = v."rank" FROM unnest(${batch}::text[], ${values}::text[]) AS v("id", "rank") WHERE t."id" = v."id" AND t."workspaceId" = ${workspaceId}`;
+            } else if (level === 'chapter') {
+                written += await db.$executeRaw`UPDATE "ManuscriptChapter" AS t SET "rank" = v."rank" FROM unnest(${batch}::text[], ${values}::text[]) AS v("id", "rank") WHERE t."id" = v."id" AND t."workspaceId" = ${workspaceId}`;
+            } else {
+                written += await db.$executeRaw`UPDATE "ManuscriptScene" AS t SET "rank" = v."rank" FROM unnest(${batch}::text[], ${values}::text[]) AS v("id", "rank") WHERE t."id" = v."id" AND t."workspaceId" = ${workspaceId}`;
+            }
+        }
+    }
+    return written;
+}
+
+export const ManuscriptOrderRepository = { rebalanceRanks };
 
 export const ManuscriptPartRepository = {
     async list(db: Db, workspaceId: string, bookId: string, take: number): Promise<PartRow[]> {
@@ -338,6 +386,19 @@ export const SceneBeatRepository = {
     async removeMany(db: Db, workspaceId: string, sceneId: string, beatIds: readonly string[]) {
         if (beatIds.length === 0) return;
         await db.sceneBeatLink.deleteMany({ where: { workspaceId, sceneId, beatElementId: { in: [...beatIds] } } });
+    },
+
+    /** How many scenes dramatise each of the beats (an aggregate, one row a beat). */
+    async countForBeats(db: Db, workspaceId: string, bookId: string, beatIds: readonly string[]): Promise<Map<string, number>> {
+        if (beatIds.length === 0) return new Map();
+        const rows = await db.sceneBeatLink.groupBy({ by: ['beatElementId'], where: { workspaceId, bookId, beatElementId: { in: [...beatIds] } }, _count: { _all: true } });
+        return new Map(rows.map((r) => [r.beatElementId, r._count._all]));
+    },
+
+    /** The beat-to-scene links of the beats, at most `take`. */
+    async linksForBeats(db: Db, workspaceId: string, bookId: string, beatIds: readonly string[], take: number) {
+        if (beatIds.length === 0) return [];
+        return db.sceneBeatLink.findMany({ where: { workspaceId, bookId, beatElementId: { in: [...beatIds] } }, select: { beatElementId: true, sceneId: true }, take });
     },
 
     /** The scenes that dramatise a beat (ids), at most `take`. */

@@ -3,7 +3,7 @@
  * split itself — and its cost, which is linear in the document (counted work, never a clock).
  */
 import type { DocBlock } from '@/lib/sources/document';
-import { defaultPlan, outlineOf, planProblem, planSummary, splitManuscript, type ImportPlan } from '@/lib/manuscript/import-split';
+import { defaultPlan, outlineOf, planProblem, planProblems, planSummary, splitManuscript, type ImportOutline, type ImportPlan } from '@/lib/manuscript/import-split';
 
 const h = (level: number, text: string): DocBlock => ({ kind: 'heading', level, text });
 const p = (text: string): DocBlock => ({ kind: 'para', text });
@@ -61,6 +61,19 @@ describe('the outline and the proposed plan', () => {
         expect(planProblem({ ...base, levels: { part: null, chapter: 5, scene: null } }, o)).toBe('LEVEL_UNUSED');
         expect(planProblem({ ...base, overrides: [[99, 'scene']] }, o)).toBe('OVERRIDE_OUT_OF_RANGE');
         expect(planProblem({ ...base, overrides: [[1, 'scene'], [1, 'text']] }, o)).toBe('OVERRIDE_DUPLICATE');
+    });
+
+    it('names every problem at once, and a heading too long to be a title made one', () => {
+        const o = outlineOf(BOOK);
+        const base = defaultPlan(o);
+        expect(planProblems({ ...base, levels: { part: 1, chapter: 1, scene: 9 }, overrides: [[99, 'scene']] }, o).problems).toEqual(['LEVELS_NOT_DISTINCT', 'LEVEL_UNUSED', 'OVERRIDE_OUT_OF_RANGE']);
+        // The server marks a heading too long for a title; the proposed plan keeps it as text, and a plan making it a title is refused.
+        const marked: ImportOutline = { ...o, headings: o.headings.map((hd) => (hd.index === 1 ? { ...hd, titleTooLong: true } : hd)) };
+        const proposed = defaultPlan(marked);
+        expect(proposed.overrides).toEqual([[1, 'text']]);
+        expect(planProblems(proposed, marked)).toEqual({ problems: [], longHeadings: [] });
+        expect(planProblems({ ...proposed, overrides: [] }, marked)).toEqual({ problems: ['HEADING_TOO_LONG'], longHeadings: [1] });
+        expect(planProblems({ ...proposed, overrides: [[1, 'chapter']] }, marked).problems).toEqual(['HEADING_TOO_LONG']);
     });
 });
 

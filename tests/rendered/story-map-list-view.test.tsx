@@ -139,6 +139,27 @@ describe('the list view', () => {
         expect(screen.queryByTestId('map-list-relate')).not.toBeInTheDocument();
         expect(await axe(view.container)).toHaveNoViolations();
     });
+
+    it('lists each beat\'s scenes under it, as the board\'s scene cards show them: links to their editors, "+N more" opening the beat (D33 B)', async () => {
+        const beats = new Map([
+            ['b1', { beatElementId: 'b1', total: 4, scenes: [{ sceneId: 's1', title: 'Wren comes ashore', chapterTitle: 'One' }, { sceneId: 's2', title: null, chapterTitle: 'One' }] }],
+            ['b3', { beatElementId: 'b3', total: 1, scenes: [{ sceneId: 's9', title: 'The last tide', chapterTitle: 'Nine' }] }],
+        ]);
+        const { props, view } = list({ scenes: { beats, href: (id) => `/w/ada/books/book_1/manuscript/scenes/${id}` } });
+        const flood = screen.getAllByTestId('map-list-element').find((li) => li.getAttribute('data-element-id') === 'b1')!;
+        const links = within(flood).getAllByTestId('map-list-scene');
+        expect(links.map((a) => [a.textContent, a.getAttribute('href')])).toEqual([
+            ['Wren comes ashore', '/w/ada/books/book_1/manuscript/scenes/s1'],
+            ['Untitled scene', '/w/ada/books/book_1/manuscript/scenes/s2'],
+        ]);
+        expect(within(flood).getByRole('link', { name: 'Open scene: Wren comes ashore' })).toBeInTheDocument();
+        await userEvent.click(within(flood).getByRole('button', { name: /of The flood: open the beat/ }));
+        expect(props.onOpen).toHaveBeenCalledWith('b1');
+        const bargain = screen.getAllByTestId('map-list-element').find((li) => li.getAttribute('data-element-id') === 'b2')!;
+        expect(within(bargain).queryByTestId('map-list-beat-scenes')).toBeNull();
+        expect(within(screen.getAllByTestId('map-list-element').find((li) => li.getAttribute('data-element-id') === 'b3')!).queryByTestId('map-list-scenes-more')).toBeNull();
+        expect(await axe(view.container)).toHaveNoViolations();
+    });
 });
 
 const MAP = '/api/w/ada/books/book_1/maps/plot';

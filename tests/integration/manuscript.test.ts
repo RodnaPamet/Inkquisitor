@@ -13,6 +13,7 @@
  *   - encryption at rest: the text, title, note and every version are envelopes in the database;
  *   - isolation: another workspace reads none of it.
  */
+import { Client } from 'pg';
 import { prisma } from '@/lib/db';
 import { createElement, deleteElement } from '@/app-layer/usecases/bible-elements';
 import { createBook } from '@/app-layer/usecases/books';
@@ -29,7 +30,10 @@ import {
     updateSceneMeta,
 } from '@/app-layer/usecases/manuscript-scenes';
 import { ConflictError, NotFoundError, ValidationError } from '@/lib/errors/types';
+import { getStoryMap, saveStoryMap } from '@/app-layer/usecases/story-maps';
+import { BOARD_SCENES_PER_BEAT } from '@/lib/canvas/limits';
 import { SCENE_VERSION_MAX_GAP_MS } from '@/lib/manuscript/vocabulary';
+import { ORDER_RANK_MAX, rebalancedRanks } from '@/lib/bible/story-order';
 import { createAccount, workspaceCtx } from '../helpers/workspaces';
 
 afterAll(() => prisma.$disconnect());
@@ -70,6 +74,36 @@ describe('structure', () => {
         const outline = await moveScene(ctx, bookId, middle, { chapterId, after: first, before: last });
         const chapter = outline.parts.flatMap((p) => p.chapters).find((c) => c.id === chapterId)!;
         expect(chapter.scenes.map((s) => s.title)).toEqual(['Order one', 'Order two', 'Order three']);
+    });
+
+    it('a spent rank gap rebalances the parent in place and the scene lands where it was asked; nothing else moves', async () => {
+        const { chapterId, sceneId: a } = await newScene('Gap A');
+        const b = (await createScene(ctx, bookId, { chapterId, title: 'Gap B' })).id;
+        const c = (await createScene(ctx, bookId, { chapterId, title: 'Gap C' })).id;
+        // A and B a 64-character key apart, as about three hundred inserts at one spot (or swaps of two neighbours) leave them.
+        await prisma.manuscriptScene.update({ where: { id: a }, data: { rank: 'i' } });
+        await prisma.manuscriptScene.update({ where: { id: b }, data: { rank: `i${'0'.repeat(ORDER_RANK_MAX - 2)}1` } });
+        await prisma.manuscriptScene.update({ where: { id: c }, data: { rank: 'r' } });
+        const revisions = await prisma.manuscriptScene.findMany({ where: { chapterId }, select: { id: true, revision: true } });
+        const titles = (o: Awaited<ReturnType<typeof getManuscriptOutline>>) => o.parts.flatMap((p) => p.chapters).find((ch) => ch.id === chapterId)!.scenes.map((sc) => sc.title);
+
+        const created = await createScene(ctx, bookId, { chapterId, title: 'Gap new', after: a, before: b });
+        expect(titles(created.outline)).toEqual(['Gap A', 'Gap new', 'Gap B', 'Gap C']);
+        const ranks = await prisma.manuscriptScene.findMany({ where: { id: { in: [a, b, c] } }, select: { rank: true } });
+        expect(new Set(ranks.map((r) => r.rank))).toEqual(new Set(rebalancedRanks(3)));
+        expect(await prisma.auditLog.count({ where: { workspaceId: ctx.workspaceId, action: 'MANUSCRIPT_ORDER_REBALANCED', detailsJson: { path: ['parentId'], equals: chapterId } } })).toBe(1);
+        // No scene's text, revision or history moved: a rebalance changes keys, not the book.
+        const after = await prisma.manuscriptScene.findMany({ where: { id: { in: [a, b, c] } }, select: { id: true, revision: true } });
+        expect(after.sort((x, y) => x.id.localeCompare(y.id))).toEqual(revisions.sort((x, y) => x.id.localeCompare(y.id)));
+
+        // A move into a spent gap rebalances too (C between A and the new scene, once that gap is spent).
+        const fresh = await prisma.manuscriptScene.findMany({ where: { chapterId }, select: { id: true, rank: true } });
+        const newId = created.id;
+        const rankOfA = fresh.find((r) => r.id === a)!.rank;
+        await prisma.manuscriptScene.update({ where: { id: newId }, data: { rank: `${rankOfA}${'0'.repeat(ORDER_RANK_MAX - rankOfA.length - 1)}1` } });
+        const moved = await moveScene(ctx, bookId, c, { chapterId, after: a, before: newId });
+        expect(titles(moved)).toEqual(['Gap A', 'Gap C', 'Gap new', 'Gap B']);
+        expect(await prisma.auditLog.count({ where: { workspaceId: ctx.workspaceId, action: 'MANUSCRIPT_ORDER_REBALANCED', detailsJson: { path: ['parentId'], equals: chapterId } } })).toBe(2);
     });
 
     it('deletes a chapter holding scenes only when the count is confirmed', async () => {
@@ -128,6 +162,9 @@ describe('versions (D33: at a checkpoint, never on every autosave)', () => {
         expect((await save('<p>One and more</p>', true)).versionNumber).toBe(2);
         // A checkpoint over text equal to the newest version writes none.
         expect((await save('<p>One and more</p>', true)).versionNumber).toBeNull();
+        // Inside the server's bound (thirty minutes, D33 item C) a plain autosave writes none, even twenty minutes on.
+        expect(SCENE_VERSION_MAX_GAP_MS).toBe(30 * 60_000);
+        expect((await save('<p>Twenty minutes on</p>', false, new Date(Date.now() + 20 * 60_000))).versionNumber).toBeNull();
         // Past the server's bound a plain autosave writes one: a lost checkpoint still bounds the gap.
         const later = new Date(Date.now() + SCENE_VERSION_MAX_GAP_MS + 60_000);
         expect((await save('<p>Much later</p>', false, later)).versionNumber).toBe(3);
@@ -218,6 +255,104 @@ describe('details', () => {
         expect(a.noteVersion).toBe(1);
         await expect(saveSceneNote(ctx, bookId, sceneId, { note: 'x', baseNoteVersion: 0 })).rejects.toMatchObject({ details: { reason: 'VERSION_CONFLICT' } });
         expect(await prisma.sceneNoteVersion.count({ where: { sceneId, source: 'MANUAL' } })).toBe(1);
+    });
+});
+
+describe('the plot board\'s scene cards (D33 addendum B)', () => {
+    it('the board\'s view carries each beat\'s scenes in manuscript order as display data, and a save of the shown board writes the same rows', async () => {
+        const fresh = (await createBook(ctx, { title: 'Board' })).id;
+        const beat = await createElement(ctx, fresh, { kind: 'PLOT_BEAT', name: 'The storm' });
+        const quiet = await createElement(ctx, fresh, { kind: 'PLOT_BEAT', name: 'The calm' });
+        const one = await createChapter(ctx, fresh, { title: 'One' });
+        const two = await createChapter(ctx, fresh, { title: 'Two' });
+        // Created out of order: the cards follow the manuscript (chapter, then scene), not the links.
+        const late = (await createScene(ctx, fresh, { chapterId: two.id, title: 'Late' })).id;
+        const first = (await createScene(ctx, fresh, { chapterId: one.id, title: 'First' })).id;
+        const second = (await createScene(ctx, fresh, { chapterId: one.id, title: 'Second' })).id;
+        for (const id of [late, first, second]) await updateSceneMeta(ctx, fresh, id, { baseRevision: 0, beatElementIds: [beat.id] });
+
+        const empty = await getStoryMap(ctx, fresh, 'plot');
+        const saved = await saveStoryMap(ctx, fresh, 'plot', {
+            expectedVersion: empty.version,
+            nodes: [beat.id, quiet.id].map((elementId) => ({ elementId, x: 0, y: 0, w: 200, h: 88, lane: null })),
+            edges: [],
+            freeform: [],
+        });
+        const view = saved.map;
+        expect(view.beatScenes).toEqual([
+            {
+                beatElementId: beat.id,
+                total: 3,
+                scenes: [
+                    { sceneId: first, title: 'First', chapterTitle: 'One' },
+                    { sceneId: second, title: 'Second', chapterTitle: 'One' },
+                ].slice(0, BOARD_SCENES_PER_BEAT),
+            },
+        ]);
+        // A save of exactly what the board shows (its rows; the cards are not rows) writes nothing new.
+        const again = await saveStoryMap(ctx, fresh, 'plot', {
+            expectedVersion: view.version,
+            nodes: view.nodes.map((n) => ({ elementId: n.elementId, x: n.x, y: n.y, w: n.w, h: n.h, lane: n.lane })),
+            edges: [],
+            freeform: [],
+        });
+        expect(again.saved).toBe(false);
+        expect(again.map.version).toBe(view.version);
+        const stored = await prisma.mapSnapshot.findMany({ where: { mapId: (await prisma.storyMap.findFirstOrThrow({ where: { bookId: fresh, kind: 'PLOT' } })).id } });
+        expect(stored.map((snap) => snap.version)).toEqual([view.version]);
+        // The other maps carry none.
+        expect((await getStoryMap(ctx, fresh, 'relationship')).beatScenes).toEqual([]);
+    });
+});
+
+describe('lock order', () => {
+    /** Until a backend waits on a row lock of a scene (the save, behind the deletion's hold). */
+    async function waitForSceneRowWait(): Promise<void> {
+        for (let i = 0; i < 400; i++) {
+            const rows = await prisma.$queryRaw<Array<{ n: bigint }>>`
+                SELECT count(*) AS n FROM pg_stat_activity
+                 WHERE wait_event_type = 'Lock' AND datname = current_database() AND query LIKE '%"ManuscriptScene"%'`;
+            if (Number(rows[0].n) > 0) return;
+            await new Promise((r) => setTimeout(r, 25));
+        }
+        throw new Error('the save never waited on the scene row');
+    }
+
+    it('a save takes the scene row before any link row, as a chapter deletion does (no deadlock between them)', async () => {
+        const { sceneId } = await newScene('Lock order');
+        const gull = await createElement(ctx, bookId, { kind: 'CHARACTER', name: 'Gull' });
+        const first = await saveSceneText(ctx, bookId, sceneId, { html: `<p>Hello <span data-mention="${gull.id}">@Gull</span>.</p>`, baseRevision: 0 });
+        expect(await prisma.sceneElementLink.count({ where: { sceneId } })).toBe(1);
+
+        // A chapter deletion's cascade holds the scene row first (here, as the owner, a row lock like the cascade's).
+        const deleter = new Client({ connectionString: process.env.DATABASE_URL });
+        const probe = new Client({ connectionString: process.env.DATABASE_URL });
+        await deleter.connect();
+        await probe.connect();
+        let saving: Promise<{ ok: unknown } | { failed: unknown }> | null = null;
+        let held: { rowCount: number | null } | Error;
+        try {
+            await deleter.query('BEGIN');
+            await deleter.query('SELECT 1 FROM "ManuscriptScene" WHERE "id" = $1 FOR UPDATE', [sceneId]);
+            // The save drops the mention, so it would delete the link row.
+            saving = saveSceneText(ctx, bookId, sceneId, { html: '<p>Hello.</p>', baseRevision: first.revision }).then(
+                (ok) => ({ ok }),
+                (failed: unknown) => ({ failed }),
+            );
+            await waitForSceneRowWait();
+            // The save waits on the scene row holding NO link row: the deletion's cascade could take them all.
+            await probe.query('BEGIN');
+            held = await probe.query('SELECT 1 FROM "SceneElementLink" WHERE "sceneId" = $1 FOR UPDATE NOWAIT', [sceneId]).catch((err: Error) => err);
+            await probe.query('ROLLBACK');
+        } finally {
+            await deleter.query('ROLLBACK').catch(() => undefined);
+            const outcome = saving ? await saving : null;
+            await probe.end();
+            await deleter.end();
+            expect(outcome).toMatchObject({ ok: { revision: first.revision + 1 } });
+        }
+        expect(held).toMatchObject({ rowCount: 1 });
+        expect(await prisma.sceneElementLink.count({ where: { sceneId } })).toBe(0);
     });
 });
 

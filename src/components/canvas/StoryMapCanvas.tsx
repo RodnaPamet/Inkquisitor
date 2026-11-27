@@ -52,6 +52,13 @@
  * is removed from the bible, with undo) and a node double-clicked
  * (`onNodeOpen`: the element sheet).
  *
+ * ═══ SCENE CARDS (Phase 5.1, D33 addendum B) ═══
+ *
+ * On the plot board, each beat's linked scenes are drawn as read-only cards
+ * (`SceneCardLayer`) by tldraw's `Overlays` component from React state
+ * (`sceneCards`), never as store records: seeding, saving and the round trip
+ * never see them.
+ *
  * ═══ THE WATERMARK STAYS (decision D1) ═══
  *
  * No licence key is passed and nothing hides or restyles tldraw's watermark
@@ -92,6 +99,7 @@ import { installArrowToEdgeConversion, installEdgeLineRemovesEdge, installOneNod
 import { installCardDrop } from './tldraw/lane-host';
 import { LaneBackdrop, LaneBackdropContext } from './LaneBackdrop';
 import { StructurePreviewContext, StructurePreviewLayer, type StructurePreviewValue } from './GhostLayer';
+import { SceneCardsContext, SceneCardsLayer, type SceneCardsValue } from './SceneCardLayer';
 import { STORY_NODE_SHAPE_TYPE, type StoryNodeShape } from './tldraw/story-node-shape';
 import type { KnownRelation } from './tldraw/edge-validation';
 import { restoreFreeform } from './tldraw/restore-freeform';
@@ -143,7 +151,11 @@ function CanvasOverlays() {
         </>
     );
 }
-const TLDRAW_COMPONENTS: TLComponents = { Toolbar: StoryToolbar, OnTheCanvas: CanvasOverlays };
+/** Above the shapes, in page space: the plot board's scene cards (Phase 5.1, D33 B). Not a store record. */
+function CanvasFrontOverlays() {
+    return <SceneCardsLayer />;
+}
+const TLDRAW_COMPONENTS: TLComponents = { Toolbar: StoryToolbar, OnTheCanvas: CanvasOverlays, Overlays: CanvasFrontOverlays };
 
 export interface StoryMapCanvasProps {
     /** The map's rows, exactly as the API returns them. */
@@ -175,6 +187,8 @@ export interface StoryMapCanvasProps {
     onNodeOpen?: (elementId: string) => void;
     /** Phase 3.3: the book's pending new elements and relations, drawn as ghosts (never store records), and the plot board's slots. */
     preview?: StructurePreviewValue | null;
+    /** Phase 5.1 (D33 B): the plot board's scene cards, drawn above the beats from React state (never store records). */
+    sceneCards?: SceneCardsValue | null;
 }
 
 /** `shape:…`, checked rather than asserted: an id without it is a serializer bug. */
@@ -236,6 +250,7 @@ export function StoryMapCanvas({
     onCardsDropped,
     onNodeOpen,
     preview = null,
+    sceneCards = null,
 }: StoryMapCanvasProps) {
     // Callbacks through refs: `onMount` runs once per editor, so a closure
     // would pin the first render's callbacks for the editor's whole life.
@@ -350,19 +365,21 @@ export function StoryMapCanvas({
         <div className="h-full w-full" data-story-canvas="true" data-map-layout={layout}>
             <LaneBackdropContext.Provider value={lanes}>
                 <StructurePreviewContext.Provider value={preview}>
-                    <Tldraw
-                        shapeUtils={SHAPE_UTILS}
-                        bindingUtils={BINDING_UTILS}
-                        onMount={handleMount}
-                        options={TLDRAW_OPTIONS}
-                        textOptions={STORY_TEXT_OPTIONS}
-                        overrides={TLDRAW_OVERRIDES}
-                        components={components}
-                        assetUrls={ASSET_URLS}
-                        user={user}
-                        acceptedImageMimeTypes={NO_FILE_TYPES}
-                        acceptedVideoMimeTypes={NO_FILE_TYPES}
-                    />
+                    <SceneCardsContext.Provider value={sceneCards}>
+                        <Tldraw
+                            shapeUtils={SHAPE_UTILS}
+                            bindingUtils={BINDING_UTILS}
+                            onMount={handleMount}
+                            options={TLDRAW_OPTIONS}
+                            textOptions={STORY_TEXT_OPTIONS}
+                            overrides={TLDRAW_OVERRIDES}
+                            components={components}
+                            assetUrls={ASSET_URLS}
+                            user={user}
+                            acceptedImageMimeTypes={NO_FILE_TYPES}
+                            acceptedVideoMimeTypes={NO_FILE_TYPES}
+                        />
+                    </SceneCardsContext.Provider>
                 </StructurePreviewContext.Provider>
             </LaneBackdropContext.Provider>
         </div>

@@ -48,8 +48,10 @@ import {
     byRank,
     ensureManuscript,
     outlineView,
+    placeAmong,
     rankAmong,
     readOutlineRows,
+    recordManuscriptRebalance,
     requireChapter,
     requirePart,
     tooLong,
@@ -94,8 +96,10 @@ export async function createPart(ctx: WorkspaceRequestContext, bookId: string, i
         const manuscript = await ensureManuscript(db, ctx, bookId);
         const parts = await ManuscriptPartRepository.list(db, ctx.workspaceId, bookId, PARTS_PER_MANUSCRIPT_MAX + 1);
         if (parts.length >= PARTS_PER_MANUSCRIPT_MAX) full('TOO_MANY_PARTS');
-        const part = await ManuscriptPartRepository.create(db, ctx.workspaceId, { bookId, manuscriptId: manuscript.id, title: name, rank: rankAmong(parts, parsed) });
+        const place = await placeAmong(db, ctx, 'part', parts, null, parsed);
+        const part = await ManuscriptPartRepository.create(db, ctx.workspaceId, { bookId, manuscriptId: manuscript.id, title: name, rank: place.rank });
         await logEvent(ctx, { action: 'MANUSCRIPT_PART_CREATED', entityType: 'ManuscriptPart', entityId: part.id, details: { bookId } }, { db });
+        await recordManuscriptRebalance(db, ctx, bookId, 'part', manuscript.id, place.rebalanced);
         return { id: part.id, outline: await outline(db, ctx, bookId) };
     });
 }
@@ -120,8 +124,10 @@ export async function movePart(ctx: WorkspaceRequestContext, bookId: string, par
         await ManuscriptRepository.lockStructure(db, bookId);
         await requireBook(db, ctx, bookId);
         await requirePart(db, ctx, bookId, id);
-        const others = (await ManuscriptPartRepository.list(db, ctx.workspaceId, bookId, PARTS_PER_MANUSCRIPT_MAX + 1)).filter((p) => p.id !== id);
-        await ManuscriptPartRepository.setRank(db, ctx.workspaceId, id, rankAmong(others, parsed));
+        const parts = await ManuscriptPartRepository.list(db, ctx.workspaceId, bookId, PARTS_PER_MANUSCRIPT_MAX + 1);
+        const place = await placeAmong(db, ctx, 'part', parts, id, parsed);
+        await ManuscriptPartRepository.setRank(db, ctx.workspaceId, id, place.rank);
+        await recordManuscriptRebalance(db, ctx, bookId, 'part', parts.find((p) => p.id === id)?.manuscriptId ?? bookId, place.rebalanced);
         return outline(db, ctx, bookId);
     });
 }
@@ -167,8 +173,10 @@ export async function createChapter(ctx: WorkspaceRequestContext, bookId: string
             partId = parts.length > 0 ? parts[parts.length - 1].id : (await ManuscriptPartRepository.create(db, ctx.workspaceId, { bookId, manuscriptId: manuscript.id, title: null, rank: rankAmong([], {}) })).id;
         }
         const siblings = await ManuscriptChapterRepository.listForPart(db, ctx.workspaceId, partId, CHAPTERS_PER_MANUSCRIPT_MAX + 1);
-        const chapter = await ManuscriptChapterRepository.create(db, ctx.workspaceId, { bookId, partId, title: name, rank: rankAmong(siblings, parsed) });
+        const place = await placeAmong(db, ctx, 'chapter', siblings, null, parsed);
+        const chapter = await ManuscriptChapterRepository.create(db, ctx.workspaceId, { bookId, partId, title: name, rank: place.rank });
         await logEvent(ctx, { action: 'MANUSCRIPT_CHAPTER_CREATED', entityType: 'ManuscriptChapter', entityId: chapter.id, details: { bookId, partId } }, { db });
+        await recordManuscriptRebalance(db, ctx, bookId, 'chapter', partId, place.rebalanced);
         return { id: chapter.id, outline: await outline(db, ctx, bookId) };
     });
 }
@@ -194,8 +202,10 @@ export async function moveChapter(ctx: WorkspaceRequestContext, bookId: string, 
         await requireBook(db, ctx, bookId);
         await requireChapter(db, ctx, bookId, id);
         await requirePart(db, ctx, bookId, parsed.partId);
-        const others = (await ManuscriptChapterRepository.listForPart(db, ctx.workspaceId, parsed.partId, CHAPTERS_PER_MANUSCRIPT_MAX + 1)).filter((c) => c.id !== id);
-        await ManuscriptChapterRepository.move(db, ctx.workspaceId, id, { partId: parsed.partId, rank: rankAmong(others, parsed) });
+        const siblings = await ManuscriptChapterRepository.listForPart(db, ctx.workspaceId, parsed.partId, CHAPTERS_PER_MANUSCRIPT_MAX + 1);
+        const place = await placeAmong(db, ctx, 'chapter', siblings, id, parsed);
+        await ManuscriptChapterRepository.move(db, ctx.workspaceId, id, { partId: parsed.partId, rank: place.rank });
+        await recordManuscriptRebalance(db, ctx, bookId, 'chapter', parsed.partId, place.rebalanced);
         return outline(db, ctx, bookId);
     });
 }
@@ -227,8 +237,10 @@ export async function createScene(ctx: WorkspaceRequestContext, bookId: string, 
         await requireChapter(db, ctx, bookId, parsed.chapterId);
         if ((await ManuscriptSceneRepository.count(db, ctx.workspaceId, bookId)) >= SCENES_PER_MANUSCRIPT_MAX) full('TOO_MANY_SCENES');
         const siblings = await ManuscriptSceneRepository.listForChapter(db, ctx.workspaceId, parsed.chapterId, CHILDREN_READ_MAX);
-        const scene = await ManuscriptSceneRepository.create(db, ctx.workspaceId, { bookId, chapterId: parsed.chapterId, title: name, rank: rankAmong(siblings, parsed) });
+        const place = await placeAmong(db, ctx, 'scene', siblings, null, parsed);
+        const scene = await ManuscriptSceneRepository.create(db, ctx.workspaceId, { bookId, chapterId: parsed.chapterId, title: name, rank: place.rank });
         await logEvent(ctx, { action: 'MANUSCRIPT_SCENE_CREATED', entityType: 'ManuscriptScene', entityId: scene.id, details: { bookId, chapterId: parsed.chapterId } }, { db });
+        await recordManuscriptRebalance(db, ctx, bookId, 'scene', parsed.chapterId, place.rebalanced);
         return { id: scene.id, outline: await outline(db, ctx, bookId) };
     });
 }
@@ -242,8 +254,10 @@ export async function moveScene(ctx: WorkspaceRequestContext, bookId: string, sc
         await requireBook(db, ctx, bookId);
         if (!(await ManuscriptSceneRepository.head(db, ctx.workspaceId, bookId, id))) throw new NotFoundError('Scene not found.');
         await requireChapter(db, ctx, bookId, parsed.chapterId);
-        const others = (await ManuscriptSceneRepository.listForChapter(db, ctx.workspaceId, parsed.chapterId, CHILDREN_READ_MAX)).filter((s) => s.id !== id);
-        await ManuscriptSceneRepository.move(db, ctx.workspaceId, id, { chapterId: parsed.chapterId, rank: rankAmong(others, parsed) });
+        const siblings = await ManuscriptSceneRepository.listForChapter(db, ctx.workspaceId, parsed.chapterId, CHILDREN_READ_MAX);
+        const place = await placeAmong(db, ctx, 'scene', siblings, id, parsed);
+        await ManuscriptSceneRepository.move(db, ctx.workspaceId, id, { chapterId: parsed.chapterId, rank: place.rank });
+        await recordManuscriptRebalance(db, ctx, bookId, 'scene', parsed.chapterId, place.rebalanced);
         return outline(db, ctx, bookId);
     });
 }

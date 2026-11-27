@@ -82,6 +82,7 @@ import { parseMapState, serialiseMapState, type MapEdgeRow, type MapNodeRow, typ
 import { runInWorkspaceContext, type PrismaTx } from '@/lib/db/rls-middleware';
 import { ConflictError, NotFoundError, ValidationError } from '@/lib/errors/types';
 import { requireBook } from './bible-common';
+import { boardBeatScenesInTx, type BoardBeatScenes } from './manuscript-board';
 
 // ─── Views ──────────────────────────────────────────────────────────
 
@@ -134,6 +135,13 @@ export interface StoryMapView {
     participants: Array<{ eventId: string; characterId: string; characterName: string }>;
     /** True when the participants were cut at their bound. */
     participantsTruncated: boolean;
+    /**
+     * The plot board's scene cards (Phase 5.1, D33 addendum B): per beat on the
+     * board, how many scenes dramatise it and the first few in manuscript
+     * order. DISPLAY data, like the nodes' names: never saved, never a store
+     * record, never compared by a save. Empty on the other maps.
+     */
+    beatScenes: BoardBeatScenes[];
 }
 
 export interface StoryMapSaveResult {
@@ -360,6 +368,8 @@ async function buildView(db: PrismaTx, ctx: WorkspaceRequestContext, bookId: str
         acts: kind === 'PLOT' ? actOptions() : [],
         participants: (drawn.participants?.rows ?? []).map((r) => ({ eventId: r.toElementId, characterId: r.from.id, characterName: r.from.name })),
         participantsTruncated: drawn.participants?.truncated ?? false,
+        // Phase 5.1 (D33 addendum B): the scenes that dramatise each beat, drawn as read-only cards; display data, never rows.
+        beatScenes: kind === 'PLOT' ? await boardBeatScenesInTx(db, ctx, bookId, state.nodes.map((n) => n.elementId)) : [],
     };
 }
 
