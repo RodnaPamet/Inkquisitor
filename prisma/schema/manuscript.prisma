@@ -150,6 +150,8 @@ model ManuscriptScene {
   beatLinks         SceneBeatLink[]
   /// Phase 5.1: research proposals of a note on this scene; they go with it.
   researchProposals ResearchProposal[]
+  /// Phase 5.2 (D34): the scene's newest prose check (one; replaced whole).
+  proseCheck        SceneProseCheck?
 
   @@unique([chapterId, rank])
   @@unique([workspaceId, id])

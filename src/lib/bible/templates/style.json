@@ -1,7 +1,7 @@
 {
   "kind": "STYLE",
   "label": "Prose style",
-  "description": "The prose surface of the book, or of one part of it: tense, diction, sentence rhythm, how dialogue is set out, and the spelling and punctuation it follows. Whose eyes the narration uses, and in which person, belong to point of view.",
+  "description": "The prose surface of the book, or of one part of it: tense, diction, rhythm, how dialogue is set out, spelling, and the settings the manuscript's prose checks hold drafts to. Whose eyes the narration uses belongs to point of view.",
   "fields": [
     {
       "key": "style_scope",
@@ -81,7 +81,7 @@
     {
       "key": "avoided_words",
       "label": "Words and constructions to avoid",
-      "help": "Words, phrasings or sentence habits the prose rules out, so that drafts can later be checked against them, one per item.",
+      "help": "Words, phrasings or habits the prose rules out, one per item. A single word or short phrase is flagged in the manuscript's prose checks.",
       "type": "list",
       "required": false,
       "order": 6,
@@ -189,6 +189,148 @@
       "order": 13,
       "dependsOn": [
         "spelling_variant"
+      ]
+    },
+    {
+      "key": "check_tense",
+      "label": "Tense the checks hold",
+      "help": "The tense the manuscript's prose checks expect the narration to keep, so a verb in the other tense outside speech is noted for you.",
+      "type": "choice",
+      "options": [
+        {
+          "value": "past",
+          "label": "Past"
+        },
+        {
+          "value": "present",
+          "label": "Present"
+        }
+      ],
+      "required": false,
+      "order": 14,
+      "dependsOn": [
+        "tense"
+      ]
+    },
+    {
+      "key": "check_person",
+      "label": "Grammatical person of narration",
+      "help": "The grammatical person the narration is told in, which the prose checks hold it to; whose eyes it follows and how closely is point of view.",
+      "type": "choice",
+      "options": [
+        {
+          "value": "first",
+          "label": "First person"
+        },
+        {
+          "value": "second",
+          "label": "Second person"
+        },
+        {
+          "value": "third_limited",
+          "label": "Third person, one mind at a time"
+        },
+        {
+          "value": "third_omniscient",
+          "label": "Third person, any mind"
+        }
+      ],
+      "required": false,
+      "order": 15,
+      "dependsOn": []
+    },
+    {
+      "key": "check_spelling",
+      "label": "Spelling variety for checks",
+      "help": "The variety of spelling the prose checks hold the manuscript to, so a word spelt the other way is noted with the form to use.",
+      "type": "choice",
+      "options": [
+        {
+          "value": "british",
+          "label": "British"
+        },
+        {
+          "value": "american",
+          "label": "American"
+        },
+        {
+          "value": "canadian",
+          "label": "Canadian"
+        },
+        {
+          "value": "australian",
+          "label": "Australian"
+        }
+      ],
+      "required": false,
+      "order": 16,
+      "dependsOn": [
+        "spelling_variant"
+      ]
+    },
+    {
+      "key": "quote_marks",
+      "label": "Speech marks",
+      "help": "How spoken words are marked on the page. The prose checks read this to tell speech from narration, and leave speech alone.",
+      "type": "choice",
+      "options": [
+        {
+          "value": "double",
+          "label": "Double quotation marks"
+        },
+        {
+          "value": "single",
+          "label": "Single quotation marks"
+        },
+        {
+          "value": "guillemets",
+          "label": "Angled marks"
+        },
+        {
+          "value": "dash",
+          "label": "A dash before speech"
+        },
+        {
+          "value": "none",
+          "label": "No marks at all"
+        }
+      ],
+      "required": false,
+      "order": 17,
+      "dependsOn": [
+        "dialogue_conventions"
+      ]
+    },
+    {
+      "key": "tag_punctuation",
+      "label": "Comma before a speech tag",
+      "help": "Where the comma goes when speech is followed by a tag such as said: inside the closing mark or outside it.",
+      "type": "choice",
+      "options": [
+        {
+          "value": "inside",
+          "label": "Inside the closing mark"
+        },
+        {
+          "value": "outside",
+          "label": "Outside the closing mark"
+        }
+      ],
+      "required": false,
+      "order": 18,
+      "dependsOn": [
+        "quote_marks"
+      ]
+    },
+    {
+      "key": "word_swaps",
+      "label": "Replacements to offer",
+      "help": "A word you avoid and the word to use instead, one pair per item, written as avoid → use. The prose checks offer the swap for you to accept.",
+      "type": "list",
+      "required": false,
+      "order": 19,
+      "dependsOn": [
+        "avoided_words"
       ]
     }
   ],

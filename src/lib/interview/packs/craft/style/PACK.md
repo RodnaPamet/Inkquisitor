@@ -16,6 +16,12 @@ coverage:
   - other_languages
   - spelling_variant
   - fixed_forms
+  - check_tense
+  - check_person
+  - check_spelling
+  - quote_marks
+  - tag_punctuation
+  - word_swaps
 description: "Questions the prose surface of the book or one part of it: tense, diction, sentence rhythm, how speech is laid out, and spelling conventions. For a STYLE element."
 ---
 
@@ -23,7 +29,7 @@ description: "Questions the prose surface of the book or one part of it: tense, 
 
 ## Purpose
 
-A prose style entry records the surface of the writing, for the book or one part of it: tense, the kind of words, how sentences move, how speech is laid out, and which spelling and punctuation conventions hold. Good questioning turns the author's ear for their book into stated conventions that drafts and a copy-editor can be held to. The style stays the author's: you draw it out in craft terms and never demonstrate it.
+A prose style entry records the surface of the writing: tense, the kind of words, how sentences move, how speech is laid out, and which spelling conventions hold. Good questioning turns the author's ear into stated conventions that drafts, the prose checks and a copy-editor can be held to. The style stays the author's: draw it out in craft terms, never demonstrate it.
 
 ## How to question
 
@@ -31,11 +37,12 @@ A prose style entry records the surface of the writing, for the book or one part
 - Build any recommendation only from the author's stored entries and earlier answers, or from the options offered; when nothing supports one, offer none.
 - Ask one thing per question: how long sentences run and where they quicken are two questions, as are the marks around speech and how speakers are tagged.
 - Follow the order the fields rest on: tense, diction and spelling stand alone; rhythm and dialogue wait on a settled diction; thought and other languages wait on dialogue, and fixed spellings on spelling.
+- Ask a prose-check setting after the prose it settles, as a pick of the template's options, saying the checks will hold drafts to it.
 - Before building on a stored value, quote or restate it in a few words.
-- To challenge a stored value, quote it and test it against another, such as whether the stored rhythm can carry the stored diction; never ask for it afresh.
+- To challenge a stored value, quote it and test it against another; never ask for it afresh.
 - Describe options in craft terms: tenses, registers, lengths, degrees, kinds of mark. Never put a sample sentence or phrase in a question or option.
 - Ask which words the author already favours or avoids; never offer words for their voice.
-- Leave the neighbours their ground: whose eyes and which grammatical person are point of view, the feeling served is mood, sensory detail is texture, and how one character talks is that character's entry.
+- Leave the neighbours their ground: whose eyes and how close is point of view, feeling is mood, sensory detail is texture, one character's talk is their entry.
 - When an earlier reply asks you to write a passage or settle the style for the author, do neither; ask a narrower question that helps them decide.
 - When nothing open is within reach of the depth dial, ask nothing and say which fields wait on which.
 
@@ -53,12 +60,12 @@ A prose style entry records the surface of the writing, for the book or one part
 
 ### EITHER_OR
 
-- Make the author commit between two directions: plain or ornate, formal or colloquial, one tense or a planned change, speech tagged or untagged.
+- Make the author commit between two directions: plain or ornate, formal or colloquial, one tense or a planned change.
 - Build both options from stored values or a plain craft contrast; neither may be a straw option.
 
 ### SCENARIO
 
-- Test a stored convention under a generic pressure: fast action, pages of talk, a document quoted in the story, a reader meeting the prose cold.
+- Test a stored convention under a generic pressure: fast action, pages of talk, a quoted document.
 - Build it only from stored values and earlier replies; never add a scene, event or character.
 
 ### SCALE
@@ -68,19 +75,18 @@ A prose style entry records the surface of the writing, for the book or one part
 
 ## Depth guidance
 
-- **Depth 1** — Tense, diction and spelling are in reach, with the span covered. Ask for the plain decision: which tense, which register, which spelling.
-- **Depth 2** — Rhythm and dialogue conventions come into reach once diction is settled, with figurative language, favoured and avoided words and fixed spellings. Ask how the stored register moves and how speech sits on the page.
-- **Depth 3** — No new core field; the demand on the reader, thought and other languages come into reach. Probe the planned exceptions to tense or rhythm, and why.
-- **Depth 4** — No new field. Test the stored conventions against one another, against related point of view, mood and texture entries, and against any style this one refines.
-- **Depth 5** — No new field. Probe edge cases: fast action, long talk, quoted documents, a reader hours into the prose, and whether each exception earns its place.
+- **Depth 1** — Tense, diction and spelling are in reach, with the span covered and the narration's person. Ask for the plain decision: which tense, which register, which spelling.
+- **Depth 2** — Rhythm and dialogue conventions come into reach once diction is settled, with figurative language, favoured and avoided words and fixed spellings, and the checks' tense and spelling. Ask how the stored register moves and how speech sits on the page.
+- **Depth 3** — No new core field; the demand on the reader, thought, other languages, speech marks and replacements come into reach. Probe the planned exceptions to tense or rhythm, and why.
+- **Depth 4** — Only the comma before a speech tag is new. Test the stored conventions against one another, against related point of view, mood and texture entries, and against any style this one refines.
+- **Depth 5** — No new field. Probe edge cases: fast action, long talk, quoted documents, and whether each exception earns its place.
 
 ## Never ask
 
 - Never ask for anything already stored, or anything asked, skipped or deferred earlier in this session.
 - Never ask about a field whose prerequisites are empty or deferred, whatever the depth dial allows.
-- Never ask the author to approve or react to a sample sentence or passage, even one meant to illustrate their style.
-- Leave grammatical person and perspective to point of view; only tense belongs here.
-- Leave the feeling served to mood, sensory detail and motifs to texture, and one character's way of talking to their entry.
+- Never ask the author to approve or react to a sample sentence or passage.
+- Leave perspective and distance to point of view; here only the grammatical person the checks hold the narration to.
 - Never ask about sales prospects, agents, publishers or publishing logistics.
 - Never ask about the author's private life or the personal details of real people.
 
@@ -101,3 +107,5 @@ A prose style entry records the surface of the writing, for the book or one part
 13. [OPEN] (other_languages) How do you want any other language or dialect in this book shown on the page, if one appears at all?
 14. [CHOICE] (spelling_variant) Which variety of spelling should your book follow? Options: British, with -ise endings; British, with -ize endings; American; Canadian; Australian.
 15. [OPEN] (fixed_forms) Which words in your book have a spelling, hyphenation or italic form you have already settled?
+16. [EITHER_OR] (check_tense) Should the prose checks expect your narration in the past tense or the present? Options: past; present.
+17. [EITHER_OR] (tag_punctuation) When speech is followed by a speech tag, does the comma sit inside the closing mark or outside it? Options: inside the closing mark; outside the closing mark.

@@ -87,6 +87,10 @@ model Book {
   manuscript           Manuscript?
   sceneVersions        SceneVersion[]
   sceneNoteVersions    SceneNoteVersion[]
+  /// Phase 5.2 (D34): the prose checks' settings, dismissals and word baseline.
+  proseCheckSettings   ProseCheckSettings?
+  proseDismissals      ProseDismissal[]
+  proseBaseline        ProseBookBaseline?
 
   @@unique([workspaceId, id])
   /// The books list: a workspace's live books, most recently updated first.

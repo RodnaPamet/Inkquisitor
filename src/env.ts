@@ -86,6 +86,10 @@ export const env = createEnv({
         // fail-open). `off` skips the network call: an air-gapped install, and
         // the end-to-end suite, which calls no outside service.
         PASSWORD_BREACH_CHECK: z.enum(['on', 'off']).optional(),
+        // The manuscript's prose checks (Phase 5.2, D34): `off` queues no check
+        // after a save (the worker's load switched off; the editor says the
+        // checks are off). Deterministic code, no model, so on by default.
+        PROSE_CHECKS: z.enum(['on', 'off']).optional(),
 
         // ── Field encryption (Phase 0.3) ──
         // The master key-encryption key: wraps every workspace's data key.
@@ -271,6 +275,7 @@ export const env = createEnv({
         GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID,
         GOOGLE_CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET,
         PASSWORD_BREACH_CHECK: process.env.PASSWORD_BREACH_CHECK,
+        PROSE_CHECKS: process.env.PROSE_CHECKS,
         DATA_ENCRYPTION_KEY: process.env.DATA_ENCRYPTION_KEY,
         LOG_LEVEL: process.env.LOG_LEVEL,
         OTEL_ENABLED: process.env.OTEL_ENABLED,

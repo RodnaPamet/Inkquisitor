@@ -35,7 +35,7 @@ import { seedSourceLibrary } from '../helpers/sources';
 import { seedFactLayer } from '../helpers/facts';
 import { seedContinuity } from '../helpers/continuity';
 import { seedInterrogation } from '../helpers/interrogation';
-import { seedManuscript } from '../helpers/manuscript';
+import { seedManuscript, seedProseChecks } from '../helpers/manuscript';
 import { createAccount, workspaceCtx } from '../helpers/workspaces';
 import { setBookInterviewDefaults, setWorkspaceInterviewDefaults } from '@/app-layer/usecases/interview-defaults';
 
@@ -174,8 +174,11 @@ beforeAll(async () => {
     await seedInterrogation(workspaceCtx(a), aBook.bookId, aInterview.sessionId, 'rls-a');
     await seedInterrogation(workspaceCtx(b), bBook.bookId, bInterview.sessionId, 'rls-b');
     // The model layer's ledger (2.1): a settled call and a live reservation.
-    await seedManuscript(workspaceCtx(a), aBook.bookId, 'rls-a');
-    await seedManuscript(workspaceCtx(b), bBook.bookId, 'rls-b');
+    const aManuscript = await seedManuscript(workspaceCtx(a), aBook.bookId, 'rls-a');
+    const bManuscript = await seedManuscript(workspaceCtx(b), bBook.bookId, 'rls-b');
+    // The prose checks (5.2): settings, a scene's check and findings, the word baseline, a dismissal.
+    await seedProseChecks(workspaceCtx(a), aBook.bookId, aManuscript.chapterId, 'rls-a');
+    await seedProseChecks(workspaceCtx(b), bBook.bookId, bManuscript.chapterId, 'rls-b');
 
     await seedAiCall(workspaceCtx(a), aBook.bookId, 'rls-a');
     await seedAiCall(workspaceCtx(b), bBook.bookId, 'rls-b');

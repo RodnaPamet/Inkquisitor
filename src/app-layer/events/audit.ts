@@ -106,7 +106,11 @@ export type AuditAction =
     | 'MANUSCRIPT_SCENE_RESTORED'
     | 'MANUSCRIPT_IMPORTED'
     /** A spent rank gap re-spaced one parent's parts, chapters or scenes (no version; a count). */
-    | 'MANUSCRIPT_ORDER_REBALANCED';
+    | 'MANUSCRIPT_ORDER_REBALANCED'
+    /** Phase 5.2 (D34): a prose note dismissed (its rule and ids, never the sentence), every dismissal cleared, the settings changed. */
+    | 'PROSE_FINDING_DISMISSED'
+    | 'PROSE_DISMISSALS_CLEARED'
+    | 'PROSE_CHECK_SETTINGS_CHANGED';
 
 export interface AuditEventPayload {
     action: AuditAction;

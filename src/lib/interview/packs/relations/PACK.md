@@ -24,6 +24,8 @@ coverage:
   - reveals
   - nature
   - significance
+  - voice_departures
+  - voice_words
 description: "Questions the link between two elements rather than either element: how it began, what each side wants of it, what holds it, how one leads to the other. For a relation's own fields."
 ---
 
@@ -102,3 +104,4 @@ A relation entry records the link between two elements of the book: two people, 
 14. [SCALE] (change) How far does this link move between the start of the book and its end? Scale: 1 = it barely moves, 5 = it is transformed.
 15. [SCALE] (why_it_matters) How much would the book lose if this link were cut? Scale: 1 = almost nothing, 5 = its centre.
 16. [CHOICE] (aftermath) What does taking part leave the one with afterwards? Options: a cost; a gain; a change of heart; a debt.
+17. [OPEN] (voice_departures) Where does this character's speech or thought depart from the book's prose conventions, and what makes it theirs alone?

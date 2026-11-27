@@ -646,6 +646,34 @@
           ]
         }
       ]
+    },
+    {
+      "key": "voiced_against",
+      "label": "voiced against",
+      "inverseLabel": "holds voice notes for",
+      "targetKinds": [
+        "STYLE"
+      ],
+      "fields": [
+        {
+          "key": "voice_departures",
+          "label": "How the voice departs",
+          "help": "Where this character's speech and thought depart from the book's prose conventions: words, rhythm, grammar or marks that are theirs alone.",
+          "type": "richtext",
+          "required": true,
+          "order": 1,
+          "dependsOn": []
+        },
+        {
+          "key": "voice_words",
+          "label": "Words only they use",
+          "help": "Words or turns of phrase that belong to this character's speech and to no one else's in the book.",
+          "type": "text",
+          "required": false,
+          "order": 2,
+          "dependsOn": []
+        }
+      ]
     }
   ]
 }

@@ -10,12 +10,16 @@
  * the delete waits out the toast); deleting a chapter or part that holds scenes
  * first says how many go, then waits out the toast too. Refusals are worded from
  * their reasons. A reader reads the outline and opens scenes to read.
+ *
+ * Phase 5.2 (D34): each chapter can have its prose checks re-run, and the
+ * book's prose-check settings (rules, the inclusive-language switch, dismissed
+ * notes, names that look alike) sit below the outline.
  */
 import { useState, type FormEvent } from 'react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
-import { ArrowDown, ArrowUp, FilePlus2, FolderPlus, Pencil, Trash2, Upload } from 'lucide-react';
+import { ArrowDown, ArrowUp, FilePlus2, FolderPlus, Pencil, SpellCheck, Trash2, Upload } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
@@ -26,6 +30,7 @@ import { APP_ROUTES } from '@/lib/app-routes';
 import { bibleFetch, reasonOf } from '@/lib/bible/api-client';
 import { MANUSCRIPT_API, type OutlineView } from '@/lib/manuscript/api-client';
 import { ImportManuscriptModal } from './ImportManuscriptModal';
+import { ProseCheckSettings } from './ProseCheckSettings';
 import { useManuscriptReason } from './messages';
 
 export interface ManuscriptPageProps {
@@ -109,6 +114,18 @@ export function ManuscriptPage({ workspaceSlug, book, initial, canEdit }: Manusc
             const url = level === 'part' ? MANUSCRIPT_API.part(slug, book.id, id) : MANUSCRIPT_API.chapter(slug, book.id, id);
             return bibleFetch<{ outline: OutlineView }>(url, { method: 'PATCH', body: { title } });
         }).then(() => undefined);
+
+    /** Re-run a chapter's prose checks (5.2): every scene queued for the worker. */
+    async function rerunChecks(chapterId: string, name: string) {
+        try {
+            const r = await bibleFetch<{ queued: number; notQueued: number; scheduled: 'SCHEDULED' | 'UNAVAILABLE' | 'OFF' }>(MANUSCRIPT_API.chapterProseChecks(slug, book.id, chapterId), { method: 'POST' });
+            if (r.scheduled === 'OFF') toast.message(t('recheckOff'));
+            else if (r.scheduled === 'UNAVAILABLE' && r.queued === 0) toast.error(t('recheckUnavailable'));
+            else toast.success(t('recheckQueued', { what: name, count: r.queued }));
+        } catch (err) {
+            toast.error(reasonText(reasonOf(err)));
+        }
+    }
 
     function move(level: Level, id: string, parentId: string, siblings: ReadonlyArray<{ id: string }>, delta: -1 | 1) {
         const at = siblings.findIndex((s) => s.id === id);
@@ -225,6 +242,16 @@ export function ManuscriptPage({ workspaceSlug, book, initial, canEdit }: Manusc
                                                 {canEdit ? (
                                                     <div className="flex flex-wrap items-center gap-tight">
                                                         <InlineTitle id={`chapter-${chapter.id}`} value={chapter.title} placeholder={t('chapterTitlePlaceholder')} label={chapterName} onSave={(v) => rename('chapter', chapter.id, v)} />
+                                                        {scenes.length > 0 ? (
+                                                            <Button
+                                                                variant="secondary"
+                                                                size="sm"
+                                                                icon={<SpellCheck className="size-4" aria-hidden="true" />}
+                                                                onClick={() => void rerunChecks(chapter.id, chapterName)}
+                                                                aria-label={t('recheck', { what: chapterName })}
+                                                                data-testid="chapter-recheck"
+                                                            />
+                                                        ) : null}
                                                         <Button variant="secondary" size="sm" icon={<ArrowUp className="size-4" aria-hidden="true" />} disabled={busy || ci === 0} onClick={() => move('chapter', chapter.id, part.id, chapters, -1)} aria-label={t('earlier', { what: chapterName })} />
                                                         <Button variant="secondary" size="sm" icon={<ArrowDown className="size-4" aria-hidden="true" />} disabled={busy || ci === chapters.length - 1} onClick={() => move('chapter', chapter.id, part.id, chapters, 1)} aria-label={t('later', { what: chapterName })} />
                                                         <Button
@@ -303,6 +330,8 @@ export function ManuscriptPage({ workspaceSlug, book, initial, canEdit }: Manusc
                     </Modal.Actions>
                 </Modal>
             ) : null}
+
+            <ProseCheckSettings workspaceSlug={slug} bookId={book.id} canEdit={canEdit} />
 
             {canEdit ? <ImportManuscriptModal open={importOpen} setOpen={setImportOpen} workspaceSlug={slug} bookId={book.id} onImported={() => void reload()} /> : null}
         </div>

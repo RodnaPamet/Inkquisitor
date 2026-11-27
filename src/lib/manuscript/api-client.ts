@@ -46,6 +46,14 @@ export const MANUSCRIPT_API = {
     restore: (slug: string, bookId: string, sceneId: string, n: number) => `${base(slug, bookId)}/scenes/${enc(sceneId)}/versions/${n}/restore`,
     importPreview: (slug: string, bookId: string) => `${base(slug, bookId)}/import/preview`,
     importConfirm: (slug: string, bookId: string) => `${base(slug, bookId)}/import`,
+    /** A scene's prose check (5.2, D34): GET the margin's notes, POST to check it now. */
+    proseChecks: (slug: string, bookId: string, sceneId: string) => `${base(slug, bookId)}/scenes/${enc(sceneId)}/prose-checks`,
+    /** Re-run a chapter's prose checks. */
+    chapterProseChecks: (slug: string, bookId: string, chapterId: string) => `${base(slug, bookId)}/chapters/${enc(chapterId)}/prose-checks`,
+    /** POST dismiss one note `{ findingId }`; DELETE bring every dismissed note back. */
+    proseDismissals: (slug: string, bookId: string) => `${base(slug, bookId)}/prose-checks/dismissals`,
+    /** GET / PUT the book's prose-check settings. */
+    proseSettings: (slug: string, bookId: string) => `${base(slug, bookId)}/prose-checks/settings`,
     /** A plot beat's scenes (D33 item 2). */
     beatScenes: (slug: string, bookId: string, elementId: string) => `/api/w/${enc(slug)}/books/${enc(bookId)}/elements/${enc(elementId)}/scenes`,
 } as const;

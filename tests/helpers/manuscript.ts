@@ -42,3 +42,20 @@ export async function seedManuscript(ctx: WorkspaceRequestContext, bookId: strin
     if (!manuscriptId) throw new Error('the manuscript fixture has no manuscript');
     return { manuscriptId, partId, chapterId: chapter.id, sceneId: scene.id, characterId: character.id, settingId: setting.id, beatId: beat.id };
 }
+
+/**
+ * The prose checks' rows (Phase 5.2, D34), through the real usecases: the book's settings, a scene's check and its
+ * findings (run by the job's own usecase), the book's word baseline, and a dismissal.
+ */
+export async function seedProseChecks(ctx: WorkspaceRequestContext, bookId: string, chapterId: string, mark: string): Promise<{ sceneId: string }> {
+    const { executeProseCheck } = await import('@/app-layer/usecases/prose-check-run');
+    const { dismissProseFinding, getSceneProseChecks, saveProseCheckSettings } = await import('@/app-layer/usecases/prose-checks');
+    await saveProseCheckSettings(ctx, bookId, { alexEnabled: true, rulesOff: ['wordy'] });
+    const scene = await createScene(ctx, bookId, { chapterId, title: `Checked ${mark}` });
+    await saveSceneText(ctx, bookId, scene.id, { html: `<p>He was very tired. The the ferry ${mark} waited.</p>`, baseRevision: 0 }, { enqueueProseCheck: async () => undefined });
+    const run = await executeProseCheck({ workspaceId: ctx.workspaceId, sceneId: scene.id });
+    if (run.outcome !== 'CHECKED' || run.findings < 2) throw new Error('the prose-check fixture found nothing');
+    const view = await getSceneProseChecks(ctx, bookId, scene.id);
+    await dismissProseFinding(ctx, bookId, { findingId: view.findings[0].id });
+    return { sceneId: scene.id };
+}

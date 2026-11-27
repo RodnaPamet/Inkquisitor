@@ -136,6 +136,16 @@ const COVERAGE: Readonly<Record<string, Classification>> = {
             'A snapshot is the canonical form of the state the same save stores: node and edge rows (ids and numbers, no text) and the ' +
             'freeform layer exactly as sanitiseFreeformForStorage returned it; a restore re-sanitises the layer before it is stored again.',
     },
+    // Phase 5.2 (D34): a prose finding's detail (the words it is about, its suggestion) and the book's word baseline.
+    'ProseFinding.detail': { repository: 'ProseFindingRepository', writeMethods: ['createMany'], sanitiser: 'sanitiseFindingDetail' },
+    'ProseBookBaseline.baseline': {
+        repository: 'ProseBaselineRepository',
+        writeMethods: ['save'],
+        sanitiser: 'serialiseBaseline',
+        derived:
+            "The baseline is computed by code from the scenes' stored text (every one of which came through storableSceneHtml): a word " +
+            "count and the folded Porter2 stems of the book's most frequent words, with their counts, serialised as JSON.",
+    },
 };
 
 /** Each repository object and the one file allowed to write its model through Prisma. */
@@ -172,6 +182,8 @@ const REPOSITORIES: Readonly<Record<string, { file: string; model: string }>> = 
     ManuscriptSceneRepository: { file: 'src/app-layer/repositories/manuscript.repository.ts', model: 'ManuscriptScene' },
     SceneVersionRepository: { file: 'src/app-layer/repositories/manuscript.repository.ts', model: 'SceneVersion' },
     SceneNoteVersionRepository: { file: 'src/app-layer/repositories/manuscript.repository.ts', model: 'SceneNoteVersion' },
+    ProseFindingRepository: { file: 'src/app-layer/repositories/prose-check.repository.ts', model: 'ProseFinding' },
+    ProseBaselineRepository: { file: 'src/app-layer/repositories/prose-check.repository.ts', model: 'ProseBookBaseline' },
 };
 
 /** Wrappers, where each is defined and what it must call; the chain must end at a primitive. */
@@ -207,6 +219,8 @@ const WRAPPERS: Readonly<Record<string, { file: string; calls: readonly string[]
     sanitiseFreeformRecords: { file: 'src/lib/canvas/freeform.ts', calls: ['cleanValue'] },
     cleanValue: { file: 'src/lib/canvas/freeform.ts', calls: ['cleanString'] },
     cleanString: { file: 'src/lib/canvas/freeform.ts', calls: ['sanitizePlainText'] },
+    sanitiseFindingDetail: { file: 'src/lib/prose-checks/storage.ts', calls: ['cleanDetailString'] },
+    cleanDetailString: { file: 'src/lib/prose-checks/storage.ts', calls: ['plainLine'] },
 };
 
 const WRITE_OPS = ['create', 'createMany', 'createManyAndReturn', 'update', 'updateMany', 'updateManyAndReturn', 'upsert'];

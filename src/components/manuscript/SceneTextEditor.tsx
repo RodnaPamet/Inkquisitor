@@ -25,6 +25,19 @@ import Placeholder from '@tiptap/extension-placeholder';
 import { BIBLE_API, bibleFetch, type ElementPageView } from '@/lib/bible/api-client';
 import { pickerQuery } from '@/lib/bible/picker-query';
 import { countWords } from '@/lib/manuscript/word-count';
+import { buildEditorTextMap, placeRange, type DocNodeLike } from '@/lib/prose-checks/editor-map';
+import type { ProseFindingView } from '@/lib/prose-checks/vocabulary';
+import {
+    acceptProseSuggestion,
+    docTextBetween,
+    PROSE_NOTE_ACTIVATE_EVENT,
+    PROSE_NOTES_LAYOUT_EVENT,
+    ProseNotes,
+    removeProseNote,
+    setActiveProseNote,
+    setProseNotes,
+    type ProseNoteRange,
+} from './prose-notes-extension';
 
 /** The mention atom: an element id and the name it showed when inserted. */
 export const SceneMention = Node.create({
@@ -88,6 +101,30 @@ export interface SceneTextEditorProps {
     /** The editor's accessible name. */
     label: string;
     kindLabel: (kind: string) => string;
+    /**
+     * Prose notes to place (5.2, D34): a new `token` places these findings, each only where the editor's own
+     * text still reads what the check read (`matched`); null leaves the notes as they are (mapped through edits).
+     */
+    proseNotes?: { token: number; findings: readonly ProseFindingView[] } | null;
+    /** The open note (its suggestion drawn as a suggestion), or null. */
+    activeNoteId?: string | null;
+    /** Which findings were placed, and how many could not be (the text moved under them). */
+    onNotesPlaced?: (placedIds: string[], unplaced: number) => void;
+    /** Every placed note's top, below the editor's top, after any change. */
+    onNotesLayout?: (layout: Array<{ id: string; top: number }>) => void;
+    /** A click on a note's text. */
+    onNoteActivate?: (id: string) => void;
+    /** The page's handle on the editor: accept a suggestion (an ordinary edit, autosaved), show a note's text. */
+    onApi?: (api: SceneEditorApi | null) => void;
+}
+
+export interface SceneEditorApi {
+    /** Apply a note's suggestion as the author's edit; false when its text moved (nothing changed). */
+    acceptSuggestion: (noteId: string) => boolean;
+    /** Scroll a note's text into view. */
+    revealNote: (noteId: string) => void;
+    /** Take notes off the text (dismissed, or their rule turned off). */
+    removeNotes: (noteIds: readonly string[]) => void;
 }
 
 function triggerAt(editor: Editor): Omit<PickerState, 'top' | 'left'> | null {
@@ -101,7 +138,21 @@ function triggerAt(editor: Editor): Omit<PickerState, 'top' | 'left'> | null {
     return { query: m[1], from: $from.pos - m[1].length - 1, to: $from.pos };
 }
 
-export function SceneTextEditor({ workspaceSlug, bookId, initialHtml, editable, onChange, label, kindLabel }: SceneTextEditorProps) {
+export function SceneTextEditor({
+    workspaceSlug,
+    bookId,
+    initialHtml,
+    editable,
+    onChange,
+    label,
+    kindLabel,
+    proseNotes = null,
+    activeNoteId = null,
+    onNotesPlaced,
+    onNotesLayout,
+    onNoteActivate,
+    onApi,
+}: SceneTextEditorProps) {
     const t = useTranslations('manuscript.editor');
     const [picker, setPicker] = useState<PickerState | null>(null);
     const [items, setItems] = useState<PickerItem[]>([]);
@@ -153,6 +204,7 @@ export function SceneTextEditor({ workspaceSlug, bookId, initialHtml, editable, 
             StarterKit.configure({ heading: false, codeBlock: false, code: false, link: false }),
             Placeholder.configure({ placeholder: t('placeholder') }),
             SceneMention,
+            ProseNotes,
         ],
         content: initialHtml,
         editorProps: {
@@ -195,6 +247,73 @@ export function SceneTextEditor({ workspaceSlug, bookId, initialHtml, editable, 
     useEffect(() => {
         editor?.setEditable(editable);
     }, [editor, editable]);
+
+    // Place a fresh check's notes: each where the editor's own text still reads what the check read.
+    const notesToken = proseNotes?.token ?? null;
+    const placedToken = useRef<number | null>(null);
+    useEffect(() => {
+        if (!editor || !proseNotes || placedToken.current === proseNotes.token) return;
+        placedToken.current = proseNotes.token;
+        const doc = editor.state.doc;
+        const map = buildEditorTextMap(doc as unknown as DocNodeLike);
+        const placed: ProseNoteRange[] = [];
+        let unplaced = 0;
+        for (const f of proseNotes.findings) {
+            const range = placeRange(map, f.start, f.end, f.matched);
+            if (!range) {
+                unplaced++;
+                continue;
+            }
+            // The suggestion too only where the editor still reads what the check read there, and never over a mention.
+            const sRange = f.suggestion ? placeRange(map, f.suggestion.start, f.suggestion.end, f.suggestion.matched, { textOnly: true }) : null;
+            placed.push({
+                id: f.id,
+                from: range.from,
+                to: range.to,
+                severity: f.severity,
+                text: docTextBetween(doc, range.from, range.to),
+                suggestion: f.suggestion && sRange ? { from: sRange.from, to: sRange.to, replacement: f.suggestion.replacement, text: docTextBetween(doc, sRange.from, sRange.to) } : null,
+            });
+        }
+        setProseNotes(editor, placed, null);
+        onNotesPlaced?.(placed.map((p) => p.id), unplaced);
+        // Placed once per token: the notes then move with the text by themselves.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [editor, notesToken]);
+
+    useEffect(() => {
+        if (editor) setActiveProseNote(editor, activeNoteId);
+    }, [editor, activeNoteId]);
+
+    // The notes plugin speaks through events on the editor's element.
+    useEffect(() => {
+        if (!editor) return;
+        const dom = editor.view.dom;
+        const onLayout = (e: Event) => onNotesLayout?.((e as CustomEvent<Array<{ id: string; top: number }>>).detail);
+        const onActivate = (e: Event) => onNoteActivate?.((e as CustomEvent<string>).detail);
+        dom.addEventListener(PROSE_NOTES_LAYOUT_EVENT, onLayout);
+        dom.addEventListener(PROSE_NOTE_ACTIVATE_EVENT, onActivate);
+        return () => {
+            dom.removeEventListener(PROSE_NOTES_LAYOUT_EVENT, onLayout);
+            dom.removeEventListener(PROSE_NOTE_ACTIVATE_EVENT, onActivate);
+        };
+    }, [editor, onNotesLayout, onNoteActivate]);
+
+    useEffect(() => {
+        if (!editor || !onApi) return;
+        onApi({
+            acceptSuggestion: (id) => acceptProseSuggestion(editor, id),
+            removeNotes: (ids) => {
+                for (const id of ids) removeProseNote(editor, id);
+            },
+            revealNote: (id) => {
+                if (!/^[A-Za-z0-9_-]{1,64}$/.test(id)) return;
+                const el = editor.view.dom.querySelector(`[data-note-id="${id}"]`);
+                if (el instanceof HTMLElement && typeof el.scrollIntoView === 'function') el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+            },
+        });
+        return () => onApi(null);
+    }, [editor, onApi]);
 
     // The picker's search, debounced; a stale answer is dropped.
     const query = picker?.query ?? null;

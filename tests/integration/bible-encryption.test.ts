@@ -49,7 +49,7 @@ import { InterviewCompactionRepository } from '@/app-layer/repositories/interrog
 import { runInWorkspaceContext } from '@/lib/db/rls-middleware';
 import { sanitiseSummaryForStorage } from '@/lib/interview/compaction-prompt';
 import { MOUNTED, runStressTest, scriptedTester } from '../helpers/interrogation';
-import { seedManuscript } from '../helpers/manuscript';
+import { seedManuscript, seedProseChecks } from '../helpers/manuscript';
 
 afterAll(() => prisma.$disconnect());
 
@@ -231,6 +231,8 @@ beforeAll(async () => {
     ids.ManuscriptPart = manuscript.partId;
     ids.ManuscriptChapter = manuscript.chapterId;
     ids.ManuscriptScene = manuscript.sceneId;
+    // The prose checks (Phase 5.2): a check's findings and the book's word baseline.
+    await seedProseChecks(ctx, book.id, manuscript.chapterId, MARK);
     await runInWorkspaceContext(ctx, (db) =>
         InterviewCompactionRepository.create(db, ctx.workspaceId, { sessionId: ids.Session, throughRound: 1, summary: sanitiseSummaryForStorage(`Round one asked about the ${MARK} want.`), promptVersion: 'rounds-summary.4.3.0', tokensUsed: 1, costMicroUsd: 1 }),
     );
@@ -245,7 +247,11 @@ async function rawValues(model: string, field: string): Promise<string[]> {
     const byMap = model === 'MapSnapshot';
     const byRelation = model === 'BibleRelationField' || model === 'BibleRelationVersion';
     const bySource = model === 'SourceChunk' || model === 'StoryFact';
-    const byBook = model === 'StoryFactOverride' || model === 'StoryThread' || model === 'StoryThreadProposal' || model === 'GapHunt';
+    const byBook = model === 'StoryFactOverride' || model === 'StoryThread' || model === 'StoryThreadProposal' || model === 'GapHunt' || model === 'ProseBookBaseline';
+    if (model === 'ProseFinding') {
+        const rows = await prisma.$queryRawUnsafe<Array<{ v: string | null }>>(`SELECT f."${field}" AS v FROM "ProseFinding" f JOIN "SceneProseCheck" c ON c."id" = f."checkId" WHERE c."bookId" = $1`, ids.Book);
+        return rows.map((r) => r.v).filter((v): v is string => v !== null);
+    }
     if (model === 'SceneVersion' || model === 'SceneNoteVersion') {
         const rows = await prisma.$queryRawUnsafe<Array<{ v: string | null }>>(`SELECT "${field}" AS v FROM "${model}" WHERE "sceneId" = $1`, ids.ManuscriptScene);
         return rows.map((r) => r.v).filter((v): v is string => v !== null);
@@ -330,6 +336,8 @@ it('the manifest covers the bible, interview, research, interrogation and manusc
             'ManuscriptScene.note',
             'SceneVersion.text',
             'SceneNoteVersion.note',
+            'ProseFinding.detail',
+            'ProseBookBaseline.baseline',
         ].sort(),
     );
 });

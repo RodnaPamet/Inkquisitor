@@ -7,7 +7,8 @@
  * proposals, a rephrase, a research brief, an attached file, a fetched page
  * and its findings, a model answer that fails validation, and an unexpected
  * error whose message carries it, (Phase 5.1) a manuscript's titles, a scene's text, story time and note, an
- * import's file and a research note on a scene, a model-call rate-limit refusal of a
+ * import's file and a research note on a scene, (Phase 5.2) a scene's prose check, its notes and a style sheet's
+ * words, a model-call rate-limit refusal of a
  * request about it, and a word search for it (Phase 3.4: the query, and the
  * snippets that quote it back, answered and refused — through its route with
  * a real body: a malformed one, a member past its raw bound, each of the
@@ -77,6 +78,8 @@ import { executeResearchRun } from '@/app-layer/usecases/research-run';
 import { acceptResearchProposal } from '@/app-layer/usecases/research-review';
 import { createChapter, createScene } from '@/app-layer/usecases/manuscript';
 import { restoreSceneVersion, saveSceneNote, saveSceneText, updateSceneMeta } from '@/app-layer/usecases/manuscript-scenes';
+import { executeProseCheck } from '@/app-layer/usecases/prose-check-run';
+import { dismissProseFinding, getSceneProseChecks, saveProseCheckSettings } from '@/app-layer/usecases/prose-checks';
 import { confirmManuscriptImport, previewManuscriptImport } from '@/app-layer/usecases/manuscript-import';
 import { reconcilerOver } from '@/lib/enrichment/model-seam';
 import { RECONCILE_PROMPT } from '@/lib/enrichment/prompt';
@@ -479,6 +482,17 @@ it('a marker planted in every author-text path reaches no log line, span, Sentry
     expect(JSON.stringify(sceneWeb.requests[2])).toContain(MARKER);
     const noteProposal = await prisma.researchProposal.findFirstOrThrow({ where: { runId: sceneRun.runId, operation: 'SCENE_NOTE' }, select: { id: true } });
     await acceptResearchProposal(ctx, bookId, noteProposal.id, {});
+    // The prose checks (Phase 5.2, D34): a style sheet whose avoided word and swap are the marker, the scene's check
+    // in the worker's usecase, the margin's read through the request wrapper, a dismissal and the settings.
+    const sheet = await createElement(ctx, bookId, { kind: 'STYLE', name: marked('House style'), fields: [{ key: 'style_scope', value: 'whole_book' }] });
+    await updateElementFields(ctx, bookId, sheet.id, { fields: [{ key: 'avoided_words', value: [MARKER.toLowerCase()] }, { key: 'word_swaps', value: [`dusk → ${MARKER}`] }], baseVersion: sheet.versionNumber });
+    expect((await executeProseCheck({ workspaceId: ctx.workspaceId, sceneId })).outcome).toBe('CHECKED');
+    const proseRes = await wrapped(() => getSceneProseChecks(ctx, bookId, sceneId));
+    const proseView = (await proseRes.json()) as { findings: Array<{ id: string; ruleId: string; params: Record<string, unknown> }> };
+    const bannedNote = proseView.findings.find((f) => f.ruleId === 'banned-words');
+    expect(bannedNote).toBeDefined();
+    await wrapped(() => dismissProseFinding(ctx, bookId, { findingId: bannedNote!.id }));
+    await wrapped(() => saveProseCheckSettings(ctx, bookId, { alexEnabled: true, rulesOff: ['wordy'] }));
 
     const twoFacts = await prisma.storyFact.findMany({ where: { bookId, sourceKind: 'BIBLE_VERSION' }, orderBy: { createdAt: 'asc' }, take: 2, select: { id: true } });
     expect(twoFacts).toHaveLength(2);
@@ -509,6 +523,9 @@ it('a marker planted in every author-text path reaches no log line, span, Sentry
     expect(read['audit details']).toContain('BIBLE_FACTS_EXTRACTED');
     expect(read['audit details']).toContain('MANUSCRIPT_IMPORTED');
     expect(read['audit details']).toContain('MANUSCRIPT_SCENE_RESTORED');
+    expect(read['audit details']).toContain('PROSE_FINDING_DISMISSED');
+    expect(read['audit details']).toContain('PROSE_CHECK_SETTINGS_CHANGED');
+    expect(read['logs (as written, after the redacting formatter)']).toContain('prose check finished');
     expect(read.Sentry).toContain('Error');
     for (const [sink, text] of Object.entries(read)) {
         expect([sink, text.toLowerCase().includes(MARKER.toLowerCase())]).toEqual([sink, false]);

@@ -84,6 +84,9 @@ export const ENCRYPTED_FIELDS: EncryptedFieldManifest = Object.freeze({
     ManuscriptScene: Object.freeze(['title', 'text', 'storyTime', 'note']),
     SceneVersion: Object.freeze(['text']),
     SceneNoteVersion: Object.freeze(['note']),
+    // Phase 5.2 (D34): a prose finding's detail (the words it is about, its suggestion) and the book's word baseline.
+    ProseFinding: Object.freeze(['detail']),
+    ProseBookBaseline: Object.freeze(['baseline']),
 });
 
 /** The lookups the extension runs per operation, compiled once per manifest. */

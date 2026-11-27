@@ -15,12 +15,16 @@
  *                 time, plot beats), its linked elements with their summaries
  *                 (mentions and explicit links), its note, and its history
  *   focus         hides the panel and the header: the text alone
+ *   prose notes   the style checks' margin (5.2, D34): notes beside the text,
+ *                 dismissed or acted on by the author; a suggestion is applied
+ *                 only when the author accepts it, as an edit of their own that
+ *                 the autosave sends like any keystroke
  *
  * A reader reads the text and the panel as text: no control is offered.
  * Nothing here calls a model, and nothing writes the text but the autosave and
  * a restore (D3).
  */
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
@@ -37,6 +41,10 @@ import { bibleFetch, reasonOf } from '@/lib/bible/api-client';
 import { BIBLE_KINDS } from '@/lib/bible/kinds';
 import { MANUSCRIPT_API, type SceneTextResult, type SceneView } from '@/lib/manuscript/api-client';
 import { ElementPicker } from './ElementPicker';
+import { ProseNotesMargin } from './ProseNotesMargin';
+import type { SceneEditorApi } from './SceneTextEditor';
+import { useProseNotes } from './use-prose-notes';
+import type { ProseFindingView } from '@/lib/prose-checks/vocabulary';
 import { SceneHistoryPanel } from './SceneHistoryPanel';
 import { useManuscriptReason } from './messages';
 import { useSceneAutosave } from './use-scene-autosave';
@@ -89,6 +97,60 @@ export function SceneEditorPage({ workspaceSlug, book, initial, canEdit, kindLab
     );
     const autosave = useSceneAutosave({ workspaceSlug, bookId: book.id, sceneId: initial.id, enabled: canEdit, initialRevision: initial.revision, onSaved });
     const session = useSessionGoal(book.id, initial.id, initial.wordCount);
+
+    // The prose notes (5.2, D34): read after each save, placed by the editor, acted on here.
+    const notes = useProseNotes({ workspaceSlug, bookId: book.id, sceneId: initial.id, canEdit, revision: autosave.revision });
+    const editorApi = useRef<SceneEditorApi | null>(null);
+    const [placedIds, setPlacedIds] = useState<string[]>([]);
+    const [unplaced, setUnplaced] = useState(0);
+    const [layout, setLayout] = useState<Record<string, number>>({});
+    const [activeNote, setActiveNote] = useState<string | null>(null);
+    const onApi = useCallback((api: SceneEditorApi | null) => {
+        editorApi.current = api;
+    }, []);
+    const onNotesPlaced = useCallback((ids: string[], missed: number) => {
+        setPlacedIds(ids);
+        setUnplaced(missed);
+        setActiveNote(null);
+    }, []);
+    const onNotesLayout = useCallback((l: Array<{ id: string; top: number }>) => {
+        setLayout(Object.fromEntries(l.map((x) => [x.id, x.top])));
+        // A note the text no longer holds (edited away) leaves the margin with it.
+        setPlacedIds((ids) => {
+            const live = new Set(l.map((x) => x.id));
+            const next = ids.filter((id) => live.has(id));
+            return next.length === ids.length ? ids : next;
+        });
+    }, []);
+    const takeOff = useCallback((ids: readonly string[]) => {
+        editorApi.current?.removeNotes(ids);
+        setPlacedIds((prev) => prev.filter((id) => !ids.includes(id)));
+        setActiveNote((a) => (a !== null && ids.includes(a) ? null : a));
+    }, []);
+    const dismissNote = useCallback(
+        (f: ProseFindingView) => {
+            takeOff([f.id]);
+            void notes.dismiss(f.id);
+        },
+        [notes, takeOff],
+    );
+    const ruleOff = useCallback(
+        (f: ProseFindingView) => {
+            takeOff((notes.view?.findings ?? []).filter((x) => x.ruleId === f.ruleId).map((x) => x.id));
+            void notes.turnRuleOff(f.ruleId);
+        },
+        [notes, takeOff],
+    );
+    const acceptNote = useCallback(
+        (f: ProseFindingView) => {
+            // The author's own edit, in the editor: its autosave sends it like any keystroke.
+            if (editorApi.current?.acceptSuggestion(f.id)) {
+                notes.forget(f.id);
+                setActiveNote(null);
+            }
+        },
+        [notes],
+    );
 
     const onChange = useCallback(
         (html: string, count: number) => {
@@ -205,16 +267,47 @@ export function SceneEditorPage({ workspaceSlug, book, initial, canEdit, kindLab
                         </div>
                     ) : null}
                     <Card className="p-6">
-                        <SceneTextEditor
-                            key={editorKey}
-                            workspaceSlug={workspaceSlug}
-                            bookId={book.id}
-                            initialHtml={editorHtml}
-                            editable={canEdit}
-                            onChange={onChange}
-                            label={t('textLabel')}
-                            kindLabel={kindLabel}
-                        />
+                        <div className="gap-default lg:grid lg:grid-cols-[minmax(0,1fr)_14rem]">
+                            <SceneTextEditor
+                                key={editorKey}
+                                workspaceSlug={workspaceSlug}
+                                bookId={book.id}
+                                initialHtml={editorHtml}
+                                editable={canEdit}
+                                onChange={onChange}
+                                label={t('textLabel')}
+                                kindLabel={kindLabel}
+                                proseNotes={
+                                    // Placed only while nothing typed is waiting to be saved: the stored text, which was checked, is the editor's.
+                                    notes.view && (autosave.state === 'saved' || autosave.state === 'idle') ? { token: notes.token + editorKey * 100_000, findings: notes.view.findings } : null
+                                }
+                                activeNoteId={activeNote}
+                                onNotesPlaced={onNotesPlaced}
+                                onNotesLayout={onNotesLayout}
+                                onNoteActivate={setActiveNote}
+                                onApi={onApi}
+                            />
+                            <div className="mt-section lg:mt-0">
+                                <ProseNotesMargin
+                                    view={notes.view}
+                                    placedIds={placedIds}
+                                    unplaced={unplaced}
+                                    layout={layout}
+                                    activeId={activeNote}
+                                    canEdit={canEdit}
+                                    loadError={notes.loadError}
+                                    scheduled={notes.scheduled}
+                                    onActivate={(id) => {
+                                        setActiveNote(id);
+                                        if (id) editorApi.current?.revealNote(id);
+                                    }}
+                                    onDismiss={dismissNote}
+                                    onRuleOff={ruleOff}
+                                    onAccept={acceptNote}
+                                    onCheckNow={() => void notes.checkNow()}
+                                />
+                            </div>
+                        </div>
                     </Card>
                     <div className="flex flex-wrap items-center justify-between gap-default text-sm text-content-muted" data-testid="scene-status">
                         <p aria-live="polite">

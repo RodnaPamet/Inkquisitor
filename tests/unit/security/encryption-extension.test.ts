@@ -203,6 +203,8 @@ describe('wiring', () => {
             ManuscriptScene: ['title', 'text', 'storyTime', 'note'],
             SceneVersion: ['text'],
             SceneNoteVersion: ['note'],
+            ProseFinding: ['detail'],
+            ProseBookBaseline: ['baseline'],
         });
         expect(compileManifest(ENCRYPTED_FIELDS).isEmpty).toBe(false);
     });
