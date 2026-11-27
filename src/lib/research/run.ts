@@ -47,6 +47,24 @@ export interface ScopeElementInput {
     readonly stored: ReadonlyMap<string, FieldValue>;
 }
 
+/**
+ * A manuscript scene the fit step is shown (Phase 5.1): the brief's scoped
+ * chapters' scenes and its scoped scenes, each by a ref (`s1`, …). Author text,
+ * so fenced as data and guard-scanned like every block; never in the gather
+ * request (D9, D15).
+ */
+export interface FitSceneInput {
+    readonly sceneRef: string;
+    readonly sceneId: string;
+    readonly title: string | null;
+    readonly chapterTitle: string | null;
+    readonly pov: string | null;
+    readonly setting: string | null;
+    readonly storyTime: string | null;
+    /** The opening of the scene's text, plain (`SCENE_EXCERPT_CHARS`, cut at a word). */
+    readonly excerpt: string;
+}
+
 export interface ResearchRunInput {
     readonly bookId: string;
     readonly brief: { readonly question: string; readonly purpose: string; readonly urls: readonly string[] };
@@ -55,6 +73,8 @@ export interface ResearchRunInput {
     readonly elements: readonly ScopeElementInput[];
     readonly bookNames: readonly string[];
     readonly bookIndex: BookTextIndex;
+    /** The manuscript scenes the fit step may note (Phase 5.1); none when the brief names no chapter or scene. */
+    readonly scenes?: readonly FitSceneInput[];
 }
 
 export interface ResearchMetrics {
@@ -79,6 +99,9 @@ export interface ResearchMetrics {
     /** D15: queries and URLs listed on the run, and those past the list's bound (counted, said). Set by the run's usecase. */
     egressListed?: number;
     egressUnlisted?: number;
+    /** Phase 5.1: manuscript scenes the fit step was shown, and those past its bound (counted). Set by the run's usecase. */
+    scenesShown?: number;
+    scenesCut?: number;
 }
 
 export interface ResearchStepsResult {
@@ -169,6 +192,12 @@ export function fitBlocks(input: ResearchRunInput, findings: readonly FindingDra
         });
     });
     blocks.push({ label: 'book.elements', text: JSON.stringify(input.bookNames.slice(0, BOOK_ELEMENTS_IN_FIT_MAX)) });
+    for (const s of input.scenes ?? []) {
+        blocks.push({
+            label: `scene.${s.sceneRef}`,
+            text: JSON.stringify({ sceneRef: s.sceneRef, title: s.title, chapter: s.chapterTitle, pov: s.pov, setting: s.setting, storyTime: s.storyTime, opening: s.excerpt }),
+        });
+    }
     return blocks;
 }
 
@@ -297,7 +326,12 @@ export async function runResearchSteps(
         metrics.errorCode = fitted.errorCode;
         return end(fitted.failure, sources, checked.findings);
     }
-    const fit = validateFit(parseFitOutput(fitted.output), { elements: fitElementsOf(input), findings: checked.findings, bookNames: input.bookNames });
+    const fit = validateFit(parseFitOutput(fitted.output), {
+        elements: fitElementsOf(input),
+        findings: checked.findings,
+        bookNames: input.bookNames,
+        scenes: (input.scenes ?? []).map((s) => ({ sceneRef: s.sceneRef, sceneId: s.sceneId })),
+    });
     metrics.proposalsDrafted = fit.drafted;
     metrics.proposalsKept = fit.proposals.length;
     metrics.fitRefusals = fit.refusals;

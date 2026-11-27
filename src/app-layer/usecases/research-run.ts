@@ -13,7 +13,9 @@
  *               D11). Then QUEUED → RUNNING, conditionally (of two workers, one
  *               claims it).
  *   2. READ     the brief, its files, the book's stored text (indexed for the
- *               egress check, never sent), the scope and related elements. The
+ *               egress check, never sent), the scope and related elements, and
+ *               (Phase 5.1) the scenes of its chapters and its scenes, shown to
+ *               the fit step only (`fitScenesOf`). The
  *               brief is checked against the book's text once more: a brief
  *               that now quotes it ends REFUSED `BRIEF_QUOTES_BIBLE`.
  *   3. STEPS    `runResearchSteps` (`src/lib/research/run.ts`), outside every
@@ -28,7 +30,8 @@
  *               proposal that still fits the bible as it stands NOW (an ADD into
  *               a field still empty, an UPDATE of a value still unchanged, a
  *               new element whose name the book still lacks — 2.5's
- *               `bookHoldsElementName`), each with its findings and the
+ *               `bookHoldsElementName`, a scene note whose scene still stands),
+ *               each with its findings and the
  *               element's current version as its base; then the run ends with
  *               its outcome, its metrics (counts and codes) and its spend, and
  *               the brief takes the run's status. Audited, counts only.
@@ -69,7 +72,8 @@ import { SOURCES_PER_BRIEF_MAX } from '@/app-layer/schemas/research';
 import { bookHoldsElementName } from './enrichment-names';
 import { deploymentPackRecordMode } from './interview-packs';
 import { modelUnavailableReason } from './model-calls';
-import { readBookText, scopeOf } from './research-common';
+import { fitScenesOf, readBookText, scopeOf } from './research-common';
+import { ManuscriptSceneRepository } from '@/app-layer/repositories/manuscript.repository';
 
 export interface ResearchRunDeps {
     /** The researcher (tests: one over the fake Messages API); omitted: the deployment's. */
@@ -194,7 +198,8 @@ export async function executeResearchRun(payload: { workspaceId: string; runId: 
             const book = await readBookText(db, ctx, run.bookId);
             const uploads = await ResearchSourceRepository.listTextsForBrief(db, ctx.workspaceId, run.briefId, SOURCES_PER_BRIEF_MAX);
             const elements = await scopeOf(db, ctx, run.bookId, brief.scopeElementIds, book);
-            return { brief, book, uploads, elements };
+            const scenes = await fitScenesOf(db, ctx, run.bookId, { chapterIds: brief.scopeChapterIds, sceneIds: brief.scopeSceneIds }, book);
+            return { brief, book, uploads, elements, scenes };
         },
         { timeout: 30_000 },
     );
@@ -262,6 +267,7 @@ export async function executeResearchRun(payload: { workspaceId: string; runId: 
                 elements: read.elements,
                 bookNames: read.book.names,
                 bookIndex: read.book.index,
+                scenes: read.scenes.scenes,
             },
             (deps.researcher ?? defaultResearcher)(ctx),
             observe,
@@ -280,7 +286,7 @@ export async function executeResearchRun(payload: { workspaceId: string; runId: 
     // 4. Persist, against the bible as it stands now.
     try {
         const seen = new Map(read.elements.map((e) => [e.elementId, e.stored] as const));
-        const metrics = { ...result.metrics, ...egressMetrics() };
+        const metrics = { ...result.metrics, ...egressMetrics(), scenesShown: read.scenes.scenes.length, scenesCut: read.scenes.cut };
         const outcome = await runInWorkspaceContext(
             ctx,
             async (db) => {
@@ -342,6 +348,32 @@ async function persist(
     for (const p of result.proposals) {
         const findings = p.findingRefs.map((r) => findingIds.get(r)).filter((id): id is string => id !== undefined);
         if (findings.length === 0) continue;
+        if (p.operation === 'SCENE_NOTE') {
+            // Phase 5.1: a note on a scene still in the book (a deleted scene's note is dropped, counted).
+            if (!(await ManuscriptSceneRepository.head(db, ctx.workspaceId, ref.bookId, p.sceneId))) {
+                stale += 1;
+                continue;
+            }
+            const text = sanitiseResearchProposalForStorage(p);
+            await ResearchProposalRepository.create(db, ctx.workspaceId, {
+                bookId: ref.bookId,
+                runId: ref.id,
+                operation: 'SCENE_NOTE',
+                elementId: null,
+                fieldKey: null,
+                sceneId: p.sceneId,
+                proposedValue: text.proposedValue,
+                baseVersion: null,
+                newKind: null,
+                newName: null,
+                newSummary: null,
+                rationale: text.rationale,
+                flags: [...p.flags],
+                findingIds: findings,
+            });
+            stored += 1;
+            continue;
+        }
         if (p.operation === 'NEW_ELEMENT') {
             if (await bookHoldsElementName(db, ctx, ref.bookId, p.newName)) {
                 stale += 1;

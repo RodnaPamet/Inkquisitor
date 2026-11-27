@@ -112,6 +112,11 @@ function compromisedAnswer(body: Record<string, unknown>): string {
                 { op: 'ADD', elementId: SCENE.setting.id, fieldKey: 'no_such_field', value: 'Trims the wick.', newKind: null, newName: null, newSummary: null, rationale: 'x', cites: ['f1'] },
                 { op: 'NEW_ELEMENT', elementId: null, fieldKey: null, value: null, newKind: 'CHARACTER', newName: FOREIGN_CANARY, newSummary: 'A keeper.', rationale: 'x', cites: ['f1'] },
                 { op: 'ADD', elementId: SCENE.setting.id, fieldKey: 'story_purpose', value: `${recite(FIT_PROMPT.system)}.`, newKind: null, newName: null, newSummary: null, rationale: 'x', cites: ['f1'] },
+                // Phase 5.1: notes on scenes — the injection as a note, the scene written as prose, a scene never shown, the prompt recited.
+                { op: 'SCENE_NOTE', elementId: null, fieldKey: null, value: injected, newKind: null, newName: null, newSummary: null, rationale: 'As the scene asks.', cites: ['f1'], sceneRef: 's1' },
+                { op: 'SCENE_NOTE', elementId: null, fieldKey: null, value: '"Hold the light steady, Ilse," her brother said as the storm came in.', newKind: null, newName: null, newSummary: null, rationale: 'The next lines.', cites: ['f1'], sceneRef: 's1' },
+                { op: 'SCENE_NOTE', elementId: null, fieldKey: null, value: 'Lighthouse keepers trimmed the wick every four hours through the night.', newKind: null, newName: null, newSummary: null, rationale: 'x', cites: ['f1'], sceneRef: 's9' },
+                { op: 'SCENE_NOTE', elementId: null, fieldKey: null, value: `${recite(FIT_PROMPT.system)}.`, newKind: null, newName: null, newSummary: null, rationale: 'x', cites: ['f1'], sceneRef: 's1' },
             ],
             noFit: [],
         });

@@ -6,7 +6,8 @@
  * relation's note and (Phase 3.3) its fields, a concept note, an interview answer, the reconcile step's
  * proposals, a rephrase, a research brief, an attached file, a fetched page
  * and its findings, a model answer that fails validation, and an unexpected
- * error whose message carries it, a model-call rate-limit refusal of a
+ * error whose message carries it, (Phase 5.1) a manuscript's titles, a scene's text, story time and note, an
+ * import's file and a research note on a scene, a model-call rate-limit refusal of a
  * request about it, and a word search for it (Phase 3.4: the query, and the
  * snippets that quote it back, answered and refused — through its route with
  * a real body: a malformed one, a member past its raw bound, each of the
@@ -73,6 +74,10 @@ import { chargeModelCalls, MODEL_CALLS_LIMIT } from '@/lib/security/model-call-r
 import { closeRoundAndReconcile } from '@/app-layer/usecases/enrichment-reconcile';
 import { attachResearchSource, createResearchBrief, dispatchResearchRun } from '@/app-layer/usecases/research-briefs';
 import { executeResearchRun } from '@/app-layer/usecases/research-run';
+import { acceptResearchProposal } from '@/app-layer/usecases/research-review';
+import { createChapter, createScene } from '@/app-layer/usecases/manuscript';
+import { restoreSceneVersion, saveSceneNote, saveSceneText, updateSceneMeta } from '@/app-layer/usecases/manuscript-scenes';
+import { confirmManuscriptImport, previewManuscriptImport } from '@/app-layer/usecases/manuscript-import';
 import { reconcilerOver } from '@/lib/enrichment/model-seam';
 import { RECONCILE_PROMPT } from '@/lib/enrichment/prompt';
 import { questionGeneratorOver } from '@/lib/interview/model-seam';
@@ -437,6 +442,44 @@ it('a marker planted in every author-text path reaches no log line, span, Sentry
         .filter((c) => !['id', 'dedupeKey', 'createdAt'].includes(c));
     const columnList = factColumns.map((c) => `"${c}"`).join(', ');
     await prisma.$executeRawUnsafe(`INSERT INTO "StoryFact" ("id", "dedupeKey", ${columnList}) SELECT $1, md5("dedupeKey") || md5("id"), ${columnList} FROM "StoryFact" WHERE "id" = $2`, `${extractedFact.id}x`, extractedFact.id);
+    // The manuscript (Phase 5.1, D33): a chapter, a scene and its title, text, story time and note, a stale save, a
+    // restore, an import (preview and confirm) — through the request wrapper — and a research brief scoped to the
+    // chapter whose fit step reads the scene's opening and proposes a note, accepted.
+    const chapterRes = await wrapped(() => createChapter(ctx, bookId, { title: marked('The storm') }));
+    const chapterId = ((await chapterRes.json()) as { id: string }).id;
+    const sceneId = (await createScene(ctx, bookId, { chapterId, title: marked('The lamp room') })).id;
+    await wrapped(() => saveSceneText(ctx, bookId, sceneId, { html: `<p>Ilse climbed to the lamp ${MARKER} at dusk.</p>`, baseRevision: 0, checkpoint: true }));
+    const staleScene = await wrapped(() => saveSceneText(ctx, bookId, sceneId, { html: `<p>Lost ${MARKER}</p>`, baseRevision: 0 }));
+    expect(staleScene.status).toBe(409);
+    expect((await staleScene.text()).toLowerCase()).not.toContain(MARKER.toLowerCase());
+    await wrapped(() => updateSceneMeta(ctx, bookId, sceneId, { baseRevision: 1, storyTime: marked('The third night') }));
+    await wrapped(() => saveSceneNote(ctx, bookId, sceneId, { note: marked('Check the tide tables.'), baseNoteVersion: 0 }));
+    await wrapped(() => restoreSceneVersion(ctx, bookId, sceneId, 1, { baseRevision: 2 }));
+    const manuscriptDraft = new TextEncoder().encode(`# ${MARKER} chapter\n\nThe keeper ${MARKER} slept.\n`);
+    const previewRes = await wrapped(() => previewManuscriptImport(ctx, bookId, { bytes: manuscriptDraft, filename: `${MARKER}.md` }, { scan: CLEAN_SCAN }));
+    const { token, issuedAt, plan } = (await previewRes.json()) as { token: string; issuedAt: number; plan: object };
+    const planHeader = Buffer.from(JSON.stringify({ token, issuedAt, ...plan }), 'utf8').toString('base64url');
+    expect((await wrapped(() => confirmManuscriptImport(ctx, bookId, { bytes: manuscriptDraft, filename: `${MARKER}.md` }, planHeader, { scan: CLEAN_SCAN }))).status).toBe(200);
+    const sceneBrief = await createResearchBrief(ctx, bookId, { question: 'What did lighthouse keepers do each night?', purpose: 'Routines for the storm chapter.', scopeChapterIds: [chapterId], depth: 'QUICK' });
+    const sceneWeb = fakeAnthropic([
+        { kind: 'events', events: gatherEvents({ query: 'lighthouse keepers night routine', pages: [PAGE] }) },
+        {
+            kind: 'text',
+            text: JSON.stringify({
+                findings: [{ claim: 'Lighthouse keepers trimmed the wick every four hours through the night.', summary: 'Lighthouse keepers trimmed the wick every four hours through the night.', confidence: 'HIGH', citations: [{ ref: 'web.1', quote: 'Lighthouse keepers trimmed the wick every four hours through the night' }] }],
+            }),
+        },
+        {
+            kind: 'text',
+            text: JSON.stringify({ proposals: [{ op: 'SCENE_NOTE', elementId: null, fieldKey: null, value: 'Lighthouse keepers trimmed the wick every four hours through the night.', newKind: null, newName: null, newSummary: null, rationale: marked('The scene is at night'), cites: ['f1'], sceneRef: 's1' }], noFit: [] }),
+        },
+    ]);
+    const sceneRun = await dispatchResearchRun(ctx, bookId, sceneBrief.id, { gate: MOUNTED_GATE, enqueue: async () => undefined });
+    await executeResearchRun({ workspaceId: ctx.workspaceId, runId: sceneRun.runId }, { gate: MOUNTED_GATE, researcher: (c) => defaultResearcher(c, { fetch: sceneWeb.fetch }) });
+    expect(JSON.stringify(sceneWeb.requests[2])).toContain(MARKER);
+    const noteProposal = await prisma.researchProposal.findFirstOrThrow({ where: { runId: sceneRun.runId, operation: 'SCENE_NOTE' }, select: { id: true } });
+    await acceptResearchProposal(ctx, bookId, noteProposal.id, {});
+
     const twoFacts = await prisma.storyFact.findMany({ where: { bookId, sourceKind: 'BIBLE_VERSION' }, orderBy: { createdAt: 'asc' }, take: 2, select: { id: true } });
     expect(twoFacts).toHaveLength(2);
     const pr = await prisma.storyFactProposal.create({ data: { workspaceId: ctx.workspaceId, bookId, factId: twoFacts[0].id, newerFactId: twoFacts[1].id, reason: 'CONTRADICTED', basis: 'RULE', kind: 'VALUE' }, select: { id: true } });
@@ -464,6 +507,8 @@ it('a marker planted in every author-text path reaches no log line, span, Sentry
     expect(read.AiCallLog).toContain('sources.extract-facts');
     expect(read.AiCallLog).toContain('facts.bible-extract');
     expect(read['audit details']).toContain('BIBLE_FACTS_EXTRACTED');
+    expect(read['audit details']).toContain('MANUSCRIPT_IMPORTED');
+    expect(read['audit details']).toContain('MANUSCRIPT_SCENE_RESTORED');
     expect(read.Sentry).toContain('Error');
     for (const [sink, text] of Object.entries(read)) {
         expect([sink, text.toLowerCase().includes(MARKER.toLowerCase())]).toEqual([sink, false]);

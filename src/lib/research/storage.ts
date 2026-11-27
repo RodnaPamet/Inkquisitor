@@ -8,7 +8,7 @@ import { encodeFieldValue, normaliseFieldValue, type FieldValue } from '@/lib/bi
 import type { BibleKind } from '@/lib/bible/kinds';
 import { getFieldDef } from '@/lib/bible/templates';
 import { plainBlock, plainLine } from '@/lib/bible/text';
-import { CLAIM_MAX, NO_FIT_REASON_MAX, RATIONALE_MAX, SUMMARY_MAX } from './schema';
+import { CLAIM_MAX, NO_FIT_REASON_MAX, RATIONALE_MAX, SCENE_NOTE_PROPOSAL_MAX, SUMMARY_MAX } from './schema';
 import { QUOTE_MAX_CHARS, SOURCE_TEXT_MAX_CHARS } from './sources';
 import type { FindingDraft, FitDraft } from './validate';
 import { NEW_ELEMENT_NAME_MAX, NEW_ELEMENT_SUMMARY_MAX } from './validate';
@@ -106,6 +106,11 @@ export interface StoredProposalText {
 /** A validated proposal as stored: the value through the field's own check again, the rest as plain text. */
 export function sanitiseResearchProposalForStorage(p: FitDraft): StoredProposalText {
     const rationale = required(plainBlock(bounded(p.rationale, RATIONALE_MAX)), RATIONALE_MAX, 'rationale');
+    if (p.operation === 'SCENE_NOTE') {
+        // Phase 5.1: a note on a scene, plain text, JSON-encoded as a text field's value is.
+        const note = required(plainBlock(bounded(p.note, SCENE_NOTE_PROPOSAL_MAX)), SCENE_NOTE_PROPOSAL_MAX, 'value');
+        return { proposedValue: JSON.stringify(note), newName: null, newSummary: null, rationale };
+    }
     if (p.operation === 'NEW_ELEMENT') {
         const summary = p.newSummary ? plainBlock(p.newSummary).slice(0, NEW_ELEMENT_SUMMARY_MAX).trim() : '';
         return { proposedValue: null, newName: required(plainLine(bounded(p.newName, NEW_ELEMENT_NAME_MAX)), NEW_ELEMENT_NAME_MAX, 'name'), newSummary: summary || null, rationale };

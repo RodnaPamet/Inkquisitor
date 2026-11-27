@@ -1,0 +1,417 @@
+/**
+ * The manuscript's tables (Phase 5.1, D33). Workspace-scoped: every query runs
+ * inside `runInWorkspaceContext` AND filters by `workspaceId`, and every query
+ * by its book. No authorization and no validation here: the usecases
+ * (`src/app-layer/usecases/manuscript*.ts`) ask permission and sanitise first.
+ *
+ * The encrypted columns (titles, `text`, `storyTime`, `note`, the versions'
+ * `text` and `note`) are sealed and opened by the field-encryption extension;
+ * this module reads and writes plaintext and never filters on them. Outline
+ * reads carry no scene text: a manuscript of five thousand scenes decrypts
+ * their titles, never their prose.
+ *
+ * A SCENE'S TEXT IS WRITTEN BY TWO METHODS ONLY, `setText` and `createScenes`,
+ * and only `src/app-layer/usecases/manuscript-text.ts` calls them (D3,
+ * `tests/guards/scene-text-stays-off-the-model-path.test.ts`).
+ */
+import type { BibleVersionSource, Prisma, SceneVersionSource } from '@prisma/client';
+
+type Db = Prisma.TransactionClient;
+
+const PART_SELECT = { id: true, manuscriptId: true, title: true, rank: true, updatedAt: true } as const satisfies Prisma.ManuscriptPartSelect;
+const CHAPTER_SELECT = { id: true, partId: true, title: true, rank: true, updatedAt: true } as const satisfies Prisma.ManuscriptChapterSelect;
+/** A scene as the outline shows it: no text, no note. */
+export const SCENE_OUTLINE_SELECT = {
+    id: true,
+    chapterId: true,
+    title: true,
+    rank: true,
+    wordCount: true,
+    povElementId: true,
+    settingElementId: true,
+    updatedAt: true,
+} as const satisfies Prisma.ManuscriptSceneSelect;
+export const SCENE_SELECT = {
+    ...SCENE_OUTLINE_SELECT,
+    bookId: true,
+    text: true,
+    revision: true,
+    storyTime: true,
+    note: true,
+    noteVersion: true,
+    createdAt: true,
+} as const satisfies Prisma.ManuscriptSceneSelect;
+const SCENE_HEAD_SELECT = {
+    id: true,
+    bookId: true,
+    chapterId: true,
+    rank: true,
+    revision: true,
+    povElementId: true,
+    settingElementId: true,
+    noteVersion: true,
+    wordCount: true,
+} as const satisfies Prisma.ManuscriptSceneSelect;
+const VERSION_META_SELECT = { id: true, sceneId: true, versionNumber: true, wordCount: true, source: true, restoredFromVersion: true, authorId: true, createdAt: true } as const satisfies Prisma.SceneVersionSelect;
+
+export type PartRow = Prisma.ManuscriptPartGetPayload<{ select: typeof PART_SELECT }>;
+export type ChapterRow = Prisma.ManuscriptChapterGetPayload<{ select: typeof CHAPTER_SELECT }>;
+export type SceneOutlineRow = Prisma.ManuscriptSceneGetPayload<{ select: typeof SCENE_OUTLINE_SELECT }>;
+export type SceneRow = Prisma.ManuscriptSceneGetPayload<{ select: typeof SCENE_SELECT }>;
+export type SceneHeadRow = Prisma.ManuscriptSceneGetPayload<{ select: typeof SCENE_HEAD_SELECT }>;
+export type SceneVersionMetaRow = Prisma.SceneVersionGetPayload<{ select: typeof VERSION_META_SELECT }>;
+
+export const ManuscriptRepository = {
+    async find(db: Db, workspaceId: string, bookId: string) {
+        return db.manuscript.findFirst({ where: { workspaceId, bookId }, select: { id: true, bookId: true } });
+    },
+
+    async create(db: Db, workspaceId: string, bookId: string) {
+        return db.manuscript.create({ data: { workspaceId, bookId }, select: { id: true, bookId: true } });
+    },
+
+    async touch(db: Db, workspaceId: string, manuscriptId: string) {
+        await db.manuscript.updateMany({ where: { workspaceId, id: manuscriptId }, data: { updatedAt: new Date() } });
+    },
+
+    /**
+     * The manuscript's STRUCTURE lock (a transaction-scoped advisory lock on
+     * the book): every create, move and delete of a part, chapter or scene, and
+     * an import, take it, so ranks and counts are read and written in turn.
+     * LOCK ORDER (D25, extended by 5.1): after every bible lock — map → names →
+     * order → element → relation → manuscript → scene — and BEFORE any scene's
+     * own lock. No path takes a bible advisory lock after it.
+     */
+    async lockStructure(db: Db, bookId: string) {
+        await db.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${'manuscript:' + bookId}))`;
+    },
+
+    /** One scene's lock: every save of its text, metadata or note, and a restore, queue here. Taken after `lockStructure` when both are. */
+    async lockScene(db: Db, sceneId: string) {
+        await db.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${'manuscript-scene:' + sceneId}))`;
+    },
+
+    /**
+     * The bible elements of the book among `ids`, each row held FOR KEY SHARE
+     * to commit (a deletion of one waits for this save, or this save for it).
+     * Taken BEFORE the save touches any link or scene row: a bible deletion
+     * locks its element row and then, by cascade, the scene rows naming it, so
+     * a save that held a scene row while it waited for an element row would
+     * deadlock with it (D25: element rows before scene rows, whoever writes).
+     * No advisory bible lock is taken.
+     */
+    async lockElements(db: Db, workspaceId: string, bookId: string, ids: readonly string[]): Promise<Map<string, { kind: string; name: string }>> {
+        if (ids.length === 0) return new Map();
+        const rows = await db.$queryRaw<Array<{ id: string; kind: string; name: string }>>`
+            SELECT "id", "kind"::text AS "kind", "name" FROM "BibleElement"
+            WHERE "workspaceId" = ${workspaceId} AND "bookId" = ${bookId} AND "id" = ANY(${[...ids]}::text[])
+            ORDER BY "id"
+            FOR KEY SHARE`;
+        return new Map(rows.map((r) => [r.id, { kind: r.kind, name: r.name }]));
+    },
+
+    /** Bible elements of the book by id, with their summaries (the editor's side panel), at most `ids.length`. Read only. */
+    async elementsByIds(db: Db, workspaceId: string, bookId: string, ids: readonly string[]) {
+        if (ids.length === 0) return [];
+        return db.bibleElement.findMany({ where: { workspaceId, bookId, id: { in: [...ids] } }, select: { id: true, kind: true, name: true, summary: true }, take: ids.length });
+    },
+
+    /** The database's clock (a version's age is judged by one clock, whatever app server saves). */
+    async dbNow(db: Db): Promise<Date> {
+        const rows = await db.$queryRaw<Array<{ now: Date }>>`SELECT now() AS "now"`;
+        return rows[0].now;
+    },
+};
+
+export const ManuscriptPartRepository = {
+    async list(db: Db, workspaceId: string, bookId: string, take: number): Promise<PartRow[]> {
+        return db.manuscriptPart.findMany({ where: { workspaceId, bookId }, select: PART_SELECT, take });
+    },
+
+    async find(db: Db, workspaceId: string, bookId: string, partId: string): Promise<PartRow | null> {
+        return db.manuscriptPart.findFirst({ where: { workspaceId, bookId, id: partId }, select: PART_SELECT });
+    },
+
+    async count(db: Db, workspaceId: string, bookId: string): Promise<number> {
+        return db.manuscriptPart.count({ where: { workspaceId, bookId } });
+    },
+
+    async create(db: Db, workspaceId: string, data: { bookId: string; manuscriptId: string; title: string | null; rank: string }): Promise<PartRow> {
+        return db.manuscriptPart.create({ data: { workspaceId, bookId: data.bookId, manuscriptId: data.manuscriptId, title: data.title, rank: data.rank }, select: PART_SELECT });
+    },
+
+    /** An import's parts, one statement (ids minted by the caller so chapters can name them). */
+    async createParts(db: Db, workspaceId: string, bookId: string, manuscriptId: string, rows: ReadonlyArray<{ id: string; title: string | null; rank: string }>) {
+        if (rows.length === 0) return;
+        await db.manuscriptPart.createMany({ data: rows.map((r) => ({ id: r.id, workspaceId, bookId, manuscriptId, title: r.title, rank: r.rank })) });
+    },
+
+    async rename(db: Db, workspaceId: string, partId: string, title: string | null) {
+        return db.manuscriptPart.updateMany({ where: { workspaceId, id: partId }, data: { title } });
+    },
+
+    async setRank(db: Db, workspaceId: string, partId: string, rank: string) {
+        return db.manuscriptPart.updateMany({ where: { workspaceId, id: partId }, data: { rank } });
+    },
+
+    async remove(db: Db, workspaceId: string, bookId: string, partId: string): Promise<number> {
+        return (await db.manuscriptPart.deleteMany({ where: { workspaceId, bookId, id: partId } })).count;
+    },
+};
+
+export const ManuscriptChapterRepository = {
+    async list(db: Db, workspaceId: string, bookId: string, take: number): Promise<ChapterRow[]> {
+        return db.manuscriptChapter.findMany({ where: { workspaceId, bookId }, select: CHAPTER_SELECT, take });
+    },
+
+    async listForPart(db: Db, workspaceId: string, partId: string, take: number): Promise<ChapterRow[]> {
+        return db.manuscriptChapter.findMany({ where: { workspaceId, partId }, select: CHAPTER_SELECT, take });
+    },
+
+    async find(db: Db, workspaceId: string, bookId: string, chapterId: string): Promise<ChapterRow | null> {
+        return db.manuscriptChapter.findFirst({ where: { workspaceId, bookId, id: chapterId }, select: CHAPTER_SELECT });
+    },
+
+    async findByIds(db: Db, workspaceId: string, bookId: string, ids: readonly string[]): Promise<ChapterRow[]> {
+        if (ids.length === 0) return [];
+        return db.manuscriptChapter.findMany({ where: { workspaceId, bookId, id: { in: [...ids] } }, select: CHAPTER_SELECT, take: ids.length });
+    },
+
+    async count(db: Db, workspaceId: string, bookId: string): Promise<number> {
+        return db.manuscriptChapter.count({ where: { workspaceId, bookId } });
+    },
+
+    async create(db: Db, workspaceId: string, data: { bookId: string; partId: string; title: string | null; rank: string }): Promise<ChapterRow> {
+        return db.manuscriptChapter.create({ data: { workspaceId, bookId: data.bookId, partId: data.partId, title: data.title, rank: data.rank }, select: CHAPTER_SELECT });
+    },
+
+    /** An import's chapters, in batches of a thousand a statement (ids minted by the caller so scenes can name them). */
+    async createChapters(db: Db, workspaceId: string, bookId: string, rows: ReadonlyArray<{ id: string; partId: string; title: string | null; rank: string }>) {
+        for (let i = 0; i < rows.length; i += 1_000) {
+            await db.manuscriptChapter.createMany({ data: rows.slice(i, i + 1_000).map((r) => ({ id: r.id, workspaceId, bookId, partId: r.partId, title: r.title, rank: r.rank })) });
+        }
+    },
+
+    async rename(db: Db, workspaceId: string, chapterId: string, title: string | null) {
+        return db.manuscriptChapter.updateMany({ where: { workspaceId, id: chapterId }, data: { title } });
+    },
+
+    async move(db: Db, workspaceId: string, chapterId: string, to: { partId: string; rank: string }) {
+        return db.manuscriptChapter.updateMany({ where: { workspaceId, id: chapterId }, data: { partId: to.partId, rank: to.rank } });
+    },
+
+    async remove(db: Db, workspaceId: string, bookId: string, chapterId: string): Promise<number> {
+        return (await db.manuscriptChapter.deleteMany({ where: { workspaceId, bookId, id: chapterId } })).count;
+    },
+};
+
+/** One imported scene: its chapter, title, place and text (already sanitised by the one text writer). */
+export interface SceneInsert {
+    id: string;
+    chapterId: string;
+    title: string | null;
+    rank: string;
+    text: string;
+    wordCount: number;
+}
+
+export const ManuscriptSceneRepository = {
+    async listOutline(db: Db, workspaceId: string, bookId: string, take: number): Promise<SceneOutlineRow[]> {
+        return db.manuscriptScene.findMany({ where: { workspaceId, bookId }, select: SCENE_OUTLINE_SELECT, take });
+    },
+
+    async listForChapter(db: Db, workspaceId: string, chapterId: string, take: number): Promise<SceneOutlineRow[]> {
+        return db.manuscriptScene.findMany({ where: { workspaceId, chapterId }, select: SCENE_OUTLINE_SELECT, take });
+    },
+
+    async listForChapters(db: Db, workspaceId: string, bookId: string, chapterIds: readonly string[], take: number): Promise<SceneOutlineRow[]> {
+        if (chapterIds.length === 0) return [];
+        return db.manuscriptScene.findMany({ where: { workspaceId, bookId, chapterId: { in: [...chapterIds] } }, select: SCENE_OUTLINE_SELECT, take });
+    },
+
+    async findOutline(db: Db, workspaceId: string, bookId: string, ids: readonly string[]): Promise<SceneOutlineRow[]> {
+        if (ids.length === 0) return [];
+        return db.manuscriptScene.findMany({ where: { workspaceId, bookId, id: { in: [...ids] } }, select: SCENE_OUTLINE_SELECT, take: ids.length });
+    },
+
+    async find(db: Db, workspaceId: string, bookId: string, sceneId: string): Promise<SceneRow | null> {
+        return db.manuscriptScene.findFirst({ where: { workspaceId, bookId, id: sceneId }, select: SCENE_SELECT });
+    },
+
+    /** Several scenes with their text and note (the research fit's excerpts), at most `ids.length`. */
+    async findFull(db: Db, workspaceId: string, bookId: string, ids: readonly string[]): Promise<SceneRow[]> {
+        if (ids.length === 0) return [];
+        return db.manuscriptScene.findMany({ where: { workspaceId, bookId, id: { in: [...ids] } }, select: SCENE_SELECT, take: ids.length });
+    },
+
+    async head(db: Db, workspaceId: string, bookId: string, sceneId: string): Promise<SceneHeadRow | null> {
+        return db.manuscriptScene.findFirst({ where: { workspaceId, bookId, id: sceneId }, select: SCENE_HEAD_SELECT });
+    },
+
+    /** Every scene's title, text and note of a book, for the research egress index (bounded by the caller). */
+    async listTextForIndex(db: Db, workspaceId: string, bookId: string, take: number) {
+        return db.manuscriptScene.findMany({ where: { workspaceId, bookId }, select: { id: true, title: true, text: true, note: true, storyTime: true }, take });
+    },
+
+    async count(db: Db, workspaceId: string, bookId: string): Promise<number> {
+        return db.manuscriptScene.count({ where: { workspaceId, bookId } });
+    },
+
+    /** Words per chapter, an aggregate. */
+    async wordsByChapter(db: Db, workspaceId: string, bookId: string) {
+        const rows = await db.manuscriptScene.groupBy({ by: ['chapterId'], where: { workspaceId, bookId }, _sum: { wordCount: true } });
+        return new Map(rows.map((r) => [r.chapterId, r._sum.wordCount ?? 0]));
+    },
+
+    /** A new, empty scene. */
+    async create(db: Db, workspaceId: string, data: { bookId: string; chapterId: string; title: string | null; rank: string }): Promise<SceneOutlineRow> {
+        return db.manuscriptScene.create({ data: { workspaceId, bookId: data.bookId, chapterId: data.chapterId, title: data.title, rank: data.rank }, select: SCENE_OUTLINE_SELECT });
+    },
+
+    /** THE TEXT WRITER, one scene: its sanitised text, its word count and the next revision. Called only by `manuscript-text.ts`. */
+    async setText(db: Db, workspaceId: string, sceneId: string, data: { text: string; wordCount: number; revision: number }) {
+        return db.manuscriptScene.updateMany({ where: { workspaceId, id: sceneId }, data: { text: data.text, wordCount: data.wordCount, revision: data.revision } });
+    },
+
+    /** THE TEXT WRITER, an import's scenes in one statement each batch. Called only by `manuscript-text.ts`. */
+    async createScenes(db: Db, workspaceId: string, bookId: string, scenes: readonly SceneInsert[]) {
+        return db.manuscriptScene.createMany({
+            data: scenes.map((s) => ({ id: s.id, workspaceId, bookId, chapterId: s.chapterId, title: s.title, rank: s.rank, text: s.text, wordCount: s.wordCount })),
+        });
+    },
+
+    async updateMeta(
+        db: Db,
+        workspaceId: string,
+        sceneId: string,
+        data: { title: string | null; povElementId: string | null; settingElementId: string | null; storyTime: string | null; revision: number },
+    ) {
+        return db.manuscriptScene.updateMany({
+            where: { workspaceId, id: sceneId },
+            data: { title: data.title, povElementId: data.povElementId, settingElementId: data.settingElementId, storyTime: data.storyTime, revision: data.revision },
+        });
+    },
+
+    async setNote(db: Db, workspaceId: string, sceneId: string, data: { note: string | null; noteVersion: number }) {
+        return db.manuscriptScene.updateMany({ where: { workspaceId, id: sceneId }, data: { note: data.note, noteVersion: data.noteVersion } });
+    },
+
+    async move(db: Db, workspaceId: string, sceneId: string, to: { chapterId: string; rank: string }) {
+        return db.manuscriptScene.updateMany({ where: { workspaceId, id: sceneId }, data: { chapterId: to.chapterId, rank: to.rank } });
+    },
+
+    async remove(db: Db, workspaceId: string, bookId: string, sceneId: string): Promise<number> {
+        return (await db.manuscriptScene.deleteMany({ where: { workspaceId, bookId, id: sceneId } })).count;
+    },
+};
+
+export const SceneLinkRepository = {
+    async listForScene(db: Db, workspaceId: string, sceneId: string, take: number) {
+        return db.sceneElementLink.findMany({ where: { workspaceId, sceneId }, select: { elementId: true, mentioned: true, explicit: true }, take });
+    },
+
+    /** Insert or update one link's two flags (a row of neither is removed by `prune`). */
+    async upsert(db: Db, workspaceId: string, bookId: string, sceneId: string, elementId: string, flags: { mentioned: boolean; explicit: boolean }) {
+        await db.sceneElementLink.upsert({
+            where: { sceneId_elementId: { sceneId, elementId } },
+            create: { workspaceId, bookId, sceneId, elementId, mentioned: flags.mentioned, explicit: flags.explicit },
+            update: { mentioned: flags.mentioned, explicit: flags.explicit },
+        });
+    },
+
+    async removeMany(db: Db, workspaceId: string, sceneId: string, elementIds: readonly string[]) {
+        if (elementIds.length === 0) return;
+        await db.sceneElementLink.deleteMany({ where: { workspaceId, sceneId, elementId: { in: [...elementIds] } } });
+    },
+};
+
+export const SceneBeatRepository = {
+    async listForScene(db: Db, workspaceId: string, sceneId: string, take: number) {
+        return db.sceneBeatLink.findMany({ where: { workspaceId, sceneId }, select: { beatElementId: true }, take });
+    },
+
+    async add(db: Db, workspaceId: string, bookId: string, sceneId: string, beatIds: readonly string[]) {
+        if (beatIds.length === 0) return;
+        await db.sceneBeatLink.createMany({ data: beatIds.map((beatElementId) => ({ workspaceId, bookId, sceneId, beatElementId })), skipDuplicates: true });
+    },
+
+    async removeMany(db: Db, workspaceId: string, sceneId: string, beatIds: readonly string[]) {
+        if (beatIds.length === 0) return;
+        await db.sceneBeatLink.deleteMany({ where: { workspaceId, sceneId, beatElementId: { in: [...beatIds] } } });
+    },
+
+    /** The scenes that dramatise a beat (ids), at most `take`. */
+    async scenesOf(db: Db, workspaceId: string, bookId: string, beatElementId: string, take: number) {
+        return db.sceneBeatLink.findMany({ where: { workspaceId, bookId, beatElementId }, select: { sceneId: true }, take });
+    },
+};
+
+export const SceneVersionRepository = {
+    async latest(db: Db, workspaceId: string, sceneId: string) {
+        return db.sceneVersion.findFirst({ where: { workspaceId, sceneId }, orderBy: { versionNumber: 'desc' }, select: { ...VERSION_META_SELECT, text: true } });
+    },
+
+    async list(db: Db, workspaceId: string, bookId: string, sceneId: string, opts: { before?: number; take: number }): Promise<SceneVersionMetaRow[]> {
+        return db.sceneVersion.findMany({
+            where: { workspaceId, bookId, sceneId, ...(opts.before !== undefined ? { versionNumber: { lt: opts.before } } : {}) },
+            orderBy: { versionNumber: 'desc' },
+            select: VERSION_META_SELECT,
+            take: opts.take,
+        });
+    },
+
+    async find(db: Db, workspaceId: string, bookId: string, sceneId: string, versionNumber: number) {
+        return db.sceneVersion.findFirst({ where: { workspaceId, bookId, sceneId, versionNumber }, select: { ...VERSION_META_SELECT, text: true } });
+    },
+
+    async create(
+        db: Db,
+        workspaceId: string,
+        data: { bookId: string; sceneId: string; versionNumber: number; text: string; wordCount: number; source: SceneVersionSource; restoredFromVersion: number | null; authorId: string | null },
+    ) {
+        return db.sceneVersion.create({
+            data: {
+                workspaceId,
+                bookId: data.bookId,
+                sceneId: data.sceneId,
+                versionNumber: data.versionNumber,
+                text: data.text,
+                wordCount: data.wordCount,
+                source: data.source,
+                restoredFromVersion: data.restoredFromVersion,
+                authorId: data.authorId,
+            },
+            select: VERSION_META_SELECT,
+        });
+    },
+
+    /** An import's first versions, one statement a batch. */
+    async createMany(db: Db, workspaceId: string, bookId: string, rows: ReadonlyArray<{ sceneId: string; text: string; wordCount: number }>, authorId: string | null) {
+        return db.sceneVersion.createMany({
+            data: rows.map((r) => ({ workspaceId, bookId, sceneId: r.sceneId, versionNumber: 1, text: r.text, wordCount: r.wordCount, source: 'IMPORT' as const, restoredFromVersion: null, authorId })),
+        });
+    },
+};
+
+export const SceneNoteVersionRepository = {
+    async create(
+        db: Db,
+        workspaceId: string,
+        data: { bookId: string; sceneId: string; versionNumber: number; note: string; source: BibleVersionSource; sourceFindingIds: readonly string[]; sourceResearchProposalId: string | null; authorId: string | null },
+    ) {
+        return db.sceneNoteVersion.create({
+            data: {
+                workspaceId,
+                bookId: data.bookId,
+                sceneId: data.sceneId,
+                versionNumber: data.versionNumber,
+                note: data.note,
+                source: data.source,
+                sourceFindingIds: [...data.sourceFindingIds],
+                sourceResearchProposalId: data.sourceResearchProposalId,
+                authorId: data.authorId,
+            },
+            select: { id: true, versionNumber: true },
+        });
+    },
+};

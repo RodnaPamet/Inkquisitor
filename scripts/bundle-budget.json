@@ -66,6 +66,14 @@
       "recorded": 469183,
       "budget": 517120
     },
+    "/w/[workspaceSlug]/books/[bookId]/manuscript/page": {
+      "recorded": 472131,
+      "budget": 520192
+    },
+    "/w/[workspaceSlug]/books/[bookId]/manuscript/scenes/[sceneId]/page": {
+      "recorded": 490091,
+      "budget": 539648
+    },
     "/w/[workspaceSlug]/books/[bookId]/maps/[kind]/page": {
       "recorded": 476102,
       "budget": 524288

@@ -125,6 +125,46 @@ export function sanitizeRichTextHtml(input: string | null | undefined): string {
     });
 }
 
+// ─── Prose profile (Phase 5.1) ──────────────────────────────────────
+
+/**
+ * Tags a manuscript scene may hold: prose and nothing else. Paragraphs, line
+ * breaks, a scene-break rule, emphasis, block quotes and lists (letters,
+ * signs, verse) — no headings (a scene is not sectioned; the outline is the
+ * manuscript's structure), no links, tables, code or images.
+ */
+const SCENE_ALLOWED_TAGS: string[] = ['p', 'br', 'hr', 'strong', 'em', 'u', 's', 'blockquote', 'ul', 'ol', 'li', 'span'];
+
+/** A mention's element id: an id as the database mints them (`cuid`), nothing else. */
+const MENTION_ID = /^[a-z0-9]{1,64}$/;
+
+/**
+ * Sanitise a scene's text (the editor's HTML) before it is stored (Phase 5.1).
+ * The prose allowlist above; every attribute stripped but a MENTION's
+ * `data-mention` on a `<span>`, kept only when it is shaped like an element id
+ * and `keepMention` accepts it (the usecase passes the ids of elements of the
+ * scene's own book, `scene-html.ts`: a mention of anything else is plain text). Script-like elements go with their contents, as in the
+ * rich-text profile. Returns '' for a non-string.
+ */
+export function sanitizeSceneHtml(input: string | null | undefined, keepMention: (elementId: string) => boolean = () => true): string {
+    if (input == null || typeof input !== 'string') return '';
+    return sanitizeHtml(input, {
+        allowedTags: SCENE_ALLOWED_TAGS,
+        allowedAttributes: { span: ['data-mention'] },
+        allowedSchemes: [],
+        allowProtocolRelative: false,
+        nonTextTags: ['script', 'style', 'textarea', 'noscript', 'iframe', 'object', 'embed'],
+        transformTags: {
+            span: (tagName, attribs) => {
+                const id = attribs['data-mention'];
+                const kept: Record<string, string> = {};
+                if (typeof id === 'string' && MENTION_ID.test(id) && keepMention(id)) kept['data-mention'] = id;
+                return { tagName, attribs: kept };
+            },
+        },
+    });
+}
+
 // ─── Plain-text profile ─────────────────────────────────────────────
 
 /**

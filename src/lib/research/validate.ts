@@ -24,7 +24,11 @@
  *   finding gives, not one the book holds. A text that addresses the product
  *   itself (an action on a field, the bible, a prompt) is FLAGGED for the
  *   author, not refused (D14, as 2.5's proposals). "No fit" names a kept
- *   finding.
+ *   finding. SCENE_NOTE (Phase 5.1): a scene the run SHOWED (its ref), one note
+ *   a scene, the note plain text within its bound, no copied instruction, no
+ *   quoted speech the findings do not hold, and every sentence grounded in the
+ *   cited findings ALONE — never in the scene's own text, so a note can carry
+ *   nothing of the manuscript back as prose (D3); a rationale; D14 flags.
  */
 import type { FieldValue } from '@/lib/bible/field-values';
 import { normaliseFieldValue, sameFieldValue } from '@/lib/bible/field-values';
@@ -46,6 +50,8 @@ import {
     NO_FIT_REASON_MAX,
     RATIONALE_MAX,
     RESEARCH_PROPOSABLE_KINDS,
+    SCENE_NOTE_PROPOSAL_MAX,
+    SCENE_REF_PATTERN,
     SUMMARY_MAX,
     type FitProposalOutput,
     type ParsedFindings,
@@ -234,8 +240,17 @@ export interface FitElement {
     readonly stored: ReadonlyMap<string, FieldValue>;
 }
 
+/** A manuscript scene the fit step was shown (Phase 5.1), by its ref. */
+export interface FitScene {
+    /** `s1`, `s2`, … : its ref in the fit prompt. */
+    readonly sceneRef: string;
+    readonly sceneId: string;
+}
+
 export interface FitContext {
     readonly elements: readonly FitElement[];
+    /** The scenes shown (Phase 5.1); none when the brief names no chapter or scene. */
+    readonly scenes?: readonly FitScene[];
     readonly findings: readonly FindingDraft[];
     /**
      * The book's element names as the run read them (a first check; the
@@ -260,6 +275,15 @@ export type FitDraft =
           readonly newKind: BibleKind;
           readonly newName: string;
           readonly newSummary: string | null;
+          readonly rationale: string;
+          readonly findingRefs: readonly string[];
+          readonly flags: readonly ResearchProposalFlag[];
+      }
+    | {
+          readonly operation: 'SCENE_NOTE';
+          readonly sceneId: string;
+          /** The note, plain text (sanitised). */
+          readonly note: string;
           readonly rationale: string;
           readonly findingRefs: readonly string[];
           readonly flags: readonly ResearchProposalFlag[];
@@ -401,12 +425,28 @@ function validateNewElement(item: FitProposalOutput, cited: readonly FindingDraf
     };
 }
 
+/** A note on a scene (Phase 5.1): the rules in the header. The scene's own text is never evidence. */
+function validateSceneNote(item: FitProposalOutput, scene: FitScene, cited: readonly FindingDraft[], rationale: string): Verdict<FitDraft> {
+    if (typeof item.value !== 'string') return refuse(item.value === null ? 'VALUE_MISSING' : 'VALUE_INVALID');
+    const note = plainBlock(item.value).trim();
+    if (!note) return refuse('VALUE_MISSING');
+    if (note.length > SCENE_NOTE_PROPOSAL_MAX) return refuse('NOTE_TOO_LONG');
+    const sources = cited.flatMap(findingTexts);
+    const allowedUrls = [...sources, ...cited.flatMap((f) => f.citations.map((c) => c.url ?? ''))];
+    if (carriesInjectedText([note, rationale], allowedUrls)) return refuse('COPIES_INJECTED_TEXT');
+    if (writesProse([note], sources)) return refuse('WRITES_PROSE');
+    if (!groundedText(note, sources)) return refuse('UNSOURCED_SENTENCE');
+    return { ok: true, value: { operation: 'SCENE_NOTE', sceneId: scene.sceneId, note, rationale, findingRefs: cited.map((f) => f.ref), flags: flagsOf([note, rationale]) } };
+}
+
 /** Hold a fit answer to the rules. */
 export function validateFit(parsed: ParsedFit, ctx: FitContext): FitValidation {
     const refusals: Partial<Record<FitRefusal, number>> = {};
     for (let i = 0; i < parsed.malformed; i++) count(refusals, 'MALFORMED');
     const findings = new Map(ctx.findings.map((f) => [f.ref, f] as const));
     const elements = new Map(ctx.elements.map((e) => [e.elementId, e] as const));
+    const scenes = new Map((ctx.scenes ?? []).map((s) => [s.sceneRef, s] as const));
+    const notedScenes = new Set<string>();
     const proposals: FitDraft[] = [];
     const targets = new Set<string>();
     const newNames = new Set<string>();
@@ -424,6 +464,18 @@ export function validateFit(parsed: ParsedFit, ctx: FitContext): FitValidation {
         let verdict: Verdict<FitDraft>;
         if (item.op === 'NEW_ELEMENT') {
             verdict = validateNewElement(item, cites.value, rationale, ctx, newNames);
+        } else if (item.op === 'SCENE_NOTE') {
+            const scene = item.sceneRef && SCENE_REF_PATTERN.test(item.sceneRef) ? scenes.get(item.sceneRef) : undefined;
+            if (!scene || item.elementId !== null || item.fieldKey !== null) {
+                count(refusals, 'TARGETS_OUTSIDE_SCOPE');
+                continue;
+            }
+            if (notedScenes.has(scene.sceneId)) {
+                count(refusals, 'DUPLICATE_TARGET');
+                continue;
+            }
+            verdict = validateSceneNote(item, scene, cites.value, rationale);
+            if (verdict.ok) notedScenes.add(scene.sceneId);
         } else {
             const element = item.elementId ? elements.get(item.elementId) : undefined;
             if (!element) {

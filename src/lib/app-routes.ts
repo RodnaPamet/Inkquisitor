@@ -21,6 +21,10 @@ export const APP_ROUTES = {
     interviewReview: (workspaceSlug: string, bookId: string, sessionId: string) => `${bookPath(workspaceSlug, bookId)}/interviews/${encodeURIComponent(sessionId)}/review`,
     /** A book's research: briefs, runs, cited findings and the proposals they support (Phase 2.6). */
     research: (workspaceSlug: string, bookId: string) => `${bookPath(workspaceSlug, bookId)}/research`,
+    /** A book's manuscript: its outline of parts, chapters and scenes (Phase 5.1). */
+    manuscript: (workspaceSlug: string, bookId: string) => `${bookPath(workspaceSlug, bookId)}/manuscript`,
+    /** One scene's editor (Phase 5.1). */
+    scene: (workspaceSlug: string, bookId: string, sceneId: string) => `${bookPath(workspaceSlug, bookId)}/manuscript/scenes/${encodeURIComponent(sceneId)}`,
     /** A book's source library: its drafts, notes and earlier books, and the series sources it draws on (Phase 4.0). */
     bookSources: (workspaceSlug: string, bookId: string) => `${bookPath(workspaceSlug, bookId)}/sources`,
     /** The facts a book's sources state, for the author to confirm (Phase 4.0, D23). */

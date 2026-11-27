@@ -51,6 +51,8 @@ function brief(over: Partial<BriefView> = {}): BriefView {
         status: 'DONE',
         urls: ['https://falconry.example.org/manning'],
         scope: [{ id: 'e1', name: 'Wren', kind: 'CHARACTER' }],
+        chapters: [],
+        scenes: [],
         sources: [{ id: 's1', filename: 'notes.txt', byteLength: 120 }],
         createdAt: '2026-11-20T09:00:00.000Z',
         latestRun: run(),
@@ -59,6 +61,7 @@ function brief(over: Partial<BriefView> = {}): BriefView {
 }
 
 const REVIEW: RunReviewView = {
+    sceneNotes: [],
     run: run(),
     egress: {
         items: [
@@ -145,6 +148,7 @@ describe('the research page', () => {
             purpose: 'My heroine’s first ball.',
             depth: 'THOROUGH',
             scopeElementIds: [],
+            scopeChapterIds: [],
             urls: ['https://regency.example.net/cards', 'https://regency.example.net/balls'],
         });
         expect(await screen.findByText('Brief saved.')).toBeInTheDocument();

@@ -140,6 +140,35 @@ test('axe finds no WCAG 2.1 AA violation on the bible pages and dialogs', async 
     await expectNoAxeViolations(page, 'book interrogate, model off');
 });
 
+test('axe finds no WCAG 2.1 AA violation on the manuscript, its import dialog and the scene editor (Phase 5.1)', async ({ page }) => {
+    test.setTimeout(120_000);
+    const { slug, bookId } = await bookWithCharacter(page);
+    const main = page.getByRole('main');
+    const chapter = ((await (await page.request.post(`/api/w/${slug}/books/${bookId}/manuscript/chapters`, { data: { title: 'Chapter one' } })).json()) as { id: string }).id;
+    const scene = ((await (await page.request.post(`/api/w/${slug}/books/${bookId}/manuscript/scenes`, { data: { chapterId: chapter, title: 'The ferry' } })).json()) as { id: string }).id;
+    expect((await page.request.put(`/api/w/${slug}/books/${bookId}/manuscript/scenes/${scene}/text`, { data: { html: '<p>The ferry left at dawn.</p>', baseRevision: 0 } })).status()).toBe(200);
+
+    await page.goto(`/w/${slug}/books/${bookId}/manuscript`);
+    await expect(main.getByRole('heading', { level: 1, name: 'Manuscript' })).toBeVisible();
+    await expectNoAxeViolations(page, 'manuscript outline');
+    await main.locator('#manuscript-import').click();
+    await expect(page.getByRole('dialog')).toBeVisible();
+    await expectNoAxeViolations(page, 'manuscript import dialog', '[role="dialog"]');
+    await page.getByRole('dialog').locator('#manuscript-import-file').setInputFiles({ name: 'draft.md', mimeType: 'text/markdown', buffer: Buffer.from('# Chapter two\n\n## A scene\n\nWords.\n') });
+    await page.getByRole('dialog').locator('#manuscript-import-read').click();
+    await expect(page.getByTestId('manuscript-import-preview')).toBeVisible();
+    await expectNoAxeViolations(page, 'manuscript import, the split', '[role="dialog"]');
+    await page.keyboard.press('Escape');
+
+    await page.goto(`/w/${slug}/books/${bookId}/manuscript/scenes/${scene}`);
+    await expect(main.getByTestId('scene-text').getByRole('textbox')).toBeVisible();
+    await expectNoAxeViolations(page, 'scene editor, details');
+    for (const tab of ['Linked', 'Note', 'History']) {
+        await main.getByRole('radio', { name: tab }).click();
+        await expectNoAxeViolations(page, `scene editor, ${tab}`);
+    }
+});
+
 test('axe finds no WCAG 2.1 AA violation on the story maps, the type picker, the element sheet and the embedded maps (Phase 3.2)', async ({ page }) => {
     test.setTimeout(150_000);
     const { slug, bookId, elementId } = await bookWithCharacter(page);

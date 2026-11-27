@@ -26,9 +26,11 @@ import corpusJson from './injection-corpus.json';
  * GAP_HUNT (an element's summary in the gap ranking's book view) and
  * COMPACTION (an earlier round's answer, read by the rounds summary). Phase
  * 4.4 adds QUESTION_ORDER (an element's name in the interview tie-break's
- * near-equal candidates, D30 item 4).
+ * near-equal candidates, D30 item 4). Phase 5.1 adds MANUSCRIPT_SCENE (a scene's
+ * opening, shown to the research run's fit step when a brief is scoped to its
+ * chapter, which may propose a NOTE on it and never its prose, D3).
  */
-export const INJECTION_SURFACES = ['ANSWER', 'ELEMENT_TEXT', 'IMPORTED_NOTE', 'RESEARCH_PAGE', 'ATTACHED_FILE', 'RELATION_ANSWER', 'RELATION_TEXT', 'SOURCE_UPLOAD', 'BIBLE_ENTRY', 'CONTINUITY_FACTS', 'STRESS_TEST', 'GAP_HUNT', 'COMPACTION', 'QUESTION_ORDER'] as const;
+export const INJECTION_SURFACES = ['ANSWER', 'ELEMENT_TEXT', 'IMPORTED_NOTE', 'RESEARCH_PAGE', 'ATTACHED_FILE', 'RELATION_ANSWER', 'RELATION_TEXT', 'SOURCE_UPLOAD', 'BIBLE_ENTRY', 'CONTINUITY_FACTS', 'STRESS_TEST', 'GAP_HUNT', 'COMPACTION', 'QUESTION_ORDER', 'MANUSCRIPT_SCENE'] as const;
 export type InjectionSurface = (typeof INJECTION_SURFACES)[number];
 
 export const INJECTION_ATTACKS = [

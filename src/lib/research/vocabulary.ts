@@ -146,7 +146,8 @@ export function effectiveRunState(
 export const CONFIDENCES = ['LOW', 'MEDIUM', 'HIGH'] as const;
 export type ResearchConfidence = (typeof CONFIDENCES)[number];
 
-export const RESEARCH_OPS = ['ADD', 'UPDATE', 'NEW_ELEMENT'] as const;
+/** Phase 5.1 adds SCENE_NOTE: a note on a manuscript scene of the brief's chapters or scenes (never its prose, D3). */
+export const RESEARCH_OPS = ['ADD', 'UPDATE', 'NEW_ELEMENT', 'SCENE_NOTE'] as const;
 export type ResearchOp = (typeof RESEARCH_OPS)[number];
 
 /** What a stored proposal warns the author of (D14): its text addresses the product itself. */
@@ -210,6 +211,7 @@ export type FindingRefusal = (typeof FINDING_REFUSALS)[number];
  *   ELEMENT_EXISTS         a new element the book already holds, by name
  *   DUPLICATE_NEW_ELEMENT  a second proposal of one new element
  *   NO_FIT_UNKNOWN_FINDING a "no fit" naming a finding this run did not keep
+ *   NOTE_TOO_LONG          a scene note past its bound once sanitised (Phase 5.1)
  */
 export const FIT_REFUSALS = [
     'MALFORMED',
@@ -233,6 +235,7 @@ export const FIT_REFUSALS = [
     'ELEMENT_EXISTS',
     'DUPLICATE_NEW_ELEMENT',
     'NO_FIT_UNKNOWN_FINDING',
+    'NOTE_TOO_LONG',
 ] as const;
 export type FitRefusal = (typeof FIT_REFUSALS)[number];
 
@@ -264,12 +267,15 @@ export const RESEARCH_DECISION_REFUSALS = [
     'EDIT_CHANGES_NOTHING',
     'ELEMENT_EXISTS',
     'FINDING_KEPT',
+    'NOTE_FULL',
 ] as const;
 
 /** Why writing or running a brief was refused, as `details.reason`. */
 export const BRIEF_REFUSALS = [
     'BRIEF_QUOTES_BIBLE',
     'SCOPE_ELEMENT_NOT_IN_BOOK',
+    'SCOPE_CHAPTER_NOT_IN_BOOK',
+    'SCOPE_SCENE_NOT_IN_BOOK',
     'URL_INVALID',
     'RUN_IN_PROGRESS',
     'SOURCE_TYPE',

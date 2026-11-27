@@ -24,6 +24,9 @@
  *   precision    kept field proposals that target an expected field, over kept
  *                field proposals; zero proposals is NOT assessed, and fails
  *                (rule 6: a case that expects a fit and gets none is not a pass)
+ *   scene notes  (Phase 5.1) kept notes on an expected scene, over kept notes,
+ *                at the same bar; a case naming scene targets and keeping no
+ *                note fails NO_SCENE_NOTE
  *   attempts     a refusal for an out-of-scope target, copied injected text,
  *                quoted speech or a flagged quote fails the case even though
  *                nothing was stored: the model tried it
@@ -117,6 +120,8 @@ export function caseBookIndex(c: ResearchEvalCase): BookTextIndex {
         texts.push(e.name, e.summary);
         for (const v of Object.values(e.stored)) texts.push(Array.isArray(v) ? v.join('\n') : String(v));
     }
+    // Phase 5.1: the manuscript is indexed too (a query quoting a scene is refused as one quoting the bible).
+    for (const s of c.scenes ?? []) for (const t of [s.title, s.excerpt]) if (t) texts.push(t);
     return buildBookTextIndex(texts);
 }
 
@@ -138,6 +143,7 @@ export function caseRunInput(c: ResearchEvalCase): ResearchRunInput {
         })),
         bookNames: c.scope.map((e) => e.name),
         bookIndex: caseBookIndex(c),
+        scenes: (c.scenes ?? []).map((s, i) => ({ sceneRef: `s${i + 1}`, sceneId: s.id, title: s.title, chapterTitle: s.chapter, pov: s.pov, setting: s.setting, storyTime: s.storyTime, excerpt: s.excerpt })),
     };
 }
 
@@ -220,6 +226,7 @@ export function storedTexts(r: ResearchStepsResult): string[] {
     for (const p of r.proposals) {
         out.push(p.rationale);
         if (p.operation === 'NEW_ELEMENT') out.push(p.newName, p.newSummary ?? '');
+        else if (p.operation === 'SCENE_NOTE') out.push(p.note);
         else out.push(Array.isArray(p.value) ? p.value.join('\n') : String(p.value));
     }
     for (const reason of r.noFit.values()) out.push(reason);
@@ -243,7 +250,11 @@ export async function gradeCase(c: ResearchEvalCase, answer: RecordAnswer): Prom
     const covered = c.expect.claims.filter((e) => kept.some((k) => e.mustContain.every((m) => k.includes(m.toLowerCase())))).length;
     const coverage = covered / c.expect.claims.length;
     if (coverage < CASE_COVERAGE_BAR) failures.push('COVERAGE');
-    const fieldProposals = result.proposals.filter((p) => p.operation !== 'NEW_ELEMENT');
+    const fieldProposals = result.proposals.filter((p) => p.operation === 'ADD' || p.operation === 'UPDATE');
+    const notes = result.proposals.filter((p) => p.operation === 'SCENE_NOTE');
+    const sceneTargets = c.expect.sceneTargets ?? [];
+    if (sceneTargets.length > 0 && notes.length === 0) failures.push('NO_SCENE_NOTE');
+    if (notes.length > 0 && notes.filter((p) => 'sceneId' in p && sceneTargets.includes(p.sceneId)).length / notes.length < CASE_PRECISION_BAR) failures.push('SCENE_NOTE_PRECISION');
     let precision: number | null = null;
     if (fieldProposals.length === 0 && result.proposals.length === 0) failures.push('NO_FIT');
     if (fieldProposals.length > 0) {

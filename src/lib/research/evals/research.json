@@ -106,7 +106,8 @@
               "rationale": "A country surgeon of the 1850s would likely reach for chloroform.",
               "cites": [
                 "f2"
-              ]
+              ],
+              "sceneRef": null
             }
           ],
           "noFit": []
@@ -209,7 +210,8 @@
               "rationale": "Frequent sunrises shape the light on a low orbit station.",
               "cites": [
                 "f2"
-              ]
+              ],
+              "sceneRef": null
             }
           ],
           "noFit": []
@@ -321,7 +323,8 @@
               "cites": [
                 "f1",
                 "f2"
-              ]
+              ],
+              "sceneRef": null
             }
           ],
           "noFit": []
@@ -423,7 +426,8 @@
               "rationale": "A rule of the ball that can shape the heroine's choice.",
               "cites": [
                 "f2"
-              ]
+              ],
+              "sceneRef": null
             }
           ],
           "noFit": []
@@ -512,7 +516,8 @@
               "rationale": "The warning's timing depends on the operator's speed.",
               "cites": [
                 "f1"
-              ]
+              ],
+              "sceneRef": null
             }
           ],
           "noFit": []
@@ -613,7 +618,8 @@
               "rationale": "The pager's codes give the friends a private language.",
               "cites": [
                 "f2"
-              ]
+              ],
+              "sceneRef": null
             }
           ],
           "noFit": []
@@ -730,7 +736,8 @@
               "cites": [
                 "f1",
                 "f2"
-              ]
+              ],
+              "sceneRef": null
             }
           ],
           "noFit": []
@@ -834,7 +841,8 @@
               "rationale": "Her post exists only after the Yard adopted the system.",
               "cites": [
                 "f2"
-              ]
+              ],
+              "sceneRef": null
             }
           ],
           "noFit": []
@@ -935,7 +943,8 @@
               "rationale": "His nights are broken by the lamp's demands.",
               "cites": [
                 "f1"
-              ]
+              ],
+              "sceneRef": null
             }
           ],
           "noFit": []
@@ -1040,7 +1049,8 @@
               "rationale": "Constant relays shape the rider's days.",
               "cites": [
                 "f1"
-              ]
+              ],
+              "sceneRef": null
             },
             {
               "op": "NEW_ELEMENT",
@@ -1053,7 +1063,149 @@
               "rationale": "The route ends the rider's journey.",
               "cites": [
                 "f2"
+              ],
+              "sceneRef": null
+            }
+          ],
+          "noFit": []
+        }
+      }
+    },
+    {
+      "id": "rs-11",
+      "genre": "historical fiction",
+      "brief": {
+        "question": "How did sailing ships signal to each other at sea in the 1800s?",
+        "purpose": "My captain needs to warn another ship in chapter three without a radio.",
+        "depth": "QUICK"
+      },
+      "scope": [
+        {
+          "id": "el-01",
+          "kind": "CHARACTER",
+          "name": "Captain Mara Quell",
+          "role": "scope",
+          "summary": "A merchant captain on the Lisbon run.",
+          "stored": {
+            "want": "To bring her crew home before the storms."
+          }
+        }
+      ],
+      "scenes": [
+        {
+          "id": "sc-01",
+          "title": "Fog off the cape",
+          "chapter": "Chapter three",
+          "pov": "Captain Mara Quell",
+          "setting": null,
+          "storyTime": "The third night out",
+          "excerpt": "Mara stood at the rail and watched the other ship's lanterns drift closer through the fog. She had one chance to warn them off the shoal."
+        },
+        {
+          "id": "sc-02",
+          "title": "The harbour master",
+          "chapter": "Chapter three",
+          "pov": null,
+          "setting": null,
+          "storyTime": null,
+          "excerpt": "The harbour master counted the barrels twice and wrote nothing down."
+        }
+      ],
+      "web": [
+        {
+          "url": "https://maritime.example.org/signal-flags",
+          "title": "Signal flags at sea",
+          "text": "From 1817 merchant ships used Marryat's Code, a set of numbered signal flags, to send messages between vessels. At night ships signalled with lanterns, and in fog they fired guns or rang bells at fixed intervals."
+        }
+      ],
+      "expect": {
+        "claims": [
+          {
+            "mustContain": [
+              "marryat",
+              "flags"
+            ]
+          },
+          {
+            "mustContain": [
+              "fog",
+              "bells"
+            ]
+          }
+        ],
+        "fitTargets": [
+          {
+            "elementId": "el-01",
+            "fieldKey": "defining_traits"
+          }
+        ],
+        "sceneTargets": [
+          "sc-01"
+        ],
+        "mustNotContain": [],
+        "mustNotQuery": []
+      },
+      "reference": {
+        "queries": [
+          "How did sailing ships signal to each other at sea in the 1800s"
+        ],
+        "findings": {
+          "findings": [
+            {
+              "claim": "From 1817 merchant ships used Marryat's Code, a set of numbered signal flags.",
+              "summary": "From 1817 merchant ships used Marryat's Code, a set of numbered signal flags, to send messages between vessels.",
+              "confidence": "MEDIUM",
+              "citations": [
+                {
+                  "ref": "web.1",
+                  "quote": "From 1817 merchant ships used Marryat's Code, a set of numbered signal flags, to send messages between vessels."
+                }
               ]
+            },
+            {
+              "claim": "In fog ships fired guns or rang bells at fixed intervals.",
+              "summary": "At night ships signalled with lanterns, and in fog they fired guns or rang bells at fixed intervals.",
+              "confidence": "MEDIUM",
+              "citations": [
+                {
+                  "ref": "web.1",
+                  "quote": "At night ships signalled with lanterns, and in fog they fired guns or rang bells at fixed intervals."
+                }
+              ]
+            }
+          ]
+        },
+        "fit": {
+          "proposals": [
+            {
+              "op": "ADD",
+              "elementId": "el-01",
+              "fieldKey": "defining_traits",
+              "value": [
+                "Merchant ships used Marryat's Code, a set of numbered signal flags."
+              ],
+              "newKind": null,
+              "newName": null,
+              "newSummary": null,
+              "rationale": "A merchant captain of the period would know the signal flags.",
+              "cites": [
+                "f1"
+              ],
+              "sceneRef": null
+            },
+            {
+              "op": "SCENE_NOTE",
+              "elementId": null,
+              "fieldKey": null,
+              "value": "In fog, ships fired guns or rang bells at fixed intervals; lantern signals would not carry.",
+              "newKind": null,
+              "newName": null,
+              "newSummary": null,
+              "rationale": "The scene is set in fog, where flags and lanterns fail.",
+              "cites": [
+                "f2"
+              ],
+              "sceneRef": "s1"
             }
           ],
           "noFit": []

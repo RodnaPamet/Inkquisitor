@@ -34,6 +34,8 @@ import { decodeResearchValue, decodeSourceUrls } from '@/lib/research/storage';
 import type { ProposalStatus } from '@/lib/enrichment/vocabulary';
 import { EMPTY_PROGRESS, effectiveRunState, RESEARCH_EGRESS_PER_RUN_MAX, runHasResults, type EgressTool, type ResearchOutcome, type ResearchRunStatus, type RunProgress } from '@/lib/research/vocabulary';
 import { requireBook } from './bible-common';
+import { ManuscriptChapterRepository, ManuscriptSceneRepository } from '@/app-layer/repositories/manuscript.repository';
+import { getManuscriptOutline } from './manuscript';
 import { listElements } from './bible-elements';
 import { getBook } from './books';
 
@@ -79,6 +81,9 @@ export interface BriefView {
     status: string;
     urls: string[];
     scope: Array<{ id: string; name: string; kind: BibleElementKind }>;
+    /** Phase 5.1: the manuscript chapters and scenes it is for (titles; null is untitled). */
+    chapters: Array<{ id: string; title: string | null }>;
+    scenes: Array<{ id: string; title: string | null }>;
     sources: Array<{ id: string; filename: string; byteLength: number }>;
     createdAt: string;
     latestRun: RunView | null;
@@ -127,6 +132,20 @@ export interface ResearchNewElementView {
     findingIds: string[];
 }
 
+/** A proposed note on a manuscript scene (Phase 5.1): never prose for it (D3). */
+export interface ResearchSceneNoteView {
+    id: string;
+    kind: 'SCENE_NOTE';
+    status: ProposalStatus;
+    sceneId: string;
+    sceneTitle: string | null;
+    chapterTitle: string | null;
+    note: string;
+    rationale: string;
+    flags: string[];
+    findingIds: string[];
+}
+
 /** One query or fetch URL a run sent (decision D15), shown as text. */
 export interface EgressView {
     position: number;
@@ -143,6 +162,7 @@ export interface RunReviewView {
     findings: FindingView[];
     fields: ResearchFieldProposalView[];
     newElements: ResearchNewElementView[];
+    sceneNotes: ResearchSceneNoteView[];
 }
 
 const asRecord = (v: unknown): Record<string, number> => (v && typeof v === 'object' ? (v as Record<string, number>) : {});
@@ -191,10 +211,14 @@ export async function listResearchBriefs(ctx: WorkspaceRequestContext, bookId: s
         for (const r of runs) if (!latest.has(r.briefId)) latest.set(r.briefId, r);
         const scopeIds = [...new Set(briefs.flatMap((b) => b.scopeElementIds))];
         const elements = new Map((await BibleElementRepository.listByIds(db, ctx.workspaceId, bookId, scopeIds)).map((e) => [e.id, e] as const));
+        const manuscript = {
+            chapters: new Map((await ManuscriptChapterRepository.findByIds(db, ctx.workspaceId, bookId, [...new Set(briefs.flatMap((b) => b.scopeChapterIds))])).map((c) => [c.id, c.title] as const)),
+            scenes: new Map((await ManuscriptSceneRepository.findOutline(db, ctx.workspaceId, bookId, [...new Set(briefs.flatMap((b) => b.scopeSceneIds))])).map((s) => [s.id, s.title] as const)),
+        };
         const out: BriefView[] = [];
         for (const b of briefs) {
             const sources = await ResearchSourceRepository.listForBrief(db, ctx.workspaceId, b.id, SOURCES_PER_BRIEF_MAX);
-            out.push(briefView(b, elements, sources, latest.get(b.id) ?? null));
+            out.push(briefView(b, elements, manuscript, sources, latest.get(b.id) ?? null));
         }
         return { briefs: out, truncated: rows.length > BRIEFS_LISTED_MAX };
     });
@@ -203,6 +227,7 @@ export async function listResearchBriefs(ctx: WorkspaceRequestContext, bookId: s
 function briefView(
     b: ResearchBriefRow,
     elements: ReadonlyMap<string, { id: string; name: string; kind: BibleElementKind }>,
+    manuscript: { chapters: ReadonlyMap<string, string | null>; scenes: ReadonlyMap<string, string | null> },
     sources: ReadonlyArray<{ id: string; filename: string; byteLength: number }>,
     run: ResearchRunRow | null,
 ): BriefView {
@@ -216,6 +241,8 @@ function briefView(
         status: latestRun ? latestRun.status : b.status,
         urls: decodeSourceUrls(b.sourceUrls),
         scope: b.scopeElementIds.map((id) => elements.get(id)).filter((e): e is NonNullable<typeof e> => e !== undefined).map((e) => ({ id: e.id, name: e.name, kind: e.kind })),
+        chapters: b.scopeChapterIds.filter((id) => manuscript.chapters.has(id)).map((id) => ({ id, title: manuscript.chapters.get(id) ?? null })),
+        scenes: b.scopeSceneIds.filter((id) => manuscript.scenes.has(id)).map((id) => ({ id, title: manuscript.scenes.get(id) ?? null })),
         sources: sources.map((s) => ({ id: s.id, filename: s.filename, byteLength: s.byteLength })),
         createdAt: b.createdAt.toISOString(),
         latestRun,
@@ -264,8 +291,18 @@ export async function getResearchRunReview(ctx: WorkspaceRequestContext, bookId:
         for (const id of elements.keys()) versions.set(id, await BibleVersionRepository.latestNumber(db, ctx.workspaceId, id));
         const fields: ResearchFieldProposalView[] = [];
         const newElements: ResearchNewElementView[] = [];
+        const sceneNotes: ResearchSceneNoteView[] = [];
+        const noteScenes = new Map((await ManuscriptSceneRepository.findOutline(db, ctx.workspaceId, bookId, [...new Set(proposals.flatMap((p) => (p.sceneId ? [p.sceneId] : [])))])).map((s) => [s.id, s] as const));
+        const noteChapters = new Map((await ManuscriptChapterRepository.findByIds(db, ctx.workspaceId, bookId, [...new Set([...noteScenes.values()].map((s) => s.chapterId))])).map((c) => [c.id, c.title] as const));
         for (const p of proposals) {
             const findingIds = p.findings.map((f) => f.findingId);
+            if (p.operation === 'SCENE_NOTE') {
+                const scene = p.sceneId ? noteScenes.get(p.sceneId) : undefined;
+                const note = decodeResearchValue(p.proposedValue);
+                if (!scene || typeof note !== 'string') continue;
+                sceneNotes.push({ id: p.id, kind: 'SCENE_NOTE', status: p.status, sceneId: scene.id, sceneTitle: scene.title, chapterTitle: noteChapters.get(scene.chapterId) ?? null, note, rationale: p.rationale, flags: p.flags, findingIds });
+                continue;
+            }
             if (p.operation === 'NEW_ELEMENT') {
                 newElements.push({ id: p.id, kind: 'NEW_ELEMENT', status: p.status, newKind: p.newKind!, name: p.newName ?? '', summary: p.newSummary, rationale: p.rationale, flags: p.flags, createdElementId: p.createdElementId, findingIds });
                 continue;
@@ -277,7 +314,7 @@ export async function getResearchRunReview(ctx: WorkspaceRequestContext, bookId:
                 id: p.id,
                 kind: 'FIELD',
                 status: p.status,
-                operation: p.operation,
+                operation: p.operation === 'UPDATE' ? 'UPDATE' : 'ADD',
                 elementId: element.id,
                 elementName: element.name,
                 elementKind: element.kind,
@@ -298,7 +335,7 @@ export async function getResearchRunReview(ctx: WorkspaceRequestContext, bookId:
             items: egressRows.map((e) => ({ position: e.position, tool: (e.tool === 'web_fetch' ? 'web_fetch' : 'web_search') as EgressTool, text: e.text, refusal: e.refusal })),
             unlisted: view.metrics.egressUnlisted,
         };
-        return { run: view, egress, findings, fields, newElements };
+        return { run: view, egress, findings, fields, newElements, sceneNotes };
     });
 }
 
@@ -307,8 +344,15 @@ const SCOPE_PICKER_ELEMENTS = 100;
 
 /** Everything the Research page's server component hands its client component (`bible.view`). */
 export async function loadResearchPage(ctx: WorkspaceRequestContext, bookId: string) {
-    const [book, list, elements] = await Promise.all([getBook(ctx, bookId), listResearchBriefs(ctx, bookId), listElements(ctx, bookId, { take: SCOPE_PICKER_ELEMENTS })]);
+    const [book, list, elements, outline] = await Promise.all([
+        getBook(ctx, bookId),
+        listResearchBriefs(ctx, bookId),
+        listElements(ctx, bookId, { take: SCOPE_PICKER_ELEMENTS }),
+        getManuscriptOutline(ctx, bookId),
+    ]);
     const latest = list.briefs[0]?.latestRun ?? null;
     const initialReview = latest && latest.status !== 'QUEUED' && latest.status !== 'RUNNING' && runHasResults(latest.metrics) ? await getResearchRunReview(ctx, bookId, latest.id) : null;
-    return { book, ...list, elements: elements.elements.map((e) => ({ id: e.id, name: e.name, kind: e.kind })), initialReview };
+    // Phase 5.1: the chapters a brief may be scoped to (titles only; the outline carries no text).
+    const chapters = outline.parts.flatMap((p) => p.chapters.map((c) => ({ id: c.id, title: c.title, partTitle: outline.singleDefaultPart ? null : p.title })));
+    return { book, ...list, elements: elements.elements.map((e) => ({ id: e.id, name: e.name, kind: e.kind })), chapters, initialReview };
 }

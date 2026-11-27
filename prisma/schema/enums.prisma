@@ -290,6 +290,16 @@ enum ResearchProposalOperation {
   ADD
   UPDATE
   NEW_ELEMENT
+  /// Phase 5.1: a note on a manuscript scene (never its prose, D3).
+  SCENE_NOTE
+}
+
+/// How a scene's text version came to be (Phase 5.1, D33): the author's
+/// writing (a checkpoint, or the server's bound), a restore, an import.
+enum SceneVersionSource {
+  EDIT
+  RESTORE
+  IMPORT
 }
 
 /// The three story maps a book has, one of each (Phase 3.1, decision D18):

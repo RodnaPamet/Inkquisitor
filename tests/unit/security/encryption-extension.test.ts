@@ -198,6 +198,11 @@ describe('wiring', () => {
             StressWeakPoint: ['title', 'questions'],
             GapHunt: ['picks'],
             InterviewCompaction: ['summary'],
+            ManuscriptPart: ['title'],
+            ManuscriptChapter: ['title'],
+            ManuscriptScene: ['title', 'text', 'storyTime', 'note'],
+            SceneVersion: ['text'],
+            SceneNoteVersion: ['note'],
         });
         expect(compileManifest(ENCRYPTED_FIELDS).isEmpty).toBe(false);
     });

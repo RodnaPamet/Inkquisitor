@@ -7,11 +7,11 @@
  */
 import { bibleFetch, bibleUpload } from '@/lib/bible/api-client';
 import type { FieldValue } from '@/lib/bible/field-values';
-import type { BriefView, FindingView, ResearchFieldProposalView, ResearchNewElementView, RunReviewView, RunView } from '@/app-layer/usecases/research-pages';
+import type { BriefView, FindingView, ResearchFieldProposalView, ResearchNewElementView, ResearchSceneNoteView, RunReviewView, RunView } from '@/app-layer/usecases/research-pages';
 import type { ResearchDecisionResult } from '@/app-layer/usecases/research-review';
 import type { ResearchDepth } from './vocabulary';
 
-export type { BriefView, FindingView, ResearchDecisionResult, ResearchFieldProposalView, ResearchNewElementView, RunReviewView, RunView };
+export type { BriefView, FindingView, ResearchDecisionResult, ResearchFieldProposalView, ResearchNewElementView, ResearchSceneNoteView, RunReviewView, RunView };
 
 const enc = encodeURIComponent;
 
@@ -37,6 +37,8 @@ export interface CreateBriefBody {
     question: string;
     purpose: string;
     scopeElementIds: string[];
+    /** Phase 5.1: the manuscript chapters it is for. */
+    scopeChapterIds?: string[];
     urls: string[];
     depth: ResearchDepth;
 }
