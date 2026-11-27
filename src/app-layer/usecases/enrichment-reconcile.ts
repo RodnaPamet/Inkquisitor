@@ -67,7 +67,9 @@ import { decodeFieldValue, type FieldValue } from '@/lib/bible/field-values';
 import type { BibleKind } from '@/lib/bible/kinds';
 import { getRelationType, getTemplate, relationFieldDefs } from '@/lib/bible/templates';
 import { slotBeat } from './story-slot';
-import { pairOfSubject, PENDING_SUBJECT_ID, relationSubjectName, subjectIdOf, type RelationSubject } from '@/lib/interview/subjects';
+import { pairOfSubject, PENDING_SUBJECT_ID, relationSubjectName, sceneSubjectId, subjectIdOf, type RelationSubject } from '@/lib/interview/subjects';
+import { SCENE_CARD_FIELD_KEYS, SCENE_CARD_FIELDS } from '@/lib/manuscript/scene-card';
+import { SceneCardRepository } from '@/app-layer/repositories/scene-card.repository';
 import { defaultReconciler } from '@/lib/enrichment/model-seam';
 import { BOOK_ELEMENTS_IN_PROMPT_MAX, RECONCILE_PROMPT_VERSION } from '@/lib/enrichment/prompt';
 import { emptyProposedCounts, runReconcileStep, validateOutput, type ProposedCounts, type ReconcileMetrics, type ReconcileRoundInput, type RoundAnswerInput, type RoundElementInput } from '@/lib/enrichment/reconcile';
@@ -205,7 +207,7 @@ export async function loadRoundInput(db: PrismaTx, ctx: WorkspaceRequestContext,
     const latest = latestByQuestion(await AnswerRepository.listForSession(db, ctx.workspaceId, session.id, SESSION_ANSWERS_READ));
     const targetedOf = (subject: string) => new Set(questions.filter((q) => subjectIdOf(q) === subject).flatMap((q) => q.targetsFieldKeys));
 
-    const elementIds = [...new Set(questions.filter((q) => !q.relationId && !q.aboutPending && !q.pairElementId).map((q) => q.elementId))];
+    const elementIds = [...new Set(questions.filter((q) => !q.relationId && !q.aboutPending && !q.pairElementId && !q.sceneId).map((q) => q.elementId))];
     const rows = await BibleElementRepository.listByIds(db, ctx.workspaceId, session.bookId, elementIds);
     const stored = await storedValuesOf(db, ctx, rows.map((r) => r.id));
     const elements: RoundElementInput[] = rows.map((e) => {
@@ -248,6 +250,34 @@ export async function loadRoundInput(db: PrismaTx, ctx: WorkspaceRequestContext,
             stored: relationStored.get(r.id) ?? new Map(),
             scopeKeys: relationFieldDefs(r.from.kind, r.type).filter((f) => targeted.has(f.key)).map((f) => f.key),
             relation,
+        });
+    }
+
+    // Phase 5.3: the scenes whose CARD the round asked about (a SCENE session's one scene), with the card's stored
+    // fields. A card field is a proposal like any other; only `scene-card.ts` writes it once accepted (never the prose).
+    const sceneIds = [...new Set(questions.flatMap((q) => (q.sceneId ? [q.sceneId] : [])))];
+    for (const sceneId of sceneIds) {
+        const scene = await SceneCardRepository.sceneForInterview(db, ctx.workspaceId, session.bookId, sceneId);
+        if (!scene) continue;
+        const card = await SceneCardRepository.find(db, ctx.workspaceId, session.bookId, sceneId);
+        const cardStored = new Map<string, FieldValue>();
+        for (const key of SCENE_CARD_FIELD_KEYS) {
+            const value = card?.[key];
+            if (typeof value === 'string' && value !== '') cardStored.set(key, value);
+        }
+        const subject = sceneSubjectId(sceneId);
+        const targeted = targetedOf(subject);
+        const carrier = questions.find((q) => q.sceneId === sceneId)!;
+        const carrierKind = rows.find((r) => r.id === carrier.elementId)?.kind ?? (await BibleElementRepository.listByIds(db, ctx.workspaceId, session.bookId, [carrier.elementId]))[0]?.kind;
+        if (!carrierKind) continue;
+        elements.push({
+            elementId: subject,
+            kind: carrierKind as BibleKind,
+            name: scene.title ?? 'Untitled scene',
+            customLabel: null,
+            stored: cardStored,
+            scopeKeys: SCENE_CARD_FIELDS.filter((f) => targeted.has(f.key)).map((f) => f.key),
+            scene: { sceneId },
         });
     }
 
@@ -442,6 +472,7 @@ async function persistRun(
     const ends = new Map((now.relationEnds ?? []).map((e) => [e.elementId, e] as const));
     const versions = new Map<string, number>();
     const relationVersions = new Map<string, number>();
+    const cardVersions = new Map<string, number>();
     const proposed = emptyProposedCounts();
     let flagged = 0;
     const refused: Partial<Record<RefusalCode, number>> = {};
@@ -536,7 +567,33 @@ async function persistRun(
         }
         const subject = subjects.get(draft.elementId);
         if (!subject) continue;
-        if (subject.relation) {
+        if (subject.scene) {
+            // A scene card's field (Phase 5.3): based on the card's version (0: no card yet); never the scene's prose (D3).
+            const sceneId = subject.scene.sceneId;
+            if (!cardVersions.has(sceneId)) cardVersions.set(sceneId, (await SceneCardRepository.find(db, ctx.workspaceId, session.bookId, sceneId))?.version ?? 0);
+            const text = sanitiseProposalForStorage(draft, { sceneCard: true });
+            await EnrichmentProposalRepository.create(
+                db,
+                ctx.workspaceId,
+                {
+                    bookId: session.bookId,
+                    sessionId: session.id,
+                    roundId: round.id,
+                    kind: 'SCENE_CARD_FIELD',
+                    elementId: null,
+                    sceneId,
+                    fieldKey: draft.fieldKey,
+                    operation: draft.operation,
+                    proposedValue: text.proposedValue,
+                    baseVersion: cardVersions.get(sceneId)!,
+                    newKind: null,
+                    newName: null,
+                    newSummary: null,
+                    flags: [...draft.flags],
+                },
+                draft.citedAnswerIds,
+            );
+        } else if (subject.relation) {
             // A relation's field (Phase 3.3): based on the relation's latest version (0: none yet).
             const relationId = subject.relation.relationId;
             if (!relationVersions.has(relationId)) relationVersions.set(relationId, await BibleRelationVersionRepository.latestNumber(db, ctx.workspaceId, relationId));

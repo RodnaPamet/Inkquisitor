@@ -7,7 +7,7 @@
  * proposals, a rephrase, a research brief, an attached file, a fetched page
  * and its findings, a model answer that fails validation, and an unexpected
  * error whose message carries it, (Phase 5.1) a manuscript's titles, a scene's text, story time and note, an
- * import's file and a research note on a scene, (Phase 5.2) a scene's prose check, its notes and a style sheet's
+ * import's file and a research note on a scene, (Phase 5.3) a scene's draft facts, plant link and card, (Phase 5.2) a scene's prose check, its notes and a style sheet's
  * words, a model-call rate-limit refusal of a
  * request about it, and a word search for it (Phase 3.4: the query, and the
  * snippets that quote it back, answered and refused — through its route with
@@ -103,6 +103,11 @@ import { StubEmbeddingProvider } from '@/lib/ai/embeddings/stub-provider';
 import { createThread, decideThreadProposal, getContinuityPage, updateThread } from '@/app-layer/usecases/continuity';
 import { decideFactProposal } from '@/app-layer/usecases/fact-proposals';
 import { runNight } from '../helpers/continuity';
+import { executeDraftReadDispatch } from '@/app-layer/usecases/draft-read-dispatch';
+import { executeDraftRead } from '@/app-layer/usecases/draft-read';
+import { getSceneDraftNotes } from '@/app-layer/usecases/draft-mismatches';
+import { decideThreadSceneLink } from '@/app-layer/usecases/thread-scene-links';
+import { saveSceneCard } from '@/app-layer/usecases/scene-card';
 
 /** One word that appears nowhere but in author text: any sink holding it holds author text. */
 const MARKER = 'Zyxquorblemarkh';
@@ -493,6 +498,47 @@ it('a marker planted in every author-text path reaches no log line, span, Sentry
     expect(bannedNote).toBeDefined();
     await wrapped(() => dismissProseFinding(ctx, bookId, { findingId: bannedNote!.id }));
     await wrapped(() => saveProseCheckSettings(ctx, bookId, { alexEnabled: true, rulesOff: ['wordy'] }));
+    // The draft held against the bible (Phase 5.3, D35): the night's reading of the scene (a draft fact and a plant link
+    // that quote the marked sentence), the link confirmed, the scene's notes read through the request wrapper, and the
+    // scene's card saved.
+    {
+        const draftQueued: string[] = [];
+        await executeDraftReadDispatch({ enqueue: async (_n, payload) => void draftQueued.push((payload as { runId: string }).runId), workspaceIds: [ctx.workspaceId], nightKey: `privacy-${Date.now().toString(36)}` });
+        const sentence = `Ilse climbed to the lamp ${MARKER} at dusk.`;
+        for (const runId of draftQueued) {
+            await executeDraftRead(
+                { workspaceId: ctx.workspaceId, runId },
+                {
+                    charge: () => undefined,
+                    gate: () => ({ mounted: true, recordKind: 'structural' }),
+                    nightlyCapMicroUsd: Number.MAX_SAFE_INTEGER,
+                    reader: () => ({
+                        extract: async (request) => {
+                            const text = request.data.find((b) => b.label === 'scene.text')?.text ?? '';
+                            const hit = text.includes(sentence);
+                            return {
+                                ok: true as const,
+                                output: {
+                                    facts: hit ? [{ subject: 'Ilse', predicate: 'LOCATION', object: marked('the lamp'), statement: sentence, quote: sentence, storyTimeFrom: '', storyTimeTo: '' }] : [],
+                                    threads: hit ? [{ thread: 1, role: 'PLANTS', quote: sentence }] : [],
+                                },
+                                tokensUsed: 1,
+                                costMicroUsd: 1,
+                                callIds: [] as string[],
+                            };
+                        },
+                    }),
+                },
+            );
+        }
+        const linkRow = await prisma.storyThreadSceneLink.findFirstOrThrow({ where: { bookId, sceneId }, select: { id: true } });
+        await wrapped(() => decideThreadSceneLink(ctx, bookId, linkRow.id, { decision: 'CONFIRM' }));
+        expect(await (await wrapped(() => getSceneDraftNotes(ctx, bookId, sceneId))).text()).toContain(MARKER);
+        await wrapped(() => saveSceneCard(ctx, bookId, sceneId, { baseVersion: 0, goal: marked('Reach the lamp'), conflict: marked('The stair is out'), outcome: null, change: null }));
+        const staleCard = await wrapped(() => saveSceneCard(ctx, bookId, sceneId, { baseVersion: 0, goal: marked('Again'), conflict: null, outcome: null, change: null }));
+        expect(staleCard.status).toBe(409);
+        expect((await staleCard.text()).toLowerCase()).not.toContain(MARKER.toLowerCase());
+    }
 
     const twoFacts = await prisma.storyFact.findMany({ where: { bookId, sourceKind: 'BIBLE_VERSION' }, orderBy: { createdAt: 'asc' }, take: 2, select: { id: true } });
     expect(twoFacts).toHaveLength(2);
@@ -526,6 +572,10 @@ it('a marker planted in every author-text path reaches no log line, span, Sentry
     expect(read['audit details']).toContain('PROSE_FINDING_DISMISSED');
     expect(read['audit details']).toContain('PROSE_CHECK_SETTINGS_CHANGED');
     expect(read['logs (as written, after the redacting formatter)']).toContain('prose check finished');
+    expect(read['logs (as written, after the redacting formatter)']).toContain('draft read finished');
+    expect(read['audit details']).toContain('DRAFT_READ');
+    expect(read['audit details']).toContain('THREAD_SCENE_LINK_DECIDED');
+    expect(read['audit details']).toContain('SCENE_CARD_SAVED');
     expect(read.Sentry).toContain('Error');
     for (const [sink, text] of Object.entries(read)) {
         expect([sink, text.toLowerCase().includes(MARKER.toLowerCase())]).toEqual([sink, false]);

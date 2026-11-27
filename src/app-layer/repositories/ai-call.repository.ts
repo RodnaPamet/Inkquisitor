@@ -106,14 +106,16 @@ export const AiCallRepository = {
     },
 
     /**
-     * What the calls of ONE purpose have charged since `since` (their records) and still hold (their live
+     * What the calls of ONE purpose (or of several together: Phase 5.3, D35 item 2, the night's one share for draft
+     * reading and the deep continuity check) have charged since `since` (their records) and still hold (their live
      * reservations, but `exceptCallId`'s), for the workspace (Phase 4.2, D28 addendum: the deep continuity check's
      * nightly share). Read under `lockSpend` when it decides a reservation.
      */
-    async purposeSpendSince(db: Db, workspaceId: string, purpose: string, since: Date, now: Date, exceptCallId?: string): Promise<{ chargedMicroUsd: number; reservedMicroUsd: number }> {
-        const charged = await db.aiCallLog.aggregate({ where: { workspaceId, purpose, startedAt: { gte: since } }, _sum: { costMicroUsd: true } });
+    async purposeSpendSince(db: Db, workspaceId: string, purpose: string | readonly string[], since: Date, now: Date, exceptCallId?: string): Promise<{ chargedMicroUsd: number; reservedMicroUsd: number }> {
+        const purposes = typeof purpose === 'string' ? purpose : { in: [...purpose] };
+        const charged = await db.aiCallLog.aggregate({ where: { workspaceId, purpose: purposes, startedAt: { gte: since } }, _sum: { costMicroUsd: true } });
         const held = await db.aiSpendReservation.aggregate({
-            where: { workspaceId, purpose, expiresAt: { gt: now }, ...(exceptCallId ? { id: { not: exceptCallId } } : {}) },
+            where: { workspaceId, purpose: purposes, expiresAt: { gt: now }, ...(exceptCallId ? { id: { not: exceptCallId } } : {}) },
             _sum: { amountMicroUsd: true },
         });
         return { chargedMicroUsd: Number(charged._sum.costMicroUsd ?? 0), reservedMicroUsd: Number(held._sum.amountMicroUsd ?? 0) };

@@ -110,7 +110,16 @@ export type AuditAction =
     /** Phase 5.2 (D34): a prose note dismissed (its rule and ids, never the sentence), every dismissal cleared, the settings changed. */
     | 'PROSE_FINDING_DISMISSED'
     | 'PROSE_DISMISSALS_CLEARED'
-    | 'PROSE_CHECK_SETTINGS_CHANGED';
+    | 'PROSE_CHECK_SETTINGS_CHANGED'
+    // Phase 5.3 (D35): the nightly draft reading, a draft mismatch decided, the bible updated from a scene, a
+    // thread-to-scene link decided, a scene's card saved (ids, counts and codes only).
+    | 'DRAFT_READ'
+    | 'DRAFT_MISMATCH_DECIDED'
+    | 'DRAFT_BIBLE_UPDATED'
+    | 'THREAD_SCENE_LINK_DECIDED'
+    | 'SCENE_CARD_SAVED'
+    // D35 addendum A: a book's continuity settings changed (whether the deep check reads the draft; ids and the value only).
+    | 'CONTINUITY_SETTINGS_SAVED';
 
 export interface AuditEventPayload {
     action: AuditAction;

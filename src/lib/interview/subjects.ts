@@ -91,8 +91,38 @@ export function pairOfSubject(subjectId: string): { firstElementId: string; seco
     return { firstElementId: rest.slice(0, at), secondElementId: rest.slice(at + 1) };
 }
 
-/** The subject a stored question is about: its relation, the pending element, a pair (Phase 4.4), or its element. */
-export function subjectIdOf(q: { elementId: string; relationId: string | null; aboutPending: boolean; pairElementId?: string | null }): string {
+/**
+ * Phase 5.3 ("Grill me on this scene"): a manuscript SCENE's CARD — goal, conflict, outcome, what changed — never its
+ * prose (D3). Its subject id is `scene:<sceneId>` (cuids hold no colon), its fields the card's (`SCENE_CARD_FIELDS`),
+ * its stored values the card's. A question about it is filed under the scene's CARRIER element (its point of view,
+ * else its setting, else a beat it dramatises, else an element it links), as a relation's is filed under its declaring
+ * end, with `Question.sceneId` naming the scene; reading it back gives the scene's subject id. The scene's text reaches
+ * the question call only as a fenced data block (`scene-text`), bounded.
+ */
+export const SCENE_SUBJECT_PREFIX = 'scene:';
+
+export function sceneSubjectId(sceneId: string): string {
+    return `${SCENE_SUBJECT_PREFIX}${sceneId}`;
+}
+
+/** The scene a scene subject id names, or null for any other subject id. */
+export function sceneOfSubject(subjectId: string): string | null {
+    if (!subjectId.startsWith(SCENE_SUBJECT_PREFIX)) return null;
+    const id = subjectId.slice(SCENE_SUBJECT_PREFIX.length);
+    return id !== '' && !id.includes(':') ? id : null;
+}
+
+/** A scene as a subject: its title and chapter (author text, data only) and the element its questions are filed under. */
+export interface SceneSubject {
+    sceneId: string;
+    title: string | null;
+    chapterTitle: string | null;
+    carrierElementId: string;
+}
+
+/** The subject a stored question is about: its scene (Phase 5.3), its relation, the pending element, a pair (Phase 4.4), or its element. */
+export function subjectIdOf(q: { elementId: string; relationId: string | null; aboutPending: boolean; pairElementId?: string | null; sceneId?: string | null }): string {
+    if (q.sceneId) return sceneSubjectId(q.sceneId);
     if (q.relationId) return q.relationId;
     if (q.aboutPending) return PENDING_SUBJECT_ID;
     if (q.pairElementId) return pairSubjectId(q.elementId, q.pairElementId);

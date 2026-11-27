@@ -62,6 +62,27 @@ model ContinuityCheck {
   @@index([bookId])
 }
 
+/// A book's continuity settings, the author's (D35 addendum A, owner decision 2026-11-27): `bible.edit` changes them,
+/// `bible.view` reads them, every change audited with ids and codes. One row a book, written on the first save; a book
+/// with none reads the defaults.
+model ContinuitySettings {
+  id             String   @id @default(cuid())
+  workspaceId    String
+  bookId         String
+  /// The nightly deep check also reads the book's live DRAFT facts (SCENE_TEXT), labelled as the manuscript's claims,
+  /// and may raise draft-vs-bible mismatches. Off until the author turns it on; the calls spend the one nightly share.
+  deepReadsDraft Boolean  @default(false)
+  /// When it was last turned on (NULL while off, CHECK): the draft facts already read count as new to the deep check
+  /// from then, so the next pass reads them even if nothing else changed.
+  deepReadsDraftSince DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  book Book @relation(fields: [workspaceId, bookId], references: [workspaceId, id], onDelete: Cascade)
+
+  @@unique([workspaceId, bookId])
+}
+
 /// One night's check of one book (the `continuity-check` job's row): counts and codes only.
 model ContinuityRun {
   id                String    @id @default(cuid())
@@ -126,6 +147,8 @@ model StoryThread {
   createdBy      User?                 @relation("StoryThreadCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   updatedBy      User?                 @relation("StoryThreadUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
   proposals      StoryThreadProposal[]
+  /// Phase 5.3: the scenes proposed (and confirmed) to plant or pay it off.
+  sceneLinks     StoryThreadSceneLink[]
 
   @@unique([workspaceId, id])
   /// A book's threads, most recently changed first (the Continuity page).

@@ -34,6 +34,9 @@
  *   --sources                also run source fact extraction's set (Phase 4.0):
  *                            its record beside it (src/lib/sources/evals/), or
  *                            DIR/sources/ under --out.
+ *   --draft-read             also run the nightly draft reading's set (Phase 5.3):
+ *                            its record beside it (src/lib/draft-facts/evals/), or
+ *                            DIR/draft-read/ under --out.
  *   --bible-facts            also run bible fact extraction's set (Phase 4.1):
  *                            its record beside it (src/lib/facts/evals/), or
  *                            DIR/bible-facts/ under --out.
@@ -90,6 +93,8 @@ export interface EvalArgs {
     /** Also run source fact extraction's evaluation (Phase 4.0). */
     sources?: boolean;
     bibleFacts?: boolean;
+    /** Phase 5.3: the nightly draft reading's set. */
+    draftRead?: boolean;
     /** Phase 4.2: the deep continuity check's set. */
     continuity?: boolean;
     /** Phase 4.3: the book-level interrogation sets (the stress test, the gap ranking, the rounds summary). */
@@ -118,6 +123,7 @@ export function parseEvalArgs(argv: readonly string[]): EvalArgs {
         else if (a === '--research') args.research = true;
         else if (a === '--sources') args.sources = true;
         else if (a === '--bible-facts') args.bibleFacts = true;
+        else if (a === '--draft-read') args.draftRead = true;
         else if (a === '--continuity') args.continuity = true;
         else if (a === '--book-level') args.bookLevel = true;
         else if (a === '--question-order') args.questionOrder = true;

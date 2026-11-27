@@ -305,7 +305,7 @@ describe('the routes', () => {
         return { status: res.status, json: (await res.json()) as Record<string, unknown> };
     }
 
-    it('GET interview-packs lists the six personas, the panel’s three, sixteen craft packs (one per kind) and the relations pack with their mount status, and no pack text', async () => {
+    it('GET interview-packs lists the six personas, the panel’s three, sixteen craft packs (one per kind), the relations pack and the scene pack with their mount status, and no pack text', async () => {
         const res = await call(packsRoute, `/api/w/${owner.workspaceSlug}/interview-packs`, {});
         expect(res.status).toBe(200);
         const body = res.json as { recordMode: string; personas: Array<Record<string, unknown>>; craft: Array<Record<string, unknown>>; relations: Array<Record<string, unknown>>; mountable: number; total: number };
@@ -315,9 +315,9 @@ describe('the routes', () => {
         // (the setup sheet offers them only through its Panel preset, never in the persona picker).
         expect(body.personas.slice(6).map((p) => p.key)).toEqual(['panel-target-reader', 'panel-ruthless-editor', 'panel-genre-specialist']);
         expect(body.craft).toHaveLength(16);
-        // Phase 3.3 (D24): one relations pack beside them, its own list.
-        expect(body.relations.map((p) => p.name)).toEqual(['relations']);
-        expect(body).toMatchObject({ mountable: 26, total: 26 });
+        // Phase 3.3 (D24): one relations pack beside them, its own list; Phase 5.3: the scene pack ("Grill me on this scene") beside it.
+        expect(body.relations.map((p) => p.name)).toEqual(['relations', 'scene']);
+        expect(body).toMatchObject({ mountable: 27, total: 27 });
         expect(body.personas[0]).toMatchObject({ name: 'persona-gentle-mentor', mountable: true, refusal: null, recordKind: 'structural', coverage: null });
         expect(body.craft.find((c) => c.key === 'CHARACTER')).toMatchObject({ name: 'craft-character', coverage: getPacks().craft.CHARACTER.coverage });
         expect(JSON.stringify(body)).not.toContain('## How to question');

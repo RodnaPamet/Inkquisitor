@@ -113,6 +113,8 @@ model EnrichmentProposal {
   /// proposal has no `elementId` and no `baseVersion`, and only ADDs (CHECK);
   /// it is accepted after the beat, into the element the beat's acceptance created.
   targetProposalId  String?
+  /// Phase 5.3 (SCENE_CARD_FIELD): the scene whose card field the proposal changes (never its prose, D3); NULL otherwise (CHECK).
+  sceneId           String?
   /// What the author is warned of, from a closed list (CHECK; `PROPOSAL_FLAGS`):
   /// POSSIBLE_INSTRUCTION when the text addresses the product itself (owner
   /// decision D14). A flagged proposal is shown as such and never bulk-accepted.
@@ -140,6 +142,7 @@ model EnrichmentProposal {
   newFrom   BibleElement?        @relation("NewRelationFrom", fields: [newFromElementId], references: [id], onDelete: Cascade)
   newTo     BibleElement?        @relation("NewRelationTo", fields: [newToElementId], references: [id], onDelete: Cascade)
   decidedBy User?                @relation(fields: [decidedById], references: [id], onDelete: SetNull)
+  scene     ManuscriptScene?     @relation("EnrichmentProposalScene", fields: [workspaceId, bookId, sceneId], references: [workspaceId, bookId, id], onDelete: Cascade)
   citations EnrichmentCitation[]
 
   @@unique([workspaceId, sessionId, id])
@@ -158,6 +161,8 @@ model EnrichmentProposal {
   /// Phase 3.H: the pending proposals for one field of a slot's beat (superseded on an acceptance).
   @@index([targetProposalId, fieldKey])
   @@index([decidedById])
+  /// Phase 5.3: a scene's card proposals (the foreign key's index).
+  @@index([workspaceId, bookId, sceneId])
 }
 
 /// An answer a proposal is drawn from (rule 2). Inserted with its proposal,

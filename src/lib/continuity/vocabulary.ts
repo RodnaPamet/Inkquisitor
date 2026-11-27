@@ -140,6 +140,13 @@ export const CONTINUITY_FACTS_PER_CALL_MIN = 10;
 /** A book's live facts the nightly run reads at most (the rule sweep and the pass's subject list; a cut is counted). */
 export const CONTINUITY_FACTS_READ_MAX = 4_000;
 /**
+ * D35 addendum A: a book's live DRAFT facts the deep check reads at most when its author turned that on, and how many
+ * of one subject's (its newest) join that subject's bible facts in a call — so a long manuscript never pushes a
+ * subject's canon out of its page. Past either, the cut is counted on the run.
+ */
+export const CONTINUITY_DRAFT_FACTS_READ_MAX = 2_000;
+export const CONTINUITY_DRAFT_FACTS_PER_SUBJECT_MAX = 30;
+/**
  * Contradictions one night's rule sweep proposes at most for a book: a SAFETY BOUND. The rules re-read the whole book
  * every night and skip every pair already proposed, so what is past it is proposed on the nights that follow. It
  * should rarely bind: since the D28 addendum an undated place or piece of knowledge clashes with nothing by rule (one

@@ -42,6 +42,20 @@
  * pass whether or not it changed, and removed once a page covering it succeeds;
  * the Continuity page counts the outstanding and is never complete over one.
  *
+ * THE DRAFT, WHEN THE AUTHOR ASKS (D35 addendum A, owner decision 2026-11-27):
+ * a book whose continuity settings turn `deepReadsDraft` on also shows each
+ * subject's live DRAFT facts (SCENE_TEXT, at most
+ * `CONTINUITY_DRAFT_FACTS_PER_SUBJECT_MAX` a subject, the newest) beside its
+ * bible facts, in the call's "draft-facts" block (the manuscript's claims, not
+ * canon). A pair of two draft facts is refused (DRAFT_PAIR); a draft fact paired
+ * with a BIBLE fact (an element's or a relation's version) is raised as a draft
+ * mismatch — basis DRAFT, naming this run (`checkRunId`), the same table and the
+ * same three choices as the draft reading's rules; paired with anything else (a
+ * source fact, an explanation) it is refused (DRAFT_NOT_BIBLE). The rules are
+ * not run on draft facts here (the draft reading runs them). The calls are this
+ * check's: its purpose, its half of the night's share (addendum B). Off, the
+ * check reads, sends and raises exactly what it did before.
+ *
  * NOTHING IS RESOLVED (rule 1): every finding is a proposal the author decides
  * on the Continuity page, shown with both facts and their sources.
  */
@@ -55,11 +69,14 @@ import {
     ContinuityCheckRepository,
     ContinuityFactRepository,
     ContinuityRunRepository,
+    ContinuitySettingsRepository,
     placedElementsOf,
     StaleFlagRepository,
+    type CheckDraftFactRow,
     type CheckFactRow,
     type ContinuityRunRow,
 } from '@/app-layer/repositories/continuity.repository';
+import { DraftMismatchRepository, SceneDraftReadRepository } from '@/app-layer/repositories/draft-facts.repository';
 import { FactProposalRepository } from '@/app-layer/repositories/fact-layer.repository';
 import { MembershipRepository } from '@/app-layer/repositories/membership.repository';
 import { BibleFactRepository } from '@/app-layer/repositories/source.repository';
@@ -68,7 +85,7 @@ import type { AuthorDataBlock } from '@/lib/ai/prompt';
 import { continuityCallWorstCase } from '@/lib/continuity/cost';
 import { defaultContinuityChecker, NIGHTLY_SHARE_REFUSED, type ContinuityChecker } from '@/lib/continuity/model-seam';
 import { planNight, subjectOrderKey, type PlannedFact } from '@/lib/continuity/night-plan';
-import { CONTINUITY_CALL_COST_BUDGET_MICRO_USD, CONTINUITY_PROMPT_VERSION, CONTINUITY_PURPOSE, continuityBlocks, type CheckedFactLine } from '@/lib/continuity/prompt';
+import { CONTINUITY_CALL_COST_BUDGET_MICRO_USD, CONTINUITY_PROMPT_VERSION, continuityBlocks, type CheckedDraftFactLine, type CheckedFactLine } from '@/lib/continuity/prompt';
 import { continuityGate, type ContinuityGateVerdict } from '@/lib/continuity/record-gate';
 import { detectRuleContradictions, type RuleFact } from '@/lib/continuity/rules';
 import { NO_ORDER, storyClock, type StoryClock } from '@/lib/continuity/story-clock';
@@ -78,11 +95,12 @@ import {
     CONTINUITY_CALLS_PER_NIGHT,
     CONTINUITY_FACTS_PER_CALL_MAX,
     CONTINUITY_FACTS_PER_CALL_MIN,
+    CONTINUITY_DRAFT_FACTS_PER_SUBJECT_MAX,
+    CONTINUITY_DRAFT_FACTS_READ_MAX,
     CONTINUITY_FACTS_READ_MAX,
     CONTINUITY_LIST_MAX,
-    CONTINUITY_NIGHT_WINDOW_MS,
     CONTINUITY_PASS_SETTLE_MS,
-    CONTINUITY_NIGHTLY_SHARE,
+    continuityNightKey,
     CONTINUITY_PAGE_FAILURES_MAX,
     CONTINUITY_PASSED_OVER_MAX,
     CONTINUITY_PROPOSALS_PER_RUN_MAX,
@@ -98,9 +116,9 @@ import { getPermissionsForRole } from '@/lib/permissions';
 import { chargeModelCalls } from '@/lib/security/model-call-rate-limit';
 import { defaultSleep, waitForModelRate } from './bible-facts';
 import { deploymentPackRecordMode } from './interview-packs';
-import { modelUnavailableReason, nightlyShareSpent, type NightlyShare } from './model-calls';
-import { env } from '@/env';
-import { monthlyCeilingMicroUsd } from '@/lib/ai/config';
+import { modelUnavailableReason, nightShareStop, type NightlyShare } from './model-calls';
+import { nightShareFor } from './night-share';
+import { asDraftRuleFact, sceneBeat, type SceneTime } from '@/lib/draft-facts/compare';
 import { bookSourceSet } from './source-common';
 import { standingStaleFlags } from './stale-flags';
 
@@ -116,7 +134,7 @@ export interface ContinuityCheckDeps {
     worstCase?: (blocks: readonly AuthorDataBlock[]) => number;
     /** The night's bound (tests: a smaller one). */
     callsPerNight?: number;
-    /** The workspace's nightly share in µUSD (tests: a figure of their own; default `CONTINUITY_NIGHTLY_SHARE` of the month's ceiling). */
+    /** The workspace's nightly share in µUSD (tests: a figure of their own; default `CONTINUITY_NIGHTLY_SHARE` of the month's ceiling); the check's half is half of it (D35 addendum B). */
     nightlyCapMicroUsd?: number;
     factsPerCall?: number;
 }
@@ -142,8 +160,26 @@ interface Metrics {
     guardRefusedSubjects?: number;
     /** 4.H-a (#62 item 3): subjects of a page that failed `CONTINUITY_PAGE_FAILURES_MAX` nights in a row, passed over tonight. */
     parkedSubjects?: number;
+    /** D35 addendum A: the draft facts read (the author turned the deep reading of the draft on), and those past a bound. */
+    draftFactsRead?: number;
+    draftFactsCut?: number;
+    /** D35 addendum A: draft-vs-bible mismatches the deep calls raised. */
+    deepDraftMismatches?: number;
+    /** D35 addendum B: why the night's share stopped the check — past the whole share, or past its half while the reading has work. */
+    shareStop?: 'TOTAL' | 'HALF';
     errorCode?: string;
 }
+
+/** D35 addendum A: what a draft fact carries beside the fact — its scene, its claim, and where the scene stands. */
+interface DraftSide {
+    readonly sceneId: string;
+    readonly sceneTitle: string | null;
+    readonly claimKey: string;
+    readonly time: SceneTime;
+}
+
+/** The facts a draft fact may be held against: the bible's own (an element's or a relation's version), never a source fact or an explanation. */
+const BIBLE_KINDS: ReadonlySet<string> = new Set(['BIBLE_VERSION', 'RELATION_VERSION']);
 
 /** The state after a run: RESUMABLE stops keep the pass; a finished pass moves `coveredThrough`. */
 const STATUS_OF: Readonly<Record<ContinuityOutcome, ContinuityRunStatus>> = {
@@ -180,7 +216,8 @@ function arrivedAt(f: CheckFactRow): Date {
     return f.sourceKind === 'SOURCE_CHUNK' && f.decidedAt ? f.decidedAt : f.createdAt;
 }
 
-function asRuleFact(f: CheckFactRow): RuleFact {
+function asRuleFact(f: CheckFactRow, draft?: DraftSide): RuleFact {
+    if (draft) return asDraftRuleFact(f, draft.time);
     return {
         id: f.id,
         predicate: f.predicate,
@@ -199,7 +236,8 @@ function ordered(a: CheckFactRow, b: CheckFactRow): [CheckFactRow, CheckFactRow]
     return d < 0 || (d === 0 && a.id < b.id) ? [a, b] : [b, a];
 }
 
-async function actorFor(db: PrismaTx, workspaceId: string, requestId: string): Promise<WorkspaceRequestContext | null> {
+/** The member a nightly job acts as: the workspace's longest-standing OWNER, else EDITOR, who may edit the bible (5.3's draft reading uses it too). */
+export async function actorFor(db: PrismaTx, workspaceId: string, requestId: string): Promise<WorkspaceRequestContext | null> {
     const slug = await WorkspaceRepository.findSlug(db, workspaceId);
     if (!slug) return null;
     for (const role of ['OWNER', 'EDITOR'] as const) {
@@ -247,18 +285,54 @@ async function raisePairs(
     return FactProposalRepository.raise(db, ctx.workspaceId, kept);
 }
 
-/** A fact as one line of the deep call's facts block, with its place in the story order. */
-function lineOf(f: CheckFactRow, clock: StoryClock, positions: ReadonlyMap<string, { name: string; position: number }>): CheckedFactLine {
-    const p = clock.positionOf(asRuleFact(f));
+/** A fact as one line of the deep call's facts block, with its place in the story order (a draft fact's: its scene's). */
+function lineOf(f: CheckFactRow, clock: StoryClock, positions: ReadonlyMap<string, { name: string; position: number }>, draft?: DraftSide): CheckedFactLine {
+    const rule = asRuleFact(f, draft);
+    const p = clock.positionOf(rule);
     const at = p ? positions.get(p.elementId) : undefined;
     return {
         predicate: f.predicate,
         subjectName: f.subjectName,
         statement: f.statement,
-        storyTimeFrom: f.storyTimeFrom,
-        storyTimeTo: f.storyTimeTo,
+        storyTimeFrom: rule.storyTimeFrom,
+        storyTimeTo: rule.storyTimeTo,
         at: p && at ? { element: at.name, position: at.position, order: ORDER_NAME[p.kind] ?? 'story order' } : null,
     };
+}
+
+/**
+ * D35 addendum A: raise the deep check's draft-vs-bible pairs as draft mismatches (basis DRAFT, naming this run), each
+ * only between a live BIBLE fact and a live keyed draft fact; a draft fact against any other kind is refused
+ * DRAFT_NOT_BIBLE. One open mismatch a bible fact, scene and claim (the partial unique index; a repeat is skipped).
+ * Under the book's fact lock (taken alone).
+ */
+async function raiseDraftPairs(
+    db: PrismaTx,
+    ctx: WorkspaceRequestContext,
+    bookId: string,
+    run: ContinuityRunRow,
+    pairs: ReadonlyArray<{ bible: CheckFactRow; draft: CheckFactRow; side: DraftSide; kind: ContradictionKind }>,
+    refusals: Record<string, number>,
+    max: number,
+): Promise<number> {
+    if (pairs.length === 0) return 0;
+    await BibleFactRepository.lockBook(db, bookId);
+    const live = await ContinuityFactRepository.liveIds(db, ctx.workspaceId, [...new Set(pairs.flatMap((p) => [p.bible.id, p.draft.id]))]);
+    const rows: Array<{ bookId: string; sceneId: string; factId: string; newerFactId: string; kind: string; draftClaimKey: string; checkRunId: string }> = [];
+    for (const p of pairs) {
+        if (!BIBLE_KINDS.has(p.bible.sourceKind)) {
+            refusals.DRAFT_NOT_BIBLE = (refusals.DRAFT_NOT_BIBLE ?? 0) + 1;
+            continue;
+        }
+        if (!live.has(p.bible.id) || !live.has(p.draft.id)) {
+            refusals.NOT_LIVE = (refusals.NOT_LIVE ?? 0) + 1;
+            continue;
+        }
+        rows.push({ bookId, sceneId: p.side.sceneId, factId: p.bible.id, newerFactId: p.draft.id, kind: p.kind, draftClaimKey: p.side.claimKey, checkRunId: run.id });
+    }
+    const kept = rows.slice(0, Math.max(0, max));
+    if (rows.length > kept.length) refusals.DEFERRED = (refusals.DEFERRED ?? 0) + rows.length - kept.length;
+    return DraftMismatchRepository.raise(db, ctx.workspaceId, kept);
 }
 
 /** Run one night's check (the job's body). */
@@ -299,7 +373,7 @@ export async function executeContinuityCheck(payload: { workspaceId: string; run
             if (state && looked.ctx) await ContinuityCheckRepository.save(db, payload.workspaceId, run.bookId, { ...page, ...state, lastRunAt: at, lastOutcome: outcome });
             // AUDIT LAST (3.H).
             if (looked.ctx) {
-                await logEvent(looked.ctx, { action: 'CONTINUITY_CHECKED', entityType: 'ContinuityRun', entityId: run.id, details: { bookId: run.bookId, outcome, ...counts } }, { db, actorType: 'SYSTEM' });
+                await logEvent(looked.ctx, { action: 'CONTINUITY_CHECKED', entityType: 'ContinuityRun', entityId: run.id, details: { bookId: run.bookId, outcome, ...counts, deepDraftMismatches: metrics.deepDraftMismatches ?? 0 } }, { db, actorType: 'SYSTEM' });
             }
         });
         return { ran: true, outcome };
@@ -317,11 +391,15 @@ export async function executeContinuityCheck(payload: { workspaceId: string; run
         const placed = await placedElementsOf(db, ctx.workspaceId, run.bookId, CLOCK_ELEMENTS_MAX + 1);
         const subjectIds = [...new Set(facts.map((f) => f.subjectElementId).filter((x): x is string => !!x))];
         const elements = await BibleElementRepository.listByIds(db, ctx.workspaceId, run.bookId, subjectIds);
+        // D35 addendum A: the draft's facts too, only for a book whose author turned that on (off: nothing is read).
+        const settings = await ContinuitySettingsRepository.find(db, ctx.workspaceId, run.bookId);
+        const draftFacts: CheckDraftFactRow[] = settings?.deepReadsDraft ? await ContinuityFactRepository.listLiveDraftForBook(db, ctx.workspaceId, run.bookId, CONTINUITY_DRAFT_FACTS_READ_MAX + 1) : [];
+        const scenes = await SceneDraftReadRepository.sceneTimes(db, ctx.workspaceId, run.bookId, [...new Set(draftFacts.slice(0, CONTINUITY_DRAFT_FACTS_READ_MAX).map((f) => f.sceneId!))]);
         // The sweep: open flags their entry's save has cleared are written CLEARED (lists stay short).
         const open = await StaleFlagRepository.listOpen(db, ctx.workspaceId, run.bookId, CONTINUITY_LIST_MAX * 5);
         const { cleared } = await standingStaleFlags(db, ctx.workspaceId, open);
         metrics.staleCleared = await StaleFlagRepository.markCleared(db, ctx.workspaceId, cleared.map((f) => f.id));
-        return { claim: at, state, facts, placed, elements };
+        return { claim: at, state, facts, placed, elements, draftReading: settings?.deepReadsDraft === true, draftSince: settings?.deepReadsDraftSince ?? null, draftFacts, scenes };
     });
     if (!claimed) return { ran: false, outcome: null };
     const { claim, state } = claimed;
@@ -381,10 +459,32 @@ export async function executeContinuityCheck(payload: { workspaceId: string; run
             byKind.set(e.kind, n);
             positions.set(e.id, { name: e.name, position: n });
         }
-        const byId = new Map(facts.map((f) => [f.id, f] as const));
+        const byId = new Map<string, CheckFactRow>(facts.map((f) => [f.id, f] as const));
+        // D35 addendum A: each draft fact read, with its scene and where the scene stands in story time.
+        const draftOf = new Map<string, DraftSide>();
+        const draftBySubject = new Map<string, CheckFactRow[]>();
+        if (claimed.draftReading) {
+            metrics.draftFactsCut = Math.max(0, claimed.draftFacts.length - CONTINUITY_DRAFT_FACTS_READ_MAX);
+            const sceneOf = new Map(claimed.scenes.map((sc) => [sc.id, sc] as const));
+            for (const f of claimed.draftFacts.slice(0, CONTINUITY_DRAFT_FACTS_READ_MAX)) {
+                const sc = f.sceneId ? sceneOf.get(f.sceneId) : undefined;
+                if (!sc || !f.dedupeKey || !f.subjectElementId) continue;
+                const list = draftBySubject.get(f.subjectElementId) ?? [];
+                // The newest of a subject's draft facts (the read orders them so), bounded: a cut is counted.
+                if (list.length >= CONTINUITY_DRAFT_FACTS_PER_SUBJECT_MAX) {
+                    metrics.draftFactsCut = (metrics.draftFactsCut ?? 0) + 1;
+                    continue;
+                }
+                list.push(f);
+                draftBySubject.set(f.subjectElementId, list);
+                draftOf.set(f.id, { sceneId: sc.id, sceneTitle: sc.title, claimKey: f.dedupeKey, time: { beatElementId: sceneBeat(sc.beatLinks.map((b) => b.beatElementId), clock), storyTime: sc.storyTime } });
+                byId.set(f.id, f);
+            }
+            metrics.draftFactsRead = draftOf.size;
+        }
 
         // 3. RULES (free, whatever the model's state).
-        const rules = detectRuleContradictions(facts.map(asRuleFact), clock);
+        const rules = detectRuleContradictions(facts.map((f) => asRuleFact(f)), clock);
         metrics.rulePairsCompared = rules.compared;
         counts.ruleProposals = await runInWorkspaceContext(ctx, (db) =>
             raisePairs(db, ctx, run.bookId, run, rules.pairs.map((p) => ({ a: byId.get(p.a)!, b: byId.get(p.b)!, kind: p.kind })), 'RULE', metrics.refusals),
@@ -400,6 +500,9 @@ export async function executeContinuityCheck(payload: { workspaceId: string; run
             if (list) list.push(f);
             else bySubject.set(f.subjectElementId, [f]);
         }
+        // A subject's draft facts join its bible facts (a subject the bible says nothing about has nothing to hold the
+        // draft against: two draft facts are never compared).
+        for (const [subjectId, list] of bySubject) list.push(...(draftBySubject.get(subjectId) ?? []));
         const subjects: Array<{ key: string; facts: Array<PlannedFact & { row: CheckFactRow }> }> = [];
         // 4.H-b (D32): the subjects passed over before (outstanding) are retried in this pass whether or not they changed;
         // with more passed over than the list held (`passedOverCut`), every subject is.
@@ -407,7 +510,11 @@ export async function executeContinuityCheck(payload: { workspaceId: string; run
         for (const [subjectId, list] of bySubject) {
             const e = elementOf.get(subjectId)!;
             const key = subjectOrderKey(e.kind, e.id);
-            const changed = list.some((f) => arrivedAt(f).getTime() > covered && arrivedAt(f).getTime() <= passTarget.getTime());
+            const inPass = (t: number) => t > covered && t <= passTarget.getTime();
+            // A draft fact is new to the check from when it arrived or (addendum A) from when the author turned the reading
+            // on, whichever is later: the draft read before that has never been shown to it.
+            const draftSince = claimed.draftSince?.getTime() ?? Number.NEGATIVE_INFINITY;
+            const changed = list.some((f) => inPass(draftOf.has(f.id) ? Math.max(arrivedAt(f).getTime(), draftSince) : arrivedAt(f).getTime()));
             if (!changed && !outstanding.has(key) && !state.passedOverCut) continue;
             subjects.push({ key, facts: list.map((f) => ({ id: f.id, createdAt: arrivedAt(f).getTime(), row: f })) });
         }
@@ -446,7 +553,7 @@ export async function executeContinuityCheck(payload: { workspaceId: string; run
         const orderNames = (rows: readonly CheckFactRow[]) => {
             const used = new Map<string, Array<{ name: string; position: number }>>();
             for (const f of rows) {
-                const p = clock.positionOf(asRuleFact(f));
+                const p = clock.positionOf(asRuleFact(f, draftOf.get(f.id)));
                 const at = p ? positions.get(p.elementId) : undefined;
                 if (!p || !at) continue;
                 const list = used.get(p.kind) ?? [];
@@ -455,7 +562,13 @@ export async function executeContinuityCheck(payload: { workspaceId: string; run
             }
             return [...used].map(([kind, list]) => ({ order: ORDER_NAME[kind] ?? 'story order', names: list.sort((a, b) => a.position - b.position).map((x) => `${x.name} (position ${x.position})`) }));
         };
-        const blocksOf = (rows: readonly CheckFactRow[]) => continuityBlocks({ facts: rows.map((f) => lineOf(f, clock, positions)), orders: orderNames(rows) });
+        // A page as shown: the bible's facts numbered first, then (addendum A) the draft's in a block of their own.
+        const shownOrder = (rows: readonly CheckFactRow[]): CheckFactRow[] => [...rows.filter((f) => !draftOf.has(f.id)), ...rows.filter((f) => draftOf.has(f.id))];
+        const blocksOf = (rows: readonly CheckFactRow[]) => {
+            const shown = shownOrder(rows);
+            const draftLines: CheckedDraftFactLine[] = shown.filter((f) => draftOf.has(f.id)).map((f) => ({ ...lineOf(f, clock, positions, draftOf.get(f.id)), sceneTitle: draftOf.get(f.id)!.sceneTitle }));
+            return continuityBlocks({ facts: shown.filter((f) => !draftOf.has(f.id)).map((f) => lineOf(f, clock, positions)), ...(draftLines.length > 0 ? { draftFacts: draftLines } : {}), orders: orderNames(shown) });
+        };
         const worst = deps.worstCase ?? ((blocks: readonly AuthorDataBlock[]) => continuityCallWorstCase(blocks));
         const plan = planNight({
             subjects,
@@ -475,22 +588,23 @@ export async function executeContinuityCheck(payload: { workspaceId: string; run
 
         // The night's share of the month (D28 addendum): every deep call of the workspace in the night's window counts,
         // whatever its book; checked here with this call's worst case, and again by the ledger as the call reserves.
-        const share: NightlyShare = {
-            purpose: CONTINUITY_PURPOSE,
-            since: new Date(claim.getTime() - CONTINUITY_NIGHT_WINDOW_MS),
-            capMicroUsd: deps.nightlyCapMicroUsd ?? Math.floor(CONTINUITY_NIGHTLY_SHARE * monthlyCeilingMicroUsd(env)),
-        };
+        // Since 5.3 (D35 item 2) the night's share is ONE budget for the deep check and the nightly draft reading together,
+        // and (addendum B) the check takes at most half of it while the reading still has work tonight.
+        const share: NightlyShare = nightShareFor(ctx, 'continuity', { claim, nightKey: run.nightKey ?? continuityNightKey(claim), capMicroUsd: deps.nightlyCapMicroUsd });
         const checker = (deps.checker ?? ((c: WorkspaceRequestContext) => defaultContinuityChecker(c, {}, share)))(ctx);
         let cursor = keep.passCursor;
         for (const call of plan.calls) {
             if (deps.signal?.aborted) return await finish('ABORTED', claim, { passTarget, passCursor: cursor });
             const callWorst = worst(blocksOf(call.facts.map((f) => f.row)));
-            const spentTonight = await runInWorkspaceContext(ctx, (db) => nightlyShareSpent(db, ctx, share));
-            if (spentTonight + callWorst > share.capMicroUsd) return await finish('NIGHTLY_CAP', claim, { passTarget, passCursor: cursor });
+            const stop = await runInWorkspaceContext(ctx, (db) => nightShareStop(db, ctx, share, callWorst));
+            if (stop) {
+                metrics.shareStop = stop;
+                return await finish('NIGHTLY_CAP', claim, { passTarget, passCursor: cursor });
+            }
             if (!(await waitForModelRate(ctx, deps.charge ?? chargeModelCalls, deps.sleep ?? defaultSleep, deps.signal))) {
                 return await finish(deps.signal?.aborted ? 'ABORTED' : 'MODEL_RATE_LIMITED', claim, { passTarget, passCursor: cursor });
             }
-            const rows = call.facts.map((f) => f.row);
+            const rows = shownOrder(call.facts.map((f) => f.row));
             const result = await checker.extract({ data: blocksOf(rows), bookId: run.bookId }, deps.signal);
             // A call refused before it was sent (the switch, a limit, no deployment, the input guard) is no call made.
             if (result.ok || !REFUSED_BEFORE_SEND.has(result.failure) || result.tokensUsed > 0 || result.costMicroUsd > 0) counts.callsMade++;
@@ -524,11 +638,19 @@ export async function executeContinuityCheck(payload: { workspaceId: string; run
                 }
                 return await finish(outcome, claim, { passTarget, passCursor: cursor });
             }
-            const v = validateContinuityPairs(result.output, rows.map((r) => r.id));
+            const v = validateContinuityPairs(result.output, rows.map((r) => r.id), { draftIds: new Set(rows.filter((r) => draftOf.has(r.id)).map((r) => r.id)) });
             for (const [code, n] of Object.entries(v.refusals)) metrics.refusals[code] = (metrics.refusals[code] ?? 0) + (n ?? 0);
             const callCursor = call.subjectKeys[call.subjectKeys.length - 1];
+            // Two bible facts: a contradiction (basis DEEP). A bible fact and a draft fact: a draft mismatch (addendum A).
+            const biblePairs = v.pairs.filter((p) => !draftOf.has(p.a) && !draftOf.has(p.b));
+            const draftPairs = v.pairs.filter((p) => draftOf.has(p.a) !== draftOf.has(p.b)).map((p) => {
+                const [bibleId, draftId] = draftOf.has(p.a) ? [p.b, p.a] : [p.a, p.b];
+                return { bible: byId.get(bibleId)!, draft: byId.get(draftId)!, side: draftOf.get(draftId)!, kind: p.kind };
+            });
             const raised = await runInWorkspaceContext(ctx, async (db) => {
-                const n = await raisePairs(db, ctx, run.bookId, run, v.pairs.map((p) => ({ a: byId.get(p.a)!, b: byId.get(p.b)!, kind: p.kind })), 'DEEP', metrics.refusals);
+                const n = await raisePairs(db, ctx, run.bookId, run, biblePairs.map((p) => ({ a: byId.get(p.a)!, b: byId.get(p.b)!, kind: p.kind })), 'DEEP', metrics.refusals);
+                const drafts = await raiseDraftPairs(db, ctx, run.bookId, run, draftPairs, metrics.refusals, CONTINUITY_PROPOSALS_PER_RUN_MAX - n);
+                if (drafts > 0) metrics.deepDraftMismatches = (metrics.deepDraftMismatches ?? 0) + drafts;
                 // The page is done: the cursor moves past it, so a stop later in the night keeps it. Its subjects are
                 // checked now, so none of them is outstanding any more (4.H-b, D32).
                 page.pageFailures = 0;

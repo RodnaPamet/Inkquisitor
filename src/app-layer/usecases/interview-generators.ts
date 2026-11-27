@@ -27,6 +27,8 @@ import { SourceChunkRepository, SourceRepository, StoryFactRepository } from '@/
 import { FactProposalRepository } from '@/app-layer/repositories/fact-layer.repository';
 import { EnrichmentProposalRepository } from '@/app-layer/repositories/enrichment.repository';
 import { StoryThreadRepository } from '@/app-layer/repositories/continuity.repository';
+import { ThreadSceneLinkRepository, scenesInOrder } from '@/app-layer/repositories/draft-facts.repository';
+import { compareSceneOrder, isUnpaidSetup, type SceneOrderKey } from '@/lib/draft-facts/threads';
 import type { PrismaTx } from '@/lib/db/rls-middleware';
 import { decodeFieldValue } from '@/lib/bible/field-values';
 import { getFieldDef } from '@/lib/bible/templates';
@@ -35,7 +37,7 @@ import { compareRanks } from '@/lib/bible/story-order';
 import { nameKey } from '@/lib/enrichment/validate';
 import { refKey, type FrontierResult } from '@/lib/interview/frontier';
 import { generatorsOn } from '@/lib/interview/dial-settings';
-import { pairSubjectId } from '@/lib/interview/subjects';
+import { pairSubjectId, sceneOfSubject, sceneSubjectId } from '@/lib/interview/subjects';
 import { PAIR_ANGLE_FIELD } from '@/lib/interview/generators/wording';
 import { ladderKey, type ContinuityInput, type GeneratorInput, type GeneratorSubject, type PairInput, type PendingFactInput } from '@/lib/interview/generators';
 import { PAIR_ANGLES, type PairAngle } from '@/lib/interview/vocabulary';
@@ -208,12 +210,17 @@ export async function loadGeneratorInputs(
             if (!subject || !field) continue;
             continuity.push({ type: 'CONTRADICTION', proposalId: p.id, subjectElementId: subject.elementId, fieldKey: field, olderQuote: older.quote, newerQuote: newer.quote });
         }
-        for (const t of await StoryThreadRepository.listOpenAbout(db, ctx.workspaceId, session.bookId, elementIds, CONTINUITY_ITEMS_READ_MAX)) {
+        const openThreads = await StoryThreadRepository.listOpenAbout(db, ctx.workspaceId, session.bookId, elementIds, CONTINUITY_ITEMS_READ_MAX);
+        // Phase 5.3 (D35 item 4): an UNPAID SETUP — a promise or clue a scene was confirmed to plant, with no confirmed
+        // pay-off after it in the manuscript — is the same thread question, valued higher and naming the planting scene.
+        const unpaid = await unpaidSetups(db, ctx, session.bookId, openThreads);
+        for (const t of openThreads) {
             const subject = t.subjectElementId ? byId.get(t.subjectElementId) : undefined;
             const field = subject ? THREAD_LANDING_FIELDS[subject.kind] : undefined;
             if (!subject || !field || askedRefs.has(`thread:${t.id}`)) continue;
             if (t.kind !== 'PROMISE' && t.kind !== 'CLUE' && t.kind !== 'OPEN_QUESTION') continue;
-            continuity.push({ type: 'THREAD', threadId: t.id, threadKind: t.kind, subjectElementId: subject.elementId, fieldKey: field, title: t.title });
+            const setup = unpaid.get(t.id);
+            continuity.push({ type: 'THREAD', threadId: t.id, threadKind: t.kind, subjectElementId: subject.elementId, fieldKey: field, title: t.title, ...(setup ? { unpaidSetup: setup } : {}) });
         }
         continuity.push(...(await timelineGaps(db, ctx, session, plain, frontier, askedRefs)));
     }
@@ -262,9 +269,12 @@ export async function fieldHoldsFor(
     subjects: { elementIds: readonly string[]; relationIds: readonly string[]; pairs: ReadonlyArray<Pick<PairInput, 'firstElementId' | 'secondElementId'>> },
 ): Promise<Set<string>> {
     const held = new Set<string>();
-    const elementIds = [...new Set([...subjects.elementIds, ...subjects.pairs.flatMap((p) => [p.firstElementId, p.secondElementId])])];
-    const proposals = await EnrichmentProposalRepository.pendingFieldHolds(db, ctx.workspaceId, bookId, { elementIds, relationIds: subjects.relationIds }, PENDING_PROPOSALS_READ_MAX);
+    // Phase 5.3: a scene subject (`scene:<id>`) is its card: its fields are held by pending SCENE_CARD_FIELD proposals.
+    const sceneIds = subjects.elementIds.flatMap((id) => (sceneOfSubject(id) ? [sceneOfSubject(id)!] : []));
+    const elementIds = [...new Set([...subjects.elementIds.filter((id) => !sceneOfSubject(id)), ...subjects.pairs.flatMap((p) => [p.firstElementId, p.secondElementId])])];
+    const proposals = await EnrichmentProposalRepository.pendingFieldHolds(db, ctx.workspaceId, bookId, { elementIds, relationIds: subjects.relationIds, sceneIds }, PENDING_PROPOSALS_READ_MAX);
     for (const p of proposals) {
+        if (p.kind === 'SCENE_CARD_FIELD' && p.sceneId && p.fieldKey) held.add(refKey({ elementId: sceneSubjectId(p.sceneId), fieldKey: p.fieldKey }));
         if (p.kind === 'FIELD' && p.elementId && p.fieldKey) held.add(refKey({ elementId: p.elementId, fieldKey: p.fieldKey }));
         else if (p.kind === 'RELATION_FIELD' && p.relationId && p.fieldKey) held.add(refKey({ elementId: p.relationId, fieldKey: p.fieldKey }));
     }
@@ -314,4 +324,37 @@ async function timelineGaps(
         if (!t1 || !t2) return [];
         return [{ type: 'TIMELINE_GAP' as const, elementId: g.elementId, fieldKey: STORY_TIME_KEY, before: { name: names.get(before) ?? '', time: t1 }, after: { name: names.get(after) ?? '', time: t2 } }];
     });
+}
+
+/** Confirmed plant / pay links read at most for one round's open threads (bounded; a cut reads as "not unpaid"). */
+const THREAD_LINKS_READ_MAX = 400;
+
+/**
+ * Phase 5.3: which of the open threads are UNPAID SETUPS (`isUnpaidSetup`), with the first planting scene's title. Two
+ * bounded reads; a link read cut at its bound decides nothing (no thread is called unpaid on a partial read).
+ */
+async function unpaidSetups(
+    db: PrismaTx,
+    ctx: WorkspaceRequestContext,
+    bookId: string,
+    /** OPEN threads (`listOpenAbout` reads only those). */
+    threads: ReadonlyArray<{ id: string; kind: string }>,
+): Promise<Map<string, { sceneTitle: string | null }>> {
+    const out = new Map<string, { sceneTitle: string | null }>();
+    const candidates = threads.filter((t) => t.kind === 'PROMISE' || t.kind === 'CLUE');
+    if (candidates.length === 0) return out;
+    const links = await ThreadSceneLinkRepository.confirmedForThreads(db, ctx.workspaceId, bookId, candidates.map((t) => t.id), THREAD_LINKS_READ_MAX + 1);
+    if (links.length === 0 || links.length > THREAD_LINKS_READ_MAX) return out;
+    const scenes = new Map((await scenesInOrder(db, ctx.workspaceId, bookId, [...new Set(links.map((l) => l.sceneId))])).map((sc) => [sc.id, sc] as const));
+    const orderOf = (sceneId: string): SceneOrderKey | null => {
+        const sc = scenes.get(sceneId);
+        return sc ? { partRank: sc.chapter.part.rank, chapterRank: sc.chapter.rank, sceneRank: sc.rank } : null;
+    };
+    for (const t of candidates) {
+        const own = links.filter((l) => l.threadId === t.id).map((l) => ({ role: l.role, sceneId: l.sceneId, order: orderOf(l.sceneId) }));
+        if (!isUnpaidSetup({ kind: t.kind, state: 'OPEN' }, own)) continue;
+        const first = own.filter((l) => l.role === 'PLANTS' && l.order).sort((a, b) => compareSceneOrder(a.order!, b.order!))[0];
+        out.set(t.id, { sceneTitle: first ? (scenes.get(first.sceneId)?.title ?? null) : null });
+    }
+    return out;
 }

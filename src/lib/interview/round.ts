@@ -50,7 +50,7 @@ import { dedupe, dedupeTokens, exactKey, questionDedupeKey, type AskedQuestion, 
 import { refKey, type FieldRef } from './frontier';
 import { GenerationStop, type GenerationFailureKind, type GenerationResult, type QuestionGenerator } from './generator';
 import type { CraftPack, PackRegistry, RelationsPack } from './packs';
-import type { PendingSubject, RelationSubject } from './subjects';
+import type { PendingSubject, RelationSubject, SceneSubject } from './subjects';
 import { candidateKey, type RoundPlan, type WordedTarget } from './plan';
 import { buildGenerationRequest, QUESTION_PROMPT, type PromptAnswer, type PromptElement, type PromptSourceContext } from './prompt';
 import { disclosesInstructions, promptRuns } from '@/lib/text/prompt-disclosure';
@@ -76,13 +76,16 @@ export interface RoundElement {
     pending?: PendingSubject;
     /** Phase 4.4 (D30): a relation the RELATIONS generator brought into a KIND or BOOK session (both its ends in scope). */
     addedByRelations?: boolean;
+    /** Phase 5.3: the subject is a manuscript scene's card (its id `scene:<sceneId>`, its kind its carrier's). */
+    scene?: SceneSubject;
 }
 
-/** A pack that teaches how to question a subject: a kind's craft pack, or the relations pack (Phase 3.3). */
+/** A pack that teaches how to question a subject: a kind's craft pack, the relations pack (Phase 3.3) or the scene pack (Phase 5.3). */
 export type QuestionPack = CraftPack | RelationsPack;
 
-/** The pack a subject is questioned with: the relations pack for a relation, its kind's craft pack otherwise. */
-export function packForSubject(e: Pick<RoundElement, 'kind' | 'relation'>, craft: Readonly<Record<BibleKind, CraftPack>>, relations: RelationsPack | undefined): QuestionPack | undefined {
+/** The pack a subject is questioned with: the scene pack for a scene's card, the relations pack for a relation, its kind's craft pack otherwise. */
+export function packForSubject(e: Pick<RoundElement, 'kind' | 'relation' | 'scene'>, craft: Readonly<Record<BibleKind, CraftPack>>, relations: RelationsPack | undefined, scene?: RelationsPack): QuestionPack | undefined {
+    if (e.scene) return scene;
     return e.relation ? relations : craft[e.kind];
 }
 
@@ -102,7 +105,7 @@ export interface RoundInput {
     asked: readonly AskedQuestion[];
     /** Exact-repeat keys (`exactKey`) already known to the caller; `findExactRepeats` adds the book's own. */
     askedKeys?: ReadonlySet<string>;
-    packs: Pick<PackRegistry, 'craft' | 'personas'> & { relations?: RelationsPack };
+    packs: Pick<PackRegistry, 'craft' | 'personas'> & { relations?: RelationsPack; scene?: RelationsPack };
     /** Phase 4.0: the retriever's confirmed source facts and passages for the scope, as context only. */
     sourceContext?: PromptSourceContext;
     /** Phase 4.3: the session's earlier rounds compacted (off by default; `compaction.ts`). */
@@ -276,13 +279,14 @@ export function fillGapsFromPack(
     detail: number,
     isDuplicate: (q: Candidate, filledSoFar: readonly Candidate[]) => boolean,
     relations?: RelationsPack,
+    scene?: RelationsPack,
 ): { filled: Candidate[]; noQuestion: FieldRef[] } {
     const filled: Candidate[] = [];
     const noQuestion: FieldRef[] = [];
     const allowed = kindsAllowed(detail);
     for (const gap of gaps) {
         const element = elements.get(gap.elementId);
-        const pack = element ? packForSubject(element, craft, relations) : undefined;
+        const pack = element ? packForSubject(element, craft, relations, scene) : undefined;
         const example = pack?.examples.find((e) => {
             if (e.keys.length !== 1 || e.keys[0] !== gap.fieldKey || !allowed.includes(e.kind)) return false;
             return !isDuplicate(asCandidate(gap, e), filled);
@@ -453,10 +457,11 @@ export async function produceRound(input: RoundInput, deps: RoundDeps): Promise<
             challengeKey: challenge?.elementId === e.elementId ? challenge.fieldKey : null,
             ...(e.relation ? { relation: e.relation } : {}),
             ...(e.pending ? { pending: e.pending } : {}),
+            ...(e.scene ? { scene: e.scene } : {}),
         }));
         // The packs the call's subjects are questioned with, once each, in subject order (Phase 3.3: a relation's is the relations pack).
         const craftPacks = [...new Map(inPlay.flatMap((e) => {
-            const pack = packForSubject(e, input.packs.craft, input.packs.relations);
+            const pack = packForSubject(e, input.packs.craft, input.packs.relations, input.packs.scene);
             return pack ? [[pack.name, pack] as const] : [];
         })).values()];
         const request = buildGenerationRequest({
@@ -574,7 +579,7 @@ export async function produceRound(input: RoundInput, deps: RoundDeps): Promise<
     if (deps.findExactRepeats) {
         const fallbackProbes = input.plan.targets.flatMap((t) => {
             const element = elements.get(t.elementId);
-            const pack = element ? packForSubject(element, input.packs.craft, input.packs.relations) : undefined;
+            const pack = element ? packForSubject(element, input.packs.craft, input.packs.relations, input.packs.scene) : undefined;
             const allowed = kindsAllowed(input.dials.detail);
             return (pack?.examples ?? []).filter((e) => e.keys.length === 1 && e.keys[0] === t.fieldKey && allowed.includes(e.kind)).map((e) => asCandidate(t, e));
         });
@@ -633,6 +638,7 @@ export async function produceRound(input: RoundInput, deps: RoundDeps): Promise<
             return !check.keptIndexes.includes(before.length);
         },
         input.packs.relations,
+        input.packs.scene,
     );
     metrics.packFallbacks = filled.length;
     metrics.noQuestion = noQuestion.map((r) => ({ elementId: r.elementId, fieldKey: r.fieldKey }));

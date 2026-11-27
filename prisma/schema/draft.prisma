@@ -1,0 +1,172 @@
+// ─────────────────────────────────────────────────────────────────
+//  The draft held against the bible (Phase 5.3, decisions D3 and D35).
+//
+//  The nightly pass READS each scene whose text changed since it was last
+//  read (`SceneDraftRead` is the per-scene cursor), drawing its facts into
+//  the one fact table as DRAFT facts (`StoryFact` of kind SCENE_TEXT, never
+//  canon) and comparing them with the bible's (`StoryFactProposal` of basis
+//  DRAFT). It also PROPOSES which threads a scene plants or pays off
+//  (`StoryThreadSceneLink`), for the author to confirm. One run a book a
+//  night (`DraftReadRun`).
+//
+//  "Grill me on this scene" fills the scene's CARD (`SceneCard`: goal,
+//  conflict, outcome, what changed), never its prose (D3); every change to a
+//  card writes one `SceneCardVersion` (append-only, book-keyed).
+//
+//  EVERY MODEL HERE IS WORKSPACE-SCOPED: FORCE ROW LEVEL SECURITY, the
+//  `workspace_isolation` / `superuser_bypass` policies in the migration,
+//  reached through `runInWorkspaceContext`. Author text (a link's quote, a
+//  card's fields) is encrypted; a run holds ids, counts and codes only.
+// ─────────────────────────────────────────────────────────────────
+
+/// One scene's draft reading (the nightly pass's cursor): the text it last read, keyed, and how that went.
+model SceneDraftRead {
+  id           String    @id @default(cuid())
+  workspaceId  String
+  bookId       String
+  sceneId      String
+  /// The scene revision last seen: a scene is due again once its revision moves (-1: never read, only a failure counted).
+  revision     Int
+  /// A keyed hash of the stored text last read (`workspaceSubkey`): an unchanged text is never read again.
+  textKey      String
+  /// OK | EMPTY | CALL_OVER_BUDGET | GUARD_REFUSED | PASSED_OVER (CHECK).
+  outcome      String
+  /// The text read was cut at `DRAFT_TEXT_MAX_CHARS` (the rest unread, named).
+  textCut      Boolean   @default(false)
+  /// Nights in a row this text failed in a way it will fail every night (reset when the text moves or a read succeeds).
+  failures     Int       @default(0)
+  factsKept    Int       @default(0)
+  costMicroUsd BigInt    @default(0)
+  readAt       DateTime  @default(now())
+
+  scene ManuscriptScene @relation(fields: [workspaceId, bookId, sceneId], references: [workspaceId, bookId, id], onDelete: Cascade)
+
+  /// One cursor a scene.
+  @@unique([workspaceId, bookId, sceneId])
+  @@unique([workspaceId, id])
+}
+
+/// One night's draft reading of one book (the `draft-read` job's run).
+model DraftReadRun {
+  id               String    @id @default(cuid())
+  workspaceId      String
+  bookId           String
+  /// The night it was dispatched for (`continuityNightKey`): one run a book a night.
+  nightKey         String
+  /// QUEUED | RUNNING | DONE | STOPPED | SKIPPED | FAILED (CHECK).
+  status           String    @default("QUEUED")
+  /// How it ended or paused, a code (CHECK; `DRAFT_READ_OUTCOMES`).
+  outcome          String?
+  scenesRead       Int       @default(0)
+  scenesRemaining  Int       @default(0)
+  factsKept        Int       @default(0)
+  mismatchesRaised Int       @default(0)
+  mismatchesFixed  Int       @default(0)
+  linksProposed    Int       @default(0)
+  callsMade        Int       @default(0)
+  costMicroUsd     BigInt    @default(0)
+  promptVersion    String?
+  /// Counts and codes only (refusals by code, AiCallLog ids). Never text.
+  metrics          Json?
+  createdAt        DateTime  @default(now())
+  startedAt        DateTime?
+  finishedAt       DateTime?
+
+  book Book @relation(fields: [workspaceId, bookId], references: [workspaceId, id], onDelete: Cascade)
+
+  @@unique([workspaceId, bookId, nightKey])
+  @@unique([workspaceId, id])
+  /// A book's runs, newest first (the Continuity page's "last read", the dispatcher's live-run check).
+  @@index([workspaceId, bookId, createdAt])
+  /// The dispatcher's scan for stale live runs across workspaces.
+  @@index([status, createdAt])
+}
+
+/// A proposal that a scene PLANTS or PAYS OFF a thread (a promise, a clue, an open question), citing its sentence.
+model StoryThreadSceneLink {
+  id           String    @id @default(cuid())
+  workspaceId  String
+  bookId       String
+  threadId     String
+  sceneId      String
+  /// PLANTS | PAYS (CHECK).
+  role         String
+  /// The scene's own words it rests on (encrypted, sanitised), and where they were in the scene's plain text.
+  quote        String
+  quoteStart   Int
+  quoteEnd     Int
+  /// The keyed hash of the scene text the proposal was read from (a stale offset is never placed).
+  sceneTextKey String
+  /// PENDING | CONFIRMED | REJECTED (CHECK).
+  status       String    @default("PENDING")
+  /// What the author is warned of (D14 applied): POSSIBLE_INSTRUCTION.
+  flags        String[]  @default([])
+  /// The run that proposed it.
+  runId        String?
+  decidedById  String?
+  decidedAt    DateTime?
+  createdAt    DateTime  @default(now())
+
+  book      Book            @relation(fields: [workspaceId, bookId], references: [workspaceId, id], onDelete: Cascade)
+  thread    StoryThread     @relation(fields: [workspaceId, threadId], references: [workspaceId, id], onDelete: Cascade)
+  scene     ManuscriptScene @relation(fields: [workspaceId, bookId, sceneId], references: [workspaceId, bookId, id], onDelete: Cascade)
+  decidedBy User?           @relation("StoryThreadSceneLinkDecidedBy", fields: [decidedById], references: [id], onDelete: SetNull)
+
+  /// One proposal a thread, scene and role, ever: a rejected one is never proposed again.
+  @@unique([workspaceId, threadId, sceneId, role])
+  @@unique([workspaceId, id])
+  /// A book's links by status, newest first (the Continuity page).
+  @@index([workspaceId, bookId, status, createdAt])
+  /// A scene's links (the editor's side panel), and the foreign key's index.
+  @@index([workspaceId, bookId, sceneId])
+  @@index([decidedById])
+}
+
+/// A scene's CARD: what the scene is for (Phase 5.3). Author text, encrypted; written by ONE module (`usecases/scene-card.ts`).
+model SceneCard {
+  id          String   @id @default(cuid())
+  workspaceId String
+  bookId      String
+  sceneId     String
+  /// What the point-of-view character wants in the scene (encrypted), or NULL.
+  goal        String?
+  /// What stands in the way (encrypted), or NULL.
+  conflict    String?
+  /// How it ends for them (encrypted), or NULL.
+  outcome     String?
+  /// What is different after it (encrypted), or NULL.
+  change      String?
+  /// The newest SceneCardVersion's number: every save names it (409 VERSION_CONFLICT otherwise).
+  version     Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  scene ManuscriptScene @relation(fields: [workspaceId, bookId, sceneId], references: [workspaceId, bookId, id], onDelete: Cascade)
+
+  @@unique([workspaceId, bookId, sceneId])
+  @@unique([workspaceId, id])
+}
+
+/// One version of a scene's card (append-only; the history stays with the book when the scene goes, as a note's does).
+model SceneCardVersion {
+  id              String             @id @default(cuid())
+  workspaceId     String
+  bookId          String
+  /// The scene (no foreign key: the history outlives the scene).
+  sceneId         String
+  versionNumber   Int
+  /// The card at that moment, as JSON (encrypted).
+  snapshot        String
+  /// MANUAL (the author's own edit) or INTERVIEW (a proposal the author accepted, naming its answers; CHECK).
+  source          BibleVersionSource
+  sourceAnswerIds String[]           @default([])
+  authorId        String?
+  createdAt       DateTime           @default(now())
+
+  book   Book  @relation(fields: [workspaceId, bookId], references: [workspaceId, id], onDelete: Cascade)
+  author User? @relation("SceneCardVersionAuthor", fields: [authorId], references: [id], onDelete: SetNull)
+
+  @@unique([sceneId, versionNumber])
+  @@index([workspaceId, bookId])
+  @@index([authorId])
+}

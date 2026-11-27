@@ -138,6 +138,8 @@ export interface ReconcilePromptElement {
     relation?: RelationSubject;
     /** Phase 3.3: the subject is the BETWEEN slot's element not yet created. */
     pending?: { afterName: string; beforeName: string; proposedName?: string };
+    /** Phase 5.3: the subject is a scene's card (the scene named by `name`; its fields the card's). */
+    scene?: boolean;
 }
 
 /** One of the round's answers in the request. */
@@ -205,6 +207,7 @@ export function buildReconcileRequest(input: ReconcileRequestInput): ReconcileRe
                 ...(e.relation
                     ? { relation: { from: { kind: e.relation.fromKind, name: e.relation.fromName }, label: e.relation.label, to: { kind: e.relation.toKind, name: e.relation.toName } } }
                     : {}),
+                ...(e.scene ? { scene_card: { scene: e.name } } : {}),
                 ...(e.pending ? { not_yet_created: { between: [e.pending.afterName, e.pending.beforeName], ...(e.pending.proposedName ? { proposed_as: e.pending.proposedName } : {}) } } : {}),
                 scope_field_keys: e.scopeFields.map((f) => f.key),
                 fields: e.scopeFields.map(fieldView),

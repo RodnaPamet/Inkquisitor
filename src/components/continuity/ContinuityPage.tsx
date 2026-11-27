@@ -13,8 +13,13 @@
  *     hand; a removal goes through the undo toast), the threads proposed (each
  *     citing the entry and its words; a flagged one says so), and "decide later"
  *     answers still open;
+ *   • Phase 5.3 (D35): "Draft vs bible" — what the nightly reading of the manuscript found (`DraftAgainstBible`),
+ *     and on each thread the scenes confirmed to plant and pay it off, an unpaid setup marked;
  *   • entries that may be stale, each with "Grill me on what changed" (an
- *     interview scoped to the entry, the change as its context) and Dismiss.
+ *     interview scoped to the entry, the change as its context) and Dismiss;
+ *   • D35 addendum A: the book's continuity settings — whether the nightly deep
+ *     check reads the draft too (off by default; it spends the same nightly
+ *     budget), with a sentence saying so.
  *
  * `canEdit` is `bible.edit`, passed down; a reader reads. Every text renders as
  * text. Refusals are worded from their `details.reason`.
@@ -28,6 +33,7 @@ import { EntityDetailLayout } from '@/components/layout/EntityDetailLayout';
 import { Button } from '@/components/ui/button';
 import { buttonVariants } from '@/components/ui/button-variants';
 import { Card } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
 import { EmptyState } from '@/components/ui/empty-state';
 import { FormField } from '@/components/ui/form-field';
 import { Input } from '@/components/ui/input';
@@ -43,6 +49,7 @@ import { THREAD_KINDS, THREAD_STATES, type ThreadKind } from '@/lib/continuity/v
 import type { FactProposalDecision } from '@/lib/facts/vocabulary';
 import { CODE_SETUP_DEFAULTS, interviewSetupQuery } from '@/lib/interview/setup';
 import type { FactProposalView, ProposalFactView } from '@/lib/sources/api-client';
+import { DraftAgainstBible } from './DraftAgainstBible';
 
 export interface ContinuityPageProps {
     workspaceSlug: string;
@@ -225,8 +232,25 @@ function ThreadRow({ thread, canEdit, onState, onEdit, onRemove }: { thread: Thr
         <li className="space-y-tight py-default" data-testid="continuity-thread">
             <div className="flex flex-wrap items-baseline justify-between gap-tight">
                 <p className="text-sm text-content-emphasis">{thread.title}</p>
-                <StatusBadge variant={thread.state === 'OPEN' ? 'info' : 'neutral'}>{t(`state.${thread.state}`)}</StatusBadge>
+                <span className="flex flex-wrap items-center gap-tight">
+                    {thread.unpaidSetup ? (
+                        <StatusBadge variant="warning" data-testid="thread-unpaid">
+                            {t('unpaidSetup')}
+                        </StatusBadge>
+                    ) : null}
+                    <StatusBadge variant={thread.state === 'OPEN' ? 'info' : 'neutral'}>{t(`state.${thread.state}`)}</StatusBadge>
+                </span>
             </div>
+            {thread.plantedIn.length > 0 ? (
+                <p className="text-xs text-content-muted" data-testid="thread-planted">
+                    {t('plantedIn', { scenes: thread.plantedIn.map((sc) => sc.sceneTitle ?? t('untitledScene')).join(', ') })}
+                </p>
+            ) : null}
+            {thread.paidIn.length > 0 ? (
+                <p className="text-xs text-content-muted" data-testid="thread-paid">
+                    {t('paidIn', { scenes: thread.paidIn.map((sc) => sc.sceneTitle ?? t('untitledScene')).join(', ') })}
+                </p>
+            ) : null}
             {thread.note ? <p className="text-sm text-content-muted">{thread.note}</p> : null}
             {thread.subjectName ? <p className="text-xs text-content-muted">{t('about', { name: thread.subjectName })}</p> : null}
             {canEdit ? (
@@ -318,6 +342,7 @@ export function ContinuityPage({ workspaceSlug, book, initial, canEdit }: Contin
     const [hidden, setHidden] = useState<ReadonlySet<string>>(new Set());
     const [adding, setAdding] = useState(false);
     const [editing, setEditing] = useState<ThreadView | null>(null);
+    const [savingSettings, setSavingSettings] = useState(false);
 
     const reload = async () => {
         try {
@@ -336,6 +361,15 @@ export function ContinuityPage({ workspaceSlug, book, initial, canEdit }: Contin
             toast.error(reasonText(err));
             await reload();
             return false;
+        }
+    };
+
+    const saveSettings = async (deepReadsDraft: boolean) => {
+        setSavingSettings(true);
+        try {
+            await run(() => continuityApi.saveSettings(workspaceSlug, book.id, { deepReadsDraft }), t('settings.saved'));
+        } finally {
+            setSavingSettings(false);
         }
     };
 
@@ -420,6 +454,27 @@ export function ContinuityPage({ workspaceSlug, book, initial, canEdit }: Contin
                     ) : null}
                 </Card>
 
+                <Card className="space-y-tight p-default" aria-labelledby="continuity-settings-title">
+                    <h2 id="continuity-settings-title" className="text-sm font-semibold text-content-emphasis">
+                        {t('settings.title')}
+                    </h2>
+                    <div className="flex items-start gap-tight">
+                        {canEdit ? (
+                            <Checkbox
+                                id="continuity-deep-reads-draft"
+                                checked={page.settings.deepReadsDraft}
+                                disabled={savingSettings}
+                                onCheckedChange={(v) => void saveSettings(v === true)}
+                            />
+                        ) : null}
+                        <label htmlFor={canEdit ? 'continuity-deep-reads-draft' : undefined} className="text-sm text-content-default">
+                            {t('settings.deepReadsDraft')}
+                            {canEdit ? null : <span className="text-content-muted" data-testid="continuity-deep-reads-draft-state"> · {page.settings.deepReadsDraft ? t('settings.on') : t('settings.off')}</span>}
+                            <span className="block text-xs text-content-muted">{t('settings.deepReadsDraftHelp')}</span>
+                        </label>
+                    </div>
+                </Card>
+
                 <section className="space-y-default" aria-labelledby="continuity-contradictions-title" id="continuity-contradictions">
                     <div className="flex flex-wrap items-baseline justify-between gap-tight">
                         <h2 id="continuity-contradictions-title" className="text-base font-semibold text-content-emphasis">
@@ -438,6 +493,8 @@ export function ContinuityPage({ workspaceSlug, book, initial, canEdit }: Contin
                     )}
                     {page.contradictions.truncated ? <p className="text-sm text-content-muted">{t('truncated', { shown: page.contradictions.items.length })}</p> : null}
                 </section>
+
+                <DraftAgainstBible workspaceSlug={workspaceSlug} bookId={book.id} canEdit={canEdit} draft={page.draft} run={run} reasonText={reasonText} />
 
                 {page.noLongerStated.items.length > 0 ? (
                     <section className="space-y-default" aria-labelledby="continuity-gone-title">

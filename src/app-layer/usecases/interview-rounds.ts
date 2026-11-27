@@ -78,7 +78,7 @@ import { chargeModelCalls } from '@/lib/security/model-call-rate-limit';
 import { env } from '@/env';
 import { encodeJson, sanitiseQuestionForStorage } from '@/lib/interview/storage';
 import { STATUS_AFTER_STOP, type PersonaKey, type StopReason } from '@/lib/interview/vocabulary';
-import { PENDING_SUBJECT_ID, pairOfSubject, pairSubjectId, subjectIdOf } from '@/lib/interview/subjects';
+import { PENDING_SUBJECT_ID, pairOfSubject, pairSubjectId, sceneOfSubject, subjectIdOf } from '@/lib/interview/subjects';
 import { assembleSourceContext, EMPTY_SOURCE_CONTEXT, type SourceContext } from './source-retrieval';
 import { compactedSessionFor, roundAnswersOf, type CompactionDeps } from './interview-compaction';
 import { refKey, type FieldRef, type FrontierEntry } from '@/lib/interview/frontier';
@@ -566,8 +566,9 @@ async function withQueryContext(ctx: WorkspaceRequestContext, session: SessionRo
  * relations pack when a relation is in scope, and each persona's.
  */
 export function packNamesForState(state: Pick<InterviewState, 'elements'>, personaKeys: readonly PersonaKey[]): string[] {
-    const kinds = [...new Set(state.elements.filter((e) => !e.relation).map((e) => e.kind))];
-    return packNamesFor(kinds, personaKeys, { relations: state.elements.some((e) => e.relation) });
+    // Phase 5.3: a scene's card is questioned with the scene pack alone (its carrier's kind names no craft pack here).
+    const kinds = [...new Set(state.elements.filter((e) => !e.relation && !e.scene).map((e) => e.kind))];
+    return packNamesFor(kinds, personaKeys, { relations: state.elements.some((e) => e.relation), scene: state.elements.some((e) => e.scene) });
 }
 
 /** The questions whose ANSWERED answers settled `q`'s prerequisites in this session (derived; display and audit). */
@@ -634,6 +635,8 @@ export async function generateClaimedRound(
                     ...sourceContext,
                     ...(state.stale ? { upstreamChange: state.stale.changeText } : {}),
                     ...(state.weakPoints ? { weakPoints: state.weakPoints.text } : {}),
+                    // Phase 5.3: a scene session carries its scene's text (bounded) as context for the card, never to rewrite.
+                    ...(state.sceneText ? { sceneText: state.sceneText } : {}),
                 },
                 // Phase 4.3: a long session's earlier rounds, compacted (the state block and the summary; off by default).
                 ...(compacted ? { compacted } : {}),
@@ -813,8 +816,10 @@ export function storedSubject(
     subjectId: string,
     state: Pick<InterviewState, 'elements'>,
     session: Pick<SessionRow, 'slotAfterElementId'>,
-): { elementId: string; relationId: string | null; aboutPending: boolean; pairElementId?: string | null } {
+): { elementId: string; relationId: string | null; aboutPending: boolean; pairElementId?: string | null; sceneId?: string | null } {
     const subject = state.elements.find((e) => e.elementId === subjectId);
+    // Phase 5.3: a scene's card is filed under its carrier element, naming the scene.
+    if (subject?.scene) return { elementId: subject.scene.carrierElementId, relationId: null, aboutPending: false, sceneId: subject.scene.sceneId };
     if (subject?.relation) return { elementId: subject.relation.fromElementId, relationId: subject.relation.relationId, aboutPending: false };
     if (subject?.pending || subjectId === PENDING_SUBJECT_ID) return { elementId: session.slotAfterElementId!, relationId: null, aboutPending: true };
     // Phase 4.4 (D30): a pair is filed under its first element, naming the second.
@@ -951,8 +956,10 @@ async function withoutRepeats(
     }).map(({ q }) => q);
 }
 
-/** A subject's probe for the book's exact-repeat index: a relation names its relation, a pair its two elements. */
+/** A subject's probe for the book's exact-repeat index: a relation names its relation, a pair its two elements, a scene its scene. */
 function repeatProbe(subjectId: string, dedupeKey: string, relationIds: ReadonlySet<string>) {
+    const scene = sceneOfSubject(subjectId);
+    if (scene) return { elementId: subjectId, sceneId: scene, dedupeKey };
     const pair = pairOfSubject(subjectId);
     if (pair) return { elementId: pair.firstElementId, pairElementId: pair.secondElementId, dedupeKey };
     return { elementId: subjectId, dedupeKey, relation: relationIds.has(subjectId) };
@@ -970,10 +977,7 @@ async function exactRepeatsOrNone(
         // Phase 4.4: a pair's names its two elements.
         const asked = probes
             .filter((p) => p.elementId !== PENDING_SUBJECT_ID)
-            .map((p) => {
-                const pair = pairOfSubject(p.elementId);
-                return pair ? { elementId: pair.firstElementId, pairElementId: pair.secondElementId, dedupeKey: p.dedupeKey } : { ...p, relation: relationIds.has(p.elementId) };
-            });
+            .map((p) => repeatProbe(p.elementId, p.dedupeKey, relationIds));
         const rows = await runInWorkspaceContext(ctx, (db) => QuestionRepository.findExactRepeats(db, ctx.workspaceId, bookId, asked));
         return new Set(rows.map((r) => exactKey(r.elementId, r.dedupeKey)));
     } catch (err) {

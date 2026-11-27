@@ -46,7 +46,7 @@ import type { AskedQuestion } from '@/lib/interview/dedupe';
 import { bibleFactsCheck, sourceFactsCheck } from './source-retrieval';
 import { computeFrontier, emptyFrontierReason, refsCheck, type AlreadyAnsweredCheck, type AnswerFact, type BlockedField, type FieldRef, type FrontierResult } from '@/lib/interview/frontier';
 import { slotBeat } from './story-slot';
-import { PENDING_SUBJECT_ID, relationSubjectName, subjectIdOf, type RelationSubject } from '@/lib/interview/subjects';
+import { PENDING_SUBJECT_ID, relationSubjectName, sceneSubjectId, subjectIdOf, type RelationSubject } from '@/lib/interview/subjects';
 import type { RoundPlan } from '@/lib/interview/plan';
 import type { PromptAnswer } from '@/lib/interview/prompt';
 import type { RoundElement } from '@/lib/interview/round';
@@ -68,6 +68,10 @@ import { fieldAnsweredBy } from '@/lib/sources/vocabulary';
 import { generatorsOn } from '@/lib/interview/dial-settings';
 import { SOURCE_YES } from '@/lib/interview/generators/wording';
 import { lengthOf, type SessionLength } from '@/lib/interview/session-length';
+import { SceneCardRepository } from '@/app-layer/repositories/scene-card.repository';
+import { SCENE_CARD_FIELD_KEYS, SCENE_CARD_FIELDS, sceneCarrierOf } from '@/lib/manuscript/scene-card';
+import { scenePlainText } from '@/lib/manuscript/scene-html';
+import { truncateGraphemes } from '@/lib/text/truncate';
 
 /** At most this many elements a kind or book session questions (a larger scope is cut, and says so). */
 export const SCOPE_ELEMENTS_MAX = 60;
@@ -137,6 +141,11 @@ export interface InterviewState {
      * block only) and the fields of the scope's elements they bear on, challenged first.
      */
     weakPoints?: { text: string; focus: Array<{ elementId: string; fieldKeys: string[] }> };
+    /**
+     * Phase 5.3: a SCENE session's scene text, bounded (`SCENE_TEXT_FOR_QUESTIONS_MAX`, cut between grapheme clusters):
+     * author text, sent only as the fenced `scene-text` data block, context for the card — never written anywhere.
+     */
+    sceneText?: string;
 }
 
 export async function requireSession(db: PrismaTx, ctx: WorkspaceRequestContext, bookId: string, sessionId: string): Promise<SessionRow> {
@@ -184,7 +193,7 @@ async function scopeElements(db: PrismaTx, ctx: WorkspaceRequestContext, session
         // Phase 3.3: the elements the author selected; one deleted since is no longer in scope.
         return { rows: await BibleElementRepository.listByIds(db, ctx.workspaceId, session.bookId, session.scopeElementIds.slice(0, SCOPE_ELEMENTS_MAX)), truncated: false };
     }
-    if (session.scope === 'BETWEEN') return { rows: [], truncated: false };
+    if (session.scope === 'BETWEEN' || session.scope === 'SCENE') return { rows: [], truncated: false };
     const rows = await BibleElementRepository.listForInterview(db, ctx.workspaceId, session.bookId, {
         kind: session.scope === 'KIND' ? session.targetKind! : undefined,
         take: SCOPE_ELEMENTS_MAX + 1,
@@ -326,6 +335,45 @@ async function pendingSubject(db: PrismaTx, ctx: WorkspaceRequestContext, sessio
     return { element, checks, related };
 }
 
+/** Phase 5.3: a scene interview's scene text is sent at most this long (characters of its plain text). */
+export const SCENE_TEXT_FOR_QUESTIONS_MAX = 8_000;
+
+/**
+ * Phase 5.3: a SCENE session's scene as a subject — its CARD's fields and stored values, filed under its carrier
+ * element — and its text (bounded) and its point of view and setting as the prompt's context. A scene gone, or one
+ * with no element left to carry its questions, has nothing to ask about (the session finishes).
+ */
+async function sceneSubject(db: PrismaTx, ctx: WorkspaceRequestContext, session: SessionRow) {
+    if (session.scope !== 'SCENE' || !session.sceneId) return null;
+    const scene = await SceneCardRepository.sceneForInterview(db, ctx.workspaceId, session.bookId, session.sceneId);
+    if (!scene) return null;
+    const carrierId = sceneCarrierOf(scene);
+    const carrier = carrierId ? await BibleElementRepository.find(db, ctx.workspaceId, session.bookId, carrierId) : null;
+    if (!carrier) return null;
+    const card = await SceneCardRepository.find(db, ctx.workspaceId, session.bookId, scene.id);
+    const storedText = new Map<string, string>();
+    for (const key of SCENE_CARD_FIELD_KEYS) {
+        const value = card?.[key];
+        if (value) storedText.set(key, value);
+    }
+    const element: RoundElement = {
+        elementId: sceneSubjectId(scene.id),
+        kind: carrier.kind as BibleKind,
+        name: scene.title ?? 'Untitled scene',
+        customLabel: null,
+        fields: SCENE_CARD_FIELDS,
+        storedText,
+        scene: { sceneId: scene.id, title: scene.title, chapterTitle: scene.chapter.title, carrierElementId: carrier.id },
+    };
+    const contextIds = [scene.povElementId, scene.settingElementId].filter((x): x is string => !!x);
+    const context = await BibleElementRepository.listByIds(db, ctx.workspaceId, session.bookId, contextIds);
+    return {
+        element,
+        related: context.map((o) => ({ kind: o.kind as BibleKind, name: o.name, summary: o.summary })),
+        sceneText: truncateGraphemes(scenePlainText(scene.text), SCENE_TEXT_FOR_QUESTIONS_MAX),
+    };
+}
+
 export async function loadInterviewState(db: PrismaTx, ctx: WorkspaceRequestContext, session: SessionRow): Promise<InterviewState> {
     const scope = await scopeElements(db, ctx, session);
     const ids = scope.rows.map((e) => e.id);
@@ -342,6 +390,8 @@ export async function loadInterviewState(db: PrismaTx, ctx: WorkspaceRequestCont
     elements.push(...relationRows);
     const pending = await pendingSubject(db, ctx, session);
     if (pending) elements.push(pending.element);
+    const scene = await sceneSubject(db, ctx, session);
+    if (scene) elements.push(scene.element);
 
     const questions = await QuestionRepository.listForSession(db, ctx.workspaceId, session.id, SESSION_QUESTIONS_MAX);
     const latest = latestAnswers(await AnswerRepository.listForSession(db, ctx.workspaceId, session.id, SESSION_ANSWERS_MAX));
@@ -365,7 +415,8 @@ export async function loadInterviewState(db: PrismaTx, ctx: WorkspaceRequestCont
     }
     const elsewhere = await QuestionRepository.listForElementsElsewhere(db, ctx.workspaceId, session.bookId, ids, session.id, BOOK_QUESTIONS_MAX);
     const relationsElsewhere = await QuestionRepository.listForRelationsElsewhere(db, ctx.workspaceId, session.bookId, relationRows.map((r) => r.elementId), session.id, BOOK_QUESTIONS_MAX);
-    const asked = [...questions.map((q) => asAsked(q, 'SESSION')), ...elsewhere.map((q) => asAsked(q, 'BOOK')), ...relationsElsewhere.map((q) => asAsked(q, 'BOOK'))];
+    const scenesElsewhere = scene ? await QuestionRepository.listForScenesElsewhere(db, ctx.workspaceId, session.bookId, [scene.element.scene!.sceneId], session.id, BOOK_QUESTIONS_MAX) : [];
+    const asked = [...questions.map((q) => asAsked(q, 'SESSION')), ...elsewhere.map((q) => asAsked(q, 'BOOK')), ...relationsElsewhere.map((q) => asAsked(q, 'BOOK')), ...scenesElsewhere.map((q) => asAsked(q, 'BOOK'))];
 
     let related: InterviewState['related'] = [];
     if (session.scope === 'ELEMENT') {
@@ -381,6 +432,8 @@ export async function loadInterviewState(db: PrismaTx, ctx: WorkspaceRequestCont
         related = ends.map((o) => ({ kind: o.kind, name: o.name, summary: o.summary }));
     } else if (pending) {
         related = pending.related;
+    } else if (scene) {
+        related = scene.related;
     }
 
     const rounds = await InterviewRoundRepository.listForSession(db, ctx.workspaceId, session.id, SESSION_ROUNDS_READ);
@@ -399,6 +452,7 @@ export async function loadInterviewState(db: PrismaTx, ctx: WorkspaceRequestCont
     return {
         ...(stale ? { stale } : {}),
         ...(weakPoints ? { weakPoints } : {}),
+        ...(scene ? { sceneText: scene.sceneText } : {}),
         elements,
         checks: [...(pending?.checks ?? []), sourceCheck, bibleCheck],
         scopeTruncated: scope.truncated,
@@ -619,6 +673,8 @@ export interface SessionSummaryView {
     scopeElementIds: string[];
     scopeRelationIds: string[];
     slot: { kind: string; afterElementId: string; beforeElementId: string; act: string | null } | null;
+    /** Phase 5.3: a SCENE session's scene ("Grill me on this scene"); null otherwise. */
+    sceneId: string | null;
     dials: { depth: number; detail: number };
     personaKeys: string[];
     offerRecommended: boolean;
@@ -656,6 +712,7 @@ export function sessionSummaryView(s: SessionRow, targetElementName: string | nu
         scopeElementIds: s.scopeElementIds,
         scopeRelationIds: s.scopeRelationIds,
         slot: s.slotKind && s.slotAfterElementId && s.slotBeforeElementId ? { kind: s.slotKind, afterElementId: s.slotAfterElementId, beforeElementId: s.slotBeforeElementId, act: s.slotAct } : null,
+        sceneId: s.sceneId ?? null,
         dials: { depth: s.depth, detail: s.detail },
         personaKeys: s.personaKeys,
         offerRecommended: s.offerRecommended,

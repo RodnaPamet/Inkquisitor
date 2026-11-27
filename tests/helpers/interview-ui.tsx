@@ -74,6 +74,7 @@ export function interview(over: { questions?: QuestionView[]; status?: Interview
             scopeElementIds: [],
             scopeRelationIds: [],
             slot: null,
+            sceneId: null,
             dials: { depth: 3, detail: 3 },
             personaKeys: [],
             offerRecommended: true,

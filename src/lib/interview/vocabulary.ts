@@ -7,7 +7,7 @@
  */
 
 /** Phase 3.3 adds SELECTION ("Grill this" on a map) and BETWEEN ("What happens between these?"). */
-export const INTERVIEW_SCOPES = ['ELEMENT', 'KIND', 'BOOK', 'SELECTION', 'BETWEEN'] as const;
+export const INTERVIEW_SCOPES = ['ELEMENT', 'KIND', 'BOOK', 'SELECTION', 'BETWEEN', 'SCENE'] as const;
 export type InterviewScope = (typeof INTERVIEW_SCOPES)[number];
 
 export const INTERVIEW_STATUSES = ['ACTIVE', 'PAUSED', 'COMPLETED', 'STOPPED'] as const;

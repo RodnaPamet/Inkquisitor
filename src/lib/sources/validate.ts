@@ -74,9 +74,12 @@ function clip(text: string, max: number): string {
     return text.length > max ? text.slice(0, max).trimEnd() : text;
 }
 
+/** A prompt's runs, as `disclosesInstructions` reads them (5.3's draft read holds its facts to these rules with its own prompt's). */
+export type PromptRuns = ReturnType<typeof promptRuns>;
+
 /** Does any part copy what a passage must not make us store (the header's COPIES_INJECTED_TEXT)? */
-export function copiesInjected(parts: readonly string[], passage: string): boolean {
-    if (disclosesInstructions(parts, EXTRACT_RUNS)) return true;
+export function copiesInjected(parts: readonly string[], passage: string, runs: PromptRuns = EXTRACT_RUNS): boolean {
+    if (disclosesInstructions(parts, runs)) return true;
     for (const part of parts) {
         if (MARKUP.test(part) || SCRIPT_SCHEME.test(part)) return true;
         for (const address of addressesIn(part)) if (!sourceGivesAddress(address, [passage])) return true;
@@ -85,7 +88,7 @@ export function copiesInjected(parts: readonly string[], passage: string): boole
     return false;
 }
 
-export function validateFacts(raw: unknown, passage: { text: string; headingPath: readonly string[] }): FactValidation {
+export function validateFacts(raw: unknown, passage: { text: string; headingPath: readonly string[] }, opts: { runs?: PromptRuns } = {}): FactValidation {
     const { items, malformed } = parseFactsOutput(raw);
     const refusals: Partial<Record<FactRefusal, number>> = {};
     const refuse = (code: FactRefusal, n = 1) => (refusals[code] = (refusals[code] ?? 0) + n);
@@ -105,7 +108,7 @@ export function validateFacts(raw: unknown, passage: { text: string; headingPath
         if (!span) return refuse('QUOTE_NOT_FOUND');
         const quote = passage.text.slice(span.start, span.end);
         // Checked on the raw strings: a passage that injects markup is telling the model something, so it is never sanitised and kept.
-        if (copiesInjected(rawParts, passage.text)) return refuse('COPIES_INJECTED_TEXT');
+        if (copiesInjected(rawParts, passage.text, opts.runs)) return refuse('COPIES_INJECTED_TEXT');
         const sources = [groundingForm(quote), groundingForm(subjectName)];
         const objectLiteral = clip(plainLine(item.object), OBJECT_MAX) || null;
         const groundedText = [statement, objectLiteral ?? ''].filter((t) => t !== '');

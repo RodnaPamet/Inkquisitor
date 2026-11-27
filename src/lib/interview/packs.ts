@@ -50,6 +50,7 @@ import { BIBLE_KINDS, IDENTIFIER_MAX, IDENTIFIER_PATTERN, type BibleKind } from 
 import { allRelationFieldKeys, getRelationType, getTemplate, relationFieldDefs } from '@/lib/bible/templates';
 import { scanPackFiles, type PackFilesScan } from './pack-text-scan';
 import { PERSONA_KEYS, QUESTION_KINDS, type PersonaKey, type QuestionKind } from './vocabulary';
+import { SCENE_CARD_FIELDS } from '@/lib/manuscript/scene-card';
 
 export const PACK_MAX_BYTES = 8_192;
 export const PACKS_DIR = path.join(process.cwd(), 'src/lib/interview/packs');
@@ -226,6 +227,26 @@ export function parseRelationsPack(raw: string): RelationsPack {
         keys,
         core: required,
         ordered: false,
+    });
+}
+
+/** The scene pack's name (Phase 5.3): how to question a manuscript scene's CARD (goal, conflict, outcome, what changed). */
+export const SCENE_PACK_NAME = 'scene';
+
+/**
+ * Parse the scene pack: the craft format, with `name, version, coverage, description` (no kind), the heading
+ * `# Scene`, and a coverage that is exactly the card's fields in order (`SCENE_CARD_FIELDS`).
+ */
+export function parseScenePack(raw: string): RelationsPack {
+    return parseQuestionPack(raw, {
+        where: 'scene pack',
+        frontmatter: ['name', 'version', 'coverage', 'description'],
+        name: SCENE_PACK_NAME,
+        kind: null,
+        label: 'Scene',
+        keys: SCENE_CARD_FIELDS.map((f) => f.key),
+        core: SCENE_CARD_FIELDS.filter((f) => f.required).map((f) => f.key),
+        ordered: true,
     });
 }
 
@@ -489,6 +510,32 @@ export function parseRelationEvals(raw: string): RelationEvalCase[] {
     return cases;
 }
 
+/**
+ * One case of the scene pack's set (Phase 5.3): a scene (its title, an excerpt of its text as the session sends it),
+ * its card's stored fields, and what a right round targets. `bibleState` names exactly the card's core fields, in order.
+ */
+export const SceneEvalCaseSchema = z
+    .object({
+        id: z.string().regex(/^scene-\d{2}$/),
+        rationale: z.string().min(1).max(400),
+        sceneTitle: z.string().min(1).max(120),
+        sceneText: z.string().min(1).max(2_000),
+        bibleState: z.record(z.string(), z.string().min(1).max(1_200).nullable()),
+        priorAnswers: z.array(PRIOR_ANSWER),
+        dials: DIALS,
+        expect: z.object({ targetsAnyOf: z.array(z.string()), mustNot: MUST_NOT }).strict(),
+    })
+    .strict();
+export type SceneEvalCase = z.infer<typeof SceneEvalCaseSchema>;
+
+export function parseSceneEvals(raw: string): SceneEvalCase[] {
+    const where = 'scene evals';
+    const cases = parseEvals(raw, SceneEvalCaseSchema, where, 'scene', 8, 15);
+    const core = SCENE_CARD_FIELDS.filter((f) => f.required).map((f) => f.key);
+    for (const c of cases) if (Object.keys(c.bibleState).join(',') !== core.join(',')) throw new Error(`${where}: ${c.id}'s bibleState is not exactly the card's core keys in order`);
+    return cases;
+}
+
 export function parsePersonaEvals(raw: string, persona: PersonaKey): PersonaEvalCase[] {
     return parseEvals(raw, PersonaEvalCaseSchema, `persona evals ${persona}`, persona, 6, 10);
 }
@@ -525,7 +572,7 @@ export function personaSetHash(evalsRaw: string, situationsRaw: string): string 
 export const PACK_RECORD_FILE = 'evaluation-record.json';
 export const SITUATIONS_FILE = 'situations.json';
 
-export type PackGroup = 'craft' | 'persona' | 'relations';
+export type PackGroup = 'craft' | 'persona' | 'relations' | 'scene';
 
 /**
  * What mounting reads about one pack: its identity, the hashes that pin it,
@@ -555,6 +602,9 @@ export interface PackRegistry {
     craft: Readonly<Record<BibleKind, CraftPack>>;
     /** Phase 3.3: the one pack for every relation's fields. */
     relations: RelationsPack;
+    /** Phase 5.3: the pack for a manuscript scene's card. */
+    scene: RelationsPack;
+    sceneEvals: readonly SceneEvalCase[];
     personas: Readonly<Record<PersonaKey, PersonaPack>>;
     craftEvals: Readonly<Record<BibleKind, CraftEvalCase[]>>;
     relationEvals: readonly RelationEvalCase[];
@@ -634,6 +684,24 @@ export function loadPacks(dir: string = PACKS_DIR): PackRegistry {
         ]),
         record: readRecord(path.join(dir, 'relations')),
     };
+    const sceneRaw = read('scene', 'PACK.md');
+    const sceneEvalsRaw = read('scene', 'evals.json');
+    const scene = parseScenePack(sceneRaw);
+    const sceneEvals = parseSceneEvals(sceneEvalsRaw);
+    files[scene.name] = {
+        name: scene.name,
+        group: 'scene',
+        key: SCENE_PACK_NAME,
+        version: scene.version,
+        dir: 'scene',
+        contentHash: scene.contentHash,
+        setHash: sha256Of(sceneEvalsRaw),
+        scan: scanPackFiles([
+            ['PACK.md', sceneRaw],
+            ['evals.json', sceneEvalsRaw],
+        ]),
+        record: readRecord(path.join(dir, 'scene')),
+    };
     const situationsRaw = read('personas', SITUATIONS_FILE);
     const situations = parseSituations(situationsRaw);
     const personas = {} as Record<PersonaKey, PersonaPack>;
@@ -667,7 +735,7 @@ export function loadPacks(dir: string = PACKS_DIR): PackRegistry {
             record: readRecord(path.join(dir, rel)),
         };
     }
-    return { craft, relations, personas, craftEvals, relationEvals, personaEvals, situations, personaSituations, files, personaEvalCount };
+    return { craft, relations, scene, sceneEvals, personas, craftEvals, relationEvals, personaEvals, situations, personaSituations, files, personaEvalCount };
 }
 
 let registry: PackRegistry | undefined;

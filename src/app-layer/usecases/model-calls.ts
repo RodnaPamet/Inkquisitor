@@ -43,10 +43,12 @@ import {
 /**
  * A purpose's NIGHTLY SHARE of the month (Phase 4.2, D28 addendum, item 1): the calls of `purpose` since `since` may
  * have charged and still hold at most `capMicroUsd` in the workspace. Checked by the ledger under its spend lock with
- * each reservation, so it holds across books and concurrent jobs.
+ * each reservation, so it holds across books and concurrent jobs. Since 5.3 (D35 item 2) a share may name SEVERAL
+ * purposes, measured together and held for a call of any of them: the night's one share is the nightly draft
+ * reading's and the deep continuity check's.
  */
 export interface NightlyShare {
-    readonly purpose: string;
+    readonly purpose: string | readonly string[];
     readonly since: Date;
     readonly capMicroUsd: number;
     /**
@@ -54,6 +56,26 @@ export interface NightlyShare {
      * the nightly one, a rolling window) and a share of the calendar month (`MONTHLY_SHARE`, D32), both by its purpose.
      */
     readonly limit?: 'NIGHTLY_SHARE' | 'MONTHLY_SHARE';
+    /**
+     * D35 addendum B (owner decision 2026-11-27): ONE purpose's HALF of this share. A call of `half.purpose` is held to
+     * `half.capMicroUsd` (what that purpose has charged and holds since `since`, with the call's worst case) while the
+     * OTHER purpose of the share still has work this night (`otherHasWork`, read in the ledger's own transaction, under
+     * the spend lock, from committed rows); once it has none, the whole share is this purpose's. The share's total still
+     * binds every call.
+     */
+    readonly half?: NightShareHalf;
+}
+
+/** One purpose's half of a share (D35 addendum B). */
+export interface NightShareHalf {
+    readonly purpose: string;
+    readonly capMicroUsd: number;
+    readonly otherHasWork: (db: PrismaTx) => Promise<boolean>;
+}
+
+/** The purposes a share measures (one, or several together). */
+export function sharePurposes(share: Pick<NightlyShare, 'purpose'>): readonly string[] {
+    return typeof share.purpose === 'string' ? [share.purpose] : share.purpose;
 }
 
 /** One share, several, or none, as a list. */
@@ -66,6 +88,20 @@ export async function nightlyShareSpent(db: PrismaTx, ctx: Pick<WorkspaceRequest
     const now = await AiCallRepository.dbNow(db);
     const s = await AiCallRepository.purposeSpendSince(db, ctx.workspaceId, share.purpose, share.since, now);
     return s.chargedMicroUsd + s.reservedMicroUsd;
+}
+
+/**
+ * Whether a call of `share`'s half purpose costing `worstMicroUsd` would pass the night's share now (a read in the
+ * caller's transaction, no lock: the job's own check before a call; the ledger repeats it under its spend lock as the
+ * call reserves). `TOTAL`: past the share; `HALF`: past the purpose's half while the other purpose still has work.
+ */
+export async function nightShareStop(db: PrismaTx, ctx: Pick<WorkspaceRequestContext, 'workspaceId'>, share: NightlyShare, worstMicroUsd: number): Promise<'TOTAL' | 'HALF' | null> {
+    if ((await nightlyShareSpent(db, ctx, share)) + worstMicroUsd > share.capMicroUsd) return 'TOTAL';
+    if (share.half) {
+        const mine = await nightlyShareSpent(db, ctx, { ...share, purpose: share.half.purpose });
+        if (mine + worstMicroUsd > share.half.capMicroUsd && (await share.half.otherHasWork(db))) return 'HALF';
+    }
+    return null;
 }
 
 /**
@@ -97,7 +133,7 @@ export function workspaceAiLedger(ctx: Pick<WorkspaceRequestContext, 'workspaceI
                 }
                 const period = spendPeriod(request.startedAt);
                 for (const s of shares) {
-                    if (request.purpose !== s.purpose) continue;
+                    if (request.purpose === undefined || !sharePurposes(s).includes(request.purpose)) continue;
                     const used = await AiCallRepository.purposeSpendSince(db, ctx.workspaceId, s.purpose, s.since, now, request.callId);
                     if (used.chargedMicroUsd + used.reservedMicroUsd + request.amountMicroUsd > s.capMicroUsd) {
                         return {
@@ -108,6 +144,22 @@ export function workspaceAiLedger(ctx: Pick<WorkspaceRequestContext, 'workspaceI
                             ceilingMicroUsd: s.capMicroUsd,
                             limit: s.limit ?? ('NIGHTLY_SHARE' as const),
                         };
+                    }
+                    // D35 addendum B: the purpose's half, while the other purpose still has work tonight. Read here, under
+                    // the spend lock, so two calls cannot pass one half together; a purpose crosses its half only at a
+                    // reservation that found the other with no work (and the total above keeps the two inside the share).
+                    if (s.half && request.purpose === s.half.purpose) {
+                        const mine = await AiCallRepository.purposeSpendSince(db, ctx.workspaceId, s.half.purpose, s.since, now, request.callId);
+                        if (mine.chargedMicroUsd + mine.reservedMicroUsd + request.amountMicroUsd > s.half.capMicroUsd && (await s.half.otherHasWork(db))) {
+                            return {
+                                ok: false as const,
+                                period,
+                                spentMicroUsd: mine.chargedMicroUsd,
+                                reservedMicroUsd: mine.reservedMicroUsd,
+                                ceilingMicroUsd: s.half.capMicroUsd,
+                                limit: s.limit ?? ('NIGHTLY_SHARE' as const),
+                            };
+                        }
                     }
                 }
                 const held = await AiCallRepository.reserve(db, ctx.workspaceId, {

@@ -59,3 +59,106 @@ export async function seedProseChecks(ctx: WorkspaceRequestContext, bookId: stri
     await dismissProseFinding(ctx, bookId, { findingId: view.findings[0].id });
     return { sceneId: scene.id };
 }
+
+/**
+ * The draft held against the bible's rows (Phase 5.3, D35), through the real usecases: the night's reading of the
+ * seeded scene (its cursor, its run, a draft fact and a plant link proposed for a thread, with a scripted reader — no
+ * model), the scene's card with its first version, and the book's continuity settings (D35 addendum A).
+ */
+export async function seedDraftAgainstBible(ctx: WorkspaceRequestContext, bookId: string, sceneId: string, mark: string): Promise<void> {
+    const { createThread, saveContinuitySettings } = await import('@/app-layer/usecases/continuity');
+    const { executeDraftReadDispatch } = await import('@/app-layer/usecases/draft-read-dispatch');
+    const { executeDraftRead } = await import('@/app-layer/usecases/draft-read');
+    const { saveSceneCard } = await import('@/app-layer/usecases/scene-card');
+    const { setFakeApiKey } = await import('./fake-anthropic');
+    await createThread(ctx, bookId, { kind: 'PROMISE', title: `The ferry ${mark} crossing`, note: null });
+    const queued: string[] = [];
+    await executeDraftReadDispatch({ enqueue: async (_n, payload) => void queued.push((payload as { runId: string }).runId), workspaceIds: [ctx.workspaceId], nightKey: `seed-${mark}-${Date.now().toString(36)}` });
+    const quote = `The ferry ${mark} crossed`;
+    const undo = setFakeApiKey();
+    try {
+        for (const runId of queued) {
+            await executeDraftRead(
+                { workspaceId: ctx.workspaceId, runId },
+                {
+                    charge: () => undefined,
+                    gate: () => ({ mounted: true, recordKind: 'structural' }),
+                    nightlyCapMicroUsd: Number.MAX_SAFE_INTEGER,
+                    reader: () => ({
+                        extract: async (request) => {
+                            const text = request.data.find((b) => b.label === 'scene.text')?.text ?? '';
+                            const hit = text.includes(quote);
+                            return {
+                                ok: true as const,
+                                output: {
+                                    facts: hit ? [{ subject: 'The ferry', predicate: 'OTHER', object: '', statement: `${quote} the water.`, quote, storyTimeFrom: '', storyTimeTo: '' }] : [],
+                                    threads: hit ? [{ thread: 1, role: 'PLANTS', quote }] : [],
+                                },
+                                tokensUsed: 1,
+                                costMicroUsd: 1,
+                                callIds: [] as string[],
+                            };
+                        },
+                    }),
+                },
+            );
+        }
+    } finally {
+        undo();
+    }
+    await saveSceneCard(ctx, bookId, sceneId, { baseVersion: 0, goal: `Cross ${mark}`, conflict: null, outcome: null, change: null });
+    // D35 addendum A: the book's continuity settings row (the deep check reads the draft).
+    await saveContinuitySettings(ctx, bookId, { deepReadsDraft: true });
+}
+
+/**
+ * One open draft mismatch (Phase 5.3, D35), through the real usecases: a character whose bible says green eyes (its
+ * fact extracted by a scripted extractor), a scene in `chapterId` that says blue, and the night's reading with a
+ * scripted reader. Returns the mismatch's id and the scene's.
+ */
+export async function seedDraftMismatch(ctx: WorkspaceRequestContext, bookId: string, chapterId: string, name = 'Mara'): Promise<{ mismatchId: string; sceneId: string }> {
+    const { updateElementFields } = await import('@/app-layer/usecases/bible-elements');
+    const { executeDraftReadDispatch } = await import('@/app-layer/usecases/draft-read-dispatch');
+    const { executeDraftRead } = await import('@/app-layer/usecases/draft-read');
+    const { extractPending } = await import('./facts');
+    const { setFakeApiKey } = await import('./fake-anthropic');
+    const { runWithoutRls } = await import('@/lib/db/rls-middleware');
+    const el = await createElement(ctx, bookId, { kind: 'CHARACTER', name });
+    await updateElementFields(ctx, bookId, el.id, { fields: [{ key: 'physical_presence', value: `${name} has green eyes.` }], baseVersion: el.versionNumber });
+    await extractPending(ctx, bookId, () => ({
+        async extract(request) {
+            const text = request.data.find((b) => b.label === 'entry.text')?.text ?? '';
+            const facts = text.includes(`${name} has green eyes`) ? [{ subject: name, predicate: 'APPEARANCE', object: 'green eyes', statement: `${name} has green eyes.`, quote: `${name} has green eyes`, storyTimeFrom: '', storyTimeTo: '', contradicts: [] }] : [];
+            return { ok: true, output: { facts }, tokensUsed: 1, costMicroUsd: 1, callIds: [] };
+        },
+    }));
+    const scene = await createScene(ctx, bookId, { chapterId, title: 'The lamp' });
+    await saveSceneText(ctx, bookId, scene.id, { html: `<p>${name} looked up, ${name}’s blue eyes wet.</p>`, baseRevision: 0 });
+    const queued: string[] = [];
+    await executeDraftReadDispatch({ enqueue: async (_n, payload) => void queued.push((payload as { runId: string }).runId), workspaceIds: [ctx.workspaceId], nightKey: `mismatch-${Date.now().toString(36)}` });
+    const quote = `${name}’s blue eyes`;
+    const undo = setFakeApiKey();
+    try {
+        for (const runId of queued) {
+            await executeDraftRead(
+                { workspaceId: ctx.workspaceId, runId },
+                {
+                    charge: () => undefined,
+                    gate: () => ({ mounted: true, recordKind: 'structural' }),
+                    nightlyCapMicroUsd: Number.MAX_SAFE_INTEGER,
+                    reader: () => ({
+                        extract: async (request) => {
+                            const text = request.data.find((b) => b.label === 'scene.text')?.text ?? '';
+                            const facts = text.includes(quote) ? [{ subject: name, predicate: 'APPEARANCE', object: 'blue eyes', statement: `${name} has blue eyes.`, quote, storyTimeFrom: '', storyTimeTo: '' }] : [];
+                            return { ok: true as const, output: { facts, threads: [] }, tokensUsed: 1, costMicroUsd: 1, callIds: [] as string[] };
+                        },
+                    }),
+                },
+            );
+        }
+    } finally {
+        undo();
+    }
+    const row = await runWithoutRls({ reason: 'test' }, (db) => db.storyFactProposal.findFirstOrThrow({ where: { bookId, sceneId: scene.id, basis: 'DRAFT' }, select: { id: true } }));
+    return { mismatchId: row.id, sceneId: scene.id };
+}

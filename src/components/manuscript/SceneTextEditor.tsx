@@ -36,6 +36,8 @@ import {
     removeProseNote,
     setActiveProseNote,
     setProseNotes,
+    setDraftNotes,
+    DRAFT_NOTE_PREFIX,
     type ProseNoteRange,
 } from './prose-notes-extension';
 
@@ -106,6 +108,13 @@ export interface SceneTextEditorProps {
      * text still reads what the check read (`matched`); null leaves the notes as they are (mapped through edits).
      */
     proseNotes?: { token: number; findings: readonly ProseFindingView[] } | null;
+    /**
+     * Phase 5.3 (D35): draft-vs-bible notes to place — each where the editor's own text still reads the sentence the
+     * nightly reading quoted (a stale offset is never placed); a new `token` places them again.
+     */
+    draftNotes?: { token: number; notes: ReadonlyArray<{ id: string; start: number; end: number; quote: string }> } | null;
+    /** Which draft notes were placed (their editor ids, `draft:<id>`). */
+    onDraftNotesPlaced?: (placedIds: string[], unplaced: number) => void;
     /** The open note (its suggestion drawn as a suggestion), or null. */
     activeNoteId?: string | null;
     /** Which findings were placed, and how many could not be (the text moved under them). */
@@ -147,6 +156,8 @@ export function SceneTextEditor({
     label,
     kindLabel,
     proseNotes = null,
+    draftNotes = null,
+    onDraftNotesPlaced,
     activeNoteId = null,
     onNotesPlaced,
     onNotesLayout,
@@ -281,6 +292,29 @@ export function SceneTextEditor({
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [editor, notesToken]);
 
+    // Phase 5.3: place the draft notes, each only where the editor's text still reads the quoted sentence.
+    const draftToken = draftNotes?.token ?? null;
+    const placedDraftToken = useRef<number | null>(null);
+    useEffect(() => {
+        if (!editor || !draftNotes || placedDraftToken.current === draftNotes.token) return;
+        placedDraftToken.current = draftNotes.token;
+        const doc = editor.state.doc;
+        const map = buildEditorTextMap(doc as unknown as DocNodeLike);
+        const placed: ProseNoteRange[] = [];
+        let unplaced = 0;
+        for (const n of draftNotes.notes) {
+            const range = placeRange(map, n.start, n.end, n.quote);
+            if (!range) {
+                unplaced++;
+                continue;
+            }
+            placed.push({ id: `${DRAFT_NOTE_PREFIX}${n.id}`, from: range.from, to: range.to, severity: 'WARNING', text: docTextBetween(doc, range.from, range.to), suggestion: null, kind: 'DRAFT' });
+        }
+        setDraftNotes(editor, placed);
+        onDraftNotesPlaced?.(placed.map((p) => p.id), unplaced);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [editor, draftToken]);
+
     useEffect(() => {
         if (editor) setActiveProseNote(editor, activeNoteId);
     }, [editor, activeNoteId]);
@@ -307,7 +341,7 @@ export function SceneTextEditor({
                 for (const id of ids) removeProseNote(editor, id);
             },
             revealNote: (id) => {
-                if (!/^[A-Za-z0-9_-]{1,64}$/.test(id)) return;
+                if (!/^(?:draft:)?[A-Za-z0-9_-]{1,64}$/.test(id)) return;
                 const el = editor.view.dom.querySelector(`[data-note-id="${id}"]`);
                 if (el instanceof HTMLElement && typeof el.scrollIntoView === 'function') el.scrollIntoView({ block: 'center', behavior: 'smooth' });
             },

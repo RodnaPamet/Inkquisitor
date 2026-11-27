@@ -234,7 +234,7 @@ export async function gapSignals(db: Db, workspaceId: string, bookId: string): P
                 WHERE r."workspaceId" = ${workspaceId} AND r."bookId" = ${bookId}
                   AND EXISTS (SELECT 1 FROM "BibleElement" e WHERE e.id IN (r."fromElementId", r."toElementId") AND e.kind = k.kind)) AS relations,
             (SELECT count(*)::int FROM "StoryFact" f JOIN "BibleElement" e ON e.id = f."subjectElementId"
-                WHERE f."workspaceId" = ${workspaceId} AND f."bookId" = ${bookId} AND f."supersededAt" IS NULL AND e.kind = k.kind) AS facts,
+                WHERE f."workspaceId" = ${workspaceId} AND f."bookId" = ${bookId} AND f."supersededAt" IS NULL AND f."sourceKind"::text <> 'SCENE_TEXT' AND e.kind = k.kind) AS facts,
             (SELECT count(DISTINCT v."elementId")::int FROM "BibleEntryVersion" v
                 JOIN "Answer" a ON a.id = ANY (v."sourceAnswerIds")
                 JOIN "Question" q ON q.id = a."questionId"

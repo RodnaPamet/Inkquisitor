@@ -123,7 +123,11 @@ export async function rephraseQuestion(
     const personaKey = question.personaKey && isPersonaKey(question.personaKey) ? question.personaKey : null;
 
     // The packs the call is taught: the ones the session pinned, unchanged, and mountable here — as a round's (D11).
-    const needed = element.relation ? packNamesFor([], personaKey ? [personaKey] : [], { relations: true }) : packNamesFor([element.kind], personaKey ? [personaKey] : []);
+    const needed = element.scene
+        ? packNamesFor([], personaKey ? [personaKey] : [], { scene: true })
+        : element.relation
+          ? packNamesFor([], personaKey ? [personaKey] : [], { relations: true })
+          : packNamesFor([element.kind], personaKey ? [personaKey] : []);
     const problem = pinMismatch(parsePackPins(session.packPins), needed, packs, await deploymentPackMounts(packs, deps.packRecordMode, needed));
     if (problem?.reason === 'PACK_NOT_MOUNTABLE') throw new PacksNotMountableError(problem.packs);
     if (problem) throw new ConflictError('A question pack this interview was started with has changed.', { reason: 'PACK_CHANGED', problem: problem.reason, packs: problem.packs });
@@ -143,6 +147,7 @@ export async function rephraseQuestion(
                 persona: personaKey ? packs.personas[personaKey] : null,
                 craft: packs.craft,
                 relations: packs.relations,
+                scene: packs.scene,
                 element,
                 original: originalOf(question),
                 related: state.related,

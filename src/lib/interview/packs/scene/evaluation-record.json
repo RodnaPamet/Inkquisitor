@@ -1,0 +1,224 @@
+{
+  "format": "inkquisitor-pack-evaluation/1",
+  "pack": {
+    "name": "scene",
+    "version": 1,
+    "contentHash": "sha256:90927e2e6136db02388bc2f92ff2b34da2cee59ea212f61f6177207e7c94fd0d"
+  },
+  "set": {
+    "hash": "sha256:be637c38f6356cefd0f685c215983d7fde03111627890a531988d41308b19eae"
+  },
+  "promptVersion": "question-generation.5.3.0",
+  "promptHash": "sha256:91b01e3131b78113e3c30038f08a19e2e995add708a6a60dff05ee83b59d759d",
+  "generator": {
+    "kind": "structural",
+    "id": "structural-generator.1"
+  },
+  "ranAt": "2026-11-27T14:29:26.474Z",
+  "answers": [
+    {
+      "caseId": "scene-01",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-scene-01",
+              "targetsFieldKeys": [
+                "goal"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the goal.",
+              "kind": "CHOICE",
+              "text": "Which way does the goal lean?",
+              "options": [
+                "goal leans inward",
+                "goal leans outward",
+                "goal holds still"
+              ]
+            },
+            {
+              "elementId": "eval-scene-01",
+              "targetsFieldKeys": [
+                "change"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the change.",
+              "kind": "CHOICE",
+              "text": "Which way does the change lean?",
+              "options": [
+                "change leans inward",
+                "change leans outward",
+                "change holds still"
+              ]
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "scene-02",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-scene-02",
+              "targetsFieldKeys": [
+                "conflict"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the conflict.",
+              "kind": "OPEN",
+              "text": "What conflict matters most here, in your own words?"
+            },
+            {
+              "elementId": "eval-scene-02",
+              "targetsFieldKeys": [
+                "change"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the change.",
+              "kind": "OPEN",
+              "text": "What change matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "scene-03",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-scene-03",
+              "targetsFieldKeys": [
+                "outcome"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the outcome.",
+              "kind": "OPEN",
+              "text": "What outcome matters most here, in your own words?"
+            },
+            {
+              "elementId": "eval-scene-03",
+              "targetsFieldKeys": [
+                "change"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the change.",
+              "kind": "OPEN",
+              "text": "What change matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "scene-04",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-scene-04",
+              "targetsFieldKeys": [
+                "change"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the change.",
+              "kind": "OPEN",
+              "text": "What change matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "scene-05",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-scene-05",
+              "targetsFieldKeys": [
+                "goal"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the goal.",
+              "kind": "OPEN",
+              "text": "What goal matters most here, in your own words?"
+            },
+            {
+              "elementId": "eval-scene-05",
+              "targetsFieldKeys": [
+                "change"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the change.",
+              "kind": "OPEN",
+              "text": "What change matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "scene-06",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-scene-06",
+              "targetsFieldKeys": [
+                "goal"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the goal.",
+              "kind": "OPEN",
+              "text": "What goal matters most here, in your own words?"
+            },
+            {
+              "elementId": "eval-scene-06",
+              "targetsFieldKeys": [
+                "change"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the change.",
+              "kind": "OPEN",
+              "text": "What change matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "scene-07",
+      "outputs": [
+        {
+          "questions": [
+            {
+              "elementId": "eval-scene-07",
+              "targetsFieldKeys": [
+                "conflict"
+              ],
+              "mode": "FRONTIER",
+              "rationale": "Asks for the conflict.",
+              "kind": "OPEN",
+              "text": "What conflict matters most here, in your own words?"
+            }
+          ],
+          "declined": []
+        }
+      ]
+    },
+    {
+      "caseId": "scene-08",
+      "outputs": []
+    }
+  ]
+}

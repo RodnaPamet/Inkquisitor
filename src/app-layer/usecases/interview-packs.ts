@@ -71,17 +71,17 @@ function view(packs: PackRegistry, name: string, verdict: MountVerdict | undefin
     const file = packs.files[name];
     const persona = file.group === 'persona' && isPersonaKey(file.key) ? packs.personas[file.key] : null;
     // Phase 3.3: the relations pack is craft guidance for every relation's fields.
-    const craft = file.group === 'craft' ? packs.craft[file.key as BibleKind] : file.group === 'relations' ? packs.relations : null;
+    const craft = file.group === 'craft' ? packs.craft[file.key as BibleKind] : file.group === 'relations' ? packs.relations : file.group === 'scene' ? packs.scene : null;
     return {
         name,
         group: file.group,
         key: file.key,
-        displayName: persona ? persona.displayName : file.group === 'relations' ? 'Relations' : getTemplate(file.key as BibleKind).label,
+        displayName: persona ? persona.displayName : file.group === 'relations' ? 'Relations' : file.group === 'scene' ? 'Scene card' : getTemplate(file.key as BibleKind).label,
         version: file.version,
         description: (persona ?? craft)!.description,
         contentHash: file.contentHash,
         coverage: craft ? [...craft.coverage] : null,
-        evaluationCases: persona ? packs.personaEvals[persona.persona].length : file.group === 'relations' ? packs.relationEvals.length : packs.craftEvals[file.key as BibleKind].length,
+        evaluationCases: persona ? packs.personaEvals[persona.persona].length : file.group === 'relations' ? packs.relationEvals.length : file.group === 'scene' ? packs.sceneEvals.length : packs.craftEvals[file.key as BibleKind].length,
         mountable: verdict?.ok === true,
         refusal: !verdict ? { reason: 'NO_RECORD', detail: 'not checked' } : verdict.ok ? null : { reason: verdict.reason, detail: verdict.detail },
         recordKind: verdict?.ok ? verdict.pin.recordKind : null,
@@ -96,7 +96,7 @@ export async function listInterviewPacks(ctx: WorkspaceRequestContext, packs: Pa
         recordMode: mode,
         personas: all.filter((p) => p.group === 'persona'),
         craft: all.filter((p) => p.group === 'craft'),
-        relations: all.filter((p) => p.group === 'relations'),
+        relations: all.filter((p) => p.group === 'relations' || p.group === 'scene'),
         mountable: all.filter((p) => p.mountable).length,
         total: all.length,
     };

@@ -96,6 +96,8 @@ export interface RephraseInput {
     craft: Readonly<Record<BibleKind, CraftPack>>;
     /** Phase 3.3: the pack a relation's question is asked with. */
     relations?: RelationsPack;
+    /** Phase 5.3: the scene pack, for a question about a scene's card. */
+    scene?: RelationsPack;
     element: RoundElement;
     original: RephraseOriginal;
     related: ReadonlyArray<{ kind: BibleKind; name: string; summary: string | null }>;
@@ -131,8 +133,9 @@ export function buildRephraseRequest(input: RephraseInput): GenerationRequest {
         challengeKey: challenge ? input.original.targetsFieldKeys[0] : null,
         ...(e.relation ? { relation: e.relation } : {}),
         ...(e.pending ? { pending: e.pending } : {}),
+        ...(e.scene ? { scene: e.scene } : {}),
     };
-    const pack = packForSubject(e, input.craft, input.relations);
+    const pack = packForSubject(e, input.craft, input.relations, input.scene);
     const promptInput = {
         bookId: input.bookId,
         dials: input.dials,
@@ -233,7 +236,7 @@ export async function produceRephrase(input: RephraseInput, deps: { generator: Q
 
     // The pack's example for the field, when the question asks for one field afresh.
     if (o.mode === 'FRONTIER' && o.targetsFieldKeys.length === 1) {
-        const { filled } = fillGapsFromPack([{ elementId: o.elementId, fieldKey: o.targetsFieldKeys[0] }], new Map([[e.elementId, e]]), input.craft, input.dials.detail, (c) => repeats(c), input.relations);
+        const { filled } = fillGapsFromPack([{ elementId: o.elementId, fieldKey: o.targetsFieldKeys[0] }], new Map([[e.elementId, e]]), input.craft, input.dials.detail, (c) => repeats(c), input.relations, input.scene);
         if (filled.length > 0) out.question = { ...filled[0], origin: 'PACK_FALLBACK', reviewRequired: false };
     }
     return out;

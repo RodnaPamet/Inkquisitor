@@ -114,6 +114,9 @@ import {
     writeFieldValues,
 } from './bible-common';
 import { createElementInTx } from './bible-elements';
+import { acceptSceneCardFieldInTx } from './scene-card';
+import { SceneCardRepository } from '@/app-layer/repositories/scene-card.repository';
+import { SCENE_CARD_FIELDS, isSceneCardField, type SceneCardFieldKey } from '@/lib/manuscript/scene-card';
 import { ACT_FIELD_KEY, placeNewElementInOrderTx, reserveOrderPlaceTx } from './bible-order';
 import { createRelationInTx, relationExists, relationGoneAsNotFound } from './bible-relations';
 import { bookHoldsElementName } from './enrichment-names';
@@ -233,6 +236,26 @@ export interface RelationFieldProposalView {
     decidedAt: string | null;
 }
 
+/** Phase 5.3 (D35): a change to one field of a scene's CARD ("Grill me on this scene"; never the scene's prose, D3). */
+export interface SceneCardFieldProposalView {
+    id: string;
+    kind: 'SCENE_CARD_FIELD';
+    roundNumber: number | null;
+    status: ProposalStatus;
+    sceneId: string;
+    sceneTitle: string | null;
+    fieldKey: SceneCardFieldKey;
+    field: FieldDef;
+    operation: StoredOp;
+    proposedValue: string | null;
+    currentValue: string | null;
+    baseVersion: number;
+    currentVersion: number;
+    flags: ProposalFlag[];
+    citedAnswerIds: string[];
+    decidedAt: string | null;
+}
+
 /** An end of a proposed relation: an element of the book, or a new element of the same session (by its proposal). */
 export interface NewRelationEndView {
     elementId: string | null;
@@ -276,6 +299,8 @@ export interface SessionReviewView {
     /** Phase 3.3 (D24). */
     relationFields: RelationFieldProposalView[];
     newRelations: NewRelationProposalView[];
+    /** Phase 5.3 (D35). */
+    sceneCardFields: SceneCardFieldProposalView[];
     answers: Record<string, CitedAnswerView>;
     runs: ReviewRunView[];
     /** The session had more proposals than the review read. */
@@ -317,7 +342,7 @@ async function proposalViews(
     proposals: readonly ProposalRow[],
     numberOf: ReadonlyMap<string, number>,
     sessions: ReadonlyMap<string, SessionSlot>,
-): Promise<{ fields: FieldProposalView[]; newElements: NewElementProposalView[]; relationFields: RelationFieldProposalView[]; newRelations: NewRelationProposalView[] }> {
+): Promise<{ fields: FieldProposalView[]; newElements: NewElementProposalView[]; relationFields: RelationFieldProposalView[]; newRelations: NewRelationProposalView[]; sceneCardFields: SceneCardFieldProposalView[] }> {
     const slotIds = [...sessions.values()].flatMap((s) => [s.slotAfterElementId, s.slotBeforeElementId].filter((x): x is string => x !== null));
     // Phase 3.H: the beats a slot beat's field proposals name, read by id when they are not on this page.
     const byId = new Map(proposals.map((p) => [p.id, p] as const));
@@ -352,7 +377,18 @@ async function proposalViews(
     const createdIds = [...byId.values()].flatMap((p) => (p.createdElementId ? [p.createdElementId] : []));
     const createdLive = new Set((await BibleElementRepository.listByIds(db, ctx.workspaceId, bookId, createdIds)).map((e) => e.id));
 
-    const out = { fields: [] as FieldProposalView[], newElements: [] as NewElementProposalView[], relationFields: [] as RelationFieldProposalView[], newRelations: [] as NewRelationProposalView[] };
+    // Phase 5.3: the scenes SCENE_CARD_FIELD proposals change, with their cards (titles and the card's fields).
+    const sceneIds = [...new Set(proposals.flatMap((p) => (p.sceneId ? [p.sceneId] : [])))];
+    const scenes = new Map((await SceneCardRepository.scenesByIds(db, ctx.workspaceId, bookId, sceneIds)).map((sc) => [sc.id, sc] as const));
+    const cards = new Map((await SceneCardRepository.forScenes(db, ctx.workspaceId, bookId, [...scenes.keys()])).map((c) => [c.sceneId, c] as const));
+
+    const out = {
+        fields: [] as FieldProposalView[],
+        newElements: [] as NewElementProposalView[],
+        relationFields: [] as RelationFieldProposalView[],
+        newRelations: [] as NewRelationProposalView[],
+        sceneCardFields: [] as SceneCardFieldProposalView[],
+    };
     for (const p of proposals) {
         const roundNumber = numberOf.get(p.roundId) ?? null;
         const common = { id: p.id, roundNumber, status: p.status, flags: flagsOf(p), citedAnswerIds: citationIds(p), decidedAt: p.decidedAt ? p.decidedAt.toISOString() : null };
@@ -413,6 +449,27 @@ async function proposalViews(
                 note: decoded.note,
                 fields: labelledFields(decoded.fields, (key) => (fromKind ? getRelationFieldDef(fromKind, p.newRelationType!, key) : undefined)),
                 createdRelationId: p.createdRelationId,
+            });
+            continue;
+        }
+        if (p.kind === 'SCENE_CARD_FIELD') {
+            const scene = scenes.get(p.sceneId!);
+            const def = SCENE_CARD_FIELDS.find((f) => f.key === p.fieldKey);
+            if (!scene || !def || !isSceneCardField(def.key)) continue;
+            const card = cards.get(scene.id);
+            const proposed = decodeProposedValue(p.proposedValue);
+            out.sceneCardFields.push({
+                ...common,
+                kind: 'SCENE_CARD_FIELD',
+                sceneId: scene.id,
+                sceneTitle: scene.title,
+                fieldKey: def.key,
+                field: def,
+                operation: p.operation!,
+                proposedValue: typeof proposed === 'string' ? proposed : null,
+                currentValue: card?.[def.key] ?? null,
+                baseVersion: p.baseVersion!,
+                currentVersion: card?.version ?? 0,
             });
             continue;
         }
@@ -871,6 +928,53 @@ async function acceptRelationField(db: PrismaTx, ctx: WorkspaceRequestContext, b
 }
 
 /**
+ * Accept a SCENE_CARD_FIELD proposal (Phase 5.3, D35): through the ONE card writer (`scene-card.ts`), which takes the
+ * scene's lock, checks the versions and the operation, and writes one card version naming the answers; never the
+ * scene's prose (D3). The proposal is decided, its rivals superseded, and the audit rows written last.
+ */
+async function acceptSceneCardField(db: PrismaTx, ctx: WorkspaceRequestContext, bookId: string, sessionId: string, proposalId: string, input: AcceptProposalInput): Promise<DecisionResult> {
+    const peek = await EnrichmentProposalRepository.find(db, ctx.workspaceId, sessionId, ProposalIdParam.parse(proposalId));
+    if (!peek || peek.bookId !== bookId || !peek.sceneId) throw new NotFoundError('Proposal not found.');
+    if (input.baseVersion === undefined) throw new ValidationError('An acceptance names the version it was reviewed against.', { reason: 'BASE_VERSION_REQUIRED' });
+    if (input.name !== undefined || input.summary !== undefined) throw new ValidationError('A card field has no name or summary to edit.', { reason: 'EDIT_NOT_ALLOWED' });
+    if (input.value !== undefined && typeof input.value !== 'string') throw new ValidationError('A card field is text.', { reason: 'EDIT_NOT_ALLOWED' });
+    const key = peek.fieldKey;
+    if (!key || !isSceneCardField(key)) throw new NotFoundError('Proposal not found.');
+    // The scene's lock is the writer's (inside `acceptSceneCardFieldInTx`): two acceptances queue on it, and the second
+    // finds the card's version moved (409 VERSION_CONFLICT) or the proposal decided (409 PROPOSAL_DECIDED).
+    const p = await requirePending(db, ctx, bookId, sessionId, proposalId);
+    const proposed = decodeProposedValue(p.proposedValue);
+    const answerIds = citationIds(p);
+    const written = await acceptSceneCardFieldInTx(db, ctx, bookId, p.sceneId!, {
+        fieldKey: key,
+        operation: p.operation!,
+        proposedValue: typeof proposed === 'string' ? proposed : null,
+        ...(typeof input.value === 'string' ? { editedValue: input.value } : {}),
+        proposedAgainst: p.baseVersion!,
+        reviewedBase: input.baseVersion,
+        reviewedCurrent: input.reviewedCurrent === true,
+        answerIds,
+    });
+    const status: ProposalStatus = written.edited ? 'EDITED_ACCEPTED' : 'ACCEPTED';
+    await decideOrConflict(db, ctx, p.id, { status, decidedById: ctx.userId, versionId: written.versionId });
+    const others = await EnrichmentProposalRepository.pendingForSceneCardField(db, ctx.workspaceId, p.sceneId!, key, p.id, 100);
+    for (const o of others) await EnrichmentProposalRepository.decide(db, ctx.workspaceId, o.id, { status: 'SUPERSEDED', decidedById: ctx.userId });
+    // AUDIT LAST (3.H).
+    await logEvent(ctx, { action: 'SCENE_CARD_SAVED', entityType: 'ManuscriptScene', entityId: p.sceneId!, details: { bookId, versionNumber: written.versionNumber, source: 'INTERVIEW', answerCount: answerIds.length } }, { db });
+    await logEvent(
+        ctx,
+        {
+            action: 'ENRICHMENT_PROPOSAL_ACCEPTED',
+            entityType: 'EnrichmentProposal',
+            entityId: p.id,
+            details: { bookId, sessionId, sceneId: p.sceneId, fieldKey: key, operation: p.operation, edited: written.edited, flags: p.flags, versionNumber: written.versionNumber, citedAnswerCount: answerIds.length, superseded: others.length },
+        },
+        { db },
+    );
+    return { proposalId: p.id, status, elementId: null, versionNumber: written.versionNumber };
+}
+
+/**
  * Accept a NEW_RELATION proposal (Phase 3.3): each end resolved (an element of
  * the book; or a NEW_ELEMENT proposal of the session, which must have been
  * accepted first — 409 END_NOT_CREATED — and whose element must still be
@@ -932,6 +1036,7 @@ export async function acceptProposal(ctx: WorkspaceRequestContext, bookId: strin
         throw new ValidationError('Only a beat proposed for a place in the story order is placed on acceptance.', { reason: 'PLACEMENT_NOT_ALLOWED' });
     }
     if (kind === 'FIELD') return runInWorkspaceContext(ctx, (db) => acceptField(db, ctx, bookId, sessionId, proposalId, parsed));
+    if (kind === 'SCENE_CARD_FIELD') return runInWorkspaceContext(ctx, (db) => acceptSceneCardField(db, ctx, bookId, sessionId, proposalId, parsed));
     if (kind === 'RELATION_FIELD') return relationGoneAsNotFound(() => runInWorkspaceContext(ctx, (db) => acceptRelationField(db, ctx, bookId, sessionId, proposalId, parsed)));
     if (kind === 'NEW_RELATION') {
         try {

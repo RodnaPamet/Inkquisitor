@@ -16,6 +16,7 @@ import type {
     NewRelationProposalView,
     PendingStructureView,
     RelationFieldProposalView,
+    SceneCardFieldProposalView,
     SessionReviewView,
     SlotView,
 } from '@/app-layer/usecases/enrichment-review';
@@ -31,6 +32,7 @@ export type {
     PendingStructureView,
     ReconcileRunView,
     RelationFieldProposalView,
+    SceneCardFieldProposalView,
     SessionReviewView,
     SlotView,
 };

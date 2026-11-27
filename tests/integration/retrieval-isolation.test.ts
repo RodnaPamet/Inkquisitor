@@ -16,6 +16,8 @@
  *   the gap hunt           the blocks its ranking call was sent
  *   the question engine    the generators' inputs (sources, continuity, relations, the ladder) and the
  *                          question generator's request, and the round's code-worded questions
+ *   the draft reading      (5.3, D35) the blocks the nightly reading of a scene was sent, and a scene interview's
+ *                          request (its scene text block)
  *
  * The model steps are scripted; nothing reaches a network.
  */
@@ -33,6 +35,10 @@ import { loadGeneratorInputs } from '@/app-layer/usecases/interview-generators';
 import { frontierOf, loadInterviewState, requireSession } from '@/app-layer/usecases/interview-state';
 import { startInterview } from '@/app-layer/usecases/interviews';
 import { StubEmbeddingProvider } from '@/lib/ai/embeddings/stub-provider';
+import { createChapter, createScene } from '@/app-layer/usecases/manuscript';
+import { saveSceneText, updateSceneMeta } from '@/app-layer/usecases/manuscript-scenes';
+import { executeDraftReadDispatch } from '@/app-layer/usecases/draft-read-dispatch';
+import { executeDraftRead } from '@/app-layer/usecases/draft-read';
 import { setFakeApiKey } from '../helpers/fake-anthropic';
 import { fakeGenerator } from '../helpers/fake-question-generator';
 import { stubQuestionEmbedder } from '../helpers/interview';
@@ -47,7 +53,7 @@ afterAll(() => prisma.$disconnect());
 type Ctx = ReturnType<typeof workspaceCtx>;
 
 /** One book's every kind of text, each carrying `marker` (a capitalised word: the stub reads "Wren Amber" as a name). */
-async function seedBook(ctx: Ctx, title: string, marker: string): Promise<{ bookId: string; wren: string; ida: string }> {
+async function seedBook(ctx: Ctx, title: string, marker: string): Promise<{ bookId: string; wren: string; ida: string; sceneId: string }> {
     const bookId = (await createBook(ctx, { title: `${title} ${marker}`, logline: `A ${marker} logline.` })).id;
     const name = `Wren ${marker}`;
     const wren = (await createElement(ctx, bookId, { kind: 'CHARACTER', name, summary: `${name} is 12 years old. ${name} keeps the lock at Harrow Weir.` })).id;
@@ -65,7 +71,12 @@ async function seedBook(ctx: Ctx, title: string, marker: string): Promise<{ book
     // An open thread about the plot: it lands in a field, so the continuity generator asks about it.
     const plot = (await createElement(ctx, bookId, { kind: 'PLOT', name: `The ${marker} flood`, summary: `The ${marker} flood takes the lower town.` })).id;
     await createThread(ctx, bookId, { kind: 'PROMISE', title: `Who opened the ${marker} sluice`, subjectElementId: plot });
-    return { bookId, wren, ida };
+    // Phase 5.3: a scene of the manuscript, told from Wren's point of view (the draft reading and the scene interview).
+    const chapterId = (await createChapter(ctx, bookId, { title: `The ${marker} chapter` })).id;
+    const sceneId = (await createScene(ctx, bookId, { chapterId, title: `The ${marker} scene` })).id;
+    const saved = await saveSceneText(ctx, bookId, sceneId, { html: `<p>${name} crossed the ${marker} weir at dusk.</p>`, baseRevision: 0 });
+    await updateSceneMeta(ctx, bookId, sceneId, { baseRevision: saved.revision, povElementId: wren });
+    return { bookId, wren, ida, sceneId };
 }
 
 const OWN = 'Amber';
@@ -179,4 +190,36 @@ describe('a book’s context holds only its own text (roadmap 4.H item 3)', () =
         expect(asked.has('CONTINUITY') || inputs.continuity.length > 0).toBe(true);
         expect(JSON.stringify(view.round!.questions)).toContain(OWN);
     }, 60_000);
+
+    it('the draft reading: the blocks the nightly reading of the book’s scene was sent, and a scene interview’s request (5.3, D35)', async () => {
+        const queued: string[] = [];
+        await executeDraftReadDispatch({ enqueue: async (_n, payload) => void queued.push((payload as { runId: string }).runId), workspaceIds: [ctx.workspaceId], nightKey: `iso-${Date.now().toString(36)}` });
+        const runs = await prisma.draftReadRun.findMany({ where: { id: { in: queued } }, select: { id: true, bookId: true } });
+        const runA = runs.find((r) => r.bookId === a.bookId);
+        expect(runA).toBeDefined();
+        const seen: Array<ReadonlyArray<{ label: string; text: string }>> = [];
+        const undo = setFakeApiKey();
+        try {
+            await executeDraftRead(
+                { workspaceId: ctx.workspaceId, runId: runA!.id },
+                {
+                    charge: () => undefined,
+                    gate: () => ({ mounted: true, recordKind: 'structural' }),
+                    nightlyCapMicroUsd: Number.MAX_SAFE_INTEGER,
+                    reader: () => ({ extract: async (request) => (seen.push(request.data), { ok: true as const, output: { facts: [], threads: [] }, tokensUsed: 1, costMicroUsd: 1, callIds: [] as string[] }) }),
+                },
+            );
+        } finally {
+            undo();
+        }
+        expect(seen).toHaveLength(1);
+        expect(JSON.stringify(seen)).toContain(OWN);
+        expect(foreignIn(seen)).toEqual([]);
+
+        const generator = fakeGenerator();
+        await startInterview(ctx, a.bookId, { scope: 'SCENE', sceneId: a.sceneId, depth: 2, detail: 3 }, { generator, embedder: stubQuestionEmbedder });
+        expect(generator.calls.length).toBeGreaterThan(0);
+        expect(JSON.stringify(generator.calls.map((c) => c.data))).toContain(OWN);
+        expect(foreignIn(generator.calls.map((c) => c.data))).toEqual([]);
+    });
 });

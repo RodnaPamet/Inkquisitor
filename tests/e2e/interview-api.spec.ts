@@ -40,10 +40,11 @@ test('a production server without real-model pack records refuses every intervie
     const packs = await api.get(`/api/w/${slug}/interview-packs`);
     expect(packs.status()).toBe(200);
     const body = await packs.json();
-    // Six personas, the book-level panel's three (Phase 4.3), sixteen craft packs and the relations pack (Phase 3.3).
-    expect(body).toMatchObject({ recordMode: 'model', mountable: 0, total: 26 });
+    // Six personas, the book-level panel's three (Phase 4.3), sixteen craft packs, the relations pack (Phase 3.3) and the
+    // scene pack beside it (Phase 5.3, "Grill me on this scene").
+    expect(body).toMatchObject({ recordMode: 'model', mountable: 0, total: 27 });
     expect(body.personas).toHaveLength(9);
-    expect(body.relations).toHaveLength(1);
+    expect(body.relations).toHaveLength(2);
     expect([...body.personas, ...body.craft, ...body.relations].every((p: { refusal: { reason: string } }) => p.refusal.reason === 'STRUCTURAL_RECORD_REFUSED')).toBe(true);
 });
 

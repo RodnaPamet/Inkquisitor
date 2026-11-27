@@ -138,6 +138,9 @@ export async function decideFactProposal(ctx: WorkspaceRequestContext, bookId: s
         await BibleFactRepository.lockBook(db, bookId);
         const proposal = await FactProposalRepository.find(db, ctx.workspaceId, bookId, proposalId);
         if (!proposal) throw new NotFoundError('Proposal not found.');
+        // Phase 5.3: a draft mismatch (basis DRAFT) has its own three choices and its own route (`draft-mismatches.ts`);
+        // keeping one side here would set a bible fact aside for a draft's sentence, which is never canon.
+        if (proposal.basis === 'DRAFT') throw new ConflictError('This is a draft mismatch: decide it from the draft list.', { reason: 'NOT_A_CONTINUITY_PROPOSAL' });
         if (proposal.status !== 'PENDING') throw new ConflictError('This proposal was already decided.', { reason: 'PROPOSAL_DECIDED', status: proposal.status });
         // Phase 4.2 (D28): keeping the older fact is a contradiction's answer only (there is no newer fact otherwise).
         if (decision === 'INVALIDATE_NEWER' && !proposal.newerFactId) throw new ValidationError('Only a contradiction has a newer fact to set aside.', { reason: 'NO_NEWER_FACT' });

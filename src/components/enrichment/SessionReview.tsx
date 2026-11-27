@@ -62,6 +62,7 @@ import {
     type NewRelationProposalView,
     type RelationFieldProposalView,
     type ReviewIds,
+    type SceneCardFieldProposalView,
     type SessionReviewView,
     type SlotPlacement as SlotPlacementChoice,
 } from '@/lib/enrichment/api-client';
@@ -101,7 +102,7 @@ function useErrorText() {
     );
 }
 
-type ChangeProposal = FieldProposalView | RelationFieldProposalView;
+type ChangeProposal = FieldProposalView | RelationFieldProposalView | SceneCardFieldProposalView;
 
 interface CardActions {
     busy: boolean;
@@ -117,7 +118,9 @@ interface CardActions {
 function FieldProposalCard({ p, answers, canEdit, actions, scaleOf, workspaceSlug, bookId }: { p: ChangeProposal; answers: Record<string, CitedAnswerView>; canEdit: boolean; actions: CardActions; scaleOf: (n: number) => string; workspaceSlug: string; bookId: string }) {
     const t = useTranslations('enrichment');
     const subject =
-        p.kind === 'RELATION_FIELD'
+        p.kind === 'SCENE_CARD_FIELD'
+            ? { href: APP_ROUTES.scene(workspaceSlug, bookId, p.sceneId), name: t('sceneCardAria', { scene: p.sceneTitle ?? t('untitledScene') }), testId: 'scene-card-proposal' }
+            : p.kind === 'RELATION_FIELD'
             ? { href: APP_ROUTES.bibleElement(workspaceSlug, bookId, p.relation.from.id), name: t('relationAria', { from: p.relation.from.name, label: p.relation.label, to: p.relation.to.name }), testId: 'relation-field-proposal' }
             : {
                   // A slot beat's field (Phase 3.H) links to its beat: the element once created, the beat's proposal before.
@@ -424,7 +427,7 @@ export function SessionReview({ workspaceSlug, book, review: initial, canEdit, k
             return t('runRetried', { number: roundNumber });
         });
 
-    const total = review.fields.length + review.newElements.length + review.relationFields.length + review.newRelations.length;
+    const total = review.fields.length + review.newElements.length + review.relationFields.length + review.newRelations.length + review.sceneCardFields.length;
     const nothing = total === 0;
     const actions: CardActions = { busy, accept: acceptField, reject };
 
@@ -498,6 +501,18 @@ export function SessionReview({ workspaceSlug, book, review: initial, canEdit, k
                         </h2>
                         <p className="text-sm text-content-muted">{t('relationFieldsHelp')}</p>
                         {review.relationFields.map((p) => (
+                            <FieldProposalCard key={p.id} p={p} answers={review.answers} canEdit={canEdit} actions={actions} scaleOf={scaleOf} workspaceSlug={workspaceSlug} bookId={book.id} />
+                        ))}
+                    </section>
+                ) : null}
+
+                {review.sceneCardFields.length > 0 ? (
+                    <section aria-labelledby="review-scene-card-title" className="space-y-default">
+                        <h2 id="review-scene-card-title" className="text-base font-semibold text-content-emphasis">
+                            {t('sceneCardTitle')}
+                        </h2>
+                        <p className="text-sm text-content-muted">{t('sceneCardHelp')}</p>
+                        {review.sceneCardFields.map((p) => (
                             <FieldProposalCard key={p.id} p={p} answers={review.answers} canEdit={canEdit} actions={actions} scaleOf={scaleOf} workspaceSlug={workspaceSlug} bookId={book.id} />
                         ))}
                     </section>

@@ -70,6 +70,15 @@ export const SCHEDULED_JOBS: readonly ScheduleDefinition[] = [
         defaultPayload: {},
     },
     {
+        // Nightly at 03:07 UTC, AFTER the continuity check (02:23; D35 item 2: the two share one nightly budget, the
+        // check first — it is bounded and protects the canon — the draft reading after, taking what is left): each book
+        // with a scene changed since it was last read gets one night's bounded read.
+        name: 'draft-read-dispatch',
+        pattern: '7 3 * * *',
+        description: 'Queue the nightly draft reading of every book with a scene changed since it was last read: its facts held against the bible, threads planted and paid off (Phase 5.3).',
+        defaultPayload: {},
+    },
+    {
         // Hourly, at :37 (no other schedule's minute): the backfill of bibles
         // saved before 4.1 (D31, D32). A tick gives at most
         // BACKFILL_ENTRIES_PER_WORKSPACE_TICK entries of a workspace an outbox

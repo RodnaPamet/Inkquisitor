@@ -24,6 +24,7 @@ import { stressTestGateReport } from '@/lib/stress-test/record-gate';
 import { gapRankGateReport } from '@/lib/gap-hunt/record-gate';
 import { compactionGateReport } from '@/lib/interview/compaction-gate';
 import { questionOrderGateReport } from '@/lib/interview/question-order/record-gate';
+import { draftReadGateReport } from '@/lib/draft-facts/record-gate';
 
 export type GateReport = (mode: PackRecordMode) => string | null | Promise<string | null>;
 
@@ -38,6 +39,7 @@ export const GATE_REPORTS: Readonly<Record<string, GateReport>> = {
     'gap-rank': gapRankGateReport,
     compaction: compactionGateReport,
     'question-order': questionOrderGateReport,
+    'draft-read': draftReadGateReport,
 };
 
 /** Every gate's report that is not null, in `GATE_REPORTS` order. A gate that throws is reported as such, never skipped. */

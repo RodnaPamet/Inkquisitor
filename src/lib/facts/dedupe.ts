@@ -57,12 +57,12 @@ export interface ClaimInput {
 }
 
 /** The parts a claim key is made of (the header). The caller keys them; equal parts are one claim. */
-export function claimParts(owner: FactOwner, f: ClaimInput): string[] {
+export function claimParts(owner: FactOwner | { readonly kind: 'SCENE_TEXT'; readonly id: string }, f: ClaimInput): string[] {
     return [owner.kind, owner.id, f.predicate, f.subjectElementId ?? '', nameKey(f.objectLiteral ?? ''), contentTokens(f.statement).join(' '), negated(f.statement) ? 'neg' : 'pos'];
 }
 
 /** The predicates code may call contradictory on its own (the header's RULE; since 4.2 also KNOWLEDGE, `continuity/rules.ts`). */
-export const RULE_PREDICATES: ReadonlySet<string> = new Set(['AGE', 'LOCATION', 'OCCUPATION', 'PLACE_TYPE', 'KNOWLEDGE']);
+export const RULE_PREDICATES: ReadonlySet<string> = new Set(['AGE', 'LOCATION', 'OCCUPATION', 'PLACE_TYPE', 'KNOWLEDGE', 'APPEARANCE']);
 
 export interface ResolvableFact {
     readonly predicate: string;

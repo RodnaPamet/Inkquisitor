@@ -19,6 +19,7 @@ import type { FieldDef } from '@/lib/bible/template-schema';
 import type { FieldValue } from '@/lib/bible/field-values';
 import type { BibleKind } from '@/lib/bible/kinds';
 import { getTemplate, relationFieldDefs, relationTypesFrom } from '@/lib/bible/templates';
+import { SCENE_CARD_FIELDS } from '@/lib/manuscript/scene-card';
 import type { RelationSubject } from '@/lib/interview/subjects';
 import { buildReconcileRequest, storedForPrompt, type ReconcilePromptAnswer, type ReconcileRequest } from './prompt';
 import type { ReconcileCallResult, Reconciler } from './reconciler';
@@ -40,6 +41,8 @@ export interface RoundElementInput {
     relation?: RelationSubject;
     /** Phase 3.3: the BETWEEN slot's element not yet created, between two neighbours. */
     pending?: { afterName: string; beforeName: string; proposedName?: string };
+    /** Phase 5.3: a scene's CARD (its fields are the card's, `SCENE_CARD_FIELDS`; never the scene's prose, D3). */
+    scene?: { sceneId: string };
 }
 
 export interface RoundAnswerInput {
@@ -98,7 +101,7 @@ function promptAnswerOf(a: RoundAnswerInput): ReconcilePromptAnswer {
 }
 
 function scopeFieldsOf(e: RoundElementInput): FieldDef[] {
-    const fields: readonly FieldDef[] = e.relation ? relationFieldDefs(e.relation.fromKind, e.relation.type) : getTemplate(e.kind).fields;
+    const fields: readonly FieldDef[] = e.scene ? SCENE_CARD_FIELDS : e.relation ? relationFieldDefs(e.relation.fromKind, e.relation.type) : getTemplate(e.kind).fields;
     return fields.filter((f) => e.scopeKeys.includes(f.key));
 }
 
@@ -132,6 +135,7 @@ export function reconcileRequestFor(input: ReconcileRoundInput): ReconcileReques
                 stored: new Map(scopeFields.map((f) => [f.key, storedForPrompt(f, e.stored.get(f.key) ?? null, valueAsText)])),
                 ...(e.relation ? { relation: e.relation } : {}),
                 ...(e.pending ? { pending: e.pending } : {}),
+                ...(e.scene ? { scene: true } : {}),
             };
         }),
         answers: input.answers.map(promptAnswerOf),
@@ -163,9 +167,10 @@ export function validateOutput(raw: unknown, input: ReconcileRoundInput): Valida
                 elementId: e.elementId,
                 kind: e.kind,
                 stored: e.stored,
-                scopeKeys: e.scopeKeys.filter((k) => fieldDefOf({ kind: e.kind, relation }, k)),
+                scopeKeys: e.scopeKeys.filter((k) => fieldDefOf({ kind: e.kind, relation, scene: e.scene !== undefined }, k)),
                 ...(relation ? { relation } : {}),
                 ...(e.pending ? { pending: true } : {}),
+                ...(e.scene ? { scene: true } : {}),
             };
         }),
         answers: answerFactsOf(input),

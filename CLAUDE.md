@@ -33,6 +33,7 @@ npm run packs:evaluate -- --no-packs --bible-facts # bible fact extraction's set
 npm run packs:evaluate -- --no-packs --continuity  # the nightly deep continuity check's set (4.2): its structural record beside it
 npm run packs:evaluate -- --no-packs --book-level  # the stress test's, the gap ranking's and the rounds summary's sets (4.3): their structural records
 npm run packs:evaluate -- --no-packs --question-order  # the interview tie-break's set (4.4): its structural record beside it
+npm run packs:evaluate -- --no-packs --draft-read  # the nightly draft reading's set (5.3): its structural record beside it
 npm run packs:evaluate -- --judge                  # also the judge's report over the pack records written (2.H; a report, never a gate)
 npm run docs:build        # the Starlight help site (site/), from docs/user/
 npm run lint              # eslint . (flat config, eslint.config.mjs)
@@ -66,7 +67,7 @@ builds the help site and deploys it only on main when Pages is enabled;
 `postgres-image.yml` publishes `ghcr.io/rodnapamet/inkquisitor-postgres`
 (main only, weekly and on an upstream digest move; build, smoke, Trivy, then
 push); `evals.yml` (**Evals**, dispatch only, not a check) makes real-model
-pack evaluation records (and, with its `reconcile`, `research`, `rephrase`, `sources`, `bible_facts`, `continuity` and `book_level` inputs, the reconcile step's, the research agent's, the rephrase prompt's, source fact extraction's, bible fact extraction's, the deep continuity check's and 4.3's three book-level prompts' — `book_level` also running 4.4's tie-break)
+pack evaluation records (and, with its `reconcile`, `research`, `rephrase`, `sources`, `bible_facts`, `continuity` and `book_level` inputs, the reconcile step's, the research agent's, the rephrase prompt's, source fact extraction's, bible fact extraction's, the deep continuity check's and 4.3's three book-level prompts' — `book_level` also running 4.4's tie-break, `sources` also 5.3's draft reading)
 on `secrets.ANTHROPIC_API_KEY` and uploads them as an artifact, committing
 nothing (`tests/unit/evals-workflow.test.ts`); `injection-redteam.yml`
 (**Injection red-team**, nightly once the repository variable
@@ -505,6 +506,24 @@ src/app-layer/jobs/          → `prose-check`, one per scene, deduplicated per 
 src/app/api/w/[workspaceSlug]/books/[bookId]/manuscript/{scenes/[sceneId]/prose-checks,chapters/[chapterId]/prose-checks,prose-checks/{dismissals,settings}}
 src/components/manuscript/   → ProseNotesMargin, prose-notes-extension (decorations, the suggestion mark), use-prose-notes, ProseCheckSettings
 src/lib/security/prose-check-rate-limit.ts → the per-workspace minute (60 checks)
+```
+
+Phase 5.3 (draft against bible, D35) added:
+
+```
+prisma/schema/draft.prisma   → SceneDraftRead (a scene's reading cursor), DraftReadRun (one a book a night), StoryThreadSceneLink
+                               (a proposed plant / pay-off, quote encrypted), SceneCard (four encrypted fields) and SceneCardVersion
+                               (append-only); StoryFact kind SCENE_TEXT; StoryFactProposal basis DRAFT; BibleVersionSource MANUSCRIPT
+src/lib/draft-facts/         → vocabulary (client-safe), prompt (DRAFT_READ_PROMPT, fast), schema, validate (4.0's fact rules + links),
+                               pieces (THE enforced per-call budget), cost, compare (4.2's rules, bible facts only), prefill ("update
+                               the bible"), keys, storage, threads (the unpaid setup), model-seam.ts (THE wiring), record-gate (D11),
+                               api-client; evals/ (set, evaluation, record)
+src/lib/continuity/night-share.ts → the nightly share's purposes (continuity check + draft reading: ONE budget) and the order in a night
+src/lib/manuscript/scene-card.ts, src/lib/interview/packs/scene/ → the card's fields (client-safe); the scene craft pack
+src/app-layer/usecases/      → draft-read (the `draft-read` job), draft-read-dispatch (03:07 UTC), draft-mismatches (the three choices,
+                               the prefill and save, a scene's notes), thread-scene-links, scene-card (THE card writer)
+src/app/api/w/[workspaceSlug]/books/[bookId]/{draft-mismatches/**,thread-scene-links/**,manuscript/scenes/[sceneId]/{draft-notes,card}}
+src/components/continuity/DraftAgainstBible.tsx, src/components/manuscript/{SceneCardPanel,SceneDraftPanel,use-scene-draft-notes}
 ```
 
 ## Rules every change obeys
@@ -1971,6 +1990,115 @@ the guard refused is passed over at once and counted there too. The
   model's. The prose-check modules are in the D3 guard: none reaches a model
   module, the text writer or a text-writing method. `bible.view` reads,
   `bible.edit` acts; dismissals and settings are audited (ids and codes).
+- **The draft held against the bible (Phase 5.3; D3, D35).** THE NIGHTLY
+  READING (`draft-read-dispatch` at 03:07 UTC, after the continuity check at
+  02:23; fair-share discovery under the closed `draft-discovery` bypass, ids
+  only; one `DraftReadRun` a book a night, `ContinuityRun`'s night key; each
+  workspace through `servedWorkspace`) reads each scene whose revision moved,
+  and SENDS only a text whose keyed hash (`draftTextKey`) changed: a
+  details-only save is compared again with no call. A scene is read through
+  5.2's `sceneProseText` (so its offsets are the editor's), bounded
+  (`DRAFT_TEXT_MAX_CHARS`, a cut named), cut into pieces with their offsets,
+  every call's worst case inside the ENFORCED per-call budget (halved, then no
+  names or threads, else `CALL_OVER_BUDGET` and nothing sent), validated by
+  4.0's fact rules (`validateFacts` with the draft prompt's runs) plus the link
+  rules (a thread shown, the scene's own words, no copied injection, D14
+  flags). A text failing the same way every night is passed over after
+  `DRAFT_SCENE_FAILURES_MAX` until it changes. THE SHARE: the draft reading and
+  the continuity check pass the SAME `NightlyShare` (its purpose is the list
+  `NIGHT_SHARE_PURPOSES`), so they spend at most the one 10 % nightly share,
+  checked before each scene and again by the ledger under its spend lock
+  (NIGHTLY_CAP otherwise, resumable), each purpose to half of it while the
+  other has work (addendum B, below); a new nightly model feature joins that
+  list or gets an owner decision. DRAFT FACTS (`StoryFact` kind SCENE_TEXT) are
+  never canon: PENDING and undecided by CHECK, never embedded (the trigger's
+  WHEN), left out of the continuity discovery (unless the book's author lets
+  the deep check read the draft, addendum A), the gap signals and the Facts
+  page; they are written only by `StoryFactRepository.createDraftFacts`, under
+  the book's fact lock alone, with the scene's text key re-checked, and compared
+  only with BIBLE facts by 4.2's rules (APPEARANCE since 5.3: one colour per
+  named feature — eyes, hair, beard — each from its own closed list; no skin,
+  no singular "eye", "red with tears" is a state). A MISMATCH is a `StoryFactProposal` of
+  basis DRAFT (its statuses held by CHECK; one open a bible fact, scene and
+  claim by a partial unique index; 4.1's "one proposal a pair, ever" leaves
+  DRAFT out, so a clash settled by the clock is raised again); the cursor's
+  "unchanged" shortcut is only for a text it READ (`cursorReadItsText`: a failed
+  or passed-over text is never taken as unchanged), a guard-refused piece
+  retracts nothing it held, an open mismatch whose bible fact no longer stands
+  is settled (INVALIDATED, a promised fix FIXED), and a scene whose every piece
+  the guard refused counts as passed over, never as read (rule 6). The author decides with FIX_DRAFT (settles
+  FIXED once a re-read no longer finds the claim), BOTH_TRUE (an explanation
+  REQUIRED, stored as an AUTHOR_RESOLUTION fact) or UPDATE THE BIBLE: the GET
+  opens the field PREFILLED (`draftPrefill`) and writes nothing; the author's
+  POST is the ordinary versioned save (`baseVersion`, the field's own
+  normalisation), one version of source MANUSCRIPT naming the scene
+  (`sourceSceneId`, CHECK; a trigger refuses a scene not of the version's own
+  book), the mismatch decided in the same transaction; a
+  save that changes nothing is refused. 4.1's `decideFactProposal` refuses a
+  DRAFT proposal. PLANTS AND PAY-OFFS are proposed (`StoryThreadSceneLink`, one
+  per thread, scene and role, ever; decided once by trigger) and only CONFIRMED
+  links show on the thread and the scene; an open promise or clue planted with
+  no confirmed pay-off after it is an UNPAID SETUP (`isUnpaidSetup`), which 4.4's
+  continuity generator values above a plain thread. A scene's deletion takes
+  its draft facts, mismatches, links and cursor with it (composite same-book
+  keys, cascade). THE SCENE CARD has ONE writer, `usecases/scene-card.ts` (the
+  author's save, 409 VERSION_CONFLICT; and `acceptSceneCardFieldInTx`, called
+  only by `enrichment-review.ts` for an accepted SCENE_CARD_FIELD proposal,
+  one INTERVIEW version naming its answers); "Grill me on this scene" is an
+  interview of scope SCENE whose subject is `scene:<sceneId>`, its questions
+  filed under a carrier element (POV, setting, first beat, first linked
+  element; none is 409 SCENE_HAS_NO_ELEMENT), the frontier alone over the
+  card's fields, the scene's text a fenced, bounded `scene-text` block (the
+  injection corpus's `SCENE_INTERVIEW` surface). THE
+  EDITOR shows a mismatch as a draft note (`prose-note--draft`, id
+  `draft:<id>`) only where its own text still reads the quoted sentence. The
+  D3 guard holds the reading, its decisions, reconcile, review and the card
+  writer off the text writer, and the card writer off every model module.
+  After editing the draft reading's set, prompt or schema, re-run
+  `npm run packs:evaluate -- --no-packs --draft-read`; after the scene pack or
+  the question prompt, `npm run packs:evaluate` (and `--rephrase`).
+  THE OWNER'S ADDENDUM (D35 addendum, 2026-11-27). (A) THE DEEP CHECK READS
+  THE DRAFT ONLY WHEN THE AUTHOR TURNS IT ON: `ContinuitySettings` (one row a
+  book, RLS; `deepReadsDraft` off by default, `deepReadsDraftSince` when it
+  was turned on, CHECK), `bible.view` reads (`getContinuitySettings`, the
+  page's `settings`), `bible.edit` replaces (PUT `…/continuity/settings`; a
+  change audited CONTINUITY_SETTINGS_SAVED, ids and the value only). Off, the
+  check reads, sends and raises exactly what it did before, and draft facts
+  never make a book due. On, discovery counts a live draft fact newer than
+  `coveredThrough` (and the moment it was turned on), and the deep call shows
+  each subject's newest ≤ `CONTINUITY_DRAFT_FACTS_PER_SUBJECT_MAX` draft facts
+  beside its BIBLE facts (never a subject with draft facts alone), placed by
+  their scene, in a fenced block of their own, `draft-facts`, numbered on and
+  naming the scene; CONTINUITY_PROMPT says they are the manuscript's claims,
+  not canon. `validateContinuityPairs(…, { draftIds })` refuses two draft facts
+  (DRAFT_PAIR); a draft fact against a BIBLE_VERSION / RELATION_VERSION fact is
+  a draft mismatch of basis DRAFT naming the continuity run (`checkRunId`;
+  CHECK: exactly one of `checkRunId` / `draftRunId`), the same partial unique
+  index and three choices; against anything else DRAFT_NOT_BIBLE. The reading
+  settles a deep-found mismatch only when its claim is gone (or its bible fact),
+  never because the rules do not find it. The injection corpus's
+  `CONTINUITY_DRAFT_FACTS` surface carries a draft fact to the deep prompt.
+  (B) THE NIGHT'S SHARE IN HALVES: `nightShareFor(ctx, 'continuity' |
+  'draft', …)` gives the one share its caller's `half` (`NIGHT_SHARE_HALF`,
+  0.5): the ledger, under its spend lock, refuses a call of that purpose past
+  the half (its own spend in the night's window, live reservations, the call's
+  worst case) while `otherHasWork` — read in the same transaction from rows,
+  never a clock — is true: the check has work while a ContinuityRun of the
+  night is QUEUED or RUNNING (`liveTonight`); the reading while a DraftReadRun
+  of the night is, or, before the night's dispatch queued any run in the
+  workspace, while a scene waits (`workTonight`). The total still binds, so
+  both can never be over half. `nightShareStop` checks both before each call
+  (metrics `shareStop` TOTAL / HALF; the outcome NIGHTLY_CAP). A new nightly
+  purpose gets an owner decision on its part. (C) "RECENTLY RESOLVED": a draft
+  mismatch that settles by itself carries `settleReason` (DRAFT_CHANGED |
+  BIBLE_GONE) with `settledAt` — FIXED, or INVALIDATED when its bible fact went
+  (every settlement path writes both; CHECK and trigger, write-once) — and the
+  page lists those settled within `RECENTLY_RESOLVED_DAYS` (30) by the
+  DATABASE'S clock (`recentlySettled`, a read filter, nothing deleted), newest
+  first, take `RECENTLY_RESOLVED_MAX` + 1 with the cut named; no notification;
+  an empty list says only that nothing settled lately. After editing the deep
+  set, prompt or schema, re-run `npm run packs:evaluate -- --no-packs
+  --continuity`.
 - **Sanitising author text.** Every author-text write sanitises at the
   usecase layer before it is stored: plain text through `plainLine` /
   `plainBlock` (`src/lib/bible/text.ts`, over `sanitizePlainText`), rich text

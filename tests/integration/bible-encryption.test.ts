@@ -50,6 +50,9 @@ import { runInWorkspaceContext } from '@/lib/db/rls-middleware';
 import { sanitiseSummaryForStorage } from '@/lib/interview/compaction-prompt';
 import { MOUNTED, runStressTest, scriptedTester } from '../helpers/interrogation';
 import { seedManuscript, seedProseChecks } from '../helpers/manuscript';
+import { saveSceneCard } from '@/app-layer/usecases/scene-card';
+import { ThreadSceneLinkRepository } from '@/app-layer/repositories/draft-facts.repository';
+import { sanitiseLinkQuoteForStorage } from '@/lib/draft-facts/storage';
 
 afterAll(() => prisma.$disconnect());
 
@@ -205,7 +208,7 @@ beforeAll(async () => {
     Object.assign(ids, { Source: series.id, Book: book.id });
 
     // Continuity (Phase 4.2, D28): a thread by hand, title and note marked, and one proposed from a saved entry.
-    await createThread(ctx, book.id, { kind: 'CLUE', title: `A wet boot ${MARK}`, note: `Planted ${MARK} early.` });
+    const clue = await createThread(ctx, book.id, { kind: 'CLUE', title: `A wet boot ${MARK}`, note: `Planted ${MARK} early.` });
     const vow = `Mara swears to find the hawk ${MARK} before spring.`;
     await createElement(ctx, book.id, { kind: 'CHARACTER', name: 'Mara', summary: vow });
     await extractPending(ctx, book.id, threadExtractor(vow, `Mara will find the hawk ${MARK}`));
@@ -233,6 +236,13 @@ beforeAll(async () => {
     ids.ManuscriptScene = manuscript.sceneId;
     // The prose checks (Phase 5.2): a check's findings and the book's word baseline.
     await seedProseChecks(ctx, book.id, manuscript.chapterId, MARK);
+    // The draft held against the bible (Phase 5.3): a scene's card (and its version), and a plant link quoting the scene.
+    await saveSceneCard(ctx, book.id, manuscript.sceneId, { baseVersion: 0, goal: `goal ${MARK}`, conflict: `conflict ${MARK}`, outcome: `outcome ${MARK}`, change: `change ${MARK}` });
+    await runInWorkspaceContext(ctx, (db) =>
+        ThreadSceneLinkRepository.propose(db, ctx.workspaceId, [
+            { bookId: book.id, threadId: clue.id, sceneId: manuscript.sceneId, role: 'PLANTS', quote: sanitiseLinkQuoteForStorage(`The ferry ${MARK} crossed`), quoteStart: 0, quoteEnd: 10, sceneTextKey: 'a'.repeat(64), flags: [], runId: 'seed' },
+        ]),
+    );
     await runInWorkspaceContext(ctx, (db) =>
         InterviewCompactionRepository.create(db, ctx.workspaceId, { sessionId: ids.Session, throughRound: 1, summary: sanitiseSummaryForStorage(`Round one asked about the ${MARK} want.`), promptVersion: 'rounds-summary.4.3.0', tokensUsed: 1, costMicroUsd: 1 }),
     );
@@ -247,7 +257,8 @@ async function rawValues(model: string, field: string): Promise<string[]> {
     const byMap = model === 'MapSnapshot';
     const byRelation = model === 'BibleRelationField' || model === 'BibleRelationVersion';
     const bySource = model === 'SourceChunk' || model === 'StoryFact';
-    const byBook = model === 'StoryFactOverride' || model === 'StoryThread' || model === 'StoryThreadProposal' || model === 'GapHunt' || model === 'ProseBookBaseline';
+    const byBook =
+        model === 'StoryFactOverride' || model === 'StoryThread' || model === 'StoryThreadProposal' || model === 'GapHunt' || model === 'ProseBookBaseline' || model === 'StoryThreadSceneLink' || model === 'SceneCard' || model === 'SceneCardVersion';
     if (model === 'ProseFinding') {
         const rows = await prisma.$queryRawUnsafe<Array<{ v: string | null }>>(`SELECT f."${field}" AS v FROM "ProseFinding" f JOIN "SceneProseCheck" c ON c."id" = f."checkId" WHERE c."bookId" = $1`, ids.Book);
         return rows.map((r) => r.v).filter((v): v is string => v !== null);
@@ -338,6 +349,12 @@ it('the manifest covers the bible, interview, research, interrogation and manusc
             'SceneNoteVersion.note',
             'ProseFinding.detail',
             'ProseBookBaseline.baseline',
+            'StoryThreadSceneLink.quote',
+            'SceneCard.goal',
+            'SceneCard.conflict',
+            'SceneCard.outcome',
+            'SceneCard.change',
+            'SceneCardVersion.snapshot',
         ].sort(),
     );
 });

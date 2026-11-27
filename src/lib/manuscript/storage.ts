@@ -9,9 +9,10 @@
  */
 import { plainBlock, plainLine } from '@/lib/bible/text';
 import { MANUSCRIPT_TITLE_MAX, SCENE_NOTE_MAX, STORY_TIME_MAX } from './vocabulary';
+import { SCENE_CARD_FIELD_MAX, type SceneCardValues } from './scene-card';
 
 export class ManuscriptTextTooLongError extends Error {
-    constructor(readonly what: 'title' | 'storyTime' | 'note' | 'text') {
+    constructor(readonly what: 'title' | 'storyTime' | 'note' | 'text' | 'card') {
         super(`manuscript ${what} too long`);
         this.name = 'ManuscriptTextTooLongError';
     }
@@ -39,4 +40,17 @@ export function sanitiseSceneNote(raw: string | null | undefined): string {
     const value = plainBlock(raw);
     if (value.length > SCENE_NOTE_MAX) throw new ManuscriptTextTooLongError('note');
     return value;
+}
+
+/** A scene card's field as stored (Phase 5.3): paragraphs kept, at most `SCENE_CARD_FIELD_MAX`; blank is null (cleared). */
+export function sanitiseSceneCardField(raw: string | null | undefined): string | null {
+    if (raw == null) return null;
+    const value = plainBlock(raw);
+    if (value.length > SCENE_CARD_FIELD_MAX) throw new ManuscriptTextTooLongError('card');
+    return value === '' ? null : value;
+}
+
+/** A card version's snapshot: the card's four (already sanitised) fields as one JSON string, sealed whole. */
+export function serialiseSceneCardSnapshot(card: SceneCardValues): string {
+    return JSON.stringify({ goal: card.goal, conflict: card.conflict, outcome: card.outcome, change: card.change });
 }

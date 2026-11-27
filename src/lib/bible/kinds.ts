@@ -62,7 +62,7 @@ export type BibleElementStatus = (typeof BIBLE_ELEMENT_STATUSES)[number];
 export const BOOK_STAGES = ['CONCEPT', 'PLANNING', 'DRAFTING', 'REVISING', 'PUBLISHING'] as const;
 export type BookStage = (typeof BOOK_STAGES)[number];
 
-export const BIBLE_VERSION_SOURCES = ['MANUAL', 'INTERVIEW', 'IMPORT', 'RESEARCH'] as const;
+export const BIBLE_VERSION_SOURCES = ['MANUAL', 'INTERVIEW', 'IMPORT', 'RESEARCH', 'MANUSCRIPT'] as const;
 export type BibleVersionSource = (typeof BIBLE_VERSION_SOURCES)[number];
 
 /** Field keys, relation keys and option values: lower snake case, at most 32 characters. */

@@ -20,7 +20,10 @@
 # src/lib/gap-hunt/evals/evaluation-record.json and
 # src/lib/interview/evals/compaction-evaluation-record.json), and since Phase 4.4
 # the interview tie-break's (--question-order: evals-out/question-order/,
-# committed over src/lib/interview/question-order/evals/evaluation-record.json).
+# committed over src/lib/interview/question-order/evals/evaluation-record.json),
+# and since Phase 5.3 the nightly draft reading's (--draft-read, run with the
+# `sources` input — both read the author's own drafts: evals-out/draft-read/,
+# committed over src/lib/draft-facts/evals/evaluation-record.json).
 # One input for the four keeps the dispatch form within GitHub's ten inputs.
 #
 # Owner decisions of 2026-11-19: production mounts an interview pack only on a
@@ -89,7 +92,7 @@ on:
         default: false
         type: boolean
       sources:
-        description: "Also run source fact extraction's evaluation set (five passages and three adversarial ones, Phase 4.0)"
+        description: "Also run source fact extraction's evaluation set (Phase 4.0) and the nightly draft reading's (Phase 5.3)"
         required: false
         default: false
         type: boolean
@@ -216,7 +219,7 @@ jobs:
           if [ "$RECONCILE" = "true" ]; then extra="$extra --reconcile"; fi
           if [ "$RESEARCH" = "true" ]; then extra="$extra --research"; fi
           if [ "$REPHRASE" = "true" ]; then extra="$extra --rephrase"; fi
-          if [ "$SOURCES" = "true" ]; then extra="$extra --sources"; fi
+          if [ "$SOURCES" = "true" ]; then extra="$extra --sources --draft-read"; fi
           if [ "$BIBLE_FACTS" = "true" ]; then extra="$extra --bible-facts"; fi
           if [ "$CONTINUITY" = "true" ]; then extra="$extra --continuity"; fi
           if [ "$BOOK_LEVEL" = "true" ]; then extra="$extra --book-level --question-order"; fi

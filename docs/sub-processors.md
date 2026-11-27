@@ -14,7 +14,7 @@ bible, interview answers, research briefs, and (from Phase 5) the manuscript.
 
 | Party | What it receives | When | Terms |
 |---|---|---|---|
-| Anthropic (Claude API, Messages endpoint only) | Author text in fenced data blocks; the product's own prompts; the model's answers | Every model feature: interview questions (2.2; since 4.0 with the author's confirmed source facts and relevant passages of their own drafts as context; since 4.2 a "grill me on what changed" session also carries the upstream entry before and after its change; since 4.3 a session started from a stress test also carries its weak points' labels and questions), rephrasing (2.4), enrichment (2.5), research findings and fit (2.6), source fact extraction (4.0: each passage of an uploaded draft, its headings and the book's element names), bible fact extraction (4.1: the text of each accepted bible entry that changed, automatically, with the facts already recorded about it and the book's element names; since 4.2 also the book's open promises, clues and open questions, so it can propose new ones and say one was paid off), the nightly continuity check (4.2: the statements of a changed book's recorded facts, with their subjects' names, story times and places in the story order, automatically, every night), the stress test (4.3: on the author's confirmation, the book's title and logline, its elements' names and summaries, the story order, its top facts, open threads and the most relevant passages of its drafts, bounded), the gap ranking (4.3: on the author's confirmation, the names of the bible's field labels and counts of how empty they are, with the book's title, logline and its elements' names and summaries, bounded), the summary of a long interview's earlier rounds (4.3; on since 4.4: those rounds' questions and answers), and the interview tie-break (4.4: the names of the few near-equal questions' subjects, their field labels, what kind of question each is and, for a follow-up, a short excerpt of what the field holds) | Zero data retention (`AI_RETENTION_MODE=zdr`, an organisation arrangement with Anthropic) is the launch gate; standard retention (`standard-beta`) only during the closed beta (decision D5, amended 2026-11-19). Output JSON schemas are code and carry no author text (Anthropic caches schemas outside zero retention). |
+| Anthropic (Claude API, Messages endpoint only) | Author text in fenced data blocks; the product's own prompts; the model's answers | Every model feature: interview questions (2.2; since 4.0 with the author's confirmed source facts and relevant passages of their own drafts as context; since 4.2 a "grill me on what changed" session also carries the upstream entry before and after its change; since 4.3 a session started from a stress test also carries its weak points' labels and questions), rephrasing (2.4), enrichment (2.5), research findings and fit (2.6), source fact extraction (4.0: each passage of an uploaded draft, its headings and the book's element names), bible fact extraction (4.1: the text of each accepted bible entry that changed, automatically, with the facts already recorded about it and the book's element names; since 4.2 also the book's open promises, clues and open questions, so it can propose new ones and say one was paid off), the nightly continuity check (4.2: the statements of a changed book's recorded facts, with their subjects' names, story times and places in the story order, automatically, every night), the stress test (4.3: on the author's confirmation, the book's title and logline, its elements' names and summaries, the story order, its top facts, open threads and the most relevant passages of its drafts, bounded), the gap ranking (4.3: on the author's confirmation, the names of the bible's field labels and counts of how empty they are, with the book's title, logline and its elements' names and summaries, bounded), the summary of a long interview's earlier rounds (4.3; on since 4.4: those rounds' questions and answers), the interview tie-break (4.4: the names of the few near-equal questions' subjects, their field labels, what kind of question each is and, for a follow-up, a short excerpt of what the field holds), the nightly draft reading (5.3: the text of each manuscript scene that changed, its chapter's and its own title, the book's element names and its open promises and clues, automatically, every night) and "Grill me on this scene" (5.3: the scene's card fields and a bounded excerpt of the scene's text, as context for the questions) | Zero data retention (`AI_RETENTION_MODE=zdr`, an organisation arrangement with Anthropic) is the launch gate; standard retention (`standard-beta`) only during the closed beta (decision D5, amended 2026-11-19). Output JSON schemas are code and carry no author text (Anthropic caches schemas outside zero retention). |
 
 The messages-only middleware (`src/lib/ai/client.ts`) refuses every other
 Anthropic surface (files, batches, message threads, containers, MCP, beta
@@ -70,6 +70,32 @@ contradictions are stored in PostgreSQL for the author to decide.
 Since 4.2 the bible fact extraction (above) also carries the book's **open
 promises, clues and open questions** (their titles, at most twenty), so it can
 propose new ones and say that one was paid off; no call is added for them.
+
+## The draft held against the bible (Phase 5.3, decision D35)
+
+Every night, with no act of the author's, each **manuscript scene whose text
+changed** since it was last read is sent to Anthropic: the scene's plain text
+(at most 60,000 characters, in fast-tier calls over pieces of at most 12,000
+characters, each call's worst case inside its per-call cost budget, which is
+enforced), its chapter's and its own title, the book's element names and the
+titles of its open promises and clues (at most twenty). The model's answer is
+the scene's facts, each quoting the scene's own sentence, and which threads the
+scene plants or pays off; the facts are stored encrypted in PostgreSQL as DRAFT
+facts (never canon) and compared with the bible by code, and every mismatch and
+every plant or pay-off is only proposed, for the author to decide. The reading
+runs after the nightly continuity check and spends, with it, at most the one
+nightly share of the workspace's monthly ceiling (D28 addendum, D35), stops
+cleanly (and resumes the next night) at the ceiling, at the share and at the
+kill switch (`AI_DISABLED=1`), is charged to the model-call minute (D17), and in
+production runs only once a real-model evaluation record is committed (D11). A
+scene that was not changed is never sent again. Nothing is stored at Anthropic
+beyond the Messages call.
+
+**"Grill me on this scene"** is an interview the author starts: its question
+calls carry the scene's card (goal, conflict, outcome, what changed) and, as
+fenced data, a bounded excerpt of the scene's text (at most 8,000 characters),
+under the interview's own rules (2.2–4.4). Its answers only ever propose
+changes to the card, never to the scene's prose (D3).
 
 ## Book-level interrogation (Phase 4.3, decision D29)
 

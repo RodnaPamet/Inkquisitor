@@ -280,6 +280,40 @@ function registerDefaultExecutors(): void {
         });
     });
 
+    // Phase 5.3 (D35): the nightly draft-reading dispatcher, and one book's night per run.
+    executorRegistry.register('draft-read-dispatch', async () => {
+        const startedAt = new Date().toISOString();
+        const startMs = performance.now();
+        return runJob('draft-read-dispatch', async () => {
+            const { executeDraftReadDispatch } = await import('@/app-layer/usecases/draft-read-dispatch');
+            const r = await executeDraftReadDispatch();
+            return {
+                ...emptyResult('draft-read-dispatch', startedAt, startMs),
+                itemsScanned: r.due,
+                itemsActioned: r.queued,
+                itemsSkipped: r.enqueueFailed + r.workspacesSkipped,
+                details: { ...r },
+            };
+        });
+    });
+
+    executorRegistry.register('draft-read', async (payload) => {
+        const startedAt = new Date().toISOString();
+        const startMs = performance.now();
+        return runJob('draft-read', async () => {
+            const { executeDraftRead } = await import('@/app-layer/usecases/draft-read');
+            const { jobShutdownSignal } = await import('./shutdown-signal');
+            const r = await executeDraftRead(payload, { signal: jobShutdownSignal() });
+            return {
+                ...emptyResult('draft-read', startedAt, startMs),
+                itemsScanned: 1,
+                itemsActioned: r.ran ? 1 : 0,
+                itemsSkipped: r.ran ? 0 : 1,
+                details: { runId: payload.runId, outcome: r.outcome },
+            };
+        });
+    });
+
     // Phase 4.3 (D29): one stress test, named by id, run once the author confirmed its cost.
     executorRegistry.register('stress-test', async (payload) => {
         const startedAt = new Date().toISOString();

@@ -304,7 +304,9 @@ export function InterviewSession(props: InterviewSessionProps) {
                 ? t('titleSelection', { count: elements.length })
                 : scope === 'BETWEEN'
                   ? t('titleBetween', { a: pendingSubject?.afterName ?? tScope('unknownElement'), b: pendingSubject?.beforeName ?? tScope('unknownElement') })
-                  : t('titleBook');
+                  : scope === 'SCENE'
+                    ? t('titleScene', { name: elements[0]?.name || tScope('unknownScene') })
+                    : t('titleBook');
 
     const progress = view?.progress;
     const progressText = !progress || progress.status === 'NOT_ASSESSED' ? t('progressNotAssessed') : t('progress', { answered: progress.answered, asked: progress.asked });

@@ -305,6 +305,12 @@ export const FactProvenanceRepository = {
     },
 };
 
+/**
+ * 4.1's and 4.2's proposals. Since 5.3 the record also holds DRAFT mismatches (a draft fact against a bible fact), which
+ * are read and decided only through `DraftMismatchRepository` (`draft-facts.repository.ts`): every list and count here
+ * leaves basis DRAFT out, so the Facts page, the Continuity page's contradictions and the interview's continuity
+ * questions never see one.
+ */
 export const FactProposalRepository = {
     /** Raise proposals (one per pair, ever: a pair already proposed, decided or not, is skipped). Returns how many were new. */
     async raise(
@@ -343,24 +349,24 @@ export const FactProposalRepository = {
     },
     /** Phase 4.2: a book's pending proposals of one reason (the Continuity page's contradictions, its no-longer-stated facts). */
     async listPendingByReason(db: Db, workspaceId: string, bookId: string, reason: 'CONTRADICTED' | 'NO_LONGER_STATED', take: number): Promise<FactProposalRow[]> {
-        return db.storyFactProposal.findMany({ where: { workspaceId, bookId, status: 'PENDING', reason }, orderBy: [{ createdAt: 'desc' }, { id: 'asc' }], take, select: PROPOSAL_SELECT });
+        return db.storyFactProposal.findMany({ where: { workspaceId, bookId, status: 'PENDING', reason, basis: { not: 'DRAFT' } }, orderBy: [{ createdAt: 'desc' }, { id: 'asc' }], take, select: PROPOSAL_SELECT });
     },
     /** Phase 4.4: which of these proposals are still PENDING (a continuity question's persist). */
     async pendingAmong(db: Db, workspaceId: string, bookId: string, ids: readonly string[]): Promise<string[]> {
         if (ids.length === 0) return [];
-        const rows = await db.storyFactProposal.findMany({ where: { workspaceId, bookId, id: { in: [...ids] }, status: 'PENDING' }, take: ids.length, select: { id: true } });
+        const rows = await db.storyFactProposal.findMany({ where: { workspaceId, bookId, id: { in: [...ids] }, status: 'PENDING', basis: { not: 'DRAFT' } }, take: ids.length, select: { id: true } });
         return rows.map((r) => r.id);
     },
     async countPendingByReason(db: Db, workspaceId: string, bookId: string): Promise<{ contradicted: number; noLongerStated: number }> {
-        const rows = await db.storyFactProposal.groupBy({ by: ['reason'], where: { workspaceId, bookId, status: 'PENDING' }, _count: { _all: true }, orderBy: { reason: 'asc' }, take: 4 });
+        const rows = await db.storyFactProposal.groupBy({ by: ['reason'], where: { workspaceId, bookId, status: 'PENDING', basis: { not: 'DRAFT' } }, _count: { _all: true }, orderBy: { reason: 'asc' }, take: 4 });
         const of = (r: string) => rows.find((x) => x.reason === r)?._count._all ?? 0;
         return { contradicted: of('CONTRADICTED'), noLongerStated: of('NO_LONGER_STATED') };
     },
     async listForBook(db: Db, workspaceId: string, bookId: string, status: FactProposalStatus, take: number): Promise<FactProposalRow[]> {
-        return db.storyFactProposal.findMany({ where: { workspaceId, bookId, status }, orderBy: [{ createdAt: 'desc' }, { id: 'asc' }], take, select: PROPOSAL_SELECT });
+        return db.storyFactProposal.findMany({ where: { workspaceId, bookId, status, basis: { not: 'DRAFT' } }, orderBy: [{ createdAt: 'desc' }, { id: 'asc' }], take, select: PROPOSAL_SELECT });
     },
     async countPending(db: Db, workspaceId: string, bookId: string): Promise<number> {
-        return db.storyFactProposal.count({ where: { workspaceId, bookId, status: 'PENDING' } });
+        return db.storyFactProposal.count({ where: { workspaceId, bookId, status: 'PENDING', basis: { not: 'DRAFT' } } });
     },
     async find(db: Db, workspaceId: string, bookId: string, id: string): Promise<FactProposalRow | null> {
         return db.storyFactProposal.findFirst({ where: { workspaceId, bookId, id }, select: PROPOSAL_SELECT });
@@ -372,8 +378,10 @@ export const FactProposalRepository = {
     },
     /** Close every other PENDING proposal to invalidate a fact the author has just invalidated: it is settled the same way. */
     async settleOthersForFact(db: Db, workspaceId: string, factId: string, data: { decidedById: string; at: Date }): Promise<number> {
-        const r = await db.storyFactProposal.updateMany({ where: { workspaceId, factId, status: 'PENDING' }, data: { status: 'INVALIDATED', decidedById: data.decidedById, decidedAt: data.at } });
-        return r.count;
+        const r = await db.storyFactProposal.updateMany({ where: { workspaceId, factId, status: 'PENDING', basis: { not: 'DRAFT' } }, data: { status: 'INVALIDATED', decidedById: data.decidedById, decidedAt: data.at } });
+        // D35 addendum C: a draft mismatch against it settled by itself (its bible fact went), when and how recorded.
+        const draft = await db.storyFactProposal.updateMany({ where: { workspaceId, factId, status: 'PENDING', basis: 'DRAFT' }, data: { status: 'INVALIDATED', decidedById: data.decidedById, decidedAt: data.at, settledAt: data.at, settleReason: 'BIBLE_GONE' } });
+        return r.count + draft.count;
     },
     /**
      * Phase 4.2: close every other PENDING proposal a fact the author has just invalidated stands in (as the older or
@@ -381,9 +389,15 @@ export const FactProposalRepository = {
      * the older, INVALIDATED_NEWER where it was the newer (4.1 left the second kind pending: its 4.H note).
      */
     async settleAllForFact(db: Db, workspaceId: string, factId: string, data: { decidedById: string; at: Date }): Promise<number> {
-        const older = await db.storyFactProposal.updateMany({ where: { workspaceId, factId, status: 'PENDING' }, data: { status: 'INVALIDATED', decidedById: data.decidedById, decidedAt: data.at } });
+        const older = await db.storyFactProposal.updateMany({ where: { workspaceId, factId, status: 'PENDING', basis: { not: 'DRAFT' } }, data: { status: 'INVALIDATED', decidedById: data.decidedById, decidedAt: data.at } });
+        // D35 addendum C: a PENDING draft mismatch against the fact set aside settled by itself (its bible fact went): it
+        // carries when and how, for the Continuity page's "Recently resolved" list.
+        const draftPending = await db.storyFactProposal.updateMany({ where: { workspaceId, factId, status: 'PENDING', basis: 'DRAFT' }, data: { status: 'INVALIDATED', decidedById: data.decidedById, decidedAt: data.at, settledAt: data.at, settleReason: 'BIBLE_GONE' } });
         const newer = await db.storyFactProposal.updateMany({ where: { workspaceId, newerFactId: factId, status: 'PENDING', reason: 'CONTRADICTED' }, data: { status: 'INVALIDATED_NEWER', decidedById: data.decidedById, decidedAt: data.at } });
-        return older.count + newer.count;
+        // Phase 5.3: a draft mismatch the author said they would fix (FIX_PENDING) against the fact set aside has no pair
+        // left: settled FIXED (its decision kept), so it leaves the open list now rather than at the scene's next read.
+        const fixing = await db.storyFactProposal.updateMany({ where: { workspaceId, factId, basis: 'DRAFT', status: 'FIX_PENDING' }, data: { status: 'FIXED', settledAt: data.at, settleReason: 'BIBLE_GONE' } });
+        return older.count + draftPending.count + newer.count + fixing.count;
     },
 };
 

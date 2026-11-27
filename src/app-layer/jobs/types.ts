@@ -126,6 +126,21 @@ export interface ContinuityCheckPayload {
     runId: string;
 }
 
+/**
+ * Phase 5.3 (D35): the nightly draft-reading dispatcher. No payload: it finds the books with a scene whose text changed
+ * since it was last read itself (`usecases/draft-read-dispatch.ts`).
+ */
+export type DraftReadDispatchPayload = Record<string, never>;
+
+/**
+ * One book's nightly draft reading (Phase 5.3, D35): the run's id and its workspace, never a scene's text
+ * (`usecases/draft-read.ts`). Idempotent: a run that is no longer QUEUED is left alone.
+ */
+export interface DraftReadPayload {
+    workspaceId: string;
+    runId: string;
+}
+
 export interface StressTestPayload {
     workspaceId: string;
     stressTestId: string;
@@ -154,6 +169,8 @@ export interface JobPayloadMap {
     'stress-test': StressTestPayload;
     'fact-backfill': FactBackfillPayload;
     'prose-check': ProseCheckPayload;
+    'draft-read-dispatch': DraftReadDispatchPayload;
+    'draft-read': DraftReadPayload;
 }
 
 export type JobName = keyof JobPayloadMap;
@@ -228,6 +245,21 @@ export const JOB_DEFAULTS: Record<JobName, JobDefaults> = {
     'prose-check': {
         // One attempt: the next save (or the editor's "check now") is the retry,
         // and a check is deterministic, so running it again gains nothing.
+        attempts: 1,
+        backoff: { type: 'fixed', delay: 0 },
+        removeOnComplete: 200,
+        removeOnFail: 200,
+    },
+    'draft-read-dispatch': {
+        // One attempt: the next night is the retry, and every book it would have queued is still due then.
+        attempts: 1,
+        backoff: { type: 'fixed', delay: 0 },
+        removeOnComplete: 30,
+        removeOnFail: 100,
+    },
+    'draft-read': {
+        // One attempt: a night that stops records its outcome and keeps every scene read; the next night's
+        // dispatcher queues the book again, so a call is never repeated by the queue behind the run's back.
         attempts: 1,
         backoff: { type: 'fixed', delay: 0 },
         removeOnComplete: 200,

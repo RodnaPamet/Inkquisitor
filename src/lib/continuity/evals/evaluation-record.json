@@ -1,15 +1,15 @@
 {
   "format": "inkquisitor-continuity-evaluation/1",
   "set": {
-    "hash": "sha256:466a569622652a7dcea81b4e8aa3d7dcd7140282c1b8a00257eacae5bc518b41"
+    "hash": "sha256:498607a4164c89f8887d6f675c79c7eed74646dabb8a9264be8d2297451192e7"
   },
-  "promptVersion": "continuity-deep.4.2.0",
-  "promptHash": "sha256:722c8882803c33fa490e8707ebe8e026b4dced51241fa51cd670c7395cbb0335",
+  "promptVersion": "continuity-deep.5.3.0",
+  "promptHash": "sha256:14a393dfa970834a4c1e331b1f147686c8c8c3f4b1003870f23e5d179d30d508",
   "generator": {
     "kind": "structural",
     "id": "reference-continuity-checker.1"
   },
-  "ranAt": "2026-11-27T01:23:51.342Z",
+  "ranAt": "2026-11-27T17:48:28.581Z",
   "answers": [
     {
       "caseId": "cc-01",
@@ -102,6 +102,53 @@
           {
             "first": 1,
             "second": 3,
+            "kind": "VALUE"
+          }
+        ]
+      }
+    },
+    {
+      "caseId": "cc-10",
+      "output": {
+        "contradictions": [
+          {
+            "first": 1,
+            "second": 3,
+            "kind": "VALUE"
+          }
+        ]
+      }
+    },
+    {
+      "caseId": "cc-11",
+      "output": {
+        "contradictions": [
+          {
+            "first": 1,
+            "second": 3,
+            "kind": "WHEREABOUTS"
+          },
+          {
+            "first": 2,
+            "second": 4,
+            "kind": "KNOWLEDGE"
+          }
+        ]
+      }
+    },
+    {
+      "caseId": "cc-12",
+      "output": {
+        "contradictions": []
+      }
+    },
+    {
+      "caseId": "adv-02",
+      "output": {
+        "contradictions": [
+          {
+            "first": 1,
+            "second": 4,
             "kind": "VALUE"
           }
         ]

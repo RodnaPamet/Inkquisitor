@@ -58,7 +58,7 @@ async function main(): Promise<void> {
         fail(`AI_MONTHLY_CEILING_USD_DEFAULT must be the run's budget, more than 0 and at most ${suite.REDTEAM_BUDGET_MAX_USD} US dollars`, 2);
     }
 
-    const [{ provisionAccountWithWorkspace }, { getPermissionsForRole }, { callStructured, modelUnavailableReason }, { questionGeneratorOver }, { reconcilerOver }, { defaultResearcher }, { prisma }, { defaultFactExtractor }, { defaultBibleFactExtractor }, { defaultContinuityChecker }, { defaultStressTester }, { defaultGapRanker }, { defaultRoundsSummarizer }, { defaultQuestionOrderer }] =
+    const [{ provisionAccountWithWorkspace }, { getPermissionsForRole }, { callStructured, modelUnavailableReason }, { questionGeneratorOver }, { reconcilerOver }, { defaultResearcher }, { prisma }, { defaultFactExtractor }, { defaultBibleFactExtractor }, { defaultContinuityChecker }, { defaultStressTester }, { defaultGapRanker }, { defaultRoundsSummarizer }, { defaultQuestionOrderer }, { defaultDraftReader }] =
         await Promise.all([
             import('../src/app-layer/usecases/sign-up'),
             import('../src/lib/permissions'),
@@ -74,6 +74,7 @@ async function main(): Promise<void> {
             import('../src/lib/gap-hunt/model-seam'),
             import('../src/lib/interview/compaction-seam'),
             import('../src/lib/interview/question-order/model-seam'),
+            import('../src/lib/draft-facts/model-seam'),
         ]);
     const unavailable = modelUnavailableReason();
     if (unavailable) fail(`no model call can be made (${unavailable})`, 2);
@@ -121,6 +122,7 @@ async function main(): Promise<void> {
             gapRanker: defaultGapRanker(ctx, { fetch: capture }),
             roundsSummarizer: defaultRoundsSummarizer(ctx, { fetch: capture }),
             questionOrderer: defaultQuestionOrderer(ctx, { fetch: capture }),
+            draftReader: defaultDraftReader(ctx, { fetch: capture }),
             requests: () => sent,
         });
         const reached = report.cases.filter((v) => !suite.UNREACHED_OUTCOMES.has(v.outcome)).length;

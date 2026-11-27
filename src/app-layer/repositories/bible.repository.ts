@@ -814,6 +814,8 @@ export const BibleVersionRepository = {
             sourceResearchProposalId?: string | null;
             /** The save moved the element in its story order (Phase 3.2). */
             movedInOrder?: boolean;
+            /** Phase 5.3 (MANUSCRIPT): the scene the version came from. */
+            sourceSceneId?: string | null;
         },
     ) {
         return db.bibleEntryVersion.create({ data: { ...data, workspaceId }, select: VERSION_META_SELECT });
