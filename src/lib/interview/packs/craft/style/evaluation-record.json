@@ -3,7 +3,7 @@
   "pack": {
     "name": "craft-style",
     "version": 1,
-    "contentHash": "sha256:74e3b6f67cf34eeb7d9abbc46a56784c95bd9c5f5758bb95839482caaac7ad02"
+    "contentHash": "sha256:c797f27f62cadd3e49fd0a1e4f7f74eea5ab795b2e820b0f5b7a76a96c036b78"
   },
   "set": {
     "hash": "sha256:7753e5379f919d3533ae15616f17e4b287ba109e358965d926664271f986cc0c"
@@ -14,7 +14,7 @@
     "kind": "structural",
     "id": "structural-generator.1"
   },
-  "ranAt": "2026-11-26T15:23:10.306Z",
+  "ranAt": "2026-11-27T11:20:14.984Z",
   "answers": [
     {
       "caseId": "style-01",

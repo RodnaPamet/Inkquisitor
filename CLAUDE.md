@@ -489,6 +489,24 @@ tests/guards/scene-text-stays-off-the-model-path.test.ts → D3: no model output
 src/app-layer/usecases/manuscript-board.ts, src/components/canvas/SceneCardLayer.tsx → the plot board's scene cards (D33 addendum B)
 ```
 
+Phase 5.2 (the style sheet and prose checks, D34) added:
+
+```
+src/lib/bible/templates/style.json, character.json → the STYLE sheet's check fields (check_tense, check_person, check_spelling,
+                               quote_marks, tag_punctuation, word_swaps; avoided_words flagged); CHARACTER `voiced_against` STYLE (voice notes)
+src/lib/prose-checks/        → vocabulary (rules, bounds, statuses, wire types; client-safe), editor-map (offsets ↔ editor positions;
+                               client-safe), scene-text (3.4's reader + italic runs), dialogue (THE speech detector), segments,
+                               style-sheet (pick + compile), spelling-variants (original list), similar-names, readability, baseline,
+                               rules/original.ts, rules/ported.ts (retext, write-good, alex's plugins), engine (runProseChecks), keys, storage
+prisma/schema/prose-checks.prisma → ProseCheckSettings, SceneProseCheck, ProseFinding (detail encrypted), ProseDismissal (keyed hash), ProseBookBaseline (encrypted)
+src/app-layer/usecases/      → prose-check-schedule (THE debounced enqueue), prose-check-run (the `prose-check` job's work), prose-check-setup,
+                               prose-checks (the margin's read, check now, chapter re-run, dismiss, settings)
+src/app-layer/jobs/          → `prose-check`, one per scene, deduplicated per scene (reschedule + keepLastIfActive)
+src/app/api/w/[workspaceSlug]/books/[bookId]/manuscript/{scenes/[sceneId]/prose-checks,chapters/[chapterId]/prose-checks,prose-checks/{dismissals,settings}}
+src/components/manuscript/   → ProseNotesMargin, prose-notes-extension (decorations, the suggestion mark), use-prose-notes, ProseCheckSettings
+src/lib/security/prose-check-rate-limit.ts → the per-workspace minute (60 checks)
+```
+
 ## Rules every change obeys
 
 These are `docs/ROADMAP.md` section 3, restated. The roadmap is authoritative
@@ -1893,6 +1911,60 @@ the guard refused is passed over at once and counted there too. The
   its findings). The brief's quote check reads manuscript text too. Word search
   and the bible export do not read the manuscript yet: both land in 5.H (D33
   addendum A; 5.H item 4's export, and word search over scenes).
+- **Prose checks (Phase 5.2; D3, D34).** DETERMINISTIC CODE, NO MODEL: the
+  engine (`src/lib/prose-checks/engine.ts`, worker-only — retext, write-good and
+  alex's plugins never reach a browser bundle) reads a scene's plain text (3.4's
+  `HtmlTextReader`, so offsets map to the editor through `buildEditorTextMap`,
+  which rebuilds the same text; the shared samples hold both sides) against the
+  book's STYLE sheet: the oldest whole-book STYLE element, else the oldest with
+  no span; a part-scoped sheet is not applied book-wide; no sheet, and the rules
+  that need one do not run and are named (`rulesNotRun`). Every rule is
+  conservative (5.H samples 500 findings, 70 % useful): filter words only after
+  a subject, tense and person only after a subject pronoun from closed verb
+  lists, never in speech or italics, person only for a third-person sheet;
+  write-good narrowed to intensifiers and multi-word wordy phrases; a rule that
+  widens gets near-miss tests first. NARRATION rules never read SPEECH, found by
+  `dialogue.ts` from the sheet's speech marks (its limits in its header). The
+  inclusive-language check (alex's `retext-equality` + `retext-profanities`; the
+  alex package fails the audit gate) is OFF unless the book turns it on, never
+  reads speech and never flags a pronoun. RUN: a save that changed the text
+  queues `prose-check` through `scheduleProseCheck` AFTER it commits (BullMQ
+  deduplication per scene, `reschedule` + `keepLastIfActive`: a burst of saves
+  is one check after the last, a save during a run is checked after it; never a
+  plain per-scene jobId, which BullMQ ignores while a job holds it), and never
+  fails the save (`UNAVAILABLE`; `PROSE_CHECKS=off` queues nothing, and the test
+  setup sets it). The job (payload ids only, `attempts: 1`) charges the
+  workspace's minute (`chargeProseCheckRun`, else back on the queue), reads the
+  CURRENT text, checks it outside every transaction (bounded,
+  `PROSE_CHECK_TEXT_MAX_CHARS`, a cut named; work counted, never timed), and
+  stores the check and its findings in one transaction under the scene's
+  advisory lock ONLY while the scene's text still keys as the text checked (a
+  newer save supersedes; a details-only save does not) — no stale finding is
+  ever stored; a broken key fails only that job (`servedWorkspace`). STORAGE: a
+  finding is offsets, a rule, a message key and a keyed `sentenceKey`; the words
+  it is about live only in its encrypted `detail` (`sanitiseFindingDetail`); the
+  overused-words baseline is the book's stem counts, encrypted, recomputed after
+  `PROSE_BASELINE_MAX_AGE_MS`. A check's validity is `textKey` (the text),
+  `rulesVersion` and `configKey` (sheet + alex): the read says NOT_CHECKED,
+  PENDING, OUTDATED or CHECKED, never "no notes" for a scene never checked
+  (rule 6). Rules turned off and dismissals are applied at READ (so turning a
+  rule back on shows its notes at once); a dismissal is (rule, keyed sentence)
+  per book, so it holds while the sentence is unchanged and a changed sentence
+  re-raises it. VERSION: editing the engine's import closure or a rule
+  package's pinned version needs `PROSE_RULES_VERSION` bumped and the new hash
+  recorded in `tests/unit/prose-checks/rules-version.test.ts`. THE EDITOR: notes
+  are ProseMirror DECORATIONS (`prose-notes-extension.ts`), never marks or nodes,
+  so the scene's text, autosave and versions never see one; a note is placed
+  only where the editor's own text still reads the finding's `matched`, maps
+  through edits, and drops when its text changes. The SUGGESTION MARK: the open
+  note's suggestion is drawn (struck through, the replacement as a widget) and
+  nothing changes until the author accepts, which is an ordinary edit
+  (`tr.insertText` / `tr.delete`) saved by the autosave like a keystroke;
+  rejecting dismisses. A suggestion is ONLY a deletion, the author's own swap or
+  a spelling variant (D34 item 4): never a package's alternative, never a
+  model's. The prose-check modules are in the D3 guard: none reaches a model
+  module, the text writer or a text-writing method. `bible.view` reads,
+  `bible.edit` acts; dismissals and settings are audited (ids and codes).
 - **Sanitising author text.** Every author-text write sanitises at the
   usecase layer before it is stored: plain text through `plainLine` /
   `plainBlock` (`src/lib/bible/text.ts`, over `sanitizePlainText`), rich text

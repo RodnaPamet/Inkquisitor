@@ -34,9 +34,34 @@
  * CommonJS and listed only so a copy nested under it is not ignored by the
  * outer path segment matching (`transformIgnorePatterns` is an unanchored
  * regex; inflect-compliance's jest.config.js tells the story). `@tldraw/assets`
- * (Phase 3.1) ships its asset-URL modules as plain ESM.
+ * (Phase 3.1) ships its asset-URL modules as plain ESM. The unified / retext
+ * cluster (Phase 5.2, the prose checks' ported rules,
+ * `src/lib/prose-checks/rules/ported.ts`) is ESM throughout.
  */
-const NODE_ESM_ALLOW_LIST = ['sanitize-html', 'htmlparser2', 'domhandler', 'domutils', 'dom-serializer', 'domelementtype', 'entities', '@tldraw/assets'].join('|');
+const NODE_ESM_ALLOW_LIST = [
+    'sanitize-html',
+    'htmlparser2',
+    'domhandler',
+    'domutils',
+    'dom-serializer',
+    'domelementtype',
+    'entities',
+    '@tldraw/assets',
+    'retext[^/]*',
+    'unified',
+    'bail',
+    'devlop',
+    'is-plain-obj',
+    'trough',
+    'vfile[^/]*',
+    'unist-util-[^/]+',
+    'nlcst-[^/]+',
+    'parse-english',
+    'parse-latin',
+    'array-iterate',
+    'quotation',
+    'cuss',
+].join('|');
 
 const shared = {
     preset: 'ts-jest',

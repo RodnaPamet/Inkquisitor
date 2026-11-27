@@ -1,0 +1,128 @@
+// ─────────────────────────────────────────────────────────────────
+//  The prose checks (Phase 5.2, decision D34).
+//
+//  A scene's text is checked by DETERMINISTIC code in the worker
+//  (`src/lib/prose-checks/`: original rules, retext, write-good and alex's
+//  rules; no model), a few seconds after the author stops typing. The
+//  findings are margin notes the author dismisses or acts on; the product
+//  never applies an edit (D3, D34).
+//
+//  EVERY MODEL HERE IS WORKSPACE-SCOPED: FORCE ROW LEVEL SECURITY, the
+//  `workspace_isolation` / `superuser_bypass` policies in the migration,
+//  reached through `runInWorkspaceContext`; each goes with its book or scene.
+//
+//  NO AUTHOR TEXT IN CLEAR. A finding is offsets into the scene's plain text,
+//  a rule id and a message key; the words it is about (a banned word, an
+//  overused word, a swap's replacement) live only in its ENCRYPTED `detail`.
+//  A dismissal is a KEYED hash of its sentence (`workspaceSubkey`), never the
+//  sentence. The book's word baseline is encrypted whole.
+// ─────────────────────────────────────────────────────────────────
+
+/// A book's prose-check settings: rules the author turned off, and the inclusive-language switch (off by default, D34 item 2).
+model ProseCheckSettings {
+  id          String   @id @default(cuid())
+  workspaceId String
+  bookId      String
+  /// The inclusive-language check (alex's rules), narration only: off until the author turns it on.
+  alexEnabled Boolean  @default(false)
+  /// Rule ids turned off for the book (their notes are hidden, never deleted).
+  rulesOff    String[] @default([])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  book Book @relation(fields: [workspaceId, bookId], references: [workspaceId, id], onDelete: Cascade)
+
+  @@unique([workspaceId, bookId])
+}
+
+/// The newest check of one scene: what it read and under which rules; its findings beside it.
+model SceneProseCheck {
+  id               String   @id @default(cuid())
+  workspaceId      String
+  bookId           String
+  sceneId          String
+  /// The scene revision the check read (information: validity is `textKey`).
+  revision         Int
+  /// A keyed hash of the text the check read: the check stands while the scene's text still hashes to it.
+  textKey          String
+  /// `PROSE_RULES_VERSION` when it ran: an older one is recomputed.
+  rulesVersion     Int
+  /// A keyed hash of the compiled style sheet and the inclusive-language switch it ran under.
+  configKey        String
+  /// The style sheet element it read, or NULL (no whole-book sheet).
+  styleElementId   String?
+  /// Rules that could not run for want of a style-sheet setting.
+  rulesNotRun      String[] @default([])
+  textCut          Boolean  @default(false)
+  findingsCut      Boolean  @default(false)
+  charsChecked     Int
+  wordsChecked     Int
+  sentences        Int
+  /// Flesch reading ease and Flesch–Kincaid grade (NULL below the word floor: not assessed).
+  readingEase      Float?
+  gradeLevel       Float?
+  checkedAt        DateTime @default(now())
+
+  scene    ManuscriptScene @relation(fields: [workspaceId, bookId, sceneId], references: [workspaceId, bookId, id], onDelete: Cascade)
+  findings ProseFinding[]
+
+  /// One check a scene (replaced whole by the next); the scene's book travels in the key.
+  @@unique([workspaceId, bookId, sceneId])
+  @@unique([workspaceId, id])
+}
+
+/// One margin note: a rule's finding at offsets into the scene's plain text.
+model ProseFinding {
+  id          String @id @default(cuid())
+  workspaceId String
+  checkId     String
+  ruleId      String
+  /// NOTE | WARNING (CHECK).
+  severity    String
+  /// UTF-16 offsets into the scene's plain text (`HtmlTextReader`); end > start (CHECK).
+  start       Int
+  end         Int
+  /// A keyed hash of the normalised sentence and the rule (the dismissal key).
+  sentenceKey String
+  /// Message parameters and the deterministic suggestion, as JSON (ENCRYPTED: they name words of the scene or the sheet).
+  detail      String
+
+  check SceneProseCheck @relation(fields: [workspaceId, checkId], references: [workspaceId, id], onDelete: Cascade)
+
+  @@index([workspaceId, checkId])
+}
+
+/// A note the author dismissed: its rule and its sentence's keyed hash. It stays dismissed while the sentence is unchanged (D34 item 3).
+model ProseDismissal {
+  id          String   @id @default(cuid())
+  workspaceId String
+  bookId      String
+  ruleId      String
+  sentenceKey String
+  createdAt   DateTime @default(now())
+
+  book Book @relation(fields: [workspaceId, bookId], references: [workspaceId, id], onDelete: Cascade)
+
+  @@unique([workspaceId, bookId, ruleId, sentenceKey])
+  /// The read: which of a check's sentence keys the book dismissed.
+  @@index([workspaceId, bookId, sentenceKey])
+  /// The bound: a book's oldest dismissals go first past it.
+  @@index([workspaceId, bookId, createdAt])
+}
+
+/// The book's word frequencies (the overused-words baseline), ENCRYPTED whole; recomputed when stale.
+model ProseBookBaseline {
+  id          String   @id @default(cuid())
+  workspaceId String
+  bookId      String
+  /// JSON stem counts (`serialiseBaseline`; encrypted).
+  baseline    String
+  totalWords  Int
+  scenesRead  Int
+  cut         Boolean  @default(false)
+  computedAt  DateTime @default(now())
+
+  book Book @relation(fields: [workspaceId, bookId], references: [workspaceId, id], onDelete: Cascade)
+
+  @@unique([workspaceId, bookId])
+}

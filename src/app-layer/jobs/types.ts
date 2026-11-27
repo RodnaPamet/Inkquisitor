@@ -131,6 +131,16 @@ export interface StressTestPayload {
     stressTestId: string;
 }
 
+/**
+ * One scene's prose check (Phase 5.2, D34): names the scene; the worker reads
+ * its CURRENT text, so a debounced burst of saves is one check of the newest.
+ * Added with BullMQ's per-scene deduplication (`prose-check-schedule.ts`).
+ */
+export interface ProseCheckPayload {
+    workspaceId: string;
+    sceneId: string;
+}
+
 export interface JobPayloadMap {
     heartbeat: HeartbeatPayload;
     'book-purge': BookPurgePayload;
@@ -143,6 +153,7 @@ export interface JobPayloadMap {
     'continuity-check': ContinuityCheckPayload;
     'stress-test': StressTestPayload;
     'fact-backfill': FactBackfillPayload;
+    'prose-check': ProseCheckPayload;
 }
 
 export type JobName = keyof JobPayloadMap;
@@ -209,6 +220,14 @@ export const JOB_DEFAULTS: Record<JobName, JobDefaults> = {
         // One attempt: an extraction that stops records its outcome and the
         // dispatcher queues it again when it is due, so a call is never repeated
         // by the queue behind the row's back.
+        attempts: 1,
+        backoff: { type: 'fixed', delay: 0 },
+        removeOnComplete: 200,
+        removeOnFail: 200,
+    },
+    'prose-check': {
+        // One attempt: the next save (or the editor's "check now") is the retry,
+        // and a check is deterministic, so running it again gains nothing.
         attempts: 1,
         backoff: { type: 'fixed', delay: 0 },
         removeOnComplete: 200,

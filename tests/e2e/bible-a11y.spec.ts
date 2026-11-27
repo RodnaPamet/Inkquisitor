@@ -140,13 +140,13 @@ test('axe finds no WCAG 2.1 AA violation on the bible pages and dialogs', async 
     await expectNoAxeViolations(page, 'book interrogate, model off');
 });
 
-test('axe finds no WCAG 2.1 AA violation on the manuscript, its import dialog and the scene editor (Phase 5.1)', async ({ page }) => {
+test('axe finds no WCAG 2.1 AA violation on the manuscript, its prose-check settings, its import dialog and the scene editor with its margin (Phases 5.1, 5.2)', async ({ page }) => {
     test.setTimeout(120_000);
     const { slug, bookId } = await bookWithCharacter(page);
     const main = page.getByRole('main');
     const chapter = ((await (await page.request.post(`/api/w/${slug}/books/${bookId}/manuscript/chapters`, { data: { title: 'Chapter one' } })).json()) as { id: string }).id;
     const scene = ((await (await page.request.post(`/api/w/${slug}/books/${bookId}/manuscript/scenes`, { data: { chapterId: chapter, title: 'The ferry' } })).json()) as { id: string }).id;
-    expect((await page.request.put(`/api/w/${slug}/books/${bookId}/manuscript/scenes/${scene}/text`, { data: { html: '<p>The ferry left at dawn.</p>', baseRevision: 0 } })).status()).toBe(200);
+    expect((await page.request.put(`/api/w/${slug}/books/${bookId}/manuscript/scenes/${scene}/text`, { data: { html: '<p>The ferry left at dawn. She was very tired.</p>', baseRevision: 0 } })).status()).toBe(200);
 
     await page.goto(`/w/${slug}/books/${bookId}/manuscript`);
     await expect(main.getByRole('heading', { level: 1, name: 'Manuscript' })).toBeVisible();
@@ -163,6 +163,12 @@ test('axe finds no WCAG 2.1 AA violation on the manuscript, its import dialog an
     await page.goto(`/w/${slug}/books/${bookId}/manuscript/scenes/${scene}`);
     await expect(main.getByTestId('scene-text').getByRole('textbox')).toBeVisible();
     await expectNoAxeViolations(page, 'scene editor, details');
+    // The prose notes' margin (Phase 5.2), with a note open and its suggestion drawn.
+    const margin = main.getByTestId('prose-notes-margin');
+    await expect(margin.getByTestId('prose-notes-status')).toHaveAttribute('data-status', 'CHECKED', { timeout: 40_000 });
+    await margin.locator('[data-rule="intensifiers"]').getByTestId('prose-note-button').click();
+    await expect(margin.getByTestId('prose-note-detail')).toBeVisible();
+    await expectNoAxeViolations(page, 'scene editor, a prose note open');
     for (const tab of ['Linked', 'Note', 'History']) {
         await main.getByRole('radio', { name: tab }).click();
         await expectNoAxeViolations(page, `scene editor, ${tab}`);

@@ -2226,7 +2226,11 @@
                 "part": "Its chapters and {scenes, plural, one {# scene} other {# scenes}} go with it. Each scene’s history stays with the book.",
                 "chapter": "Its {scenes, plural, one {# scene} other {# scenes}} go with it. Each scene’s history stays with the book."
             },
-            "confirmDelete": "Delete with {scenes, plural, one {# scene} other {# scenes}}"
+            "confirmDelete": "Delete with {scenes, plural, one {# scene} other {# scenes}}",
+            "recheck": "Check the prose of {what} again",
+            "recheckQueued": "{count, plural, one {# scene} other {# scenes}} of {what} will be checked in a moment.",
+            "recheckOff": "Prose checks are switched off on this server.",
+            "recheckUnavailable": "The checks could not be queued; try again in a moment."
         },
         "import": {
             "title": "Import a manuscript",
@@ -2269,6 +2273,146 @@
             "untitledScene": "Untitled scene",
             "untitledChapter": "Untitled chapter",
             "truncated": "More scenes name this beat than are shown."
+        },
+        "proseChecks": {
+            "marginLabel": "Prose notes",
+            "listLabel": "{count, plural, =0 {No notes} one {# note} other {# notes}}",
+            "notePosition": "Note {n} of {total}:",
+            "filter": "Show",
+            "filterAll": "Every note",
+            "checkNow": "Check now",
+            "dismiss": "Dismiss",
+            "ruleOff": "Turn this rule off for the book",
+            "accept": "Accept",
+            "reject": "Reject",
+            "suggestDelete": "Suggestion: remove “{text}”.",
+            "suggestReplace": "Suggestion: “{text}” → “{replacement}”.",
+            "readability": "Reading ease {ease} ({band}) · grade {grade}",
+            "readabilityNotAssessed": "Readability: not assessed (too few words).",
+            "unplaced": "{count, plural, one {# note} other {# notes}} could not be placed: the text changed under it. The next check will look again.",
+            "rulesNotRunSheet": "{count, plural, one {# rule} other {# rules}} did not run: your style sheet does not set what they need.",
+            "noStyleSheet": "Some rules did not run: the book has no style sheet (a Prose style entry covering the whole book).",
+            "status": {
+                "loading": "Reading the prose notes…",
+                "loadError": "The prose notes could not be read.",
+                "notChecked": "Not checked yet.",
+                "checking": "Checking the latest text…",
+                "outdated": "{count, plural, =0 {No notes} one {# note} other {# notes}} from an older style sheet or older rules; checking again…",
+                "checked": "{count, plural, =0 {No notes in the text checked.} one {# note.} other {# notes.}}",
+                "checkedCut": "{count, plural, =0 {No notes} one {# note} other {# notes}} in the first {words} words (only those were checked).",
+                "off": "Prose checks are switched off on this server.",
+                "unavailable": "The check could not be queued; try again."
+            },
+            "bands": {
+                "very_easy": "very easy",
+                "easy": "easy",
+                "plain": "plain",
+                "fairly_hard": "fairly hard",
+                "hard": "hard",
+                "very_hard": "very hard"
+            },
+            "rules": {
+                "filter-words": {
+                    "name": "Filter words",
+                    "about": "A verb of seeing, hearing or feeling between a character and what they perceive.",
+                    "message": "“{word}” puts a perceiving mind between the reader and the thing perceived. Could the thing itself be shown?"
+                },
+                "overused-words": {
+                    "name": "Overused words",
+                    "about": "A word used here far more often than in the rest of the book.",
+                    "message": "“{word}” appears {count} times here, about {sceneRate} per 10,000 words against {bookRate} in the whole book."
+                },
+                "repeated-openers": {
+                    "name": "Repeated openers",
+                    "about": "Three or more sentences in a row starting with the same word.",
+                    "message": "Three sentences in a row open with “{word}”."
+                },
+                "similar-names": {
+                    "name": "Similar names",
+                    "about": "Two characters whose names look or sound alike, both in one scene.",
+                    "message": "{name} and {other} look or sound alike, and both appear in this scene."
+                },
+                "tense-slip": {
+                    "name": "Tense slips",
+                    "about": "A narration verb in the other tense from the style sheet's.",
+                    "message": "“{word}” reads as {expected, select, past {present} other {past}} tense; your style sheet keeps the narration in the {expected, select, past {past} other {present}} tense."
+                },
+                "person-slip": {
+                    "name": "Person slips",
+                    "about": "A first-person word in narration the style sheet keeps in the third person.",
+                    "message": "“{word}” is first person, in narration your style sheet keeps in the third person."
+                },
+                "banned-words": {
+                    "name": "Words to avoid",
+                    "about": "A word or phrase from the style sheet's list to avoid, or one it offers a replacement for.",
+                    "message": "“{word}” is on your style sheet's list of words to avoid.",
+                    "messageSwap": "“{word}” is on your style sheet's list of words to avoid; it offers “{replacement}” instead."
+                },
+                "spelling-variant": {
+                    "name": "Spelling variety",
+                    "about": "A word spelt in another variety than the style sheet's.",
+                    "message": "“{word}” is spelt in another variety than your style sheet's {spelling, select, british {British} american {American} canadian {Canadian} other {Australian}} spelling, which writes “{preferred}”."
+                },
+                "dialogue-tag-punctuation": {
+                    "name": "Comma before a speech tag",
+                    "about": "A comma before a speech tag on the other side of the closing mark from the style sheet's.",
+                    "message": "{expected, select, inside {The comma before this speech tag sits outside the closing mark; your style sheet puts it inside.} other {The comma before this speech tag sits inside the closing mark; your style sheet puts it outside.}}"
+                },
+                "intensifiers": {
+                    "name": "Intensifiers",
+                    "about": "A word such as very or extremely that only turns the next word up.",
+                    "message": "“{word}” only turns the next word up; the sentence may be stronger without it."
+                },
+                "wordy": {
+                    "name": "Wordy phrases",
+                    "about": "A phrase of several words that one word could do.",
+                    "message": "“{phrase}” may say in several words what one would."
+                },
+                "cliches": {
+                    "name": "Familiar phrases",
+                    "about": "A phrase worn smooth by use.",
+                    "message": "“{phrase}” is a familiar phrase; is it the one you want here?"
+                },
+                "repeated-words": {
+                    "name": "Repeated words",
+                    "about": "The same word twice in a row.",
+                    "message": "“{word}” is repeated."
+                },
+                "inclusive-language": {
+                    "name": "Inclusive language",
+                    "about": "Words that may exclude or offend, in narration only.",
+                    "message": "{kind, select, profanity {“{word}” may be read as profane.} other {“{word}” may read as excluding someone; is a neutral word closer to what you mean?}}"
+                }
+            },
+            "settings": {
+                "title": "Prose checks",
+                "help": "Notes beside your scenes, a few seconds after you stop typing: deterministic checks against your style sheet, never a model. Nothing changes your text unless you accept it.",
+                "loading": "Reading the settings…",
+                "loadError": "The settings could not be read.",
+                "saveError": "The settings could not be saved; try again.",
+                "sheet": "The checks read the style sheet",
+                "noSheet": "No style sheet yet: the checks that need one (tense, person, spelling, words to avoid, speech marks) wait for a Prose style entry covering the whole book.",
+                "rules": "Rules",
+                "on": "on",
+                "off": "off",
+                "alexHelp": "Off unless you turn it on. Reads narration only, never what your characters say, and never flags he or she.",
+                "dismissals": "{count, plural, =0 {No dismissed notes.} one {# dismissed note.} other {# dismissed notes.}}",
+                "clearDismissals": "Bring dismissed notes back",
+                "similarNames": "Names that look or sound alike",
+                "similarNone": "No two character names look or sound alike.",
+                "similarPair": "{a} and {b}",
+                "similarCut": "Only the first fifty pairs are listed.",
+                "why": {
+                    "SAME_FIRST_NAME": "the same first name",
+                    "ONE_LETTER": "one letter apart",
+                    "SAME_SHAPE": "the same shape",
+                    "SOUNDS_ALIKE": "they sound alike"
+                }
+            },
+            "reasons": {
+                "FINDING_GONE": "That note was replaced by a newer check.",
+                "UNKNOWN_RULE": "That rule is not one of the checks."
+            }
         }
     }
 }

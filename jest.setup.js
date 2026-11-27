@@ -19,6 +19,12 @@ process.env.DATABASE_URL =
 // call out.
 delete process.env.ANTHROPIC_API_KEY;
 
+// The prose checks (Phase 5.2): a scene save queues its check on BullMQ. No
+// suite reaches the queue unless it hands the usecase a queue of its own
+// (`enqueueProseCheck`), so a save in an unrelated suite opens no Redis
+// connection the open-handle environment would then fail it for.
+process.env.PROSE_CHECKS = process.env.PROSE_CHECKS || 'off';
+
 // Quiet logs: the structured logger writes JSON to stdout, which buries test
 // output. A suite that asserts on log lines builds its own logger against a
 // capturing destination (tests/unit/observability/logger-redaction.test.ts).

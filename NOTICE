@@ -82,6 +82,28 @@ MIT License
   Inkquisitor. The project is distributed under the MIT License, whose text
   is reproduced above.
 
+  retext, retext-english, retext-repeated-words (retextjs) and alex's rules,
+  retext-equality and retext-profanities (with cuss), on unified
+  https://github.com/retextjs/retext, https://github.com/get-alex/alex
+  Copyright (c) 2014-2016 Titus Wormer <tituswormer@gmail.com>
+
+  write-good, with its rule lists weasel-words, too-wordy, no-cliches,
+  passive-voice, adverb-where and e-prime
+  https://github.com/btford/write-good
+  Copyright (c) 2014-2019 Brian Ford; too-wordy Copyright (c) 2014 Matt
+  Blair; no-cliches Copyright (c) 2021 Matt Blair
+
+  The manuscript's prose checks (Phase 5.2, decision D34,
+  src/lib/prose-checks/rules/ported.ts) run these packages as npm
+  dependencies, unmodified and pinned to exact versions, in the worker: retext
+  parses English and finds a repeated word; write-good's weasel-word,
+  wordiness and cliché checks are narrowed for fiction (intensifiers only,
+  multi-word phrases only); alex's two retext plugins are its
+  inclusive-language check, off by default and never applied to speech (the
+  alex package itself, a command-line wrapper around them, is not a
+  dependency). No code of these projects is copied into this repository. Each
+  is distributed under the MIT License, whose text is reproduced above.
+
 Apache License, Version 2.0
 
   tianon/gosu (release 1.19, commit 6456aaa0f3c854d199d0f037f068eb97515b7513)

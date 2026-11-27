@@ -44,6 +44,7 @@ import { requireBook, requireElement } from './bible-common';
 import { readOutlineRows, requireScene, tooLong } from './manuscript-common';
 import { writeSceneNoteInTx } from './manuscript-notes';
 import { checkpointSceneText, MENTION_LINKS_MAX, restoreSceneText, writeSceneText, type SceneTextResult } from './manuscript-text';
+import { scheduleProseCheck, type EnqueueProseCheck, type ProseCheckScheduled } from './prose-check-schedule';
 
 // ─── Views ──────────────────────────────────────────────────────────
 
@@ -163,14 +164,23 @@ function assertRevision(head: SceneHeadRow, baseRevision: number): void {
 export interface SceneTextSaveDeps {
     /** The clock a version's age is judged by (tests); omitted: the database's. */
     now?: Date;
+    /** The queue a changed text's prose check is added to (tests); omitted: BullMQ (5.2, D34). */
+    enqueueProseCheck?: EnqueueProseCheck;
 }
 
-/** An autosave (`bible.edit`): the editor's whole HTML, its base revision, and whether it is a checkpoint (D33). */
-export async function saveSceneText(ctx: WorkspaceRequestContext, bookId: string, sceneId: string, input: unknown, deps: SceneTextSaveDeps = {}): Promise<SceneTextResult> {
+/** A save's answer, and whether a changed text's prose check was queued (D34; null: the text did not change). */
+export type SceneTextSaveResult = SceneTextResult & { proseCheck: ProseCheckScheduled | null };
+
+/**
+ * An autosave (`bible.edit`): the editor's whole HTML, its base revision, and whether it is a checkpoint (D33).
+ * A save that changed the text queues the scene's prose check AFTER it commits (debounced by the queue, D34), and
+ * never fails for want of a queue.
+ */
+export async function saveSceneText(ctx: WorkspaceRequestContext, bookId: string, sceneId: string, input: unknown, deps: SceneTextSaveDeps = {}): Promise<SceneTextSaveResult> {
     await assertPermission(ctx, 'bible.edit');
     const id = ManuscriptIdParam.parse(sceneId);
     const parsed = SaveSceneTextInput.parse(input);
-    return runInWorkspaceContext(
+    const result = await runInWorkspaceContext(
         ctx,
         async (db) => {
             await requireBook(db, ctx, bookId);
@@ -181,6 +191,9 @@ export async function saveSceneText(ctx: WorkspaceRequestContext, bookId: string
         },
         { timeout: 30_000 },
     );
+    const changed = result.revision !== parsed.baseRevision;
+    const proseCheck = changed ? await scheduleProseCheck(ctx.workspaceId, id, { enqueue: deps.enqueueProseCheck }) : null;
+    return { ...result, proseCheck };
 }
 
 /** A checkpoint with no text (`bible.edit`): sent as the author leaves, so it fits a `keepalive` request (D33). */
@@ -338,12 +351,19 @@ export async function getSceneVersion(ctx: WorkspaceRequestContext, bookId: stri
 }
 
 /** Restore a version (`bible.edit`): its text as a NEW save and version; `baseRevision` checked. */
-export async function restoreSceneVersion(ctx: WorkspaceRequestContext, bookId: string, sceneId: string, versionNumber: unknown, input: unknown): Promise<SceneTextResult> {
+export async function restoreSceneVersion(
+    ctx: WorkspaceRequestContext,
+    bookId: string,
+    sceneId: string,
+    versionNumber: unknown,
+    input: unknown,
+    deps: Pick<SceneTextSaveDeps, 'enqueueProseCheck'> = {},
+): Promise<SceneTextSaveResult> {
     await assertPermission(ctx, 'bible.edit');
     const id = ManuscriptIdParam.parse(sceneId);
     const n = VersionNumberParam.parse(versionNumber);
     const parsed = RestoreSceneInput.parse(input);
-    return runInWorkspaceContext(
+    const restored = await runInWorkspaceContext(
         ctx,
         async (db) => {
             await requireBook(db, ctx, bookId);
@@ -362,6 +382,7 @@ export async function restoreSceneVersion(ctx: WorkspaceRequestContext, bookId: 
         },
         { timeout: 30_000 },
     );
+    return { ...restored, proseCheck: await scheduleProseCheck(ctx.workspaceId, id, { enqueue: deps.enqueueProseCheck }) };
 }
 
 // ─── A beat's scenes ────────────────────────────────────────────────

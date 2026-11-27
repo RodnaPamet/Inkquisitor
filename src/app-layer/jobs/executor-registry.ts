@@ -297,6 +297,24 @@ function registerDefaultExecutors(): void {
             };
         });
     });
+
+    // Phase 5.2 (D34): one scene's prose check — deterministic code over the scene's current text, no model.
+    executorRegistry.register('prose-check', async (payload) => {
+        const startedAt = new Date().toISOString();
+        const startMs = performance.now();
+        return runJob('prose-check', async () => {
+            const { executeProseCheck } = await import('@/app-layer/usecases/prose-check-run');
+            const r = await executeProseCheck(payload);
+            return {
+                ...emptyResult('prose-check', startedAt, startMs),
+                success: r.outcome !== 'FAILED',
+                itemsScanned: 1,
+                itemsActioned: r.outcome === 'CHECKED' ? 1 : 0,
+                itemsSkipped: r.outcome === 'CHECKED' ? 0 : 1,
+                details: { sceneId: payload.sceneId, outcome: r.outcome, findings: r.findings },
+            };
+        });
+    });
 }
 
 registerDefaultExecutors();

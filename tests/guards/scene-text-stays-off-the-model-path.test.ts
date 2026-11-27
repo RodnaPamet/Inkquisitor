@@ -28,7 +28,12 @@
  *      model layer: the SDK's one file, `callStructured`, the server-tool loop,
  *      the model stub, the model-calls usecase, or any feature's model seam;
  *   4. and the research acceptance, which writes a finding to a scene's NOTE
- *      (`manuscript-notes.ts`), reaches neither the text writer nor its methods.
+ *      (`manuscript-notes.ts`), reaches neither the text writer nor its methods;
+ *   5. and the PROSE CHECKS (Phase 5.2, D34) — the engine and its rules, the
+ *      job, the reads, the scheduler, the editor's notes and suggestion mark —
+ *      reach no model module and neither the text writer nor a text method:
+ *      a note is computed by code and a suggestion is applied only by the
+ *      author, in the editor, through its autosave.
  *
  * So a model can shape what is asked, proposed or noted, and cannot reach the
  * code that stores a scene's prose. A new caller of the writer fails here by
@@ -332,6 +337,46 @@ describe('the text write path never reaches the model layer', () => {
 
     it('the research acceptance and the note writer reach neither the text writer nor a text method', () => {
         const reach = reachFrom(NOTE_PATH.map(abs));
+        expect([...reach.reached.keys()].map(repoRelative)).not.toContain(SEAM);
+        const callers = [...reach.reached.keys()].filter((f) => repoRelative(f) !== REPOSITORY && callsOf(fs.readFileSync(f, 'utf8'), f).some(([obj, m]) => TEXT_METHODS.some(([o, mm]) => o === obj && mm === m)));
+        expect(callers.map(repoRelative)).toEqual([]);
+    });
+});
+
+/** The prose checks (5.2, D34): every module of the feature, by directory and by name. */
+function proseCheckModules(): string[] {
+    const named = [
+        'src/app-layer/usecases/prose-check-run.ts',
+        'src/app-layer/usecases/prose-check-setup.ts',
+        'src/app-layer/usecases/prose-check-schedule.ts',
+        'src/app-layer/usecases/prose-checks.ts',
+        'src/app-layer/repositories/prose-check.repository.ts',
+        'src/components/manuscript/ProseNotesMargin.tsx',
+        'src/components/manuscript/ProseCheckSettings.tsx',
+        'src/components/manuscript/prose-notes-extension.ts',
+        'src/components/manuscript/use-prose-notes.ts',
+    ];
+    const lib = repoFiles({ under: 'src/lib/prose-checks', extensions: ['.ts', '.tsx'] }).map(repoRelative);
+    return [...lib, ...named];
+}
+
+describe('the prose checks never reach the model layer or the text writer (D3, D34)', () => {
+    const models = new Set(modelModules());
+    const modules = proseCheckModules();
+
+    it('finds the feature (a guard that found none would pass vacuously)', () => {
+        expect(modules.filter((m) => m.startsWith('src/lib/prose-checks/')).length).toBeGreaterThanOrEqual(10);
+        for (const m of modules) expect(fs.existsSync(abs(m))).toBe(true);
+    });
+
+    it('no module the prose checks reach is a model module', () => {
+        const reach = reachFrom(modules.map(abs));
+        const hits = [...reach.reached.keys()].filter((f) => models.has(repoRelative(f)));
+        expect(hits.map((h) => reach.via(h))).toEqual([]);
+    });
+
+    it('the prose checks reach neither the text writer nor a text-writing method', () => {
+        const reach = reachFrom(modules.map(abs));
         expect([...reach.reached.keys()].map(repoRelative)).not.toContain(SEAM);
         const callers = [...reach.reached.keys()].filter((f) => repoRelative(f) !== REPOSITORY && callsOf(fs.readFileSync(f, 'utf8'), f).some(([obj, m]) => TEXT_METHODS.some(([o, mm]) => o === obj && mm === m)));
         expect(callers.map(repoRelative)).toEqual([]);

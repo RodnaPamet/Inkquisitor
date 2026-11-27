@@ -211,3 +211,33 @@ body {
     color: var(--content-subtle);
   }
 }
+
+/* The scene editor's prose notes (Phase 5.2, D34): decorations, never part of
+   the document. A note is underlined in the margin's colour; the open note's
+   suggestion is drawn as a suggestion — the text it would remove struck
+   through, the text it would insert beside it — until the author accepts. */
+@layer components {
+  .prose-note {
+    text-decoration-line: underline;
+    text-decoration-style: wavy;
+    text-decoration-color: var(--brand-default);
+    text-underline-offset: 3px;
+    cursor: pointer;
+  }
+  .prose-note--warning {
+    text-decoration-color: var(--content-warning);
+  }
+  .prose-note--active {
+    background-color: var(--bg-muted);
+  }
+  .prose-suggest-delete {
+    text-decoration-line: line-through;
+    color: var(--content-muted);
+  }
+  .prose-suggest-insert {
+    margin-left: 2px;
+    padding: 0 2px;
+    border-bottom: 2px solid var(--brand-default);
+    color: var(--content-emphasis);
+  }
+}
