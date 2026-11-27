@@ -36,28 +36,36 @@
  * precision ≥ 0.9 by a unit test), and four near misses the set found are
  * refused here, each narrowly — a refusal leaves the pair to the deep check:
  *
- *   • a NEGATED statement states no value ("Marrow is not a miller" says
- *     nothing about whether he is a smith), so it takes part in no VALUE or
- *     WHEREABOUTS rule;
+ *   • a NEGATED value is no value ("Marrow is not a miller" says nothing
+ *     about whether he is a smith), so it takes part in no VALUE or
+ *     WHEREABOUTS rule — negated meaning a negating word BEFORE the value in
+ *     the clause that states it (the 4.H-b review: a negation elsewhere in
+ *     the statement, "Wren, who never married, is a baker", negates nothing
+ *     the rule compares);
  *   • two values are compared only when they have the SAME SHAPE — both names
  *     ("Paris", "the Iron Keep") or both descriptions ("the mill", "a smith"):
  *     a name and a description may be the same thing ("Paris" and "the capital
  *     of France"), which code cannot know;
  *   • values are compared with their accents folded ("Zürich" is "Zurich");
- *   • an AGE stated relative to someone ("three years younger than Tomas") is
- *     not an age;
+ *   • an AGE stated relative to someone ("3 years younger than Tomas") is
+ *     not an age — relative meaning a comparative bound to the number in its
+ *     own clause ("3 years younger", "younger than"), never a comparative
+ *     anywhere in the statement ("Wren, 12, is younger than Tomas" states 12);
  *   • a KNOWLEDGE proposition keeps its question word: knowing THAT the deed was
- *     forged is not knowing WHO forged it.
+ *     forged is not knowing WHO forged it — a question word right after the
+ *     verb of knowing, never a relative pronoun ("the man who forged it").
  *
  * Synonyms of one shape ("a physician", "a doctor") are still raised: no rule
  * can tell them apart without a thesaurus, and the set counts that false alarm.
+ * The owner decided (2026-11-27, D32 addendum B) that the rules get no synonym
+ * list: such pairs are the deep continuity check's, and the false alarm stands.
  *
  * A pair is reported once, older first by the caller's order. Nothing here
  * writes: the caller PROPOSES (rule 1).
  */
 import { nameKey } from '@/lib/enrichment/validate';
-import { contentTokens } from '@/lib/interview/text';
-import { negated } from '@/lib/text/negation';
+import { contentTokens, normaliseText, sentences, words } from '@/lib/interview/text';
+import { negated, polarisedTokens } from '@/lib/text/negation';
 import { before, decidedOverlap, overlaps, NO_ORDER, type ClockFact, type StoryClock } from './story-clock';
 import type { ContradictionKind } from './vocabulary';
 
@@ -76,15 +84,59 @@ function firstNumber(text: string): string | null {
     return /\d+(?:\.\d+)?/.exec(text)?.[0] ?? null;
 }
 
-/** Words that make an age RELATIVE to someone else's (4.H-b): such a statement is not an age. */
-const RELATIVE_AGE = /\b(?:older|younger|elder|senior|junior|than)\b/i;
+/**
+ * A comparative BOUND TO A NUMBER makes an age relative (4.H-b): "3 years younger", "younger than". Bounded
+ * repetitions only (no quadratic backtracking on a long run of digits or spaces).
+ */
+const RELATIVE_AGE_AFTER_NUMBER = /\b\d{1,3}(?:\.\d{1,2})?\s{1,3}(?:(?:years?|yrs?)\s{1,3})?(?:older|younger|elder|senior|junior)\b/i;
+const RELATIVE_COMPARATIVE = /\b(?:older|younger|elder|senior|junior)\s{1,3}than\b/i;
+
+/**
+ * A statement's clauses, for finding the clause that states a value: cut at a comma, colon or semicolon, or a
+ * contrasting conjunction — but never at "yet", which in "not yet 13" belongs to the negation.
+ */
+const VALUE_CLAUSE_BREAK = /[;:,]|\s\b(?:but|although|though|whereas|while|however)\b/i;
+function clauses(text: string): string[] {
+    return sentences(text)
+        .flatMap((x) => x.split(VALUE_CLAUSE_BREAK))
+        .map((c) => c.trim())
+        .filter((c) => c !== '');
+}
+
+/** Is the age `n` relative in `text`: does a clause of it that holds `n` bind a comparative to it? */
+function relativeIn(text: string, n: string): boolean {
+    const whole = n.split('.')[0];
+    return clauses(text).some((c) => words(normaliseText(c)).includes(whole) && (RELATIVE_AGE_AFTER_NUMBER.test(c) || RELATIVE_COMPARATIVE.test(c)));
+}
 
 /** A stated age, or null: the first number of the value (else the statement), unless it is relative to someone. */
 export function absoluteAge(f: Pick<RuleFact, 'objectLiteral' | 'statement'>): number | null {
     const text = f.objectLiteral || f.statement;
-    if (RELATIVE_AGE.test(text) || RELATIVE_AGE.test(f.statement)) return null;
     const n = firstNumber(text);
-    return n === null ? null : Number(n);
+    if (n === null || relativeIn(text, n) || relativeIn(f.statement, n)) return null;
+    return Number(n);
+}
+
+/**
+ * Is the VALUE a fact states negated (4.H-b, narrowed by its review)? True when a negating word comes before the
+ * value in a clause of the statement that holds it ("Marrow is not a miller", "Wren is not yet 13"); a negation in
+ * another clause ("Wren, who never married, is a baker") or after the value negates nothing the rules compare. A
+ * value the statement does not hold is judged by the statement as a whole (a refusal, never a false alarm).
+ */
+export function valueNegated(f: Pick<RuleFact, 'predicate' | 'objectLiteral' | 'statement'>): boolean {
+    const value = f.predicate === 'AGE' ? (firstNumber(f.objectLiteral || f.statement) ?? '') : (f.objectLiteral ?? '');
+    const wanted = contentTokens(value);
+    if (wanted.length === 0) return negated(f.statement);
+    let stated = false;
+    for (const clause of clauses(f.statement)) {
+        const polarity = polarisedTokens(clause);
+        for (const t of wanted) {
+            if (!polarity.has(t)) continue;
+            if (polarity.get(t)) return true;
+            stated = true;
+        }
+    }
+    return stated ? false : negated(f.statement);
 }
 
 /** A value's key with its accents folded (4.H-b: "Zürich" is "Zurich"). */
@@ -104,8 +156,8 @@ export function valueShape(value: string): 'NAME' | 'DESCRIPTION' | null {
 }
 
 function valuesDiffer(a: RuleFact, b: RuleFact): boolean {
-    // A negated statement states what is NOT so, never a value (4.H-b).
-    if (negated(a.statement) || negated(b.statement)) return false;
+    // A negated value states what is NOT so, never a value (4.H-b).
+    if (valueNegated(a) || valueNegated(b)) return false;
     if (a.predicate === 'AGE') {
         const x = absoluteAge(a);
         const y = absoluteAge(b);
@@ -131,12 +183,22 @@ function isNegator(word: string): boolean {
 
 /** Question words kept in a proposition (4.H-b): knowing that the deed was forged is not knowing who forged it. */
 const QUESTION_WORDS: ReadonlySet<string> = new Set(['who', 'whom', 'whose', 'what', 'which', 'where', 'when', 'why', 'how', 'whether']);
+/** The verbs of knowing a question word follows ("knows who", "did not learn where"). */
+const KNOWING = /^(?:know|knows|knew|known|knowing|learn|learns|learned|learnt|discover|discovers|discovered|realise|realises|realised|realize|realizes|realized|understand|understands|understood|suspect|suspects|suspected|wonder|wonders|wondered|guess|guesses|guessed)$/;
+
+/**
+ * The question words a statement asks, each right after a verb of knowing (at most one word between: "knows exactly
+ * where"). A relative pronoun ("knows the man who forged it") is not asked: it names, as "that" would.
+ */
+function askedWords(statement: string): string[] {
+    const ws = statement.toLowerCase().match(/\p{L}+(?:['’]\p{L}+)*/gu) ?? [];
+    return ws.filter((w, i) => QUESTION_WORDS.has(w) && ((i >= 1 && KNOWING.test(ws[i - 1])) || (i >= 2 && KNOWING.test(ws[i - 2]))));
+}
 
 /** A statement's proposition: its content words and question words without its negation, sorted (what is known, whoever says it how). */
 export function propositionKey(statement: string): string {
     const kept = statement.split(/\s+/).filter((w) => !isNegator(w.replace(/[^\p{L}\p{N}'’]/gu, ''))).join(' ');
-    const asked = kept.toLowerCase().match(/\p{L}+/gu)?.filter((w) => QUESTION_WORDS.has(w)) ?? [];
-    return [...new Set([...contentTokens(kept), ...asked.map((w) => `?${w}`)])].sort().join(' ');
+    return [...new Set([...contentTokens(kept), ...askedWords(kept).map((w) => `?${w}`)])].sort().join(' ');
 }
 
 /** Could code alone call these two facts contradictory, and how? Null when it cannot. */

@@ -80,7 +80,7 @@ export function clauses(text: string): string[] {
  * keep and lighthouse, not Ilse; "people could not see their hands" negates
  * neither "dust" nor "darkness" earlier in the same clause.
  */
-function polarisedTokens(clause: string): Map<string, boolean> {
+export function polarisedTokens(clause: string): Map<string, boolean> {
     const out = new Map<string, boolean>();
     let under = false;
     const ws = words(normaliseText(clause));

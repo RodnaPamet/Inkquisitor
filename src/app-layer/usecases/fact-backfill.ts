@@ -22,7 +22,11 @@
  *              of the workspace's monthly ceiling a day (D32), measured from the
  *              ledger by its purpose (`facts.bible-extract.backfill`: calls
  *              charged in the last 24 hours plus live reservations); with none
- *              it waits (`deferredAtShare`). Then up to
+ *              it waits (`deferredAtShare`). And the calendar MONTH must too:
+ *              at most `BACKFILL_MONTHLY_SHARE` (50 %) of the monthly ceiling
+ *              in a UTC month, by the same purpose (owner decision 2026-11-27,
+ *              D32); with none it waits for next month
+ *              (`deferredAtMonthlyShare`). Then up to
  *              `BACKFILL_ENTRIES_PER_WORKSPACE_TICK` rows: its due BACKFILL rows
  *              first (stopped ones resumed, stale claims), then the NEWEST
  *              version of further entries never extracted, given a row now —
@@ -32,8 +36,9 @@
  *              and a `bible-facts` job enqueued (payload ids). That job reads it
  *              as any extraction (its budgets, D11, the rate minute, the kill
  *              switch), its calls recorded under the backfill's purpose and held
- *              to the daily share by the ledger under its spend lock; past the
- *              share it stops DAILY_SHARE, resumable, no attempt counted.
+ *              to the daily and monthly shares by the ledger under its spend
+ *              lock; past one it stops DAILY_SHARE or MONTHLY_SHARE, resumable,
+ *              no attempt counted.
  *
  * Never on a request's path; nothing runs while no call can be made or no
  * evaluation record mounts (D11). Idempotent: an entry with a row is never found
@@ -51,9 +56,9 @@ import { bibleFactsCallFloor } from '@/lib/facts/cost';
 import { bibleFactGate } from '@/lib/facts/record-gate';
 import { BACKFILL_DISPATCH_MAX, BACKFILL_ENTRIES_PER_WORKSPACE_TICK, BACKFILL_WORKSPACES_PER_TICK, STALE_EXTRACTION_MS } from '@/lib/facts/vocabulary';
 import { logger } from '@/lib/observability/logger';
-import { backfillShare } from './bible-facts';
+import { backfillMonthlyShare, backfillShare, backfillShareStop } from './bible-facts';
 import { deploymentPackRecordMode } from './interview-packs';
-import { modelBudgetState, modelUnavailableReason, nightlyShareSpent } from './model-calls';
+import { modelBudgetState, modelUnavailableReason } from './model-calls';
 
 /** The backfill's round-robin cursor (the last workspace it served). */
 export const BACKFILL_CURSOR = 'fact-backfill:workspaces';
@@ -69,6 +74,8 @@ export interface FactBackfillDeps {
     callFloorMicroUsd?: () => number;
     /** The daily share in µUSD (tests: a figure of their own). */
     dailyCapMicroUsd?: number;
+    /** The share of the calendar month in µUSD (tests: a figure of their own). */
+    monthlyCapMicroUsd?: number;
     /** The cursor's name (tests: their own). */
     cursorName?: string;
     /** Bounds (tests: smaller ones). */
@@ -88,6 +95,8 @@ export interface FactBackfillResult {
     /** Workspaces whose month (or day) had no room: nothing of theirs queued this tick. */
     deferredAtCeiling: number;
     deferredAtShare: number;
+    /** Workspaces whose backfill has spent its share of the calendar month (D32): nothing of theirs queued until next month. */
+    deferredAtMonthlyShare: number;
     workspacesSkipped: number;
 }
 
@@ -98,7 +107,7 @@ function defaultExtractionOpen(): boolean {
 /** Run one tick (the job's body). */
 export async function executeFactBackfill(deps: FactBackfillDeps = {}): Promise<FactBackfillResult> {
     const now = (deps.now ?? (() => new Date()))();
-    const result: FactBackfillResult = { extractionClosed: false, workspaces: 0, created: 0, queued: 0, enqueueFailed: 0, deferredAtCeiling: 0, deferredAtShare: 0, workspacesSkipped: 0 };
+    const result: FactBackfillResult = { extractionClosed: false, workspaces: 0, created: 0, queued: 0, enqueueFailed: 0, deferredAtCeiling: 0, deferredAtShare: 0, deferredAtMonthlyShare: 0, workspacesSkipped: 0 };
     if (!(deps.extractionOpen ?? defaultExtractionOpen)()) {
         result.extractionClosed = true;
         return result;
@@ -114,22 +123,26 @@ export async function executeFactBackfill(deps: FactBackfillDeps = {}): Promise<
             (after, n) => FactBackfillRepository.listWorkspaces(db, { ...window, take: n, after, workspaceIds: deps.workspaceIds }),
             (upTo, n) => FactBackfillRepository.listWorkspaces(db, { ...window, take: n, upTo, workspaceIds: deps.workspaceIds }),
         );
-        if (found.items.length > 0) await JobCursorRepository.save(db, cursorName, found.next);
         return found.items.map((w) => w.workspaceId);
     });
     result.workspaces = workspaces.length;
     const floor = (deps.callFloorMicroUsd ?? bibleFactsCallFloor)();
     let room = deps.dispatchMax ?? BACKFILL_DISPATCH_MAX;
+    // The cursor moves to the last workspace this tick REACHED (served, deferred or skipped), never past one the
+    // tick's room ran out before (the 4.H-b review): with a fixed window of discovered workspaces, saving the last
+    // DISCOVERED one left every workspace beyond the room's reach in each window unserved, every cycle, for ever.
+    let reached: string | null = null;
     for (const workspaceId of workspaces) {
         if (room <= 0) break;
+        reached = workspaceId;
         const scope = { workspaceId, requestId: randomUUID() };
         const want = Math.min(room, deps.entriesPerWorkspace ?? BACKFILL_ENTRIES_PER_WORKSPACE_TICK);
         const marked = await servedWorkspace('fact-backfill', { workspaceId }, () =>
             runInWorkspaceContext(scope, async (db) => {
                 const budget = await modelBudgetState(db, { workspaceId }, floor, undefined, now);
                 if (budget.workspaceCeilingReached) return 'CEILING' as const;
-                const share = backfillShare(now, deps.dailyCapMicroUsd);
-                if ((await nightlyShareSpent(db, { workspaceId }, share)) + floor > share.capMicroUsd) return 'DAILY_SHARE' as const;
+                const stop = await backfillShareStop(db, { workspaceId }, { daily: backfillShare(now, deps.dailyCapMicroUsd), monthly: backfillMonthlyShare(now, deps.monthlyCapMicroUsd) }, floor);
+                if (stop) return stop;
                 // Due rows first (a stop resumed, a lost claim), then entries never extracted, never more than this tick queues.
                 const due = await FactBackfillRepository.listDue(db, workspaceId, window, want);
                 let created = 0;
@@ -154,6 +167,10 @@ export async function executeFactBackfill(deps: FactBackfillDeps = {}): Promise<
             result.deferredAtShare++;
             continue;
         }
+        if (marked === 'MONTHLY_SHARE') {
+            result.deferredAtMonthlyShare++;
+            continue;
+        }
         result.created += marked.created;
         room -= marked.out.length;
         for (const m of marked.out) {
@@ -166,6 +183,10 @@ export async function executeFactBackfill(deps: FactBackfillDeps = {}): Promise<
                 logger.warn('facts.backfill_enqueue_failed', { component: 'facts', workspaceId, extractionId: m.id, error: err instanceof Error ? err.name : 'unknown' });
             }
         }
+    }
+    if (reached !== null) {
+        const next = reached;
+        await runWithoutRls({ reason: 'fact-backfill-discovery' }, (db) => JobCursorRepository.save(db, cursorName, next));
     }
     return result;
 }

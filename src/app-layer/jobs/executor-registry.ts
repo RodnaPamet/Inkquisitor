@@ -240,7 +240,7 @@ function registerDefaultExecutors(): void {
                 ...emptyResult('fact-backfill', startedAt, startMs),
                 itemsScanned: r.workspaces,
                 itemsActioned: r.queued,
-                itemsSkipped: r.enqueueFailed + r.workspacesSkipped + r.deferredAtCeiling + r.deferredAtShare,
+                itemsSkipped: r.enqueueFailed + r.workspacesSkipped + r.deferredAtCeiling + r.deferredAtShare + r.deferredAtMonthlyShare,
                 details: { ...r },
             };
         });

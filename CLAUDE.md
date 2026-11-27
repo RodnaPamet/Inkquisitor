@@ -465,7 +465,7 @@ tests/integration/{fact-layer,continuity,questioning}-hardening, retrieval-isola
 Phase 4.H-b (hardening Phase 4: scale and evaluation, D31 and D32) added:
 
 ```
-prisma/migrations/…_phase4_hardening_b → BibleFactExtraction.origin (SAVE | BACKFILL) / guardRefused / DAILY_SHARE, ContinuityCheck.passedOver(Cut),
+prisma/migrations/…_phase4_hardening_b → BibleFactExtraction.origin (SAVE | BACKFILL) / guardRefused / DAILY_SHARE / MONTHLY_SHARE, ContinuityCheck.passedOver(Cut),
                                JobCursor (global), the proposals-by-reason index, the stale-flag raise that rewrites only a changed flag
 src/app-layer/usecases/fact-backfill.ts → the hourly `fact-backfill` job (the backfill of bibles saved before 4.1, D31, D32)
 src/app-layer/repositories/job-cursor.repository.ts → JobCursorRepository, fromCursor (round-robin discovery), roundRobin
@@ -1746,13 +1746,20 @@ the guard refused is passed over at once and counted there too. The
   contradictions and near misses) on BOTH paths that raise them (4.2's
   `detectRuleContradictions`, 4.1's `resolveFacts`); a unit test holds precision
   ≥ `RULE_PRECISION_BAR` (0.9) and recall ≥ 0.9, and names the one residual
-  false alarm (synonyms of one shape). A rule NEVER compares a NEGATED
-  statement's value, two values of different SHAPES (`valueShape`: a name — its
-  first word capitalised after an article — against a description), values with
-  their accents (folded), or a RELATIVE age (`absoluteAge`); a KNOWLEDGE
-  proposition keeps its question word; two facts placed in different orders
-  overlap only when both state a time. A new rule or a widened one joins the set
-  first. The deep set holds near misses of the same classes and every check
+  false alarm (synonyms of one shape: owner decision 2026-11-27, D32 — the rules
+  get NO synonym list; "a physician" against "a doctor" is the deep check's, and
+  that one false alarm is accepted). A rule NEVER compares a NEGATED value
+  (`valueNegated`: a negating word BEFORE the value in the clause that states it,
+  never a negation elsewhere in the statement), two values of different SHAPES
+  (`valueShape`: a name — its first word capitalised after an article — against
+  a description), values with their accents (folded), or a RELATIVE age
+  (`absoluteAge`: a comparative bound to the number in its own clause, "3 years
+  younger", "younger than"); a KNOWLEDGE proposition keeps a question word that
+  follows a verb of knowing (never a relative pronoun); two facts placed in
+  different orders overlap only when both state a time. Each refusal stays that
+  narrow: `rule-precision.test.ts` holds real contradictions beside each near
+  miss that a broader refusal would silence. A new rule or a widened one joins
+  the set first. The deep set holds near misses of the same classes and every check
   reports its false-alarm rate and recall (`continuitySetReport`). THE BACKFILL
   (`fact-backfill`, hourly at :37): an entry with a version and NO extraction row
   was last saved before 4.1; its NEWEST version gets a `BibleFactExtraction` of
@@ -1765,7 +1772,13 @@ the guard refused is passed over at once and counted there too. The
   the last 24 hours from the ledger by the purpose `facts.bible-extract.backfill`
   — a sub-purpose of the prompt's, `callPurposeOf` — and checked before queuing,
   before each call and by the ledger under its spend lock; past it the row stops
-  DAILY_SHARE, resumable, no attempt counted). It stands beside the nightly
+  DAILY_SHARE, resumable, no attempt counted) and at its MONTHLY SHARE (owner
+  decision 2026-11-27, D32: `BACKFILL_MONTHLY_SHARE`, 50 % of the month's ceiling
+  in a calendar month, UTC, by the same purpose, checked at the same three
+  places — the ledger takes a list of shares; past it MONTHLY_SHARE, resumable,
+  no attempt counted, and the backfill resumes next month). The cursor moves to
+  the last workspace a tick REACHED, never past one its room ran out before. It
+  stands beside the nightly
   continuity share; the monthly ceiling bounds both. The minutely dispatcher
   queues SAVE rows only. A BACKFILL row whose author may no longer edit runs as
   the workspace's oldest OWNER (else EDITOR). The Continuity page shows
@@ -1782,9 +1795,10 @@ the guard refused is passed over at once and counted there too. The
   them. REFUSED SECTIONS (D32): a DONE extraction records what the guard has
   refused (`guardRefused`: section key and `GUARD_RULES_VERSION`), carried
   forward while unchanged; a section refused under OLDER rules is re-sent once,
-  in calls of its own (`guard-retry.ts`). Editing the guard's rule files
-  (patterns, normalize, both scanners, policy) needs `GUARD_RULES_VERSION` bumped
-  and the new hash recorded in `tests/unit/ai/guard-rules-version.test.ts`.
+  each in calls of its own (`guard-retry.ts`). Editing the guard's files
+  (`src/lib/ai/guard/*` but `version.ts`, and every module they import: the test
+  holds its list to the import graph) needs `GUARD_RULES_VERSION` bumped and the
+  new hash recorded in `tests/unit/ai/guard-rules-version.test.ts`.
   STALE FLAGS: the raise rewrites a flag only when its state changes (a standing
   OPEN flag is left alone), and readers take a change's end from the upstream
   element as it stands, never from `upstreamVersionId`. SCALE: the Continuity

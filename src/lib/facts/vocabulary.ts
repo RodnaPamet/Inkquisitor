@@ -74,6 +74,12 @@ export const FACT_EXTRACTION_OUTCOMES = [
      * once the day has room.
      */
     'DAILY_SHARE',
+    /**
+     * 4.H-b (D32, owner decision 2026-11-27): a BACKFILL extraction stopped at the backfill's share of the workspace's
+     * CALENDAR MONTH (`BACKFILL_MONTHLY_SHARE`, 50 % of the monthly ceiling, UTC month, by the backfill's purpose):
+     * resumable, no attempt counted; the backfill queues it again next month.
+     */
+    'MONTHLY_SHARE',
 ] as const;
 export type FactExtractionOutcome = (typeof FACT_EXTRACTION_OUTCOMES)[number];
 
@@ -107,7 +113,7 @@ export function readGuardRefused(raw: unknown): GuardRefusedSection[] {
 export const GUARD_REFUSED_SECTIONS_MAX = 200;
 
 /** The outcomes after which the row is STOPPED and dispatched again later (the rest end it). */
-export const RESUMABLE_EXTRACTION_OUTCOMES: ReadonlySet<FactExtractionOutcome> = new Set(['CEILING', 'KILL_SWITCH', 'AI_UNAVAILABLE', 'NOT_EVALUATED', 'MODEL_RATE_LIMITED', 'CALL_FAILED', 'ABORTED', 'CLAIM_EXPIRED', 'INTERNAL', 'DAILY_SHARE']);
+export const RESUMABLE_EXTRACTION_OUTCOMES: ReadonlySet<FactExtractionOutcome> = new Set(['CEILING', 'KILL_SWITCH', 'AI_UNAVAILABLE', 'NOT_EVALUATED', 'MODEL_RATE_LIMITED', 'CALL_FAILED', 'ABORTED', 'CLAIM_EXPIRED', 'INTERNAL', 'DAILY_SHARE', 'MONTHLY_SHARE']);
 
 /** A version settles this long before it is dispatched: a run of autosaves is extracted once, at its newest version. */
 export const FACT_EXTRACTION_SETTLE_MS = 20_000;
@@ -142,6 +148,14 @@ export const DISPATCH_EXTRACTIONS_MAX = 200;
  * (D28 addendum), measured apart by purpose; the monthly ceiling stays the hard bound over both and every other call.
  */
 export const BACKFILL_DAILY_SHARE = 0.1;
+/**
+ * Besides its daily share, the backfill spends at most this share of a workspace's monthly ceiling in a CALENDAR
+ * MONTH (UTC; owner decision 2026-11-27, D32), measured from the ledger by its purpose (calls charged since the
+ * month began plus live reservations) before queuing, before each call and by the ledger under its spend lock. Past
+ * it rows stop MONTHLY_SHARE, resumable, and the backfill resumes next month: ten days of the daily share cannot
+ * take a whole month's ceiling.
+ */
+export const BACKFILL_MONTHLY_SHARE = 0.5;
 /** The day the backfill's share is measured over: the last 24 hours, rolling. */
 export const BACKFILL_DAY_WINDOW_MS = 24 * 60 * 60 * 1000;
 /** Entries the backfill gives an outbox row at most a tick, per workspace (it queues no more than it can dispatch). */

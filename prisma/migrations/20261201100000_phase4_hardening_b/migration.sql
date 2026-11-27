@@ -6,6 +6,8 @@
 --   BibleFactExtraction.guardRefused  the sections the guard refused and the guard rule version that refused each
 --                                     (D32): re-sent once when the guard's version is newer. Section keys and numbers.
 --   outcome DAILY_SHARE               a backfill extraction stopped at the workspace's daily share (resumable).
+--   outcome MONTHLY_SHARE             a backfill extraction stopped at its share of the calendar month (resumable;
+--                                     owner decision 2026-11-27, D32).
 --   ContinuityCheck.passedOver(Cut)   the subjects the nightly check passed over, remembered (D32), ids only.
 --   JobCursor                         where a multi-workspace discovery stopped (#60.4); GLOBAL, ids only, no grant.
 --   StoryFactProposal index           a book's pending proposals of one reason (the Continuity page, item 6).
@@ -23,7 +25,7 @@ ALTER TABLE "BibleFactExtraction" DROP CONSTRAINT "BibleFactExtraction_outcome_k
 ALTER TABLE "BibleFactExtraction" ADD CONSTRAINT "BibleFactExtraction_outcome_known" CHECK ("outcome" IS NULL OR "outcome" IN (
     'OK', 'NO_CHANGE', 'SUPERSEDED', 'SUBJECT_GONE', 'BOOK_DELETED', 'AUTHOR_NOT_PERMITTED', 'CEILING', 'KILL_SWITCH', 'AI_UNAVAILABLE',
     'NOT_EVALUATED', 'MODEL_RATE_LIMITED', 'GUARD_REFUSED', 'REPEATS_PROMPT', 'CALL_FAILED', 'ABORTED', 'CLAIM_EXPIRED', 'ATTEMPTS_SPENT',
-    'CALL_OVER_BUDGET', 'INTERNAL', 'DAILY_SHARE'));
+    'CALL_OVER_BUDGET', 'INTERNAL', 'DAILY_SHARE', 'MONTHLY_SHARE'));
 
 DROP INDEX "BibleFactExtraction_status_createdAt_idx";
 CREATE INDEX "BibleFactExtraction_origin_status_createdAt_idx" ON "BibleFactExtraction"("origin", "status", "createdAt");

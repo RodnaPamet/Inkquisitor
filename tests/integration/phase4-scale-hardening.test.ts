@@ -16,8 +16,12 @@
 import { prisma, workspaceKeys } from '@/lib/db';
 import { runInWorkspaceContext, runWithoutRls } from '@/lib/db/rls-middleware';
 import { createBook, deleteBook } from '@/app-layer/usecases/books';
-import { createElement, updateElement } from '@/app-layer/usecases/bible-elements';
-import { executeBibleFactExtraction } from '@/app-layer/usecases/bible-facts';
+import { createElement, updateElement, updateElementFields } from '@/app-layer/usecases/bible-elements';
+import { randomUUID } from 'node:crypto';
+import { backfillMonthlyShare, backfillShare, executeBibleFactExtraction } from '@/app-layer/usecases/bible-facts';
+import { workspaceAiLedger } from '@/app-layer/usecases/model-calls';
+import { AiSpendCeilingError } from '@/lib/ai/errors';
+import { BIBLE_FACTS_BACKFILL_PURPOSE as BACKFILL_PURPOSE, bibleFactExtractorOver } from '@/lib/facts/model-seam';
 import { executeFactBackfill } from '@/app-layer/usecases/fact-backfill';
 import { executeFactLayerDispatch } from '@/app-layer/usecases/fact-layer-dispatch';
 import { getContinuityPage } from '@/app-layer/usecases/continuity';
@@ -112,6 +116,45 @@ describe('a refused section is retried once on a safety update (D32)', () => {
     });
 });
 
+describe('each refused section is retried in a call of its own (the 4.H-b review)', () => {
+    afterEach(() => {
+        mockGuardRulesVersion = 1;
+    });
+
+    it('an innocent section first refused beside a bad one is read under the newer rules, not refused with it again', async () => {
+        const ctx = workspaceCtx(await createAccount());
+        const bookId = (await createBook(ctx, { title: 'Packed' })).id;
+        const sent: string[] = [];
+        const extractor = (): FactExtractor => ({
+            async extract(request) {
+                const text = request.data.find((b) => b.label === 'entry.text')?.text ?? '';
+                sent.push(text);
+                // The guard refuses the XQZ text under every version; the summary beside it is innocent.
+                if (text.includes('XQZ')) return { ok: false, failure: 'GUARD_REFUSED', errorCode: 'GUARD', tokensUsed: 0, costMicroUsd: 0, callIds: [] };
+                return ageExtractor('Wren')().extract(request);
+            },
+        });
+        const extractions = async () => runWithoutRls({ reason: 'test' }, (db) => db.bibleFactExtraction.findMany({ where: { bookId }, orderBy: { createdAt: 'asc' }, select: { guardRefused: true } }));
+        const el = await createElement(ctx, bookId, { kind: 'CHARACTER', name: 'Wren', summary: 'Wren is 12 years old.', fields: [{ key: 'want', value: 'To speak the XQZ phrase to the river.' }] });
+        await extractPending(ctx, bookId, extractor);
+        // One call carried both: both recorded refused, and no age was drawn.
+        expect((await extractions())[0].guardRefused).toEqual([{ key: 'summary', rulesVersion: 1 }, { key: 'want', rulesVersion: 1 }]);
+        const ages = () => runWithoutRls({ reason: 'test' }, (db) => db.storyFact.count({ where: { bookId, predicate: 'AGE', supersededAt: null } }));
+        expect(await ages()).toBe(0);
+
+        // Newer rules; the author edits only an unrelated field. Both refused sections are retried — each alone — so the
+        // summary's age is drawn and only the bad section stays recorded.
+        mockGuardRulesVersion = 2;
+        await updateElementFields(ctx, bookId, el.id, { fields: [{ key: 'need', value: 'To be forgiven.' }], baseVersion: 1 });
+        const before = sent.length;
+        await extractPending(ctx, bookId, extractor);
+        const retried = sent.slice(before);
+        expect(retried.some((t) => t.includes('12 years old') && t.includes('XQZ'))).toBe(false);
+        expect((await extractions()).at(-1)!.guardRefused).toEqual([{ key: 'want', rulesVersion: 2 }]);
+        expect(await ages()).toBe(1);
+    });
+});
+
 /** Make a book's entries look saved before 4.1: their extraction rows gone (the outbox trigger did not exist then). */
 async function forgetExtractions(bookId: string): Promise<void> {
     await runWithoutRls({ reason: 'test' }, (db) => db.bibleFactExtraction.deleteMany({ where: { bookId } }));
@@ -150,7 +193,7 @@ describe('the backfill of bibles saved before 4.1 (roadmap 4.H item 5; D31, D32)
         expect(rows.find((x) => x.elementId === wren.id)!.bibleVersionId).toBe(newestWren.id);
 
         // The `bible-facts` job reads them as any extraction, its calls held to the daily share.
-        const shares: Array<NightlyShare | undefined> = [];
+        const shares: Array<readonly NightlyShare[]> = [];
         for (const q of tick.queued) {
             const out = await executeBibleFactExtraction(q, {
                 extractor: (c, share) => (shares.push(share), ageExtractor('Wren')()),
@@ -160,7 +203,9 @@ describe('the backfill of bibles saved before 4.1 (roadmap 4.H item 5; D31, D32)
             });
             expect(out.outcome).toBe('OK');
         }
-        expect(shares.every((s) => s?.purpose === 'facts.bible-extract.backfill')).toBe(true);
+        // Both of its shares, one purpose: the day's (rolling) and the calendar month's (D32, owner decision 2026-11-27).
+        expect(shares.every((s) => s.length === 2 && s.every((x) => x.purpose === 'facts.bible-extract.backfill'))).toBe(true);
+        expect(shares.every((s) => s.some((x) => x.limit === 'MONTHLY_SHARE' && x.since.getTime() === Date.UTC(x.since.getUTCFullYear(), x.since.getUTCMonth(), 1)))).toBe(true);
         const ages = await runInWorkspaceContext(ctx, (db) => db.storyFact.findMany({ where: { bookId, predicate: 'AGE' }, select: { statement: true } }));
         expect(ages.map((a) => a.statement)).toEqual(['Wren is 14 years old.']);
         expect((await getContinuityPage(ctx, bookId)).backfill).toEqual({ total: 2, read: 2, notRead: 0, waiting: 0 });
@@ -204,6 +249,95 @@ describe('the backfill of bibles saved before 4.1 (roadmap 4.H item 5; D31, D32)
         const later = recordingEnqueue();
         await executeFactBackfill({ ...base, enqueue: later.enqueue, now: () => new Date(Date.now() + 2 * 60 * 60_000) });
         expect(later.queued.map((q) => q.extractionId)).toContain(row.id);
+    });
+
+    it('spends at most its share of the calendar month (D32, owner decision 2026-11-27): queued, called and reserved, then MONTHLY_SHARE until next month', async () => {
+        const ctx = workspaceCtx(await createAccount());
+        const bookId = (await createBook(ctx, { title: 'A month of backfill' })).id;
+        for (let i = 0; i < 3; i++) await createElement(ctx, bookId, { kind: 'CHARACTER', name: `Pilot ${i}`, summary: `Pilot ${i} guides the barges.` });
+        await forgetExtractions(bookId);
+        const cursorName = `test-bf-${unique()}`;
+        // A November in which the backfill already charged $0.60 on the 15th: far outside a day's window on the 20th,
+        // inside the month's. The month's share is $1, the day's is wide open.
+        const midMonth = new Date(Date.UTC(2026, 10, 20, 12));
+        await runWithoutRls({ reason: 'test' }, (db) =>
+            db.aiCallLog.create({
+                data: {
+                    id: randomUUID(), workspaceId: ctx.workspaceId, bookId, purpose: BACKFILL_PURPOSE, promptId: 'facts.bible-extract', promptVersion: 'seed',
+                    tier: 'BALANCED', model: 'claude-sonnet-5', attempts: 1, inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0,
+                    costMicroUsd: BigInt(600_000), costEstimated: false, worstCaseMicroUsd: BigInt(600_000), durationMs: 1, outcome: 'OK',
+                    guardRuleIds: [], guardReviewRequired: false, startedAt: new Date(Date.UTC(2026, 10, 15, 9)),
+                },
+            }),
+        );
+        const base = { ...BACKFILL_DEPS, workspaceIds: [ctx.workspaceId], cursorName, monthlyCapMicroUsd: 1_000_000, callFloorMicroUsd: () => 500_000 };
+
+        // Checked BEFORE queuing: $0.60 + a $0.50 call > $1, so nothing is given a row, whatever the day has left.
+        const shut = recordingEnqueue();
+        expect(await executeFactBackfill({ ...base, enqueue: shut.enqueue, now: () => midMonth })).toMatchObject({ deferredAtMonthlyShare: 1, deferredAtShare: 0, created: 0, queued: 0 });
+        expect(shut.queued).toEqual([]);
+        // Next month it resumes (the November spend is outside December's share).
+        const december = recordingEnqueue();
+        expect(await executeFactBackfill({ ...base, enqueue: december.enqueue, now: () => new Date(Date.UTC(2026, 11, 2, 12)) })).toMatchObject({ deferredAtMonthlyShare: 0, queued: 3 });
+
+        // Checked BEFORE EACH CALL: a row whose call does not fit the month's share stops MONTHLY_SHARE — resumable,
+        // its attempt given back, and named apart from the day's share.
+        const row = december.queued[0];
+        const attempts = await runWithoutRls({ reason: 'test' }, (db) => db.bibleFactExtraction.findUniqueOrThrow({ where: { id: row.extractionId }, select: { attempts: true } }));
+        let calls = 0;
+        const out = await executeBibleFactExtraction(row, {
+            extractor: () => ({ extract: async () => (calls++, { ok: true as const, output: { facts: [] }, tokensUsed: 1, costMicroUsd: 1, callIds: [] }) }),
+            charge: () => undefined,
+            gate: MOUNTED,
+            dailyCapMicroUsd: 1_000_000_000,
+            monthlyCapMicroUsd: 0,
+            worstCase: () => 10,
+        });
+        expect(out.outcome).toBe('MONTHLY_SHARE');
+        expect(calls).toBe(0);
+        const stopped = await runWithoutRls({ reason: 'test' }, (db) => db.bibleFactExtraction.findUniqueOrThrow({ where: { id: row.extractionId }, select: { status: true, outcome: true, attempts: true } }));
+        expect(stopped).toEqual({ status: 'STOPPED', outcome: 'MONTHLY_SHARE', attempts: attempts.attempts - 1 });
+
+        // Checked BY THE LEDGER UNDER ITS SPEND LOCK: two reservations of the purpose that each fit alone but not
+        // together — the second is refused MONTHLY_SHARE (the day's share would let both through).
+        // (A workspace of its own, so the seeded November charge above counts in no real month the suite runs in.)
+        const fresh = workspaceCtx(await createAccount());
+        const now = new Date();
+        const ledger = workspaceAiLedger(fresh, [backfillShare(now, 1_000_000_000), backfillMonthlyShare(now, 1_000_000)]);
+        const ask = (amountMicroUsd: number, purpose = BACKFILL_PURPOSE) =>
+            ledger.reserve({ callId: randomUUID(), amountMicroUsd, ceilingMicroUsd: 50_000_000, ttlMs: 60_000, startedAt: now, purpose });
+        const [first, second] = await Promise.all([ask(600_000), ask(600_000)]);
+        expect([first, second].filter((r) => r.ok)).toHaveLength(1);
+        expect([first, second].find((r) => !r.ok)).toMatchObject({ ok: false, limit: 'MONTHLY_SHARE', ceilingMicroUsd: 1_000_000 });
+        // Another purpose is not held to the backfill's share.
+        expect(await ask(600_000, 'facts.bible-extract')).toMatchObject({ ok: true });
+
+        // And a call the ledger refuses at the month's share is named MONTHLY_SHARE, not the ceiling (the model seam).
+        const refused = await bibleFactExtractorOver(async () => {
+            throw new AiSpendCeilingError({ spentMicroUsd: 1, reservedMicroUsd: 0, worstCaseMicroUsd: 1, ceilingMicroUsd: 1, period: '2026-12', limit: 'MONTHLY_SHARE' }, null);
+        }).extract({ data: [], bookId });
+        expect(refused).toMatchObject({ ok: false, failure: 'WORKSPACE_CEILING', errorCode: 'MONTHLY_SHARE' });
+    });
+
+    it('serves every discovered workspace in turn when a tick\'s room runs out before its window does (the 4.H-b review)', async () => {
+        // Four workspaces with backlogs, all discovered in one window; room for two a tick. The cursor moves to the last
+        // workspace REACHED, so the next tick starts with the third: every one is served within ⌈4 ÷ 2⌉ ticks.
+        const ids: string[] = [];
+        for (let w = 0; w < 4; w++) {
+            const c = workspaceCtx(await createAccount());
+            const b = (await createBook(c, { title: `Backlog ${w}` })).id;
+            for (let i = 0; i < 3; i++) await createElement(c, b, { kind: 'CHARACTER', name: `Rower ${i}`, summary: `Rower ${i} crosses at dawn.` });
+            await forgetExtractions(b);
+            ids.push(c.workspaceId);
+        }
+        const cursorName = `test-bf-${unique()}`;
+        const served = new Set<string>();
+        for (let tick = 0; tick < 2; tick++) {
+            const t = recordingEnqueue();
+            await executeFactBackfill({ ...BACKFILL_DEPS, enqueue: t.enqueue, workspaceIds: ids, cursorName, workspacesPerTick: 4, entriesPerWorkspace: 1, dispatchMax: 2 });
+            for (const q of t.queued) served.add(q.workspaceId);
+        }
+        expect([...served].sort()).toEqual([...ids].sort());
     });
 
     it('skips a workspace whose key will not unwrap and still serves the others (4.H-a\'s servedWorkspace)', async () => {

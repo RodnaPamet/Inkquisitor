@@ -78,7 +78,7 @@ import { planBibleFactCalls } from '@/lib/facts/call-plan';
 import { guardRetryPlan, refusalsToRecord } from '@/lib/facts/guard-retry';
 import { GUARD_RULES_VERSION } from '@/lib/ai/guard';
 import { bibleFactsCallWorstCase } from '@/lib/facts/cost';
-import { BIBLE_FACTS_BACKFILL_PURPOSE, DAILY_SHARE_REFUSED, defaultBibleFactExtractor } from '@/lib/facts/model-seam';
+import { BIBLE_FACTS_BACKFILL_PURPOSE, DAILY_SHARE_REFUSED, defaultBibleFactExtractor, MONTHLY_SHARE_REFUSED } from '@/lib/facts/model-seam';
 import { BIBLE_FACTS_CALL_COST_BUDGET_MICRO_USD, BIBLE_FACTS_PROMPT_VERSION, EXISTING_FACTS_SHOWN_MAX } from '@/lib/facts/prompt';
 import { bibleFactGate, type BibleFactGateVerdict } from '@/lib/facts/record-gate';
 import { validateBibleFacts, validateBibleThreads, type BibleFactDraft } from '@/lib/facts/validate';
@@ -91,6 +91,7 @@ import { CLOCK_ELEMENTS_MAX } from '@/lib/continuity/vocabulary';
 import {
     BACKFILL_DAILY_SHARE,
     BACKFILL_DAY_WINDOW_MS,
+    BACKFILL_MONTHLY_SHARE,
     BIBLE_FACT_PIECE_MAX_CHARS,
     BIBLE_FACT_PIECE_MIN_CHARS,
     FACT_EXTRACTION_ATTEMPTS_MAX,
@@ -111,14 +112,17 @@ import { deploymentPackRecordMode } from './interview-packs';
 import { modelUnavailableReason, nightlyShareSpent, type NightlyShare } from './model-calls';
 import { env } from '@/env';
 import { monthlyCeilingMicroUsd } from '@/lib/ai/config';
+import { periodStartOf } from '@/lib/ai/call-record';
 import { bookSourceSet } from './source-common';
 import { bookNamesOf } from './source-library';
 
 export interface BibleFactDeps {
-    /** The extractor (tests: a fake); a BACKFILL extraction hands it the daily share its calls are held to (4.H-b). */
-    extractor?: (ctx: WorkspaceRequestContext, share?: NightlyShare) => FactExtractor;
+    /** The extractor (tests: a fake); a BACKFILL extraction hands it the shares its calls are held to (4.H-b: the day's and the month's). */
+    extractor?: (ctx: WorkspaceRequestContext, shares: readonly NightlyShare[]) => FactExtractor;
     /** The workspace's daily backfill share in µUSD (tests: a figure of their own; default `BACKFILL_DAILY_SHARE` of the month's ceiling). */
     dailyCapMicroUsd?: number;
+    /** The workspace's backfill share of the calendar month in µUSD (tests; default `BACKFILL_MONTHLY_SHARE` of the month's ceiling, D32). */
+    monthlyCapMicroUsd?: number;
     recordMode?: PackRecordMode;
     gate?: () => BibleFactGateVerdict;
     signal?: AbortSignal;
@@ -173,8 +177,8 @@ export function defaultSleep(ms: number, signal?: AbortSignal): Promise<void> {
     });
 }
 
-/** Stops that wait on the deployment or the month, not on the extraction: they count no attempt (4.H-b: nor the backfill's daily share). */
-const UNCOUNTED_STOPS: ReadonlySet<FactExtractionOutcome> = new Set(['CEILING', 'KILL_SWITCH', 'DAILY_SHARE']);
+/** Stops that wait on the deployment or the month, not on the extraction: they count no attempt (4.H-b: nor the backfill's daily or monthly share). */
+const UNCOUNTED_STOPS: ReadonlySet<FactExtractionOutcome> = new Set(['CEILING', 'KILL_SWITCH', 'DAILY_SHARE', 'MONTHLY_SHARE']);
 
 function statusOf(outcome: FactExtractionOutcome): FactExtractionStatus {
     if (outcome === 'OK' || outcome === 'NO_CHANGE') return 'DONE';
@@ -398,6 +402,24 @@ export function backfillShare(at: Date, capMicroUsd?: number): NightlyShare {
     return { purpose: BIBLE_FACTS_BACKFILL_PURPOSE, since: new Date(at.getTime() - BACKFILL_DAY_WINDOW_MS), capMicroUsd: capMicroUsd ?? Math.floor(BACKFILL_DAILY_SHARE * monthlyCeilingMicroUsd(env)) };
 }
 
+/**
+ * 4.H-b (D32, owner decision 2026-11-27): the backfill's share of the CALENDAR MONTH (UTC): its purpose's spend since
+ * the month began, at most half the month's ceiling. Refused at the ledger as `MONTHLY_SHARE`.
+ */
+export function backfillMonthlyShare(at: Date, capMicroUsd?: number): NightlyShare {
+    return { purpose: BIBLE_FACTS_BACKFILL_PURPOSE, since: periodStartOf(at), capMicroUsd: capMicroUsd ?? Math.floor(BACKFILL_MONTHLY_SHARE * monthlyCeilingMicroUsd(env)), limit: 'MONTHLY_SHARE' };
+}
+
+/**
+ * Which of the backfill's shares has no room for `worstMicroUsd` more, read in the caller's transaction (no lock: the
+ * ledger asks again under its spend lock as each call reserves). The month first: it is the longer wait.
+ */
+export async function backfillShareStop(db: PrismaTx, ctx: Pick<WorkspaceRequestContext, 'workspaceId'>, shares: { daily: NightlyShare; monthly: NightlyShare }, worstMicroUsd: number): Promise<'MONTHLY_SHARE' | 'DAILY_SHARE' | null> {
+    if ((await nightlyShareSpent(db, ctx, shares.monthly)) + worstMicroUsd > shares.monthly.capMicroUsd) return 'MONTHLY_SHARE';
+    if ((await nightlyShareSpent(db, ctx, shares.daily)) + worstMicroUsd > shares.daily.capMicroUsd) return 'DAILY_SHARE';
+    return null;
+}
+
 /** Run one extraction (the job's body). */
 export async function executeBibleFactExtraction(payload: { workspaceId: string; extractionId: string }, deps: BibleFactDeps = {}): Promise<Ended> {
     const now = deps.now ?? (() => new Date());
@@ -424,9 +446,11 @@ export async function executeBibleFactExtraction(payload: { workspaceId: string;
     if (!prepared) return end(ctx, row, 'SUBJECT_GONE', {}, now(), claim);
     metrics.sectionsChanged = prepared.changed;
 
-    // 4.H-b (D31, D32): a BACKFILL row's calls are recorded under the backfill's purpose and held to its daily share.
-    const share = row.origin === 'BACKFILL' ? backfillShare(now(), deps.dailyCapMicroUsd) : undefined;
-    if (share) metrics.backfill = true;
+    // 4.H-b (D31, D32): a BACKFILL row's calls are recorded under the backfill's purpose and held to its daily share and
+    // its share of the calendar month (owner decision 2026-11-27).
+    const at = now();
+    const shares = row.origin === 'BACKFILL' ? { daily: backfillShare(at, deps.dailyCapMicroUsd), monthly: backfillMonthlyShare(at, deps.monthlyCapMicroUsd) } : undefined;
+    if (shares) metrics.backfill = true;
     if (prepared.retried.length > 0) metrics.guardRetriedSections = prepared.retried.length;
     try {
         const outputs: CallOutput[] = [];
@@ -437,7 +461,10 @@ export async function executeBibleFactExtraction(payload: { workspaceId: string;
             // Bounded calls (the D27 addendum): pieces of at most BIBLE_FACT_PIECE_MAX_CHARS, each call's worst case
             // inside the per-call cost budget — refused, nothing sent, when even the smallest call is not.
             // 4.H-b (D32): a section retried under newer guard rules goes in calls of its OWN, after the changed ones, so a
-            // second refusal never takes a changed section's facts down with it.
+            // second refusal never takes a changed section's facts down with it — and EACH retried section alone (the
+            // 4.H-b review): a refused call records every section it carried, so an innocent section first refused only
+            // because it shared a call with the bad one would, packed with it again, be refused again with it, and
+            // never be read under the new rules.
             const retried = new Set(prepared.retried);
             const planOf = (sections: readonly EntrySection[]) =>
                 planBibleFactCalls({
@@ -453,16 +480,18 @@ export async function executeBibleFactExtraction(payload: { workspaceId: string;
                     worst: deps.worstCase ?? ((blocks) => bibleFactsCallWorstCase(blocks)),
                 });
             const fresh = planOf(prepared.changedSections.filter((x) => !retried.has(x.key)));
-            const again = retried.size > 0 ? planOf(prepared.changedSections.filter((x) => retried.has(x.key))) : { ok: true as const, calls: [] };
-            if (!fresh.ok || !again.ok) return end(ctx, row, 'CALL_OVER_BUDGET', { ...metrics, errorCode: 'CALL_OVER_BUDGET' }, now(), claim);
-            const plan = { calls: [...fresh.calls, ...again.calls] };
-            const extractor = deps.extractor ? deps.extractor(ctx, share) : defaultBibleFactExtractor(ctx, {}, share);
+            const again = [...retried].map((key) => planOf(prepared.changedSections.filter((x) => x.key === key)));
+            if (!fresh.ok || again.some((p) => !p.ok)) return end(ctx, row, 'CALL_OVER_BUDGET', { ...metrics, errorCode: 'CALL_OVER_BUDGET' }, now(), claim);
+            const plan = { calls: [...fresh.calls, ...again.flatMap((p) => (p.ok ? p.calls : []))] };
+            const held = shares ? [shares.daily, shares.monthly] : [];
+            const extractor = deps.extractor ? deps.extractor(ctx, held) : defaultBibleFactExtractor(ctx, {}, held);
             for (const call of plan.calls) {
                 if (deps.signal?.aborted) return end(ctx, row, 'ABORTED', metrics, now(), claim);
-                // The backfill's day (D32): this call's worst case must fit what the day has left, asked before the call
-                // (and again by the ledger as it reserves); past it the row waits, resumable, no attempt counted.
-                if (share && (await runInWorkspaceContext(ctx, (db) => nightlyShareSpent(db, ctx, share))) + call.worstMicroUsd > share.capMicroUsd) {
-                    return end(ctx, row, 'DAILY_SHARE', { ...metrics, errorCode: 'DAILY_SHARE' }, now(), claim);
+                // The backfill's month and day (D32): this call's worst case must fit what each has left, asked before the
+                // call (and again by the ledger as it reserves); past either the row waits, resumable, no attempt counted.
+                if (shares) {
+                    const stop = await runInWorkspaceContext(ctx, (db) => backfillShareStop(db, ctx, shares, call.worstMicroUsd));
+                    if (stop) return end(ctx, row, stop, { ...metrics, errorCode: stop }, now(), claim);
                 }
                 if (!(await waitForModelRate(ctx, deps.charge ?? chargeModelCalls, deps.sleep ?? defaultSleep, deps.signal))) {
                     return end(ctx, row, deps.signal?.aborted ? 'ABORTED' : 'MODEL_RATE_LIMITED', metrics, now(), claim);
@@ -476,7 +505,7 @@ export async function executeBibleFactExtraction(payload: { workspaceId: string;
                     metrics.errorCode = result.errorCode;
                     const outcome: FactExtractionOutcome =
                         result.failure === 'KILL_SWITCH' ? 'KILL_SWITCH'
-                        : result.failure === 'WORKSPACE_CEILING' ? (result.errorCode === DAILY_SHARE_REFUSED ? 'DAILY_SHARE' : 'CEILING')
+                        : result.failure === 'WORKSPACE_CEILING' ? (result.errorCode === DAILY_SHARE_REFUSED ? 'DAILY_SHARE' : result.errorCode === MONTHLY_SHARE_REFUSED ? 'MONTHLY_SHARE' : 'CEILING')
                         : result.failure === 'AI_UNAVAILABLE' ? 'AI_UNAVAILABLE'
                         : result.failure === 'ABORTED' ? 'ABORTED'
                         : result.failure === 'GUARD_REFUSED' ? 'GUARD_REFUSED'

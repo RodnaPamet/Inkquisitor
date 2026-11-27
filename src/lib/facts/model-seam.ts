@@ -30,6 +30,8 @@ export const BIBLE_FACTS_BACKFILL_PURPOSE = 'facts.bible-extract.backfill';
 
 /** The error code a call refused at the backfill's daily share carries (`extractOutcomeOf`'s WORKSPACE_CEILING otherwise). */
 export const DAILY_SHARE_REFUSED = 'DAILY_SHARE';
+/** The error code a call refused at the backfill's share of the calendar month carries (D32, owner decision 2026-11-27). */
+export const MONTHLY_SHARE_REFUSED = 'MONTHLY_SHARE';
 
 export function bibleFactExtractorOver(call: BibleFactsCaller, options: { purpose?: string } = {}): FactExtractor {
     return Object.freeze({
@@ -38,10 +40,13 @@ export function bibleFactExtractorOver(call: BibleFactsCaller, options: { purpos
                 const r = await call({ template: BIBLE_FACTS_PROMPT, data: request.data, schema: BibleFactsOutputSchema, bookId: request.bookId, signal, ...(options.purpose ? { purpose: options.purpose } : {}) });
                 return { ok: true as const, output: r.value, tokensUsed: r.tokensUsed, costMicroUsd: r.costMicroUsd, callIds: [r.callId] };
             } catch (err) {
-                // The backfill's daily share (D32), refused by the ledger under its lock: named apart from the ceiling.
-                const share = err instanceof AiSpendCeilingError && (err.details as { limit?: unknown } | undefined)?.limit === 'NIGHTLY_SHARE';
+                // The backfill's daily or monthly share (D32), refused by the ledger under its lock: named apart from the ceiling.
+                const limit = err instanceof AiSpendCeilingError ? (err.details as { limit?: unknown } | undefined)?.limit : undefined;
                 const outcome = extractOutcomeOf(err);
-                return share && !outcome.ok ? { ...outcome, errorCode: DAILY_SHARE_REFUSED } : outcome;
+                if (outcome.ok) return outcome;
+                if (limit === 'MONTHLY_SHARE') return { ...outcome, errorCode: MONTHLY_SHARE_REFUSED };
+                if (limit === 'NIGHTLY_SHARE') return { ...outcome, errorCode: DAILY_SHARE_REFUSED };
+                return outcome;
             }
         },
     } satisfies FactExtractor);
@@ -49,9 +54,10 @@ export function bibleFactExtractorOver(call: BibleFactsCaller, options: { purpos
 
 /**
  * The deployment's extractor, in the context's workspace, as its user. `deps` is the tests' fetch seam. A BACKFILL
- * extraction (4.H-b, D32) passes `share`: its calls are recorded under `BIBLE_FACTS_BACKFILL_PURPOSE` and each
- * reservation is held to the workspace's daily share by the ledger, under its spend lock.
+ * extraction (4.H-b, D32) passes its `shares` (the daily share and the share of the calendar month, one purpose): its
+ * calls are recorded under `BIBLE_FACTS_BACKFILL_PURPOSE` and each reservation is held to both by the ledger, under
+ * its spend lock.
  */
-export function defaultBibleFactExtractor(ctx: WorkspaceRequestContext, deps: Pick<StructuredCallDeps, 'fetch' | 'timeoutMs'> = {}, share?: NightlyShare): FactExtractor {
-    return bibleFactExtractorOver((input) => callStructured(ctx, input, deps, { share }), { purpose: share?.purpose });
+export function defaultBibleFactExtractor(ctx: WorkspaceRequestContext, deps: Pick<StructuredCallDeps, 'fetch' | 'timeoutMs'> = {}, shares: readonly NightlyShare[] = []): FactExtractor {
+    return bibleFactExtractorOver((input) => callStructured(ctx, input, deps, { share: shares }), { purpose: shares[0]?.purpose });
 }
