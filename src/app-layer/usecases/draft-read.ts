@@ -58,10 +58,8 @@ import {
 } from '@/app-layer/repositories/draft-facts.repository';
 import { BibleFactRepository, StoryFactRepository } from '@/app-layer/repositories/source.repository';
 import type { AuthorDataBlock } from '@/lib/ai/prompt';
-import { monthlyCeilingMicroUsd } from '@/lib/ai/config';
-import { NIGHT_SHARE_PURPOSES } from '@/lib/continuity/night-share';
 import { NO_ORDER, storyClock, type StoryClock } from '@/lib/continuity/story-clock';
-import { CLOCK_ELEMENTS_MAX, CONTINUITY_NIGHT_WINDOW_MS, CONTINUITY_NIGHTLY_SHARE } from '@/lib/continuity/vocabulary';
+import { CLOCK_ELEMENTS_MAX } from '@/lib/continuity/vocabulary';
 import { compareDraftWithBible, sceneBeat, type CompareFact } from '@/lib/draft-facts/compare';
 import { draftReadCallWorstCase } from '@/lib/draft-facts/cost';
 import { draftClaimKey, draftTextKey } from '@/lib/draft-facts/keys';
@@ -93,11 +91,11 @@ import { sceneProseText } from '@/lib/prose-checks/scene-text';
 import { chargeModelCalls } from '@/lib/security/model-call-rate-limit';
 import { sanitiseFactForStorage } from '@/lib/sources/storage';
 import type { FactDraft } from '@/lib/sources/validate';
-import { env } from '@/env';
 import { defaultSleep, waitForModelRate } from './bible-facts';
 import { actorFor } from './continuity-check';
 import { deploymentPackRecordMode } from './interview-packs';
-import { modelUnavailableReason, nightlyShareSpent, type NightlyShare } from './model-calls';
+import { modelUnavailableReason, nightShareStop, type NightlyShare } from './model-calls';
+import { nightShareFor } from './night-share';
 
 export interface DraftReadDeps {
     reader?: (ctx: WorkspaceRequestContext, share: NightlyShare) => DraftReader;
@@ -112,7 +110,7 @@ export interface DraftReadDeps {
     /** The night's bounds (tests: smaller ones). */
     callsPerNight?: number;
     scenesPerNight?: number;
-    /** The night's share in µUSD (tests: a figure of their own; default `CONTINUITY_NIGHTLY_SHARE` of the month's ceiling). */
+    /** The night's share in µUSD (tests: a figure of their own; default `CONTINUITY_NIGHTLY_SHARE` of the month's ceiling); its half is half of it. */
     nightlyCapMicroUsd?: number;
     pieceMaxChars?: number;
 }
@@ -150,6 +148,8 @@ interface Metrics {
     scenesDiscarded: number;
     scenesPassedOver: number;
     scenesTextCut: number;
+    /** D35 addendum B: why the night's share stopped the reading — past the whole share, or past its half while the check still ran. */
+    shareStop?: 'TOTAL' | 'HALF';
     errorCode?: string;
 }
 
@@ -253,11 +253,9 @@ export async function executeDraftRead(payload: { workspaceId: string; runId: st
     const bookNames = claimed.names.map((n) => n.name);
     const threadsShown = claimed.threads.map((t) => ({ id: t.id, kind: t.kind, title: t.title }));
 
-    const share: NightlyShare = {
-        purpose: NIGHT_SHARE_PURPOSES,
-        since: new Date(claim.getTime() - CONTINUITY_NIGHT_WINDOW_MS),
-        capMicroUsd: deps.nightlyCapMicroUsd ?? Math.floor(CONTINUITY_NIGHTLY_SHARE * monthlyCeilingMicroUsd(env)),
-    };
+    // The night's one share with the continuity check (D35 item 2), and the reading's half of it while the check still
+    // runs tonight (addendum B).
+    const share: NightlyShare = nightShareFor(ctx, 'draft', { claim, nightKey: run.nightKey, capMicroUsd: deps.nightlyCapMicroUsd });
     const reader = (deps.reader ?? ((c: WorkspaceRequestContext, s: NightlyShare) => defaultDraftReader(c, {}, s)))(ctx, share);
     const worst = deps.worstCase ?? ((blocks: readonly AuthorDataBlock[]) => draftReadCallWorstCase(blocks));
     const callsPerNight = deps.callsPerNight ?? DRAFT_CALLS_PER_NIGHT;
@@ -347,7 +345,12 @@ export async function executeDraftRead(payload: { workspaceId: string; runId: st
             const standing = new Set(compared.pairs.map((p) => `${p.bibleFactId}|${keyOf.get(p.draftFactId)}`));
             const open = await DraftMismatchRepository.forScene(db, ctx.workspaceId, bookId, dueScene.sceneId, ['PENDING', 'FIX_PENDING'], DRAFT_MISMATCHES_PER_RUN_MAX * 2);
             // An open mismatch the draft no longer makes is settled FIXED — judged only against a bible fact this run read.
-            const gone = open.filter((m) => bibleRead.has(m.factId) && !standing.has(`${m.factId}|${m.draftClaimKey}`)).map((m) => m.id);
+            // One the DEEP check found (D35 addendum A: it names a continuity run) is a judgement no rule repeats, so the
+            // rules not finding it says nothing: it settles only once the scene no longer makes its claim at all.
+            const claimsLive = new Set(liveAfter.map((f) => f.dedupeKey ?? ''));
+            const gone = open
+                .filter((m) => bibleRead.has(m.factId) && (m.checkRunId ? !claimsLive.has(m.draftClaimKey ?? '') : !standing.has(`${m.factId}|${m.draftClaimKey}`)))
+                .map((m) => m.id);
             counts.mismatchesFixed += await DraftMismatchRepository.settleFixed(db, ctx.workspaceId, gone, at);
             // An open mismatch whose bible fact no longer stands (set aside, or retracted with its relation) has nothing
             // left to decide — known only when every live bible fact was read: PENDING is settled INVALIDATED, a fix the
@@ -460,8 +463,11 @@ export async function executeDraftRead(payload: { workspaceId: string; runId: st
                 gatesAsked = true;
             }
             const sceneWorst = plan.calls.reduce((n, c) => n + c.worstMicroUsd, 0);
-            const spent = await runInWorkspaceContext(ctx, (db) => nightlyShareSpent(db, ctx, share));
-            if (spent + sceneWorst > share.capMicroUsd) return await finish('NIGHTLY_CAP', true);
+            const stop = await runInWorkspaceContext(ctx, (db) => nightShareStop(db, ctx, share, sceneWorst));
+            if (stop) {
+                metrics.shareStop = stop;
+                return await finish('NIGHTLY_CAP', true);
+            }
 
             const result: SceneReadResult = { facts: [], links: [], guardRefusedAll: true, refusedPieces: [], textCut: plan.cut, costMicroUsd: 0 };
             let sceneFailed: string | null = null;

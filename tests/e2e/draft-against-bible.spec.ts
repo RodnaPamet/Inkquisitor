@@ -5,8 +5,9 @@ import { signUp } from './helpers';
  * The draft held against the bible against the production build (Phase 5.3, D35), as an author with a fresh account:
  * a scene written in the editor reads "not read yet" in its Draft vs bible tab and on the Continuity page (rule 6: the
  * nightly reading has not run, so nothing is assessed — never "no mismatches"); the scene's card is filled in the Card
- * tab, saved only on Save, and survives a reload; "Grill me on this scene" is offered. No page breaks the content
- * security policy.
+ * tab, saved only on Save, and survives a reload; "Grill me on this scene" is offered. On the Continuity page nothing
+ * is "recently resolved" yet, and the deep check's reading of the draft is off until the author turns it on (D35
+ * addendum), a choice that survives a reload. No page breaks the content security policy.
  */
 test('an author fills a scene’s card and sees the draft not read yet', async ({ page }) => {
     test.setTimeout(120_000);
@@ -55,6 +56,16 @@ test('an author fills a scene’s card and sees the draft not read yet', async (
     await expect(draft.getByRole('heading', { name: 'Draft vs bible' })).toBeVisible();
     await expect(draft.getByTestId('draft-reading')).toContainText('Not read yet');
     await expect(draft).not.toContainText('No mismatches');
+    // D35 addendum C: nothing has settled by itself, and the list says only that.
+    await expect(draft.getByTestId('draft-resolved-none')).toHaveText('Nothing settled by itself in the last 30 days.');
+
+    // D35 addendum A: the deep check reads the draft only when the author turns it on; the choice is kept.
+    const deep = main.getByRole('checkbox', { name: /The nightly deep check reads the draft too/ });
+    await expect(deep).not.toBeChecked();
+    await deep.click();
+    await expect(page.getByText('Settings saved.')).toBeVisible();
+    await page.reload();
+    await expect(main.getByRole('checkbox', { name: /The nightly deep check reads the draft too/ })).toBeChecked();
 
     expect(await page.evaluate(() => (window as unknown as { __cspViolations?: string[] }).__cspViolations ?? [])).toEqual([]);
 });

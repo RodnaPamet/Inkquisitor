@@ -46,13 +46,27 @@ import type { BibleKind } from '@/lib/bible/kinds';
 import { sanitiseExplanationForStorage } from '@/lib/continuity/storage';
 import { draftTextKey } from '@/lib/draft-facts/keys';
 import { draftPrefill } from '@/lib/draft-facts/prefill';
-import { cursorReadItsText, DRAFT_LIST_MAX, OPEN_DRAFT_STATUSES, type DraftMismatchStatus, type DraftMismatchView, type DraftUpdatePrefillView, type SceneLinkView } from '@/lib/draft-facts/vocabulary';
+import {
+    cursorReadItsText,
+    DRAFT_LIST_MAX,
+    DRAFT_SETTLE_REASONS,
+    OPEN_DRAFT_STATUSES,
+    type DraftMismatchStatus,
+    type DraftMismatchView,
+    type DraftSettleReason,
+    type DraftUpdatePrefillView,
+    type SceneLinkView,
+} from '@/lib/draft-facts/vocabulary';
 import { runInWorkspaceContext, type PrismaTx } from '@/lib/db/rls-middleware';
 import { ConflictError, NotFoundError, ValidationError } from '@/lib/errors/types';
 import { renderElementEntry } from '@/lib/facts/entry-text';
 import { fieldAnsweredBy } from '@/lib/sources/vocabulary';
 import { sanitiseFactForStorage } from '@/lib/sources/storage';
 import { assertBaseVersion, readFieldValues, recordVersion, requireBook, requireElement, writeFieldValues } from './bible-common';
+
+function isSettleReason(x: string | null): x is DraftSettleReason {
+    return x !== null && (DRAFT_SETTLE_REASONS as readonly string[]).includes(x);
+}
 
 /** The field types "Update the bible" opens (a scale states no fact a draft can contradict). */
 const UPDATABLE_TYPES: ReadonlySet<string> = new Set(['text', 'richtext', 'list', 'choice']);
@@ -101,6 +115,8 @@ export async function draftMismatchViews(db: PrismaTx, ctx: WorkspaceRequestCont
             },
             canUpdateBible: r.status === 'PENDING' && b.sourceKind === 'BIBLE_VERSION' && b.supersededAt === null,
             explanation: explanations.get(r.id)?.statement ?? null,
+            foundBy: r.checkRunId ? 'DEEP_CHECK' : 'RULES',
+            settled: r.settledAt && isSettleReason(r.settleReason) ? { at: r.settledAt.toISOString(), reason: r.settleReason } : null,
         });
     }
     return out;

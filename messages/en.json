@@ -1947,7 +1947,8 @@
             "NO_FIELD_TO_UPDATE": "This bible fact rests on no single field to update. Edit the entry itself.",
             "NOTHING_CHANGED": "That would change nothing. Edit the value, or close the sheet.",
             "LINK_DECIDED": "This link has already been decided.",
-            "FIELD_VALUES_REFUSED": "That value cannot be saved in this field."
+            "FIELD_VALUES_REFUSED": "That value cannot be saved in this field.",
+            "SETTINGS_INVALID": "Those settings are not valid."
         },
         "draft": {
             "title": "Draft vs bible",
@@ -2026,7 +2027,27 @@
             "confirm": "Confirm",
             "reject": "Reject",
             "linkConfirmed": "Link confirmed.",
-            "linkRejected": "Link rejected."
+            "linkRejected": "Link rejected.",
+            "foundByDeep": "Found by the nightly deep check",
+            "resolved": {
+                "title": "Recently resolved",
+                "help": "Mismatches that settled by themselves in the last {days} days: the scene no longer says it, or the bible entry no longer does. Nothing is sent to you about them.",
+                "none": "Nothing settled by itself in the last {days} days.",
+                "truncated": "Showing the newest {shown}.",
+                "was": "The draft said “{draft}”; the bible said “{bible}”.",
+                "how": {
+                    "DRAFT_CHANGED": "Settled: the scene no longer says it",
+                    "BIBLE_GONE": "Settled: the bible entry no longer says it"
+                }
+            }
+        },
+        "settings": {
+            "title": "Settings",
+            "deepReadsDraft": "The nightly deep check reads the draft too",
+            "deepReadsDraftHelp": "When on, the deep check also reads what the manuscript's scenes claim and holds those claims against the bible, besides the bible's own facts. It uses the same nightly budget as the rest of the night's reading. Off by default.",
+            "on": "on",
+            "off": "off",
+            "saved": "Settings saved."
         }
     },
     "interrogation": {
@@ -2546,7 +2567,7 @@
             "loadError": "What the nightly reading found could not be loaded.",
             "notRead": "Not read yet: this scene is read overnight.",
             "readEarlier": "Read at an earlier text; tonight's reading reads it again. Notes from then are marked only where the text still says the same.",
-    "passedOver": "This scene's text could not be read overnight (the safety check refused it, it failed the same way each night, or it is too long to read in one piece); it is read again once it changes.",
+            "passedOver": "This scene's text could not be read overnight (the safety check refused it, it failed the same way each night, or it is too long to read in one piece); it is read again once it changes.",
             "none": "No mismatches with the bible in this scene.",
             "count": "{count, plural, one {# mismatch with the bible} other {# mismatches with the bible}}",
             "mismatchesLabel": "Mismatches with the bible",

@@ -25,6 +25,9 @@
  *               PROPOSAL_DECIDED). A flagged proposal (D14) is decided like any
  *               other, one by one: there is no bulk accept.
  *   stale       `dismissStaleFlag`: the author says the entry still holds.
+ *   settings    `getContinuitySettings` / `saveContinuitySettings` (D35 addendum A): whether the nightly deep check
+ *               also reads the book's draft facts — off until the author turns it on (`bible.edit`; read with
+ *               `bible.view`), audited with ids and codes only.
  *
  * Contradictions are decided by `decideFactProposal` (`fact-proposals.ts`, 4.1's
  * record extended): keep the newer, keep the older, both true (explained), or
@@ -38,6 +41,7 @@ import {
     ContinuityCheckRepository,
     ContinuityFactRepository,
     ContinuityRunRepository,
+    ContinuitySettingsRepository,
     decideLaterAnswersOf,
     StaleFlagRepository,
     StoryThreadProposalRepository,
@@ -45,7 +49,7 @@ import {
     type StoryThreadRow,
 } from '@/app-layer/repositories/continuity.repository';
 import { BibleVersionReadRepository, FactBackfillRepository, FactProposalRepository } from '@/app-layer/repositories/fact-layer.repository';
-import { ContinuityThreadInput, ContinuityThreadUpdateInput, ThreadProposalDecisionInput } from '@/app-layer/schemas/continuity';
+import { ContinuitySettingsInput, ContinuityThreadInput, ContinuityThreadUpdateInput, ThreadProposalDecisionInput } from '@/app-layer/schemas/continuity';
 import { VersionNumberParam } from '@/app-layer/schemas/bible';
 import { runInWorkspaceContext, type PrismaTx } from '@/lib/db/rls-middleware';
 import { ConflictError, NotFoundError, ValidationError } from '@/lib/errors/types';
@@ -57,7 +61,16 @@ import { views, type FactProposalView } from './fact-proposals';
 import { standingStaleFlags } from './stale-flags';
 import { DraftMismatchRepository, DraftReadRunRepository, SceneDraftReadRepository, scenesInOrder, ThreadSceneLinkRepository } from '@/app-layer/repositories/draft-facts.repository';
 import { compareSceneOrder, isUnpaidSetup } from '@/lib/draft-facts/threads';
-import { DRAFT_LIST_MAX, OPEN_DRAFT_STATUSES, type DraftMismatchView, type DraftReadingView, type DraftReadOutcome, type SceneLinkView } from '@/lib/draft-facts/vocabulary';
+import {
+    DRAFT_LIST_MAX,
+    OPEN_DRAFT_STATUSES,
+    RECENTLY_RESOLVED_DAYS,
+    RECENTLY_RESOLVED_MAX,
+    type DraftMismatchView,
+    type DraftReadingView,
+    type DraftReadOutcome,
+    type SceneLinkView,
+} from '@/lib/draft-facts/vocabulary';
 import { draftMismatchViews, threadLinkViews } from './draft-mismatches';
 
 export interface ThreadView {
@@ -175,7 +188,21 @@ export interface ContinuityPage {
         reading: DraftReadingView;
         mismatches: { items: DraftMismatchView[]; open: number; truncated: boolean };
         linkProposals: { items: SceneLinkView[]; pending: number; truncated: boolean };
+        /**
+         * D35 addendum C: mismatches that settled BY THEMSELVES in the last `days` days (the database's clock) — the
+         * draft no longer makes the claim, or the bible fact went —, newest first. Empty says only that nothing settled
+         * so lately, never that the draft agrees with the bible (rule 6).
+         */
+        recentlyResolved: { items: DraftMismatchView[]; days: number; truncated: boolean };
     };
+    /** D35 addendum A: the book's continuity settings (the defaults when the author has saved none). */
+    settings: ContinuitySettingsView;
+}
+
+/** D35 addendum A: a book's continuity settings as the page and the settings route show them. */
+export interface ContinuitySettingsView {
+    /** The nightly deep check also reads the book's draft facts (off by default; it spends the same nightly share). */
+    deepReadsDraft: boolean;
 }
 
 const NO_LINKS: Pick<ThreadView, 'plantedIn' | 'paidIn' | 'unpaidSetup'> = { plantedIn: [], paidIn: [], unpaidSetup: false };
@@ -284,6 +311,8 @@ export async function getContinuityPage(ctx: WorkspaceRequestContext, bookId: st
                 unpaidSetup: isUnpaidSetup(thread, mine),
             };
         };
+        const resolvedRows = await DraftMismatchRepository.recentlySettled(db, ctx.workspaceId, bookId, RECENTLY_RESOLVED_DAYS, RECENTLY_RESOLVED_MAX + 1);
+        const settings = await ContinuitySettingsRepository.find(db, ctx.workspaceId, bookId);
         const reading = await SceneDraftReadRepository.progressForBook(db, ctx.workspaceId, bookId);
         const lastRead = await DraftReadRunRepository.lastFinished(db, ctx.workspaceId, bookId);
 
@@ -371,7 +400,13 @@ export async function getContinuityPage(ctx: WorkspaceRequestContext, bookId: st
                     pending: await ThreadSceneLinkRepository.countForBook(db, ctx.workspaceId, bookId, ['PENDING']),
                     truncated: linkProposalRows.length > DRAFT_LIST_MAX,
                 },
+                recentlyResolved: {
+                    items: await draftMismatchViews(db, ctx, bookId, resolvedRows.slice(0, RECENTLY_RESOLVED_MAX)),
+                    days: RECENTLY_RESOLVED_DAYS,
+                    truncated: resolvedRows.length > RECENTLY_RESOLVED_MAX,
+                },
             },
+            settings: { deepReadsDraft: settings?.deepReadsDraft ?? false },
         };
     });
 }
@@ -492,5 +527,41 @@ export async function dismissStaleFlag(ctx: WorkspaceRequestContext, bookId: str
         }
         await logEvent(ctx, { action: 'STALE_FLAG_DISMISSED', entityType: 'StaleFlag', entityId: flagId, details: { bookId, elementId: flag.elementId, upstreamElementId: flag.upstreamElementId } }, { db });
         return { id: flagId };
+    });
+}
+
+/** D35 addendum A: the book's continuity settings (`bible.view`); the defaults when the author has saved none. */
+export async function getContinuitySettings(ctx: WorkspaceRequestContext, bookId: string): Promise<ContinuitySettingsView> {
+    await assertPermission(ctx, 'bible.view');
+    return runInWorkspaceContext(ctx, async (db) => {
+        await requireBook(db, ctx, bookId);
+        const row = await ContinuitySettingsRepository.find(db, ctx.workspaceId, bookId);
+        return { deepReadsDraft: row?.deepReadsDraft ?? false };
+    });
+}
+
+/**
+ * D35 addendum A: replace the book's continuity settings (`bible.edit`). Turning `deepReadsDraft` on makes the next
+ * nightly deep check read the book's draft facts beside its bible facts (and spend from the same nightly share); off,
+ * it reads the bible alone, as before. Audited with ids and the setting's value only. Audit last.
+ */
+export async function saveContinuitySettings(ctx: WorkspaceRequestContext, bookId: string, input: unknown): Promise<ContinuitySettingsView> {
+    await assertPermission(ctx, 'bible.edit');
+    return runInWorkspaceContext(ctx, async (db) => {
+        // The book first: a deleted book answers 404 whatever the body says.
+        await requireBook(db, ctx, bookId);
+        const parsed = ContinuitySettingsInput.safeParse(input);
+        if (!parsed.success) throw new ValidationError('Those settings are not valid.', { reason: 'SETTINGS_INVALID' });
+        const before = await ContinuitySettingsRepository.find(db, ctx.workspaceId, bookId);
+        // Turned on: from now the draft facts already read are new to the deep check (its next pass reads them); kept on,
+        // the moment stays; off, none.
+        const on = parsed.data.deepReadsDraft;
+        const since = on ? (before?.deepReadsDraft && before.deepReadsDraftSince ? before.deepReadsDraftSince : new Date()) : null;
+        const row = await ContinuitySettingsRepository.save(db, ctx.workspaceId, bookId, { deepReadsDraft: on, since });
+        // A save that changes nothing is not an event; a change is audited with ids and the value only. Audit last.
+        if ((before?.deepReadsDraft ?? false) !== row.deepReadsDraft) {
+            await logEvent(ctx, { action: 'CONTINUITY_SETTINGS_SAVED', entityType: 'Book', entityId: bookId, details: { bookId, deepReadsDraft: row.deepReadsDraft } }, { db });
+        }
+        return { deepReadsDraft: row.deepReadsDraft };
     });
 }

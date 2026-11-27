@@ -64,6 +64,7 @@ const RUN_SELECT = {
     callsMade: true,
     costMicroUsd: true,
     metrics: true,
+    nightKey: true,
     createdAt: true,
     startedAt: true,
     finishedAt: true,
@@ -71,6 +72,16 @@ const RUN_SELECT = {
 export type ContinuityRunRow = Prisma.ContinuityRunGetPayload<{ select: typeof RUN_SELECT }>;
 
 export const ContinuityRunRepository = {
+    /**
+     * D35 addendum B: does the deep check still have work in this workspace THIS night — a run of the night queued or
+     * running? Read under the ledger's spend lock (the night's halves). A run that has ended (DONE, STOPPED, SKIPPED,
+     * FAILED) does nothing more tonight, and a book not queued by the night's dispatch waits for the next night, so
+     * neither holds the draft reading to its half. Bounded: one row.
+     */
+    async liveTonight(db: Db, workspaceId: string, nightKey: string): Promise<boolean> {
+        const row = await db.continuityRun.findFirst({ where: { workspaceId, nightKey, status: { in: ['QUEUED', 'RUNNING'] } }, select: { id: true } });
+        return row !== null;
+    },
     /** A QUEUED run for the night `nightKey` names (4.H-a: one a book a night, the partial unique index answering P2002). */
     async create(db: Db, workspaceId: string, bookId: string, nightKey: string | null = null): Promise<{ id: string }> {
         return db.continuityRun.create({ data: { workspaceId, bookId, status: 'QUEUED', nightKey }, select: { id: true } });
@@ -169,9 +180,18 @@ export const ContinuityDiscovery = {
                        OR ((cardinality(c."passedOver") > 0 OR c."passedOverCut") AND c."lastRunAt" < ${retryBefore})
                        OR EXISTS (SELECT 1 FROM "StoryFact" f
                                   WHERE f."workspaceId" = b."workspaceId" AND f."bookId" = b."id" AND f."supersededAt" IS NULL
-                                    -- 5.3: a draft fact (SCENE_TEXT) is never canon: the nightly draft reading compares it, never this check
-                                    AND f."sourceKind"::text <> 'SCENE_TEXT'
+                                    -- 5.3: a draft fact (SCENE_TEXT) is never canon: the nightly draft reading compares it, and this check
+                                    -- reads it only for a book whose author turned that on (D35 addendum A)
+                                    AND (f."sourceKind"::text <> 'SCENE_TEXT'
+                                         OR EXISTS (SELECT 1 FROM "ContinuitySettings" cs
+                                                    WHERE cs."workspaceId" = b."workspaceId" AND cs."bookId" = b."id" AND cs."deepReadsDraft"))
                                     AND f."createdAt" > COALESCE(c."coveredThrough", '-infinity'::timestamp))
+                       -- D35 addendum A: the draft reading turned on since the last complete pass, with a draft fact to read
+                       OR EXISTS (SELECT 1 FROM "ContinuitySettings" cs
+                                  JOIN "StoryFact" f ON f."workspaceId" = cs."workspaceId" AND f."bookId" = cs."bookId"
+                                                    AND f."sourceKind"::text = 'SCENE_TEXT' AND f."supersededAt" IS NULL
+                                  WHERE cs."workspaceId" = b."workspaceId" AND cs."bookId" = b."id" AND cs."deepReadsDraft"
+                                    AND cs."deepReadsDraftSince" > COALESCE(c."coveredThrough", '-infinity'::timestamp))
                        OR EXISTS (SELECT 1 FROM "StoryFact" f
                                   JOIN "Source" s ON s."workspaceId" = f."workspaceId" AND s."id" = f."sourceId"
                                   JOIN "SourceLibrary" l ON l."workspaceId" = s."workspaceId" AND l."id" = s."libraryId"
@@ -186,6 +206,27 @@ export const ContinuityDiscovery = {
             ) due
             ORDER BY rn, "lastRunAt" ASC NULLS FIRST, "workspaceId", "bookId"
             LIMIT ${data.take}`);
+    },
+};
+
+// ─── The book's continuity settings (D35 addendum A) ───────────────
+
+const SETTINGS_SELECT = { deepReadsDraft: true, deepReadsDraftSince: true, updatedAt: true } as const satisfies Prisma.ContinuitySettingsSelect;
+export type ContinuitySettingsRow = Prisma.ContinuitySettingsGetPayload<{ select: typeof SETTINGS_SELECT }>;
+
+export const ContinuitySettingsRepository = {
+    /** The book's settings, or null (the defaults: the deep check reads the bible only). */
+    async find(db: Db, workspaceId: string, bookId: string): Promise<ContinuitySettingsRow | null> {
+        return db.continuitySettings.findFirst({ where: { workspaceId, bookId }, select: SETTINGS_SELECT });
+    },
+    /** Write the book's settings (created on the first save); `since` is when the draft reading was turned on (null: off). */
+    async save(db: Db, workspaceId: string, bookId: string, data: { deepReadsDraft: boolean; since: Date | null }): Promise<ContinuitySettingsRow> {
+        return db.continuitySettings.upsert({
+            where: { workspaceId_bookId: { workspaceId, bookId } },
+            create: { workspaceId, bookId, deepReadsDraft: data.deepReadsDraft, deepReadsDraftSince: data.since },
+            update: { deepReadsDraft: data.deepReadsDraft, deepReadsDraftSince: data.since },
+            select: SETTINGS_SELECT,
+        });
     },
 };
 
@@ -208,6 +249,10 @@ const CHECK_FACT_SELECT = {
 } as const satisfies Prisma.StoryFactSelect;
 export type CheckFactRow = Prisma.StoryFactGetPayload<{ select: typeof CHECK_FACT_SELECT }>;
 
+const CHECK_DRAFT_FACT_SELECT = { ...CHECK_FACT_SELECT, sceneId: true, dedupeKey: true } as const satisfies Prisma.StoryFactSelect;
+/** D35 addendum A: a live DRAFT fact as the deep check reads it — its scene and its claim key beside the fact. */
+export type CheckDraftFactRow = Prisma.StoryFactGetPayload<{ select: typeof CHECK_DRAFT_FACT_SELECT }>;
+
 export const ContinuityFactRepository = {
     /**
      * A book's LIVE facts the continuity checks read: its bible facts, the author's explanations, and the confirmed
@@ -229,6 +274,19 @@ export const ContinuityFactRepository = {
             orderBy: [{ subjectElementId: 'asc' }, { statedAt: 'asc' }, { id: 'asc' }],
             take,
             select: CHECK_FACT_SELECT,
+        });
+    },
+    /**
+     * D35 addendum A: a book's live DRAFT facts (SCENE_TEXT) the deep check reads beside its bible facts when the author
+     * turned that on — linked subjects only, keyed claims only, a subject's newest first. Bounded; one more is asked so a
+     * cut is known.
+     */
+    async listLiveDraftForBook(db: Db, workspaceId: string, bookId: string, take: number): Promise<CheckDraftFactRow[]> {
+        return db.storyFact.findMany({
+            where: { workspaceId, bookId, sourceKind: 'SCENE_TEXT', supersededAt: null, subjectElementId: { not: null }, sceneId: { not: null }, dedupeKey: { not: null } },
+            orderBy: [{ subjectElementId: 'asc' }, { createdAt: 'desc' }, { id: 'asc' }],
+            take,
+            select: CHECK_DRAFT_FACT_SELECT,
         });
     },
     /** How many live bible facts a book holds (the Continuity page: zero is "not assessed", rule 6). */

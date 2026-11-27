@@ -4,7 +4,7 @@
  * clean bill; and the Continuity page never says "every fact checked" of a pass
  * that read a cut set of facts or passed subjects over (#62 items 1 and 3).
  */
-import { render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { Toaster } from 'sonner';
 
 jest.mock('next/navigation', () => ({
@@ -52,7 +52,9 @@ function continuity(over: Partial<PageData> = {}, nightly: Partial<PageData['nig
             reading: { scenesWithText: 0, scenesRead: 0, scenesWaiting: 0, scenesPassedOver: 0, lastRunAt: null, lastOutcome: null },
             mismatches: { items: [], open: 0, truncated: false },
             linkProposals: { items: [], pending: 0, truncated: false },
+            recentlyResolved: { items: [], days: 30, truncated: false },
         },
+        settings: { deepReadsDraft: false },
         ...over,
     };
 }
@@ -123,5 +125,35 @@ describe('the Facts page', () => {
             </KeyboardShortcutProvider>,
         );
         expect(screen.getByText('Not assessed')).toBeInTheDocument();
+    });
+});
+
+describe('the Continuity page’s settings (D35 addendum A)', () => {
+    it('the deep check’s reading of the draft is off by default; an editor turns it on (one PUT), with a sentence saying it reads the draft and spends the same nightly budget', async () => {
+        const { requests } = mockFetch({
+            'PUT /api/w/ada/books/book_1/continuity/settings': { json: { deepReadsDraft: true } },
+            'GET /api/w/ada/books/book_1/continuity': { json: continuity({ settings: { deepReadsDraft: true } }) },
+        });
+        mountContinuity(continuity());
+        const box = screen.getByRole('checkbox', { name: /The nightly deep check reads the draft too/ });
+        expect(box).not.toBeChecked();
+        expect(screen.getByText(/also reads what the manuscript's scenes claim[^.]*\. It uses the same nightly budget/)).toBeInTheDocument();
+        await act(async () => {
+            fireEvent.click(box);
+        });
+        await waitFor(() => expect(requests.filter((r) => r.method === 'PUT').map((r) => r.body)).toEqual([{ deepReadsDraft: true }]));
+        await waitFor(() => expect(screen.getByRole('checkbox', { name: /The nightly deep check reads the draft too/ })).toBeChecked());
+    });
+
+    it('a reader reads the setting and cannot change it', () => {
+        mockFetch({});
+        render(
+            <KeyboardShortcutProvider>
+                <ContinuityPage workspaceSlug="ada" book={BOOK} initial={continuity({ settings: { deepReadsDraft: true } })} canEdit={false} />
+                <Toaster />
+            </KeyboardShortcutProvider>,
+        );
+        expect(screen.queryByRole('checkbox', { name: /reads the draft too/ })).toBeNull();
+        expect(screen.getByTestId('continuity-deep-reads-draft-state')).toHaveTextContent('on');
     });
 });

@@ -16,7 +16,10 @@
  *   • Phase 5.3 (D35): "Draft vs bible" — what the nightly reading of the manuscript found (`DraftAgainstBible`),
  *     and on each thread the scenes confirmed to plant and pay it off, an unpaid setup marked;
  *   • entries that may be stale, each with "Grill me on what changed" (an
- *     interview scoped to the entry, the change as its context) and Dismiss.
+ *     interview scoped to the entry, the change as its context) and Dismiss;
+ *   • D35 addendum A: the book's continuity settings — whether the nightly deep
+ *     check reads the draft too (off by default; it spends the same nightly
+ *     budget), with a sentence saying so.
  *
  * `canEdit` is `bible.edit`, passed down; a reader reads. Every text renders as
  * text. Refusals are worded from their `details.reason`.
@@ -30,6 +33,7 @@ import { EntityDetailLayout } from '@/components/layout/EntityDetailLayout';
 import { Button } from '@/components/ui/button';
 import { buttonVariants } from '@/components/ui/button-variants';
 import { Card } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
 import { EmptyState } from '@/components/ui/empty-state';
 import { FormField } from '@/components/ui/form-field';
 import { Input } from '@/components/ui/input';
@@ -338,6 +342,7 @@ export function ContinuityPage({ workspaceSlug, book, initial, canEdit }: Contin
     const [hidden, setHidden] = useState<ReadonlySet<string>>(new Set());
     const [adding, setAdding] = useState(false);
     const [editing, setEditing] = useState<ThreadView | null>(null);
+    const [savingSettings, setSavingSettings] = useState(false);
 
     const reload = async () => {
         try {
@@ -356,6 +361,15 @@ export function ContinuityPage({ workspaceSlug, book, initial, canEdit }: Contin
             toast.error(reasonText(err));
             await reload();
             return false;
+        }
+    };
+
+    const saveSettings = async (deepReadsDraft: boolean) => {
+        setSavingSettings(true);
+        try {
+            await run(() => continuityApi.saveSettings(workspaceSlug, book.id, { deepReadsDraft }), t('settings.saved'));
+        } finally {
+            setSavingSettings(false);
         }
     };
 
@@ -438,6 +452,27 @@ export function ContinuityPage({ workspaceSlug, book, initial, canEdit }: Contin
                             {page.backfill.notRead > 0 ? ` ${t('backfill.notRead', { count: page.backfill.notRead })}` : ''}
                         </p>
                     ) : null}
+                </Card>
+
+                <Card className="space-y-tight p-default" aria-labelledby="continuity-settings-title">
+                    <h2 id="continuity-settings-title" className="text-sm font-semibold text-content-emphasis">
+                        {t('settings.title')}
+                    </h2>
+                    <div className="flex items-start gap-tight">
+                        {canEdit ? (
+                            <Checkbox
+                                id="continuity-deep-reads-draft"
+                                checked={page.settings.deepReadsDraft}
+                                disabled={savingSettings}
+                                onCheckedChange={(v) => void saveSettings(v === true)}
+                            />
+                        ) : null}
+                        <label htmlFor={canEdit ? 'continuity-deep-reads-draft' : undefined} className="text-sm text-content-default">
+                            {t('settings.deepReadsDraft')}
+                            {canEdit ? null : <span className="text-content-muted" data-testid="continuity-deep-reads-draft-state"> · {page.settings.deepReadsDraft ? t('settings.on') : t('settings.off')}</span>}
+                            <span className="block text-xs text-content-muted">{t('settings.deepReadsDraftHelp')}</span>
+                        </label>
+                    </div>
                 </Card>
 
                 <section className="space-y-default" aria-labelledby="continuity-contradictions-title" id="continuity-contradictions">

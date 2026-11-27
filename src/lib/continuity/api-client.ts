@@ -5,11 +5,11 @@
  * the usecases. Client-safe.
  */
 import { bibleFetch } from '@/lib/bible/api-client';
-import type { ContinuityPage, DecideLaterView, StaleFlagView, ThreadProposalView, ThreadView } from '@/app-layer/usecases/continuity';
+import type { ContinuityPage, ContinuitySettingsView, DecideLaterView, StaleFlagView, ThreadProposalView, ThreadView } from '@/app-layer/usecases/continuity';
 import type { FactProposalDecision } from '@/lib/facts/vocabulary';
 import type { ThreadKind } from './vocabulary';
 
-export type { ContinuityPage, DecideLaterView, StaleFlagView, ThreadProposalView, ThreadView };
+export type { ContinuityPage, ContinuitySettingsView, DecideLaterView, StaleFlagView, ThreadProposalView, ThreadView };
 
 const enc = encodeURIComponent;
 const book = (slug: string, bookId: string) => `/api/w/${enc(slug)}/books/${enc(bookId)}`;
@@ -21,6 +21,7 @@ export const CONTINUITY_API = {
     threadProposal: (slug: string, bookId: string, proposalId: string) => `${book(slug, bookId)}/thread-proposals/${enc(proposalId)}/decision`,
     contradiction: (slug: string, bookId: string, proposalId: string) => `${book(slug, bookId)}/fact-proposals/${enc(proposalId)}/decision`,
     dismissStale: (slug: string, bookId: string, flagId: string) => `${book(slug, bookId)}/stale-flags/${enc(flagId)}/dismiss`,
+    settings: (slug: string, bookId: string) => `${book(slug, bookId)}/continuity/settings`,
 } as const;
 
 export interface ThreadDraft {
@@ -40,4 +41,6 @@ export const continuityApi = {
     decideThreadProposal: (slug: string, bookId: string, proposalId: string, decision: 'ACCEPT' | 'REJECT') =>
         bibleFetch<{ proposal: { id: string; status: string } }>(CONTINUITY_API.threadProposal(slug, bookId, proposalId), { method: 'POST', body: { decision } }),
     dismissStale: (slug: string, bookId: string, flagId: string) => bibleFetch<{ flag: { id: string } }>(CONTINUITY_API.dismissStale(slug, bookId, flagId), { method: 'POST' }),
+    /** D35 addendum A: whether the nightly deep check also reads the draft. */
+    saveSettings: (slug: string, bookId: string, settings: ContinuitySettingsView) => bibleFetch<ContinuitySettingsView>(CONTINUITY_API.settings(slug, bookId), { method: 'PUT', body: settings }),
 };

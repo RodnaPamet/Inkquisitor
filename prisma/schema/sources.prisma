@@ -319,7 +319,8 @@ model StoryFactProposal {
   kind         String?
   /// The extraction that raised it.
   extractionId String?
-  /// Phase 4.2: the nightly continuity run that raised it (basis RULE or DEEP).
+  /// Phase 4.2: the nightly continuity run that raised it (basis RULE or DEEP; since D35 addendum A also basis DRAFT, a
+  /// draft-vs-bible mismatch the deep check found, which then names no `draftRunId`).
   checkRunId   String?
   /// Phase 5.3 (D35), basis DRAFT: the scene whose draft contradicts the bible (the newer fact is its draft fact),
   /// the draft claim's keyed hash (one open proposal a bible fact, scene and claim), the run that raised it, and
@@ -328,6 +329,9 @@ model StoryFactProposal {
   draftClaimKey String?
   draftRunId   String?
   settledAt    DateTime?
+  /// D35 addendum C: how a draft mismatch settled by itself — DRAFT_CHANGED (a re-read no longer finds the claim) or
+  /// BIBLE_GONE (its bible fact no longer stands); set with `settledAt`, never after (CHECK and trigger).
+  settleReason String?
   decidedById  String?
   decidedAt    DateTime?
   createdAt    DateTime  @default(now())
@@ -352,6 +356,8 @@ model StoryFactProposal {
   /// Phase 5.3: a book's draft mismatches by status, newest first (the Continuity page), and a scene's (the margin).
   @@index([workspaceId, bookId, basis, status, createdAt])
   @@index([workspaceId, bookId, sceneId, status])
+  /// D35 addendum C: a book's draft mismatches settled by themselves, newest first (the "Recently resolved" list).
+  @@index([workspaceId, bookId, basis, settledAt])
 }
 
 /// THE FACT EXTRACTION OUTBOX (Phase 4.1, D27): one row per accepted bible

@@ -117,7 +117,9 @@ export type AuditAction =
     | 'DRAFT_MISMATCH_DECIDED'
     | 'DRAFT_BIBLE_UPDATED'
     | 'THREAD_SCENE_LINK_DECIDED'
-    | 'SCENE_CARD_SAVED';
+    | 'SCENE_CARD_SAVED'
+    // D35 addendum A: a book's continuity settings changed (whether the deep check reads the draft; ids and the value only).
+    | 'CONTINUITY_SETTINGS_SAVED';
 
 export interface AuditEventPayload {
     action: AuditAction;

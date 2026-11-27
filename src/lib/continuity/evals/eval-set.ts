@@ -5,7 +5,11 @@
  * what when, an impossible order) and NEAR MISSES (the same detail at another
  * story time, two values a thing can hold, a vague and a precise fact that
  * agree, learning something later), plus an adversarial fact that tries to
- * instruct the checker. Each case has a reference answer.
+ * instruct the checker. Each case has a reference answer. Since D35 addendum A
+ * a case may carry DRAFT facts (the manuscript's claims, after the bible's):
+ * draft-vs-bible clashes to find, and near misses (a synonym, another story
+ * time, two draft facts that disagree only with each other, which code never
+ * pairs).
  *
  * Original content written for Inkquisitor. Imported as JSON so a record is
  * checked against the bytes the build holds.
@@ -25,6 +29,8 @@ const Fact = z
         storyTimeFrom: z.string().nullable(),
         storyTimeTo: z.string().nullable(),
         at: z.object({ element: z.string().min(1), position: z.number().int().min(1), order: z.string().min(1) }).strict().nullable(),
+        /** D35 addendum A: a DRAFT fact (the manuscript's claim, its scene named), shown in the "draft-facts" block. */
+        draft: z.object({ scene: z.string().min(1) }).strict().optional(),
     })
     .strict();
 
@@ -38,7 +44,10 @@ const CaseSchema = z
         mustNotPair: z.array(z.tuple([z.string(), z.string()])),
         reference: z.object({ contradictions: z.array(z.unknown()) }).strict(),
     })
-    .strict();
+    .strict()
+    // The call numbers the bible's facts first and the draft's after them: a case lists them in that order, so its
+    // references and its reference answer's numbers mean what the call is shown.
+    .refine((c) => c.facts.every((f, i) => !c.facts[i - 1]?.draft || f.draft), { message: 'draft facts come after the bible facts' });
 export type ContinuityEvalCase = z.infer<typeof CaseSchema>;
 
 const SetSchema = z.object({ format: z.literal('inkquisitor-continuity-eval/1'), cases: z.array(CaseSchema).min(1) }).strict();

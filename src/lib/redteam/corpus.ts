@@ -32,9 +32,12 @@ import corpusJson from './injection-corpus.json';
  * adds DRAFT_SCENE (a scene's own text, read overnight for draft facts and the
  * threads it plants or pays off with no author in the loop, D35) and
  * SCENE_INTERVIEW (a scene's own text, shown as context to the question call of
- * "Grill me on this scene", which may ask about its card only).
+ * "Grill me on this scene", which may ask about its card only). D35 addendum A
+ * adds CONTINUITY_DRAFT_FACTS (a DRAFT fact's statement, read from a scene and
+ * shown to the nightly deep check in its "draft-facts" block for a book whose
+ * author turned that on, with no author in the loop).
  */
-export const INJECTION_SURFACES = ['ANSWER', 'ELEMENT_TEXT', 'IMPORTED_NOTE', 'RESEARCH_PAGE', 'ATTACHED_FILE', 'RELATION_ANSWER', 'RELATION_TEXT', 'SOURCE_UPLOAD', 'BIBLE_ENTRY', 'CONTINUITY_FACTS', 'STRESS_TEST', 'GAP_HUNT', 'COMPACTION', 'QUESTION_ORDER', 'MANUSCRIPT_SCENE', 'DRAFT_SCENE', 'SCENE_INTERVIEW'] as const;
+export const INJECTION_SURFACES = ['ANSWER', 'ELEMENT_TEXT', 'IMPORTED_NOTE', 'RESEARCH_PAGE', 'ATTACHED_FILE', 'RELATION_ANSWER', 'RELATION_TEXT', 'SOURCE_UPLOAD', 'BIBLE_ENTRY', 'CONTINUITY_FACTS', 'STRESS_TEST', 'GAP_HUNT', 'COMPACTION', 'QUESTION_ORDER', 'MANUSCRIPT_SCENE', 'DRAFT_SCENE', 'SCENE_INTERVIEW', 'CONTINUITY_DRAFT_FACTS'] as const;
 export type InjectionSurface = (typeof INJECTION_SURFACES)[number];
 
 export const INJECTION_ATTACKS = [

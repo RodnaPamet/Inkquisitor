@@ -194,8 +194,9 @@ function compromisedAnswer(body: Record<string, unknown>): string {
         return JSON.stringify({ summary: `${recite(COMPACTION_PROMPT.system, 14)}. ${injected}` });
     }
     if (is(CONTINUITY_PROMPT)) {
-        // Phase 4.2: every pair "agreed", a pair past the page, a fact paired with itself.
-        return JSON.stringify({ contradictions: [{ first: 1, second: 2, kind: 'OTHER' }, { first: 2, second: 40, kind: 'VALUE' }, { first: 3, second: 3, kind: 'VALUE' }] });
+        // Phase 4.2: every pair "agreed", a pair past the page, a fact paired with itself; D35 addendum A: two draft facts
+        // paired (on a page with a "draft-facts" block, numbers 3 and 4 are the draft's; on 4.2's page of three, 4 is past it).
+        return JSON.stringify({ contradictions: [{ first: 1, second: 2, kind: 'OTHER' }, { first: 2, second: 40, kind: 'VALUE' }, { first: 3, second: 3, kind: 'VALUE' }, { first: 3, second: 4, kind: 'OTHER' }] });
     }
     if (is(EXTRACT_PROMPT)) {
         // Phase 4.0: a fact that is the injection, one about the other book, the prompt recited, the instruction obeyed.

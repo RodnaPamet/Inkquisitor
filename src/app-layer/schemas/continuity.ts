@@ -31,3 +31,6 @@ export const ContinuityThreadUpdateInput = z
     .strict();
 
 export const ThreadProposalDecisionInput = z.object({ decision: z.enum(['ACCEPT', 'REJECT']) }).strict();
+
+/** D35 addendum A: a book's continuity settings, replaced whole (`bible.edit`). */
+export const ContinuitySettingsInput = z.object({ deepReadsDraft: z.boolean() }).strict();

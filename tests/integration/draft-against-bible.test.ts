@@ -481,8 +481,8 @@ describe('review fixes (5.3 review)', () => {
         await runWithoutRls({ reason: 'test' }, (db) => db.storyFact.updateMany({ where: { bookId: f.bookId, sourceKind: 'BIBLE_VERSION' }, data: { supersededAt: new Date() } }));
         await saveSceneText(f.ctx, f.bookId, f.sceneId, { html: '<p>Mara looked up at the high lamp, Mara’s blue eyes wet. She promised to find the Key before the storm.</p>', baseRevision: f.revision });
         await readNight(f.ctx, { reader: draftReader('Mara', []) });
-        const row = await runWithoutRls({ reason: 'test' }, (db) => db.storyFactProposal.findFirstOrThrow({ where: { id: m.id }, select: { status: true } }));
-        expect(row.status).toBe('INVALIDATED');
+        const row = await runWithoutRls({ reason: 'test' }, (db) => db.storyFactProposal.findFirstOrThrow({ where: { id: m.id }, select: { status: true, settleReason: true, settledAt: true } }));
+        expect(row).toEqual({ status: 'INVALIDATED', settleReason: 'BIBLE_GONE', settledAt: expect.any(Date) });
         expect((await getContinuityPage(f.ctx, f.bookId)).draft.mismatches.open).toBe(0);
 
         const g = await fixture();
@@ -492,7 +492,7 @@ describe('review fixes (5.3 review)', () => {
         await runWithoutRls({ reason: 'test' }, (db) => db.storyFact.updateMany({ where: { bookId: g.bookId, sourceKind: 'BIBLE_VERSION' }, data: { supersededAt: new Date() } }));
         await saveSceneText(g.ctx, g.bookId, g.sceneId, { html: '<p>Mara looked up at the high lamp, Mara’s blue eyes wet. She promised to find the Key before the storm.</p>', baseRevision: g.revision });
         await readNight(g.ctx, { reader: draftReader('Mara', []) });
-        expect(await runWithoutRls({ reason: 'test' }, (db) => db.storyFactProposal.findFirstOrThrow({ where: { id: gm.id }, select: { status: true } }))).toEqual({ status: 'FIXED' });
+        expect(await runWithoutRls({ reason: 'test' }, (db) => db.storyFactProposal.findFirstOrThrow({ where: { id: gm.id }, select: { status: true, settleReason: true } }))).toEqual({ status: 'FIXED', settleReason: 'BIBLE_GONE' });
 
         // The author sets the bible fact aside on the Continuity page (4.1's decision): a promised fix leaves the list at once.
         const h = await fixture();
@@ -504,8 +504,18 @@ describe('review fixes (5.3 review)', () => {
         await extractPending(h.ctx, h.bookId, eyesExtractor('Mara'));
         const gone = (await getContinuityPage(h.ctx, h.bookId)).noLongerStated.items[0];
         await decideFactProposal(h.ctx, h.bookId, gone.id, { decision: 'INVALIDATE' });
-        expect(await runWithoutRls({ reason: 'test' }, (db) => db.storyFactProposal.findFirstOrThrow({ where: { id: hm.id }, select: { status: true } }))).toEqual({ status: 'FIXED' });
+        expect(await runWithoutRls({ reason: 'test' }, (db) => db.storyFactProposal.findFirstOrThrow({ where: { id: hm.id }, select: { status: true, settleReason: true } }))).toEqual({ status: 'FIXED', settleReason: 'BIBLE_GONE' });
         expect((await getContinuityPage(h.ctx, h.bookId)).draft.mismatches.open).toBe(0);
+        // D35 addendum C: a mismatch still PENDING when the author sets its bible fact aside settles by itself too.
+        const i = await fixture();
+        await readNight(i.ctx, { reader: draftReader('Mara', []) });
+        const im = (await getContinuityPage(i.ctx, i.bookId)).draft.mismatches.items[0];
+        const iv = await prisma.bibleEntryVersion.findFirstOrThrow({ where: { elementId: i.maraId }, orderBy: { versionNumber: 'desc' }, select: { versionNumber: true } });
+        await updateElementFields(i.ctx, i.bookId, i.maraId, { fields: [{ key: 'physical_presence', value: 'A slow way of walking.' }], baseVersion: iv.versionNumber });
+        await extractPending(i.ctx, i.bookId, eyesExtractor('Mara'));
+        await decideFactProposal(i.ctx, i.bookId, (await getContinuityPage(i.ctx, i.bookId)).noLongerStated.items[0].id, { decision: 'INVALIDATE' });
+        expect(await runWithoutRls({ reason: 'test' }, (db) => db.storyFactProposal.findFirstOrThrow({ where: { id: im.id }, select: { status: true, settleReason: true } }))).toEqual({ status: 'INVALIDATED', settleReason: 'BIBLE_GONE' });
+        expect((await getContinuityPage(i.ctx, i.bookId)).draft.recentlyResolved.items.map((x) => [x.id, x.settled?.reason])).toEqual([[im.id, 'BIBLE_GONE']]);
     });
 
     it('a clash settled because the scene moved in story time is raised again when it moves back (the same draft fact)', async () => {
@@ -534,6 +544,7 @@ describe('review fixes (5.3 review)', () => {
         rev = (await updateSceneMeta(ctx, bookId, sceneId, { baseRevision: rev, storyTime: '1210' })).revision;
         await readNight(ctx, { reader: draftReader('Isolde', []) });
         expect((await all()).map((r) => r.status)).toEqual(['FIXED']);
+        expect(await runWithoutRls({ reason: 'test' }, (db) => db.storyFactProposal.findFirstOrThrow({ where: { bookId, basis: 'DRAFT' }, select: { settleReason: true } }))).toEqual({ settleReason: 'DRAFT_CHANGED' });
         // And back: the same draft fact clashes again, and is raised again.
         await updateSceneMeta(ctx, bookId, sceneId, { baseRevision: rev, storyTime: '1203' });
         await readNight(ctx, { reader: draftReader('Isolde', []) });

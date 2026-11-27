@@ -36,6 +36,8 @@ const MISMATCH: DraftMismatchView = {
     bible: { statement: 'Mara has green eyes.', quote: 'Mara has green eyes', subjectName: 'Mara', predicate: 'APPEARANCE', elementId: 'el_mara', elementName: 'Mara', versionNumber: 2, live: true },
     canUpdateBible: true,
     explanation: null,
+    foundBy: 'RULES',
+    settled: null,
 };
 
 const PREFILL: DraftUpdatePrefillView = {
@@ -64,6 +66,7 @@ function draft(over: Partial<DraftAgainstBibleProps['draft']> = {}): DraftAgains
             pending: 1,
             truncated: false,
         },
+        recentlyResolved: { items: [], days: 30, truncated: false },
         ...over,
     };
 }
@@ -154,9 +157,52 @@ describe('Draft vs bible', () => {
         await waitFor(() => expect(requests.find((r) => r.method === 'POST')?.body).toEqual({ decision: 'CONFIRM' }));
     });
 
+    it('a mismatch the nightly deep check found says so (D35 addendum A)', () => {
+        mockFetch({});
+        mount(draft({ mismatches: { items: [{ ...MISMATCH, foundBy: 'DEEP_CHECK' }], open: 1, truncated: false } }));
+        expect(within(screen.getByTestId('draft-mismatch')).getByTestId('draft-found-by-deep')).toHaveTextContent('Found by the nightly deep check');
+        expect(screen.queryAllByTestId('draft-found-by-deep')).toHaveLength(1);
+    });
+
+    it('"Recently resolved" lists what settled by itself — the scene, the bible entry and how — and, empty, says only that nothing settled lately (D35 addendum C)', () => {
+        mockFetch({});
+        const { unmount } = mount(draft());
+        const none = screen.getByTestId('draft-resolved-none');
+        expect(none).toHaveTextContent('Nothing settled by itself in the last 30 days.');
+        // Rule 6: an empty list is never an all-clear, and the open mismatch is still listed.
+        expect(screen.getByRole('region', { name: 'Recently resolved' })).not.toHaveTextContent(/all clear|no mismatches|agrees/i);
+        expect(screen.getByTestId('draft-mismatch')).toBeInTheDocument();
+        unmount();
+        mount(
+            draft({
+                mismatches: { items: [], open: 0, truncated: false },
+                recentlyResolved: {
+                    items: [
+                        { ...MISMATCH, id: 'r1', status: 'FIXED', settled: { at: '2026-11-26T03:10:00.000Z', reason: 'DRAFT_CHANGED' } },
+                        { ...MISMATCH, id: 'r2', status: 'INVALIDATED', sceneTitle: 'The storm', settled: { at: '2026-11-20T03:10:00.000Z', reason: 'BIBLE_GONE' } },
+                    ],
+                    days: 30,
+                    truncated: true,
+                },
+            }),
+        );
+        const rows = screen.getAllByTestId('draft-resolved');
+        expect(rows.map((r) => r.getAttribute('data-reason'))).toEqual(['DRAFT_CHANGED', 'BIBLE_GONE']);
+        expect(rows[0]).toHaveTextContent('The lamp');
+        expect(rows[0]).toHaveTextContent('Mara');
+        expect(rows[0]).toHaveTextContent('Settled: the scene no longer says it');
+        expect(rows[0]).toHaveTextContent('The draft said “Mara’s blue eyes”; the bible said “Mara has green eyes”.');
+        expect(rows[1]).toHaveTextContent('The storm');
+        expect(rows[1]).toHaveTextContent('Settled: the bible entry no longer says it');
+        expect(screen.getByText('Showing the newest 2.')).toBeInTheDocument();
+        expect(screen.queryByTestId('draft-resolved-none')).toBeNull();
+        // Nothing to decide on a resolved one.
+        expect(within(rows[0]).queryByRole('button')).toBeNull();
+    });
+
     it('has no accessibility violations', async () => {
         mockFetch({});
-        const { container } = mount(draft());
+        const { container } = mount(draft({ recentlyResolved: { items: [{ ...MISMATCH, id: 'r1', status: 'FIXED', settled: { at: '2026-11-26T03:10:00.000Z', reason: 'DRAFT_CHANGED' } }], days: 30, truncated: false } }));
         expect(await axe(container)).toHaveNoViolations();
     });
 });

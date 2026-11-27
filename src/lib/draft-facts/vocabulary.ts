@@ -149,7 +149,25 @@ export interface DraftMismatchView {
     /** "Update the bible" is offered (an element's fact, still live, whose field can be found). */
     canUpdateBible: boolean;
     explanation: string | null;
+    /** Who found it: the draft reading's rules, or (D35 addendum A) the nightly deep check reading the draft. */
+    foundBy: 'RULES' | 'DEEP_CHECK';
+    /** D35 addendum C: when and how it settled by itself (FIXED, or INVALIDATED because its bible fact went); null while open or decided. */
+    settled: { at: string; reason: DraftSettleReason } | null;
 }
+
+/**
+ * D35 addendum C: how a draft mismatch settled by itself — the draft no longer makes the claim (a re-read), or its bible
+ * fact no longer stands (set aside or retracted). Stored on the proposal (`settleReason`, CHECK).
+ */
+export const DRAFT_SETTLE_REASONS = ['DRAFT_CHANGED', 'BIBLE_GONE'] as const;
+export type DraftSettleReason = (typeof DRAFT_SETTLE_REASONS)[number];
+
+/** The statuses of a draft mismatch that settled by itself (the "Recently resolved" list). */
+export const SETTLED_DRAFT_STATUSES: readonly DraftMismatchStatus[] = ['FIXED', 'INVALIDATED'];
+/** D35 addendum C: how long a settled mismatch stays on the "Recently resolved" list, by the database's clock (30 days). */
+export const RECENTLY_RESOLVED_DAYS = 30;
+/** The "Recently resolved" list, at most (one more is asked, so a cut is named). */
+export const RECENTLY_RESOLVED_MAX = 50;
 
 export interface SceneLinkView {
     id: string;

@@ -8,7 +8,12 @@
  *   • each mismatch between a scene's sentence and the bible, citing both, with the author's three choices — Fix the
  *     draft (I will), Update the bible (the entry's field opened PREFILLED with the draft's value; nothing is saved
  *     until the author saves it), Both are true (say how);
- *   • the threads a scene was read to plant or pay off, each citing its sentence, to confirm or reject.
+ *   • the threads a scene was read to plant or pay off, each citing its sentence, to confirm or reject;
+ *   • D35 addendum C: "Recently resolved" — mismatches that settled by themselves in the last 30 days (the scene no
+ *     longer says it, or the bible entry's fact went), each saying what changed; no notification is sent. An empty
+ *     list says only that nothing settled lately, never that the draft agrees with the bible (rule 6).
+ *
+ * A mismatch the nightly deep check found (addendum A: the author let it read the draft) says so.
  *
  * `canEdit` is `bible.edit`, passed down; a reader reads. Every text renders as text. Refusals are worded from their
  * `details.reason`.
@@ -39,6 +44,8 @@ export interface DraftAgainstBibleProps {
         reading: DraftReadingView;
         mismatches: { items: DraftMismatchView[]; open: number; truncated: boolean };
         linkProposals: { items: SceneLinkView[]; pending: number; truncated: boolean };
+        /** D35 addendum C: mismatches that settled by themselves lately (the database's clock), newest first. */
+        recentlyResolved: { items: DraftMismatchView[]; days: number; truncated: boolean };
     };
     /** Runs a decision, toasts `done` (or the refusal) and reads the page again; true when it went through. */
     run: (work: () => Promise<unknown>, done: string) => Promise<boolean>;
@@ -118,7 +125,14 @@ function MismatchCard({ workspaceSlug, bookId, m, canEdit, run, onUpdate }: { wo
         <Card className="space-y-default p-default" data-testid="draft-mismatch" data-status={m.status} aria-label={heading}>
             <div className="flex flex-wrap items-baseline justify-between gap-tight">
                 <h3 className="text-sm font-semibold text-content-emphasis">{heading}</h3>
-                <StatusBadge variant={m.status === 'PENDING' ? 'warning' : 'info'}>{t(`status.${m.status}`)}</StatusBadge>
+                <span className="flex flex-wrap items-center gap-tight">
+                    {m.foundBy === 'DEEP_CHECK' ? (
+                        <span className="text-xs text-content-muted" data-testid="draft-found-by-deep">
+                            {t('foundByDeep')}
+                        </span>
+                    ) : null}
+                    <StatusBadge variant={m.status === 'PENDING' ? 'warning' : 'info'}>{t(`status.${m.status}`)}</StatusBadge>
+                </span>
             </div>
             <div className="grid gap-default md:grid-cols-2">
                 <div className="space-y-tight">
@@ -185,6 +199,35 @@ function MismatchCard({ workspaceSlug, bookId, m, canEdit, run, onUpdate }: { wo
                 </Modal.Form>
             </Modal>
         </Card>
+    );
+}
+
+/** D35 addendum C: one mismatch that settled by itself — the scene, the bible entry, and how it settled. */
+function ResolvedRow({ workspaceSlug, bookId, m }: { workspaceSlug: string; bookId: string; m: DraftMismatchView }) {
+    const t = useTranslations('continuity.draft');
+    const tk = useTranslations('continuity.contradictions');
+    const heading = tk.has(`kind.${m.kind}`) ? tk(`kind.${m.kind}`) : tk('kind.OTHER');
+    return (
+        <li className="space-y-tight py-default" data-testid="draft-resolved" data-reason={m.settled?.reason ?? ''}>
+            <p className="text-sm text-content-emphasis">
+                {heading} · <SceneRef workspaceSlug={workspaceSlug} bookId={bookId} sceneId={m.sceneId} title={m.sceneTitle} />
+                {' · '}
+                {m.bible.elementId && m.bible.elementName ? (
+                    <Link href={APP_ROUTES.bibleElement(workspaceSlug, bookId, m.bible.elementId)} className="underline">
+                        {m.bible.elementName}
+                    </Link>
+                ) : (
+                    t('bibleOriginUnknown')
+                )}
+            </p>
+            <p className="text-xs text-content-muted">
+                {t('resolved.was', { draft: m.draft.quote, bible: m.bible.quote })}
+            </p>
+            <p className="text-xs text-content-muted">
+                {m.settled ? t(`resolved.how.${m.settled.reason}`) : null}
+                {m.settled ? ` · ${new Date(m.settled.at).toLocaleDateString()}` : null}
+            </p>
+        </li>
     );
 }
 
@@ -268,6 +311,25 @@ export function DraftAgainstBible({ workspaceSlug, bookId, canEdit, draft, run, 
                     {draft.linkProposals.truncated ? <p className="text-sm text-content-muted">{t('truncated', { shown: draft.linkProposals.items.length })}</p> : null}
                 </div>
             ) : null}
+            <section className="space-y-tight" aria-labelledby="continuity-draft-resolved-title" id="continuity-draft-resolved">
+                <h3 id="continuity-draft-resolved-title" className="text-sm font-semibold text-content-emphasis">
+                    {t('resolved.title')}
+                </h3>
+                <p className="text-sm text-content-muted">{t('resolved.help', { days: draft.recentlyResolved.days })}</p>
+                {draft.recentlyResolved.items.length === 0 ? (
+                    // Rule 6: nothing settled lately is all this says — open mismatches, if any, are listed above.
+                    <p className="text-sm text-content-muted" data-testid="draft-resolved-none">
+                        {t('resolved.none', { days: draft.recentlyResolved.days })}
+                    </p>
+                ) : (
+                    <ul className="divide-y divide-[var(--border-subtle)]">
+                        {draft.recentlyResolved.items.map((m) => (
+                            <ResolvedRow key={m.id} workspaceSlug={workspaceSlug} bookId={bookId} m={m} />
+                        ))}
+                    </ul>
+                )}
+                {draft.recentlyResolved.truncated ? <p className="text-sm text-content-muted">{t('resolved.truncated', { shown: draft.recentlyResolved.items.length })}</p> : null}
+            </section>
             {prefill ? <UpdateBibleSheet workspaceSlug={workspaceSlug} bookId={bookId} prefill={prefill} onClose={() => setPrefill(null)} run={run} /> : null}
         </section>
     );

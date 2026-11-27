@@ -122,6 +122,29 @@ export const DraftReadRunRepository = {
         });
         return r.count === 1;
     },
+    /**
+     * D35 addendum B: does the draft reading still have work in this workspace THIS night? A run of the night queued or
+     * running; or, before the night's dispatch has queued any run here, a scene of a live book whose text changed since
+     * it was last read (or holds words and was never read) — the reading runs AFTER the continuity check (03:07, after
+     * 02:23), so while the check runs those scenes are work still to come. Once the night's runs here have ended, the
+     * reading has nothing more tonight (a scene saved later waits for the next night). Read under the ledger's spend
+     * lock (the night's halves); each part one bounded row.
+     */
+    async workTonight(db: Db, workspaceId: string, nightKey: string): Promise<boolean> {
+        const live = await db.draftReadRun.findFirst({ where: { workspaceId, nightKey, status: { in: ['QUEUED', 'RUNNING'] } }, select: { id: true } });
+        if (live) return true;
+        const dispatched = await db.draftReadRun.findFirst({ where: { workspaceId, nightKey }, select: { id: true } });
+        if (dispatched) return false;
+        const [due] = await db.$queryRaw<Array<{ one: number }>>(Prisma.sql`
+            SELECT 1 AS "one"
+            FROM "ManuscriptScene" s
+            JOIN "Book" b ON b."workspaceId" = s."workspaceId" AND b."id" = s."bookId" AND b."deletedAt" IS NULL
+            LEFT JOIN "SceneDraftRead" d ON d."workspaceId" = s."workspaceId" AND d."bookId" = s."bookId" AND d."sceneId" = s."id"
+            WHERE s."workspaceId" = ${workspaceId}
+              AND ((d."id" IS NULL AND s."wordCount" > 0) OR (d."id" IS NOT NULL AND d."revision" <> s."revision"))
+            LIMIT 1`);
+        return due !== undefined;
+    },
     /** The book's newest finished run (the Continuity page's "last read"). */
     async lastFinished(db: Db, workspaceId: string, bookId: string): Promise<DraftReadRunRow | null> {
         return db.draftReadRun.findFirst({ where: { workspaceId, bookId, finishedAt: { not: null } }, orderBy: [{ createdAt: 'desc' }, { id: 'asc' }], select: RUN_SELECT });
@@ -161,6 +184,15 @@ export const SceneDraftReadRepository = {
         return db.manuscriptScene.findFirst({
             where: { workspaceId, bookId, id: sceneId },
             select: { id: true, title: true, text: true, revision: true, storyTime: true, chapter: { select: { title: true } }, beatLinks: { select: { beatElementId: true }, take: 13 } },
+        });
+    },
+    /** D35 addendum A: these scenes' titles and what places them in story time (the deep check's draft facts). */
+    async sceneTimes(db: Db, workspaceId: string, bookId: string, sceneIds: readonly string[]) {
+        if (sceneIds.length === 0) return [];
+        return db.manuscriptScene.findMany({
+            where: { workspaceId, bookId, id: { in: [...sceneIds] } },
+            take: sceneIds.length,
+            select: { id: true, title: true, storyTime: true, beatLinks: { select: { beatElementId: true }, take: 13 } },
         });
     },
     async find(db: Db, workspaceId: string, bookId: string, sceneId: string) {
@@ -272,15 +304,25 @@ const MISMATCH_SELECT = {
     kind: true,
     status: true,
     draftClaimKey: true,
+    checkRunId: true,
     decidedAt: true,
     settledAt: true,
+    settleReason: true,
     createdAt: true,
 } as const satisfies Prisma.StoryFactProposalSelect;
 export type DraftMismatchRow = Prisma.StoryFactProposalGetPayload<{ select: typeof MISMATCH_SELECT }>;
 
 export const DraftMismatchRepository = {
-    /** Raise mismatches (the partial unique index holds one open mismatch a bible fact, scene and claim: a repeat is skipped). */
-    async raise(db: Db, workspaceId: string, rows: ReadonlyArray<{ bookId: string; sceneId: string; factId: string; newerFactId: string; kind: string; draftClaimKey: string; draftRunId: string }>): Promise<number> {
+    /**
+     * Raise mismatches (the partial unique index holds one open mismatch a bible fact, scene and claim: a repeat is
+     * skipped). Each names the run that found it: the draft reading's (`draftRunId`, the rules) or, since D35 addendum A,
+     * the deep continuity check's (`checkRunId`) — exactly one (CHECK).
+     */
+    async raise(
+        db: Db,
+        workspaceId: string,
+        rows: ReadonlyArray<{ bookId: string; sceneId: string; factId: string; newerFactId: string; kind: string; draftClaimKey: string } & ({ draftRunId: string; checkRunId?: never } | { checkRunId: string; draftRunId?: never })>,
+    ): Promise<number> {
         if (rows.length === 0) return 0;
         const r = await db.storyFactProposal.createMany({ data: rows.map((x) => ({ workspaceId, ...x, reason: 'CONTRADICTED', basis: 'DRAFT' })), skipDuplicates: true });
         return r.count;
@@ -296,6 +338,21 @@ export const DraftMismatchRepository = {
     async countForBook(db: Db, workspaceId: string, bookId: string, statuses: readonly string[]): Promise<number> {
         return db.storyFactProposal.count({ where: { workspaceId, bookId, basis: 'DRAFT', status: { in: [...statuses] } } });
     },
+    /**
+     * D35 addendum C: a book's draft mismatches that SETTLED BY THEMSELVES (FIXED by a re-read, or settled because their
+     * bible fact went) within the last `days` days BY THE DATABASE'S CLOCK, newest first; older ones are no longer
+     * shown (nothing is deleted: a read filter). Bounded: the caller asks one more than it shows, so a cut is named.
+     */
+    async recentlySettled(db: Db, workspaceId: string, bookId: string, days: number, take: number): Promise<DraftMismatchRow[]> {
+        const [{ now }] = await db.$queryRaw<Array<{ now: Date }>>`SELECT now() AS "now"`;
+        const since = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
+        return db.storyFactProposal.findMany({
+            where: { workspaceId, bookId, basis: 'DRAFT', status: { in: ['FIXED', 'INVALIDATED'] }, settledAt: { gte: since } },
+            orderBy: [{ settledAt: 'desc' }, { id: 'asc' }],
+            take,
+            select: MISMATCH_SELECT,
+        });
+    },
     async find(db: Db, workspaceId: string, bookId: string, id: string): Promise<DraftMismatchRow | null> {
         return db.storyFactProposal.findFirst({ where: { workspaceId, bookId, id, basis: 'DRAFT' }, select: MISMATCH_SELECT });
     },
@@ -310,8 +367,8 @@ export const DraftMismatchRepository = {
      */
     async settleFixed(db: Db, workspaceId: string, ids: readonly string[], at: Date): Promise<number> {
         if (ids.length === 0) return 0;
-        const pending = await db.storyFactProposal.updateMany({ where: { workspaceId, id: { in: [...ids] }, basis: 'DRAFT', status: 'PENDING' }, data: { status: 'FIXED', decidedAt: at, settledAt: at } });
-        const fixing = await db.storyFactProposal.updateMany({ where: { workspaceId, id: { in: [...ids] }, basis: 'DRAFT', status: 'FIX_PENDING' }, data: { status: 'FIXED', settledAt: at } });
+        const pending = await db.storyFactProposal.updateMany({ where: { workspaceId, id: { in: [...ids] }, basis: 'DRAFT', status: 'PENDING' }, data: { status: 'FIXED', decidedAt: at, settledAt: at, settleReason: 'DRAFT_CHANGED' } });
+        const fixing = await db.storyFactProposal.updateMany({ where: { workspaceId, id: { in: [...ids] }, basis: 'DRAFT', status: 'FIX_PENDING' }, data: { status: 'FIXED', settledAt: at, settleReason: 'DRAFT_CHANGED' } });
         return pending.count + fixing.count;
     },
     /**
@@ -321,8 +378,8 @@ export const DraftMismatchRepository = {
      */
     async settleBibleGone(db: Db, workspaceId: string, ids: readonly string[], at: Date): Promise<number> {
         if (ids.length === 0) return 0;
-        const pending = await db.storyFactProposal.updateMany({ where: { workspaceId, id: { in: [...ids] }, basis: 'DRAFT', status: 'PENDING' }, data: { status: 'INVALIDATED', decidedAt: at } });
-        const fixing = await db.storyFactProposal.updateMany({ where: { workspaceId, id: { in: [...ids] }, basis: 'DRAFT', status: 'FIX_PENDING' }, data: { status: 'FIXED', settledAt: at } });
+        const pending = await db.storyFactProposal.updateMany({ where: { workspaceId, id: { in: [...ids] }, basis: 'DRAFT', status: 'PENDING' }, data: { status: 'INVALIDATED', decidedAt: at, settledAt: at, settleReason: 'BIBLE_GONE' } });
+        const fixing = await db.storyFactProposal.updateMany({ where: { workspaceId, id: { in: [...ids] }, basis: 'DRAFT', status: 'FIX_PENDING' }, data: { status: 'FIXED', settledAt: at, settleReason: 'BIBLE_GONE' } });
         return pending.count + fixing.count;
     },
 };

@@ -2008,10 +2008,12 @@ the guard refused is passed over at once and counted there too. The
   the continuity check pass the SAME `NightlyShare` (its purpose is the list
   `NIGHT_SHARE_PURPOSES`), so they spend at most the one 10 % nightly share,
   checked before each scene and again by the ledger under its spend lock
-  (NIGHTLY_CAP otherwise, resumable); a new nightly model feature joins that
+  (NIGHTLY_CAP otherwise, resumable), each purpose to half of it while the
+  other has work (addendum B, below); a new nightly model feature joins that
   list or gets an owner decision. DRAFT FACTS (`StoryFact` kind SCENE_TEXT) are
   never canon: PENDING and undecided by CHECK, never embedded (the trigger's
-  WHEN), left out of the continuity discovery, the gap signals and the Facts
+  WHEN), left out of the continuity discovery (unless the book's author lets
+  the deep check read the draft, addendum A), the gap signals and the Facts
   page; they are written only by `StoryFactRepository.createDraftFacts`, under
   the book's fact lock alone, with the scene's text key re-checked, and compared
   only with BIBLE facts by 4.2's rules (APPEARANCE since 5.3: one colour per
@@ -2055,6 +2057,48 @@ the guard refused is passed over at once and counted there too. The
   After editing the draft reading's set, prompt or schema, re-run
   `npm run packs:evaluate -- --no-packs --draft-read`; after the scene pack or
   the question prompt, `npm run packs:evaluate` (and `--rephrase`).
+  THE OWNER'S ADDENDUM (D35 addendum, 2026-11-27). (A) THE DEEP CHECK READS
+  THE DRAFT ONLY WHEN THE AUTHOR TURNS IT ON: `ContinuitySettings` (one row a
+  book, RLS; `deepReadsDraft` off by default, `deepReadsDraftSince` when it
+  was turned on, CHECK), `bible.view` reads (`getContinuitySettings`, the
+  page's `settings`), `bible.edit` replaces (PUT `…/continuity/settings`; a
+  change audited CONTINUITY_SETTINGS_SAVED, ids and the value only). Off, the
+  check reads, sends and raises exactly what it did before, and draft facts
+  never make a book due. On, discovery counts a live draft fact newer than
+  `coveredThrough` (and the moment it was turned on), and the deep call shows
+  each subject's newest ≤ `CONTINUITY_DRAFT_FACTS_PER_SUBJECT_MAX` draft facts
+  beside its BIBLE facts (never a subject with draft facts alone), placed by
+  their scene, in a fenced block of their own, `draft-facts`, numbered on and
+  naming the scene; CONTINUITY_PROMPT says they are the manuscript's claims,
+  not canon. `validateContinuityPairs(…, { draftIds })` refuses two draft facts
+  (DRAFT_PAIR); a draft fact against a BIBLE_VERSION / RELATION_VERSION fact is
+  a draft mismatch of basis DRAFT naming the continuity run (`checkRunId`;
+  CHECK: exactly one of `checkRunId` / `draftRunId`), the same partial unique
+  index and three choices; against anything else DRAFT_NOT_BIBLE. The reading
+  settles a deep-found mismatch only when its claim is gone (or its bible fact),
+  never because the rules do not find it. The injection corpus's
+  `CONTINUITY_DRAFT_FACTS` surface carries a draft fact to the deep prompt.
+  (B) THE NIGHT'S SHARE IN HALVES: `nightShareFor(ctx, 'continuity' |
+  'draft', …)` gives the one share its caller's `half` (`NIGHT_SHARE_HALF`,
+  0.5): the ledger, under its spend lock, refuses a call of that purpose past
+  the half (its own spend in the night's window, live reservations, the call's
+  worst case) while `otherHasWork` — read in the same transaction from rows,
+  never a clock — is true: the check has work while a ContinuityRun of the
+  night is QUEUED or RUNNING (`liveTonight`); the reading while a DraftReadRun
+  of the night is, or, before the night's dispatch queued any run in the
+  workspace, while a scene waits (`workTonight`). The total still binds, so
+  both can never be over half. `nightShareStop` checks both before each call
+  (metrics `shareStop` TOTAL / HALF; the outcome NIGHTLY_CAP). A new nightly
+  purpose gets an owner decision on its part. (C) "RECENTLY RESOLVED": a draft
+  mismatch that settles by itself carries `settleReason` (DRAFT_CHANGED |
+  BIBLE_GONE) with `settledAt` — FIXED, or INVALIDATED when its bible fact went
+  (every settlement path writes both; CHECK and trigger, write-once) — and the
+  page lists those settled within `RECENTLY_RESOLVED_DAYS` (30) by the
+  DATABASE'S clock (`recentlySettled`, a read filter, nothing deleted), newest
+  first, take `RECENTLY_RESOLVED_MAX` + 1 with the cut named; no notification;
+  an empty list says only that nothing settled lately. After editing the deep
+  set, prompt or schema, re-run `npm run packs:evaluate -- --no-packs
+  --continuity`.
 - **Sanitising author text.** Every author-text write sanitises at the
   usecase layer before it is stored: plain text through `plainLine` /
   `plainBlock` (`src/lib/bible/text.ts`, over `sanitizePlainText`), rich text

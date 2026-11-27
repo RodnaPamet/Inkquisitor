@@ -63,10 +63,18 @@ export type ContinuityRecord = z.infer<typeof ContinuityRecordSchema>;
 
 /** A case's page as the call is shown it. */
 export function caseBlocks(c: ContinuityEvalCase) {
+    const line = (f: ContinuityEvalCase['facts'][number]) => ({ predicate: f.predicate, subjectName: f.subject, statement: f.statement, storyTimeFrom: f.storyTimeFrom, storyTimeTo: f.storyTimeTo, at: f.at });
+    const draft = c.facts.filter((f) => f.draft).map((f) => ({ ...line(f), sceneTitle: f.draft!.scene }));
     return continuityBlocks({
-        facts: c.facts.map((f) => ({ predicate: f.predicate, subjectName: f.subject, statement: f.statement, storyTimeFrom: f.storyTimeFrom, storyTimeTo: f.storyTimeTo, at: f.at })),
+        facts: c.facts.filter((f) => !f.draft).map(line),
+        ...(draft.length > 0 ? { draftFacts: draft } : {}),
         orders: c.orders,
     });
+}
+
+/** D35 addendum A: the case's draft facts, as the product's validation is told them. */
+function draftRefs(c: ContinuityEvalCase): ReadonlySet<string> {
+    return new Set(c.facts.filter((f) => f.draft).map((f) => f.ref));
 }
 
 const pairKey = (a: string, b: string) => (a < b ? `${a}|${b}` : `${b}|${a}`);
@@ -113,7 +121,7 @@ export function continuitySetReport(grades: readonly ContinuityCaseGrade[]): Con
 
 export function gradeContinuityCase(c: ContinuityEvalCase, answer: unknown): ContinuityCaseGrade {
     const failures: string[] = [];
-    const v = validateContinuityPairs(answer, c.facts.map((f) => f.ref));
+    const v = validateContinuityPairs(answer, c.facts.map((f) => f.ref), { draftIds: draftRefs(c) });
     const proposed = new Map(v.pairs.map((p) => [pairKey(p.a, p.b), p.kind] as const));
     for (const e of c.expect) {
         const kind = proposed.get(pairKey(e.a, e.b));

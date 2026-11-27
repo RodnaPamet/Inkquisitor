@@ -95,6 +95,8 @@ model Book {
   draftReadRuns        DraftReadRun[]
   threadSceneLinks     StoryThreadSceneLink[]
   sceneCardVersions    SceneCardVersion[]
+  /// D35 addendum A: the book's continuity settings (whether the deep check reads the draft).
+  continuitySettings   ContinuitySettings?
 
   @@unique([workspaceId, id])
   /// The books list: a workspace's live books, most recently updated first.

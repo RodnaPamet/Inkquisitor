@@ -63,10 +63,10 @@ export async function seedProseChecks(ctx: WorkspaceRequestContext, bookId: stri
 /**
  * The draft held against the bible's rows (Phase 5.3, D35), through the real usecases: the night's reading of the
  * seeded scene (its cursor, its run, a draft fact and a plant link proposed for a thread, with a scripted reader — no
- * model) and the scene's card with its first version.
+ * model), the scene's card with its first version, and the book's continuity settings (D35 addendum A).
  */
 export async function seedDraftAgainstBible(ctx: WorkspaceRequestContext, bookId: string, sceneId: string, mark: string): Promise<void> {
-    const { createThread } = await import('@/app-layer/usecases/continuity');
+    const { createThread, saveContinuitySettings } = await import('@/app-layer/usecases/continuity');
     const { executeDraftReadDispatch } = await import('@/app-layer/usecases/draft-read-dispatch');
     const { executeDraftRead } = await import('@/app-layer/usecases/draft-read');
     const { saveSceneCard } = await import('@/app-layer/usecases/scene-card');
@@ -107,6 +107,8 @@ export async function seedDraftAgainstBible(ctx: WorkspaceRequestContext, bookId
         undo();
     }
     await saveSceneCard(ctx, bookId, sceneId, { baseVersion: 0, goal: `Cross ${mark}`, conflict: null, outcome: null, change: null });
+    // D35 addendum A: the book's continuity settings row (the deep check reads the draft).
+    await saveContinuitySettings(ctx, bookId, { deepReadsDraft: true });
 }
 
 /**
